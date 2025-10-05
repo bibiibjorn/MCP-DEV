@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/bjorn.braet/Downloads/fabric-toolbox-main/fabric-toolbox-main/tools/SemanticModelMCPServer/**)",
+      "Bash(cat:*)",
+      "Read(//c/Users/bjorn.braet/Downloads/tabular-mcp-master/pbi-local-mcp/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
