@@ -64,12 +64,14 @@ async def list_tools() -> List[Tool]:
         Tool(name="run_dax_query", description="Run DAX", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "top_n": {"type": "integer", "default": 0}}, "required": ["query"]}),
         Tool(name="export_model_schema", description="Export schema", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="upsert_measure", description="Create/update measure", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "expression": {"type": "string"}, "display_folder": {"type": "string"}}, "required": ["table", "measure", "expression"]}),
+        Tool(name="delete_measure", description="Delete a measure", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}}, "required": ["table", "measure"]}),
         Tool(name="list_columns", description="List columns", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
         Tool(name="get_column_values", description="Column values", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}, "limit": {"type": "integer", "default": 100}}, "required": ["table", "column"]}),
         Tool(name="get_column_summary", description="Column stats", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}}, "required": ["table", "column"]}),
         Tool(name="list_relationships", description="List relationships", inputSchema={"type": "object", "properties": {"active_only": {"type": "boolean"}}, "required": []}),
         Tool(name="get_vertipaq_stats", description="VertiPaq stats", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
         Tool(name="analyze_query_performance", description="Analyze performance", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "runs": {"type": "integer", "default": 3}, "clear_cache": {"type": "boolean", "default": True}}, "required": ["query"]}),
+        Tool(name="validate_dax_query", description="Validate DAX syntax and analyze complexity", inputSchema={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}),
     ]
     if BPA_AVAILABLE:
         tools.append(Tool(name="analyze_model_bpa", description="Run BPA", inputSchema={"type": "object", "properties": {}, "required": []}))
@@ -154,6 +156,8 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             result = {'success': True, 'schema': {'tables': tables.get('rows', []), 'columns': columns.get('rows', []), 'measures': measures.get('rows', []), 'relationships': relationships.get('rows', [])}}
         elif name == "upsert_measure":
             result = dax_injector.upsert_measure(arguments["table"], arguments["measure"], arguments["expression"], arguments.get("display_folder")) if dax_injector else {'success': False, 'error': 'Not available'}
+        elif name == "delete_measure":
+            result = dax_injector.delete_measure(arguments["table"], arguments["measure"]) if dax_injector else {'success': False, 'error': 'Not available'}
         elif name == "list_columns":
             table = arguments.get("table")
             result = query_executor.execute_info_query("COLUMNS", f'[Table] = "{table}"' if table else None)
@@ -173,6 +177,8 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             result = query_executor.validate_and_execute_dax(query)
         elif name == "analyze_query_performance":
             result = performance_analyzer.analyze_query(query_executor, arguments['query'], arguments.get('runs', 3), arguments.get('clear_cache', True)) if performance_analyzer else {'success': False, 'error': 'Not available'}
+        elif name == "validate_dax_query":
+            result = query_executor.analyze_dax_query(arguments['query'])
         elif name == "analyze_model_bpa":
             if not BPA_AVAILABLE or not bpa_analyzer:
                 result = {"error": "BPA not available"}

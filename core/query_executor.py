@@ -15,6 +15,7 @@ import time
 import logging
 from typing import Any, Dict, List, Optional
 from collections import OrderedDict
+from core.dax_validator import DaxValidator
 
 logger = logging.getLogger(__name__)
 
@@ -300,6 +301,21 @@ class OptimizedQueryExecutor:
             Query result dictionary with success status, data, and metadata
         """
         try:
+            # Pre-execution syntax validation
+            syntax_errors = DaxValidator.validate_query_syntax(query)
+            if syntax_errors:
+                return {
+                    'success': False,
+                    'error': f"Query validation failed: {'; '.join(syntax_errors)}",
+                    'error_type': 'syntax_validation_error',
+                    'query': query,
+                    'suggestions': [
+                        "Fix syntax errors before executing",
+                        "Check for balanced delimiters (parentheses, brackets, quotes)",
+                        "Review DAX syntax documentation"
+                    ]
+                }
+
             # Auto-add EVALUATE if needed
             if not query.strip().upper().startswith('EVALUATE'):
                 if self._is_table_expression(query):
@@ -410,6 +426,44 @@ class OptimizedQueryExecutor:
                 "Table name may be case-sensitive"
             ]
         }
+
+    def analyze_dax_query(self, query: str) -> Dict[str, Any]:
+        """
+        Analyze DAX query for complexity, patterns, and optimization opportunities.
+
+        Args:
+            query: DAX query or expression to analyze
+
+        Returns:
+            Analysis results with complexity metrics and suggestions
+        """
+        try:
+            # Validate syntax first
+            syntax_errors = DaxValidator.validate_query_syntax(query)
+
+            # Analyze complexity
+            complexity_analysis = DaxValidator.analyze_complexity(query)
+
+            # Analyze patterns
+            good_patterns, anti_patterns = DaxValidator.analyze_patterns(query)
+
+            # Generate optimization suggestions
+            optimization_suggestions = DaxValidator.generate_optimization_suggestions(query)
+
+            return {
+                'success': True,
+                'query': query,
+                'syntax_valid': len(syntax_errors) == 0,
+                'syntax_errors': syntax_errors,
+                'complexity': complexity_analysis,
+                'good_patterns': good_patterns,
+                'anti_patterns': anti_patterns,
+                'optimization_suggestions': optimization_suggestions,
+                'security_validated': DaxValidator.validate_identifier(query.split()[0]) if query.strip() else True
+            }
+        except Exception as e:
+            logger.error(f"Error analyzing DAX query: {e}")
+            return {'success': False, 'error': str(e)}
 
     def get_tmsl_definition(self) -> Dict:
         """

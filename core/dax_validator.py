@@ -57,7 +57,7 @@ class DaxValidator:
         """
         if not DaxValidator.validate_identifier(identifier):
             raise ValueError(f"Invalid identifier: {identifier}")
-        return f"'{identifier.replace(\"'\", \"''\")}'"
+        return f"'{identifier.replace(chr(39), chr(39) + chr(39))}'"
 
     @staticmethod
     def check_balanced_delimiters(query: str, open_char: str, close_char: str, name: str) -> List[str]:
