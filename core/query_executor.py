@@ -107,53 +107,46 @@ class OptimizedQueryExecutor:
         # Table reference issues
         if "table" in error_lower and ("not found" in error_lower or "doesn't exist" in error_lower):
             suggestions.extend([
-                "Check table name spelling and case sensitivity",
-                "Use list_tables tool to see available tables",
-                "Ensure table name matches exactly as shown in Power BI",
-                "Try wrapping table name in single quotes: 'TableName'"
+                "Verify table exists with list_tables",
+                "Check case-sensitive spelling",
+                "Try single quotes: 'TableName'"
             ])
 
         # Column reference issues
         if "column" in error_lower and ("not found" in error_lower or "doesn't exist" in error_lower):
             suggestions.extend([
-                "Check column name spelling and case sensitivity",
-                "Use describe_table tool to see available columns",
-                "Try using [Table][Column] syntax",
-                "Verify column exists in the specified table"
+                "Verify column with describe_table",
+                "Check case-sensitive spelling",
+                "Try [Table][Column] syntax"
             ])
 
         # Syntax issues
         if "syntax" in error_lower:
             suggestions.extend([
-                "Check DAX syntax - ensure EVALUATE is used for table expressions",
-                "Verify parentheses and brackets are properly matched",
-                "Check function parameter count and types",
-                "Review DAX function syntax reference"
+                "Ensure EVALUATE for table expressions",
+                "Check balanced delimiters",
+                "Verify function parameters"
             ])
 
         # Function issues
         if "function" in error_lower:
             suggestions.extend([
-                "Verify function name spelling",
-                "Check function parameter types and count",
-                "Some functions may not be available in Power BI Desktop",
-                "Review supported DAX functions list"
+                "Check function name spelling",
+                "Verify parameter types/count"
             ])
 
         # Measure/calculation errors
         if "error" in error_lower and "measure" in error_lower:
             suggestions.extend([
-                "Check for circular dependencies in measures",
-                "Verify all referenced measures exist",
-                "Test measure expressions individually"
+                "Check for circular dependencies",
+                "Test expressions individually"
             ])
 
         if not suggestions:
             suggestions.extend([
-                "Check DAX syntax and function usage",
-                "Verify all table and column references exist",
-                "Try simplifying the query to isolate the issue",
-                "Review DAX query best practices"
+                "Check DAX syntax",
+                "Verify references exist",
+                "Simplify query to isolate issue"
             ])
 
         return suggestions
@@ -311,8 +304,7 @@ class OptimizedQueryExecutor:
                     'query': query,
                     'suggestions': [
                         "Fix syntax errors before executing",
-                        "Check for balanced delimiters (parentheses, brackets, quotes)",
-                        "Review DAX syntax documentation"
+                        "Check balanced delimiters"
                     ]
                 }
 
@@ -421,9 +413,8 @@ class OptimizedQueryExecutor:
             'error_type': 'table_reference_error',
             'attempted_formats': table_formats,
             'suggestions': [
-                f"Verify table '{table_name}' exists using list_tables tool",
-                "Check if table name has special characters or spaces",
-                "Table name may be case-sensitive"
+                f"Verify table '{table_name}' exists with list_tables",
+                "Check case-sensitivity and special characters"
             ]
         }
 

@@ -191,7 +191,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                     'success': False,
                     'error': 'Performance analyzer not initialized',
                     'error_type': 'analyzer_not_available',
-                    'suggestions': ['Connect to Power BI Desktop first using connect_to_powerbi tool']
+                    'suggestions': ['Connect to Power BI Desktop first']
                 }
             elif not performance_analyzer.amo_server:
                 result = {
@@ -199,11 +199,10 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                     'error': 'AMO SessionTrace not available - using fallback mode',
                     'error_type': 'amo_not_connected',
                     'suggestions': [
-                        'Ensure AMO libraries are installed in lib/dotnet folder',
-                        'Check that pythonnet (clr) is properly configured',
-                        'Performance analysis will use basic timing without SE/FE breakdown'
+                        'Check AMO libraries in lib/dotnet folder',
+                        'Verify pythonnet (clr) configuration'
                     ],
-                    'note': 'Executing with fallback mode (basic timing only)...'
+                    'note': 'Using fallback mode (basic timing only)'
                 }
                 # Execute with fallback
                 result = performance_analyzer.analyze_query(query_executor, arguments['query'], arguments.get('runs', 3), arguments.get('clear_cache', True))
@@ -226,9 +225,11 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
         else:
             result = {'error': f'Unknown tool: {name}'}
 
-        instance_info = connection_manager.get_instance_info()
-        if instance_info and isinstance(result, dict):
-            result['connection_info'] = instance_info
+        # Only add minimal connection info to reduce token usage
+        if isinstance(result, dict) and result.get('success'):
+            instance_info = connection_manager.get_instance_info()
+            if instance_info:
+                result['port'] = instance_info.get('port')
 
         return [TextContent(type="text", text=json.dumps(result, indent=2))]
 

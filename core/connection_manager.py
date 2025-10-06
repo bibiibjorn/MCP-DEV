@@ -182,9 +182,8 @@ class ConnectionManager:
                     'error': 'No Power BI Desktop instances detected',
                     'error_type': 'no_instances',
                     'suggestions': [
-                        'Ensure Power BI Desktop is running',
-                        'Open a .pbix file in Power BI Desktop',
-                        'Check that msmdsrv.exe process is running'
+                        'Ensure Power BI Desktop is running with .pbix file open',
+                        'Verify msmdsrv.exe process is running'
                     ]
                 }
 
@@ -233,9 +232,8 @@ class ConnectionManager:
                 'error': error_msg,
                 'error_type': 'connection_error',
                 'suggestions': [
-                    'Verify Power BI Desktop is running',
-                    'Check that the model is loaded',
-                    'Ensure no firewall is blocking the connection',
+                    'Verify Power BI Desktop is running with model loaded',
+                    'Check firewall settings',
                     'Try detecting instances again'
                 ]
             }

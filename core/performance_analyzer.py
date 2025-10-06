@@ -286,15 +286,15 @@ class EnhancedAMOTraceAnalyzer:
                 if not self.start_session_trace():
                     raise Exception("Failed to start SessionTrace - AMO not available")
 
-                # CRITICAL: Let trace fully initialize before query
-                time.sleep(0.2)  # Increased from 0.1
+                # Let trace initialize before query
+                time.sleep(0.05)  # Optimized - minimal delay for trace init
                 logger.info("Trace initialized, ready to execute query")
 
                 # Clear cache if requested
                 if clear_cache:
                     logger.info("Clearing cache...")
                     self._clear_cache(executor)
-                    time.sleep(0.3)  # Increased wait after cache clear
+                    time.sleep(0.1)  # Optimized - reduced wait after cache clear
 
                 # Execute query
                 logger.info(f"Executing DAX query...")
@@ -303,9 +303,9 @@ class EnhancedAMOTraceAnalyzer:
                 query_time = (time.time() - query_start) * 1000
                 logger.info(f"Query completed in {query_time:.2f}ms (wall clock)")
 
-                # CRITICAL: Wait longer for trace events to be fully captured
+                # Wait for trace events to be fully captured
                 # Events are generated asynchronously by the engine
-                time.sleep(0.5)  # Increased from 0.15 to 0.5
+                time.sleep(0.2)  # Optimized - balanced for event capture vs speed
 
                 # Stop trace and collect events
                 self.stop_session_trace()
@@ -330,10 +330,7 @@ class EnhancedAMOTraceAnalyzer:
                     'storage_engine_queries': metrics['se_queries'],
                     'storage_engine_cache_matches': metrics.get('se_cache_matches', 0),
                     'row_count': result.get('row_count', 0),
-                    'metrics_available': metrics['metrics_available'],
-                    'debug_total_events': metrics.get('total_events', 0),
-                    'debug_query_end_events': metrics.get('query_end_events', 0),
-                    'debug_se_end_events': metrics.get('se_end_events', 0)
+                    'metrics_available': metrics['metrics_available']
                 }
 
                 if execution_time > 0:
@@ -416,7 +413,7 @@ class EnhancedAMOTraceAnalyzer:
         for run in range(runs):
             if clear_cache:
                 self._clear_cache(executor)
-                time.sleep(0.5)
+                time.sleep(0.1)  # Optimized - reduced fallback mode delay
 
             start_time = time.time()
             result = executor.validate_and_execute_dax(query, 0)
