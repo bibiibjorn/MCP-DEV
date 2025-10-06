@@ -97,8 +97,18 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             if result.get('success'):
                 conn = connection_manager.get_connection()
                 query_executor = OptimizedQueryExecutor(conn)
+
+                # Initialize performance analyzer with AMO
                 performance_analyzer = EnhancedAMOTraceAnalyzer(connection_manager.connection_string)
-                performance_analyzer.connect_amo()
+                amo_connected = performance_analyzer.connect_amo()
+
+                if amo_connected:
+                    result['performance_analysis'] = 'AMO SessionTrace available'
+                    logger.info("✓ Performance analyzer initialized with AMO SessionTrace")
+                else:
+                    result['performance_analysis'] = 'AMO not available - performance analysis will use fallback mode'
+                    logger.warning("✗ AMO not available - performance analysis limited")
+
                 dax_injector = DAXInjector(conn)
 
                 if BPA_AVAILABLE:
@@ -176,7 +186,30 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             query = f'EVALUATE FILTER(INFO.STORAGETABLECOLUMNS(), LEFT([TABLE_ID], LEN("{table}")) = "{table}")' if table else "EVALUATE INFO.STORAGETABLECOLUMNS()"
             result = query_executor.validate_and_execute_dax(query)
         elif name == "analyze_query_performance":
-            result = performance_analyzer.analyze_query(query_executor, arguments['query'], arguments.get('runs', 3), arguments.get('clear_cache', True)) if performance_analyzer else {'success': False, 'error': 'Not available'}
+            if not performance_analyzer:
+                result = {
+                    'success': False,
+                    'error': 'Performance analyzer not initialized',
+                    'error_type': 'analyzer_not_available',
+                    'suggestions': ['Connect to Power BI Desktop first using connect_to_powerbi tool']
+                }
+            elif not performance_analyzer.amo_server:
+                result = {
+                    'success': False,
+                    'error': 'AMO SessionTrace not available - using fallback mode',
+                    'error_type': 'amo_not_connected',
+                    'suggestions': [
+                        'Ensure AMO libraries are installed in lib/dotnet folder',
+                        'Check that pythonnet (clr) is properly configured',
+                        'Performance analysis will use basic timing without SE/FE breakdown'
+                    ],
+                    'note': 'Executing with fallback mode (basic timing only)...'
+                }
+                # Execute with fallback
+                result = performance_analyzer.analyze_query(query_executor, arguments['query'], arguments.get('runs', 3), arguments.get('clear_cache', True))
+            else:
+                # AMO is connected, execute normally
+                result = performance_analyzer.analyze_query(query_executor, arguments['query'], arguments.get('runs', 3), arguments.get('clear_cache', True))
         elif name == "validate_dax_query":
             result = query_executor.analyze_dax_query(arguments['query'])
         elif name == "analyze_model_bpa":

@@ -91,27 +91,46 @@ class EnhancedAMOTraceAnalyzer:
             return False
 
     def _trace_event_handler(self, sender, e):
-        """Handle trace events."""
+        """
+        Handle trace events.
+
+        CRITICAL: This runs on a separate thread. Keep it lightweight to avoid
+        blocking the trace and losing events.
+        """
         try:
             event_class_value = int(e.EventClass) if hasattr(e, 'EventClass') else 0
             event_class_name = str(e.EventClass) if hasattr(e, 'EventClass') else 'Unknown'
+
+            # Only capture relevant events to reduce overhead
+            # QueryEnd=10, VertiPaqSEQueryBegin=82, VertiPaqSEQueryEnd=83, CacheMatch=85
+            if event_class_value not in [10, 82, 83, 85]:
+                return
+
+            # Extract duration - CRITICAL: Duration is in microseconds, convert to ms
+            duration_us = e.Duration if hasattr(e, 'Duration') and e.Duration is not None else 0
+            duration_ms = duration_us / 1000.0 if duration_us > 0 else 0
 
             event_data = {
                 'event_class': event_class_name,
                 'event_class_value': event_class_value,
                 'event_subclass': e.EventSubclass if hasattr(e, 'EventSubclass') else None,
-                'duration_us': e.Duration if hasattr(e, 'Duration') and e.Duration is not None else 0,
-                'duration_ms': (e.Duration / 1000.0) if hasattr(e, 'Duration') and e.Duration is not None else 0,
+                'duration_us': duration_us,
+                'duration_ms': duration_ms,
                 'cpu_time_ms': e.CpuTime if hasattr(e, 'CpuTime') and e.CpuTime is not None else 0,
-                'text_data': e.TextData if hasattr(e, 'TextData') else None,
+                'text_data': str(e.TextData)[:200] if hasattr(e, 'TextData') and e.TextData else None,  # Truncate for performance
                 'timestamp': time.time(),
                 'current_time': e.CurrentTime if hasattr(e, 'CurrentTime') else None,
                 'start_time': e.StartTime if hasattr(e, 'StartTime') else None
             }
+
             self.trace_events.append(event_data)
-            logger.debug(f"Trace event: {event_class_name} (value={event_class_value}, duration_ms={event_data['duration_ms']})")
+
+            # Log important events (QueryEnd and VertiPaqSEQueryEnd)
+            if event_class_value in [10, 83]:
+                logger.info(f"✓ Captured {event_class_name} (value={event_class_value}, duration={duration_ms:.2f}ms)")
+
         except Exception as ex:
-            logger.warning(f"Error in trace handler: {ex}")
+            logger.error(f"Error in trace handler: {ex}", exc_info=True)
 
     def _trace_stopped_handler(self, sender, e):
         """Handle trace stopped event."""
@@ -126,34 +145,51 @@ class EnhancedAMOTraceAnalyzer:
             True if started successfully
         """
         if not self.amo_server or not hasattr(self.amo_server, 'SessionTrace'):
-            logger.warning("SessionTrace not available")
+            logger.error("SessionTrace not available - AMO server not connected")
             return False
 
         try:
+            # Clear previous events
             self.trace_events = []
+
+            # Get SessionTrace instance
             self.session_trace = self.amo_server.SessionTrace
+
+            # Attach event handlers BEFORE starting
             self.session_trace.OnEvent += self._trace_event_handler
             self.session_trace.Stopped += self._trace_stopped_handler
+
+            # Start the trace
             self.session_trace.Start()
             self.trace_active = True
-            logger.debug("SessionTrace started")
+
+            logger.info(f"✓ SessionTrace started successfully (Session ID: {self.amo_server.SessionID if hasattr(self.amo_server, 'SessionID') else 'N/A'})")
             return True
 
         except Exception as e:
-            logger.error(f"Failed to start SessionTrace: {e}")
+            logger.error(f"✗ Failed to start SessionTrace: {e}", exc_info=True)
+            self.trace_active = False
             return False
 
     def stop_session_trace(self):
-        """Stop AMO SessionTrace."""
+        """Stop AMO SessionTrace and detach event handlers."""
         if self.session_trace and self.trace_active:
             try:
+                # Stop the trace
                 self.session_trace.Stop()
+
+                # Detach event handlers AFTER stopping
                 self.session_trace.OnEvent -= self._trace_event_handler
                 self.session_trace.Stopped -= self._trace_stopped_handler
+
                 self.trace_active = False
-                logger.debug("SessionTrace stopped")
+
+                events_captured = len(self.trace_events)
+                logger.info(f"✓ SessionTrace stopped - Captured {events_captured} events")
+
             except Exception as e:
-                logger.warning(f"Error stopping trace: {e}")
+                logger.error(f"✗ Error stopping trace: {e}", exc_info=True)
+                self.trace_active = False
 
     def _analyze_trace_events(self) -> Dict[str, Any]:
         """
@@ -244,24 +280,34 @@ class EnhancedAMOTraceAnalyzer:
 
         for run in range(runs):
             try:
-                # Start trace
-                if not self.start_session_trace():
-                    raise Exception("Failed to start SessionTrace")
+                logger.info(f"========== Run {run + 1}/{runs} ==========")
 
-                time.sleep(0.1)  # Let trace initialize
+                # Start trace BEFORE anything else
+                if not self.start_session_trace():
+                    raise Exception("Failed to start SessionTrace - AMO not available")
+
+                # CRITICAL: Let trace fully initialize before query
+                time.sleep(0.2)  # Increased from 0.1
+                logger.info("Trace initialized, ready to execute query")
 
                 # Clear cache if requested
                 if clear_cache:
+                    logger.info("Clearing cache...")
                     self._clear_cache(executor)
-                    time.sleep(0.2)
+                    time.sleep(0.3)  # Increased wait after cache clear
 
                 # Execute query
+                logger.info(f"Executing DAX query...")
                 query_start = time.time()
                 result = executor.validate_and_execute_dax(query, 0)
                 query_time = (time.time() - query_start) * 1000
+                logger.info(f"Query completed in {query_time:.2f}ms (wall clock)")
 
-                # Wait for trace events
-                time.sleep(0.15)
+                # CRITICAL: Wait longer for trace events to be fully captured
+                # Events are generated asynchronously by the engine
+                time.sleep(0.5)  # Increased from 0.15 to 0.5
+
+                # Stop trace and collect events
                 self.stop_session_trace()
 
                 # Analyze metrics
@@ -269,6 +315,11 @@ class EnhancedAMOTraceAnalyzer:
                 execution_time = metrics['total_duration_ms'] if metrics['total_duration_ms'] > 0 else query_time
                 se_time = metrics['se_duration_ms']
                 fe_time = max(0, execution_time - se_time)
+
+                # Diagnostics
+                logger.info(f"Event Analysis: {metrics.get('total_events', 0)} total, "
+                           f"{metrics.get('query_end_events', 0)} QueryEnd, "
+                           f"{metrics.get('se_end_events', 0)} VertiPaqSEQueryEnd")
 
                 run_result = {
                     'run': run + 1,
@@ -290,7 +341,11 @@ class EnhancedAMOTraceAnalyzer:
                     run_result['se_percent'] = round((se_time / execution_time) * 100, 1)
 
                 results.append(run_result)
-                logger.info(f"Run {run + 1}/{runs}: {execution_time:.2f}ms (SE: {se_time:.2f}ms, FE: {fe_time:.2f}ms)")
+
+                if metrics['metrics_available']:
+                    logger.info(f"✓ Run {run + 1}/{runs}: Total={execution_time:.2f}ms, FE={fe_time:.2f}ms ({run_result.get('fe_percent', 0)}%), SE={se_time:.2f}ms ({run_result.get('se_percent', 0)}%), SE Queries={metrics['se_queries']}")
+                else:
+                    logger.warning(f"✗ Run {run + 1}/{runs}: No trace events captured! Used wall clock time: {query_time:.2f}ms")
 
             except Exception as e:
                 logger.error(f"Run {run+1} error: {e}")
