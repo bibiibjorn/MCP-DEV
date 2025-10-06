@@ -36,7 +36,7 @@ try:
         clr.AddReference(tabular_dll)
 
     from Microsoft.AnalysisServices.Tabular import Server as AMOServer
-    from Microsoft.AnalysisServices import TraceEventClass
+    from Microsoft.AnalysisServices import TraceEventClass, Trace, TraceEvent
     AMO_AVAILABLE = True
     logger.info("AMO available for performance analysis")
 
@@ -93,17 +93,25 @@ class EnhancedAMOTraceAnalyzer:
     def _trace_event_handler(self, sender, e):
         """Handle trace events."""
         try:
+            event_class_value = int(e.EventClass) if hasattr(e, 'EventClass') else 0
+            event_class_name = str(e.EventClass) if hasattr(e, 'EventClass') else 'Unknown'
+
             event_data = {
-                'event_class': str(e.EventClass) if hasattr(e, 'EventClass') else None,
+                'event_class': event_class_name,
+                'event_class_value': event_class_value,
+                'event_subclass': e.EventSubclass if hasattr(e, 'EventSubclass') else None,
                 'duration_us': e.Duration if hasattr(e, 'Duration') and e.Duration is not None else 0,
                 'duration_ms': (e.Duration / 1000.0) if hasattr(e, 'Duration') and e.Duration is not None else 0,
                 'cpu_time_ms': e.CpuTime if hasattr(e, 'CpuTime') and e.CpuTime is not None else 0,
                 'text_data': e.TextData if hasattr(e, 'TextData') else None,
-                'timestamp': time.time()
+                'timestamp': time.time(),
+                'current_time': e.CurrentTime if hasattr(e, 'CurrentTime') else None,
+                'start_time': e.StartTime if hasattr(e, 'StartTime') else None
             }
             self.trace_events.append(event_data)
-        except Exception:
-            pass
+            logger.debug(f"Trace event: {event_class_name} (value={event_class_value}, duration_ms={event_data['duration_ms']})")
+        except Exception as ex:
+            logger.warning(f"Error in trace handler: {ex}")
 
     def _trace_stopped_handler(self, sender, e):
         """Handle trace stopped event."""
@@ -149,7 +157,12 @@ class EnhancedAMOTraceAnalyzer:
 
     def _analyze_trace_events(self) -> Dict[str, Any]:
         """
-        Analyze collected trace events.
+        Analyze collected trace events using proper event class codes.
+
+        Event Class Values:
+        - QueryEnd = 10
+        - VertiPaqSEQueryBegin = 82
+        - VertiPaqSEQueryEnd = 83
 
         Returns:
             Dictionary with SE/FE metrics
@@ -160,24 +173,43 @@ class EnhancedAMOTraceAnalyzer:
                 'se_duration_ms': 0,
                 'fe_duration_ms': 0,
                 'se_queries': 0,
-                'metrics_available': False
+                'se_cache_matches': 0,
+                'metrics_available': False,
+                'total_events': 0
             }
 
-        # Extract query end events
-        query_end_events = [e for e in self.trace_events if e.get('event_class') == 'QueryEnd']
-        se_query_end_events = [e for e in self.trace_events if 'VertiPaqSEQuery' in str(e.get('event_class'))]
+        # Filter events by event class value (more reliable than string matching)
+        query_end_events = [e for e in self.trace_events if e.get('event_class_value') == 10]  # QueryEnd
+        se_query_end_events = [e for e in self.trace_events if e.get('event_class_value') == 83]  # VertiPaqSEQueryEnd
+        se_query_begin_events = [e for e in self.trace_events if e.get('event_class_value') == 82]  # VertiPaqSEQueryBegin
+        se_cache_match_events = [e for e in self.trace_events if e.get('event_class_value') == 85]  # VertiPaqSEQueryCacheMatch
 
+        # Calculate total duration from QueryEnd events
         total_duration = sum(e['duration_ms'] for e in query_end_events)
+
+        # Calculate SE duration from VertiPaqSEQueryEnd events
         se_duration = sum(e['duration_ms'] for e in se_query_end_events)
+
+        # Count SE queries
         se_queries = len(se_query_end_events)
+        se_cache_matches = len(se_cache_match_events)
+
+        # FE duration is total minus SE
         fe_duration = max(0, total_duration - se_duration)
+
+        logger.debug(f"Trace analysis: {len(self.trace_events)} total events, "
+                    f"{len(query_end_events)} QueryEnd, {se_queries} SE queries")
 
         return {
             'total_duration_ms': round(total_duration, 2),
             'se_duration_ms': round(se_duration, 2),
             'fe_duration_ms': round(fe_duration, 2),
             'se_queries': se_queries,
-            'metrics_available': se_queries > 0 or se_duration > 0
+            'se_cache_matches': se_cache_matches,
+            'metrics_available': total_duration > 0,
+            'total_events': len(self.trace_events),
+            'query_end_events': len(query_end_events),
+            'se_end_events': se_queries
         }
 
     def _clear_cache(self, executor):
@@ -245,8 +277,12 @@ class EnhancedAMOTraceAnalyzer:
                     'formula_engine_ms': round(fe_time, 2),
                     'storage_engine_ms': round(se_time, 2),
                     'storage_engine_queries': metrics['se_queries'],
+                    'storage_engine_cache_matches': metrics.get('se_cache_matches', 0),
                     'row_count': result.get('row_count', 0),
-                    'metrics_available': metrics['metrics_available']
+                    'metrics_available': metrics['metrics_available'],
+                    'debug_total_events': metrics.get('total_events', 0),
+                    'debug_query_end_events': metrics.get('query_end_events', 0),
+                    'debug_se_end_events': metrics.get('se_end_events', 0)
                 }
 
                 if execution_time > 0:
