@@ -363,3 +363,65 @@ class ConnectionManager:
                 self.active_connection = None
                 self.active_instance = None
                 self.connection_string = None
+
+    def connect_by_stable_id(self, port: int, database_id: str) -> Dict[str, Any]:
+        """
+        Connect to a Power BI instance using stable ID (port:databaseId)
+
+        Args:
+            port: Port number
+            database_id: Database ID
+
+        Returns:
+            Connection result dictionary
+        """
+        if not ADOMD_AVAILABLE:
+            return {
+                'success': False,
+                'error': 'ADOMD.NET not available',
+                'error_type': 'adomd_unavailable'
+            }
+
+        try:
+            # Close existing connection if any
+            if self.active_connection:
+                try:
+                    self.active_connection.Close()
+                except:
+                    pass
+
+            # Create connection string with database
+            conn_str = f"Data Source=localhost:{port};Initial Catalog={database_id}"
+
+            # Create new connection
+            self.active_connection = AdomdConnection(conn_str)
+            self.active_connection.Open()
+
+            self.active_instance = {
+                'port': port,
+                'database': database_id,
+                'stable_id': f"{port}:{database_id}",
+                'connection_string': conn_str,
+                'process_name': 'msmdsrv.exe',
+                'pid': 0
+            }
+            self.connection_string = conn_str
+
+            logger.info(f"Connected to model at {port}:{database_id}")
+
+            return {
+                'success': True,
+                'stable_id': f"{port}:{database_id}",
+                'port': port,
+                'database': database_id,
+                'connection_string': conn_str,
+                'message': f'Successfully connected to model at {port}:{database_id}'
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to connect by stable ID: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'error_type': 'connection_error'
+            }

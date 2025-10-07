@@ -26,6 +26,14 @@ from core.connection_manager import ConnectionManager
 from core.query_executor import OptimizedQueryExecutor
 from core.performance_analyzer import EnhancedAMOTraceAnalyzer
 from core.dax_injector import DAXInjector
+from core.dependency_analyzer import DependencyAnalyzer
+from core.bulk_operations import BulkOperationsManager
+from core.calculation_group_manager import CalculationGroupManager
+from core.partition_manager import PartitionManager
+from core.rls_manager import RLSManager
+from core.model_exporter import ModelExporter
+from core.performance_optimizer import PerformanceOptimizer
+from core.model_validator import ModelValidator
 
 BPA_AVAILABLE = False
 try:
@@ -42,6 +50,14 @@ query_executor = None
 performance_analyzer = None
 dax_injector = None
 bpa_analyzer = None
+dependency_analyzer = None
+bulk_operations = None
+calc_group_manager = None
+partition_manager = None
+rls_manager = None
+model_exporter = None
+performance_optimizer = None
+model_validator = None
 
 app = Server("pbixray-v2.2")
 
@@ -72,6 +88,46 @@ async def list_tools() -> List[Tool]:
         Tool(name="get_vertipaq_stats", description="VertiPaq stats", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
         Tool(name="analyze_query_performance", description="Analyze performance", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "runs": {"type": "integer", "default": 3}, "clear_cache": {"type": "boolean", "default": True}}, "required": ["query"]}),
         Tool(name="validate_dax_query", description="Validate DAX syntax and analyze complexity", inputSchema={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}),
+
+        # Dependency Analysis
+        Tool(name="analyze_measure_dependencies", description="Analyze measure dependencies", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "depth": {"type": "integer", "default": 3}}, "required": ["table", "measure"]}),
+        Tool(name="find_unused_objects", description="Find unused objects", inputSchema={"type": "object", "properties": {}, "required": []}),
+        Tool(name="analyze_column_usage", description="Analyze column usage", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}}, "required": ["table", "column"]}),
+
+        # Bulk Operations
+        Tool(name="bulk_create_measures", description="Create multiple measures", inputSchema={"type": "object", "properties": {"measures": {"type": "array", "items": {"type": "object"}}}, "required": ["measures"]}),
+        Tool(name="bulk_delete_measures", description="Delete multiple measures", inputSchema={"type": "object", "properties": {"measures": {"type": "array", "items": {"type": "object"}}}, "required": ["measures"]}),
+
+        # Calculation Groups
+        Tool(name="list_calculation_groups", description="List calculation groups", inputSchema={"type": "object", "properties": {}, "required": []}),
+        Tool(name="create_calculation_group", description="Create calculation group", inputSchema={"type": "object", "properties": {"name": {"type": "string"}, "items": {"type": "array", "items": {"type": "object"}}, "description": {"type": "string"}, "precedence": {"type": "integer", "default": 0}}, "required": ["name", "items"]}),
+        Tool(name="delete_calculation_group", description="Delete calculation group", inputSchema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}),
+
+        # Partition Management
+        Tool(name="list_partitions", description="List table partitions", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
+        Tool(name="refresh_partition", description="Refresh partition", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "partition": {"type": "string"}, "refresh_type": {"type": "string", "default": "full"}}, "required": ["table", "partition"]}),
+        Tool(name="refresh_table", description="Refresh table", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "refresh_type": {"type": "string", "default": "full"}}, "required": ["table"]}),
+
+        # RLS Management
+        Tool(name="list_roles", description="List security roles", inputSchema={"type": "object", "properties": {}, "required": []}),
+        Tool(name="test_role_filter", description="Test RLS role", inputSchema={"type": "object", "properties": {"role_name": {"type": "string"}, "test_query": {"type": "string"}}, "required": ["role_name", "test_query"]}),
+        Tool(name="validate_rls_coverage", description="Validate RLS coverage", inputSchema={"type": "object", "properties": {}, "required": []}),
+
+        # Model Export
+        Tool(name="export_tmsl", description="Export TMSL (summary by default)", inputSchema={"type": "object", "properties": {"include_full_model": {"type": "boolean", "default": False}}, "required": []}),
+        Tool(name="export_tmdl", description="Export TMDL", inputSchema={"type": "object", "properties": {}, "required": []}),
+        Tool(name="generate_documentation", description="Generate docs", inputSchema={"type": "object", "properties": {}, "required": []}),
+        Tool(name="get_model_summary", description="Get lightweight model summary", inputSchema={"type": "object", "properties": {}, "required": []}),
+        Tool(name="compare_models", description="Compare models", inputSchema={"type": "object", "properties": {"reference_tmsl": {"type": "object"}}, "required": ["reference_tmsl"]}),
+
+        # Performance Optimization
+        Tool(name="analyze_relationship_cardinality", description="Analyze relationship cardinality", inputSchema={"type": "object", "properties": {}, "required": []}),
+        Tool(name="analyze_column_cardinality", description="Analyze column cardinality", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
+        Tool(name="analyze_encoding_efficiency", description="Analyze encoding efficiency", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": ["table"]}),
+
+        # Model Validation
+        Tool(name="validate_model_integrity", description="Validate model integrity", inputSchema={"type": "object", "properties": {}, "required": []}),
+        Tool(name="analyze_data_freshness", description="Analyze data freshness", inputSchema={"type": "object", "properties": {}, "required": []}),
     ]
     if BPA_AVAILABLE:
         tools.append(Tool(name="analyze_model_bpa", description="Run BPA", inputSchema={"type": "object", "properties": {}, "required": []}))
@@ -81,6 +137,8 @@ async def list_tools() -> List[Tool]:
 @app.call_tool()
 async def call_tool(name: str, arguments: Any) -> List[TextContent]:
     global query_executor, performance_analyzer, dax_injector, bpa_analyzer
+    global dependency_analyzer, bulk_operations, calc_group_manager, partition_manager
+    global rls_manager, model_exporter, performance_optimizer, model_validator
 
     try:
         if name == "detect_powerbi_desktop":
@@ -92,6 +150,14 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             query_executor = None
             performance_analyzer = None
             dax_injector = None
+            dependency_analyzer = None
+            bulk_operations = None
+            calc_group_manager = None
+            partition_manager = None
+            rls_manager = None
+            model_exporter = None
+            performance_optimizer = None
+            model_validator = None
 
             result = connection_manager.connect(arguments.get("model_index", 0))
             if result.get('success'):
@@ -109,7 +175,16 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                     result['performance_analysis'] = 'AMO not available - performance analysis will use fallback mode'
                     logger.warning("✗ AMO not available - performance analysis limited")
 
+                # Initialize all managers
                 dax_injector = DAXInjector(conn)
+                dependency_analyzer = DependencyAnalyzer(query_executor)
+                bulk_operations = BulkOperationsManager(dax_injector)
+                calc_group_manager = CalculationGroupManager(conn)
+                partition_manager = PartitionManager(conn)
+                rls_manager = RLSManager(conn, query_executor)
+                model_exporter = ModelExporter(conn)
+                performance_optimizer = PerformanceOptimizer(query_executor)
+                model_validator = ModelValidator(query_executor)
 
                 if BPA_AVAILABLE:
                     try:
@@ -222,6 +297,93 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                     result = {'success': True, 'violations_count': len(violations), 'summary': summary, 'violations': [{'rule_id': v.rule_id, 'rule_name': v.rule_name, 'category': v.category, 'severity': v.severity.name if hasattr(v.severity, 'name') else str(v.severity), 'object_type': v.object_type, 'object_name': v.object_name, 'table_name': v.table_name, 'description': v.description} for v in violations]}
                 else:
                     result = tmsl_result
+
+        # Dependency Analysis
+        elif name == "analyze_measure_dependencies":
+            result = dependency_analyzer.analyze_measure_dependencies(
+                arguments['table'],
+                arguments['measure'],
+                arguments.get('depth', 3)
+            ) if dependency_analyzer else {'success': False, 'error': 'Not available'}
+        elif name == "find_unused_objects":
+            result = dependency_analyzer.find_unused_objects() if dependency_analyzer else {'success': False, 'error': 'Not available'}
+        elif name == "analyze_column_usage":
+            result = dependency_analyzer.analyze_column_usage(
+                arguments['table'],
+                arguments['column']
+            ) if dependency_analyzer else {'success': False, 'error': 'Not available'}
+
+        # Bulk Operations
+        elif name == "bulk_create_measures":
+            result = bulk_operations.bulk_create_measures(arguments['measures']) if bulk_operations else {'success': False, 'error': 'Not available'}
+        elif name == "bulk_delete_measures":
+            result = bulk_operations.bulk_delete_measures(arguments['measures']) if bulk_operations else {'success': False, 'error': 'Not available'}
+
+        # Calculation Groups
+        elif name == "list_calculation_groups":
+            result = calc_group_manager.list_calculation_groups() if calc_group_manager else {'success': False, 'error': 'Not available'}
+        elif name == "create_calculation_group":
+            result = calc_group_manager.create_calculation_group(
+                arguments['name'],
+                arguments['items'],
+                arguments.get('description'),
+                arguments.get('precedence', 0)
+            ) if calc_group_manager else {'success': False, 'error': 'Not available'}
+        elif name == "delete_calculation_group":
+            result = calc_group_manager.delete_calculation_group(arguments['name']) if calc_group_manager else {'success': False, 'error': 'Not available'}
+
+        # Partition Management
+        elif name == "list_partitions":
+            result = partition_manager.list_table_partitions(arguments.get('table')) if partition_manager else {'success': False, 'error': 'Not available'}
+        elif name == "refresh_partition":
+            result = partition_manager.refresh_partition(
+                arguments['table'],
+                arguments['partition'],
+                arguments.get('refresh_type', 'full')
+            ) if partition_manager else {'success': False, 'error': 'Not available'}
+        elif name == "refresh_table":
+            result = partition_manager.refresh_table(
+                arguments['table'],
+                arguments.get('refresh_type', 'full')
+            ) if partition_manager else {'success': False, 'error': 'Not available'}
+
+        # RLS Management
+        elif name == "list_roles":
+            result = rls_manager.list_roles() if rls_manager else {'success': False, 'error': 'Not available'}
+        elif name == "test_role_filter":
+            result = rls_manager.test_role_filter(
+                arguments['role_name'],
+                arguments['test_query']
+            ) if rls_manager else {'success': False, 'error': 'Not available'}
+        elif name == "validate_rls_coverage":
+            result = rls_manager.validate_rls_coverage() if rls_manager else {'success': False, 'error': 'Not available'}
+
+        # Model Export
+        elif name == "export_tmsl":
+            result = model_exporter.export_tmsl(arguments.get('include_full_model', False)) if model_exporter else {'success': False, 'error': 'Not available'}
+        elif name == "export_tmdl":
+            result = model_exporter.export_tmdl_structure() if model_exporter else {'success': False, 'error': 'Not available'}
+        elif name == "generate_documentation":
+            result = model_exporter.generate_documentation(query_executor) if model_exporter else {'success': False, 'error': 'Not available'}
+        elif name == "get_model_summary":
+            result = model_exporter.get_model_summary(query_executor) if model_exporter else {'success': False, 'error': 'Not available'}
+        elif name == "compare_models":
+            result = model_exporter.compare_models(arguments['reference_tmsl']) if model_exporter else {'success': False, 'error': 'Not available'}
+
+        # Performance Optimization
+        elif name == "analyze_relationship_cardinality":
+            result = performance_optimizer.analyze_relationship_cardinality() if performance_optimizer else {'success': False, 'error': 'Not available'}
+        elif name == "analyze_column_cardinality":
+            result = performance_optimizer.analyze_column_cardinality(arguments.get('table')) if performance_optimizer else {'success': False, 'error': 'Not available'}
+        elif name == "analyze_encoding_efficiency":
+            result = performance_optimizer.analyze_encoding_efficiency(arguments['table']) if performance_optimizer else {'success': False, 'error': 'Not available'}
+
+        # Model Validation
+        elif name == "validate_model_integrity":
+            result = model_validator.validate_model_integrity() if model_validator else {'success': False, 'error': 'Not available'}
+        elif name == "analyze_data_freshness":
+            result = model_validator.analyze_data_freshness() if model_validator else {'success': False, 'error': 'Not available'}
+
         else:
             result = {'error': f'Unknown tool: {name}'}
 
@@ -240,13 +402,19 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
 
 async def main():
     logger.info("=" * 80)
-    logger.info(f"PBIXRay MCP Server v{__version__} - Optimized Edition")
+    logger.info(f"PBIXRay MCP Server v{__version__} - Complete Edition")
     logger.info("=" * 80)
-    logger.info("Features:")
-    logger.info("  • Optimized DAX with table reference fallback")
-    logger.info("  • Enhanced error handling & suggestions")
-    logger.info("  • Performance analysis (SE/FE breakdown)")
-    logger.info("  • BPA analysis")
+    logger.info("48 Tools Available (47 + BPA):")
+    logger.info("  • Core (14): Detection, Connection, Tables, Measures, Columns")
+    logger.info("  • DAX (3): Query Execution, Validation, Performance Analysis")
+    logger.info("  • Dependencies (3): Measure Dependencies, Column Usage, Unused Objects")
+    logger.info("  • Bulk Operations (2): Batch Create/Delete Measures")
+    logger.info("  • Calculation Groups (3): List, Create, Delete")
+    logger.info("  • Partitions (3): List, Refresh Partition/Table, Data Freshness")
+    logger.info("  • RLS (3): List Roles, Test Filters, Validate Coverage")
+    logger.info("  • Export (5): TMSL, TMDL, Documentation, Summary, Compare")
+    logger.info("  • Optimization (3): Cardinality, Encoding, VertiPaq Analysis")
+    logger.info("  • Validation (2): Model Integrity, BPA Analysis")
     logger.info("=" * 80)
 
     async with stdio_server() as (read_stream, write_stream):

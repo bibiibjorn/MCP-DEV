@@ -1,8 +1,9 @@
-# PBIXRay MCP Server V2 - Enhanced Edition
+# PBIXRay MCP Server V2.3 - Professional Edition
 
-**Version:** 2.0 Enhanced  
+**Version:** 2.3 Professional
 **Status:** Production Ready
-**Last Updated:** 2025-10-04
+**Last Updated:** 2025-01-06
+**Tools:** 50+ professional Power BI development tools
 
 ## What is This?
 
@@ -10,6 +11,7 @@ The **PBIXRay MCP Server V2** is a Model Context Protocol (MCP) server that enab
 
 ## Key Features
 
+### Core Capabilities
 - Auto-detect Power BI Desktop instances
 - Full Model Exploration - Tables, columns, measures, relationships
 - DAX Analysis - Measures, calculated columns, with expressions
@@ -17,7 +19,17 @@ The **PBIXRay MCP Server V2** is a Model Context Protocol (MCP) server that enab
 - Performance Analysis - Advanced SE/FE timing with SessionTrace
 - VertiPaq Stats - Storage and compression metrics
 - Search Capabilities - Find objects and text across the model
-- Natural Language - Ask Claude questions about your model
+
+### NEW: Advanced Features (v2.3)
+- **Dependency Analysis** - Analyze measure dependencies and find unused objects
+- **Version Control** - Export TMSL/TMDL for Git integration
+- **Calculation Groups** - Create and manage calculation groups (not possible in Desktop!)
+- **Performance Optimization** - Cardinality and encoding analysis with recommendations
+- **Partition Management** - View and refresh partitions for incremental refresh
+- **Bulk Operations** - Create/update/delete multiple measures at once
+- **Model Validation** - Comprehensive integrity checks and data quality validation
+- **RLS Management** - List roles, test filters, validate coverage
+- **Documentation** - Auto-generate markdown documentation
 
 ## System Requirements
 
@@ -72,19 +84,60 @@ You are now analyzing Power BI with Claude AI!
 - **Troubleshooting** - docs/TROUBLESHOOTING.md - Common issues
 - **Deployment Guide** - docs/DEPLOYMENT_GUIDE.md - Team deployment
 
-## Available Tools
+## Available Tools (50+ Tools)
 
-Key tools available:
-- detect_powerbi_desktop - Find running Power BI instances
-- connect_to_powerbi - Connect to a specific instance
-- list_tables - List all tables in the model
-- list_measures - List DAX measures
-- describe_table - Get detailed table information
-- run_dax_query - Execute DAX queries
-- analyze_query_performance - SE/FE performance analysis
-- get_vertipaq_stats - Storage and compression metrics
-- search_objects - Find tables, columns, measures
-- export_model_schema - Export complete model structure
+### Connection & Discovery
+- detect_powerbi_desktop, connect_to_powerbi
+
+### Model Exploration
+- list_tables, list_measures, list_columns, list_relationships
+- describe_table, get_measure_details, search_objects
+
+### DAX & Data
+- run_dax_query, preview_table_data, get_column_values
+- get_column_summary, validate_dax_query
+
+### Measure Management
+- upsert_measure, delete_measure
+- **NEW:** bulk_create_measures, bulk_delete_measures
+
+### Dependency Analysis (NEW)
+- analyze_measure_dependencies - See what uses what
+- find_unused_objects - Cleanup opportunities
+- analyze_column_usage - Impact analysis
+
+### Export & Version Control (NEW)
+- export_tmsl - TMSL JSON format for Git
+- export_tmdl - TMDL folder structure (modern)
+- generate_documentation - Auto-generate markdown docs
+- compare_models - Diff between versions
+
+### Calculation Groups (NEW)
+- list_calculation_groups
+- create_calculation_group - Create time intelligence patterns
+- delete_calculation_group
+
+### Performance & Optimization (NEW)
+- analyze_query_performance - SE/FE breakdown
+- analyze_relationship_cardinality - Find duplicates in one-side
+- analyze_column_cardinality - High cardinality detection
+- analyze_encoding_efficiency - VertiPaq compression analysis
+- get_vertipaq_stats - Storage metrics
+
+### Partition Management (NEW)
+- list_partitions - View partition details
+- refresh_partition - Refresh specific partition
+- refresh_table - Refresh entire table
+
+### Model Validation (NEW)
+- validate_model_integrity - Comprehensive checks
+- analyze_data_freshness - Last refresh times
+- analyze_model_bpa - Best Practice Analyzer
+
+### RLS Security (NEW)
+- list_roles - List all security roles
+- test_role_filter - Test RLS with queries
+- validate_rls_coverage - Check which tables have RLS
 
 ## Folder Structure
 
@@ -102,9 +155,9 @@ pbixray-mcp-server/
 
 ## Example Usage
 
+### Performance Analysis
 ```
 You: "Analyze the performance of this DAX query"
-
 Claude: [Runs analyze_query_performance with 3 runs]
 
 Results:
@@ -112,10 +165,41 @@ Results:
 - Storage Engine: 189ms (77%)
 - Formula Engine: 56ms (23%)
 - SE Queries: 12
+```
 
-The query is SE-heavy, indicating most time is spent 
-retrieving data. Consider adding filters to reduce 
-the amount of data scanned.
+### Dependency Analysis (NEW)
+```
+You: "If I modify [Total Sales], what will break?"
+Claude: [Runs analyze_measure_dependencies]
+
+7 measures depend on [Total Sales]:
+- Sales YoY%, Sales Growth, Sales Rank, Sales vs Target...
+```
+
+### Version Control (NEW)
+```
+You: "Export this model for Git"
+Claude: [Exports TMSL]
+
+Exported 1.2MB TMSL file with 45 tables, 523 measures, 78 relationships.
+Save this to your repository for version tracking.
+```
+
+### Bulk Operations (NEW)
+```
+You: "Create 20 time intelligence measures from this JSON"
+Claude: [Bulk creates measures]
+
+Created 20 measures across 3 tables in 5 seconds.
+```
+
+### Calculation Groups (NEW)
+```
+You: "Create a time intelligence calculation group with YTD, PY, and YoY%"
+Claude: [Creates calculation group]
+
+Created 'Time Intelligence' with 3 calculation items.
+This replaces 60+ individual measures!
 ```
 
 ## Maintenance
@@ -169,6 +253,7 @@ Built with:
 
 ## Version History
 
+- **V2.3** (Jan 2025) - 28 new tools! Dependency analysis, TMSL/TMDL export, calculation groups, cardinality analysis, partition management, bulk operations, model validation, RLS management
 - **V2.0 Enhanced** (Oct 2025) - SessionTrace integration, improved SE/FE analysis
 - **V2.0** (Oct 2025) - WMI-based detection, stability improvements
 - **V1.0** (Sep 2025) - Initial release

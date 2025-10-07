@@ -1,12 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Read(//c/Users/bjorn.braet/Downloads/fabric-toolbox-main/fabric-toolbox-main/tools/SemanticModelMCPServer/**)",
-      "Bash(cat:*)",
-      "Read(//c/Users/bjorn.braet/Downloads/tabular-mcp-master/pbi-local-mcp/**)",
       "Bash(python:*)",
-      "Read(//c/Users/bjorn.braet/Downloads/**)",
-      "Read(//c/Users/bjorn.braet/**)"
+      "Bash(timeout:*)"
     ],
     "deny": [],
     "ask": []
