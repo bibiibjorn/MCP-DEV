@@ -181,10 +181,19 @@ class OptimizedQueryExecutor:
             exprs = getattr(model, 'Expressions', None)
             if exprs is not None:
                 for exp in exprs:
+                    # Convert Kind (an enum) to string to ensure JSON serialization
+                    kind_val = getattr(exp, 'Kind', 'M')
+                    try:
+                        kind_str = str(kind_val) if kind_val is not None else 'M'
+                        # Some enums stringify as 'ExpressionKind.M'; keep only last token
+                        if isinstance(kind_str, str) and '.' in kind_str:
+                            kind_str = kind_str.split('.')[-1]
+                    except Exception:
+                        kind_str = 'M'
                     rows.append({
                         'Name': getattr(exp, 'Name', ''),
                         'Expression': getattr(exp, 'Expression', ''),
-                        'Kind': getattr(exp, 'Kind', 'M') or 'M'
+                        'Kind': kind_str or 'M'
                     })
                     if isinstance(limit, int) and limit > 0 and len(rows) >= limit:
                         break

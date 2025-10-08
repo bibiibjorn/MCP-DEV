@@ -30,5 +30,11 @@
     "enable_performance_analysis": true,
     "enable_bulk_operations": true,
     "enable_calculation_groups": true
+  },
+  "bpa": {
+    "max_rules": 120,
+    "severity_at_least": "WARNING",
+    "include_categories": ["Error Prevention", "Modeling", "Performance"],
+    "max_tables": 60
   }
 }

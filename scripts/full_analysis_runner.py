@@ -212,7 +212,7 @@ def run_full_analysis(depth: str, include_bpa: bool, relationships_max: int, iss
         sections['m_practices'] = {'success': False, 'error': 'Query executor unavailable'}
     timings['m_practices_ms'] = round((time.time() - t0) * 1000, 2)
 
-    # BPA (optional)
+    # BPA (optional) — use fast mode with config-based filters to keep runtime reasonable
     if include_bpa and (profile or 'balanced').lower() != 'fast':
         t0 = time.time()
         if qe and bpa:
@@ -226,7 +226,13 @@ def run_full_analysis(depth: str, include_bpa: bool, relationships_max: int, iss
                         model_input = json.loads(tmsl_val)
                     except Exception:
                         model_input = tmsl_val
-                viols = bpa.analyze_model(model_input)
+                # Pull tuning from config
+                bpa_cfg = config.get('bpa', {})
+                # Prefer fast analyzer with sampling/filters
+                if hasattr(bpa, 'analyze_model_fast'):
+                    viols = bpa.analyze_model_fast(model_input, bpa_cfg)
+                else:
+                    viols = bpa.analyze_model(model_input)
                 summary = bpa.get_violations_summary()
                 trimmed = []
                 for v in viols[:issues_max]:
@@ -241,6 +247,9 @@ def run_full_analysis(depth: str, include_bpa: bool, relationships_max: int, iss
                         'description': v.description
                     })
                 sections['bpa'] = {'success': True, 'violations_count': len(viols), 'summary': summary, 'violations': trimmed}
+                # Attach note about any configured limits
+                if isinstance(bpa_cfg, dict) and bpa_cfg:
+                    sections['bpa'].setdefault('notes', []).append('BPA fast mode with configured filters applied')
             else:
                 # Pass through error but avoid noisy warnings by annotating note
                 sections['bpa'] = {**tmsl, 'notes': ['BPA skipped: unable to extract TMSL model']}

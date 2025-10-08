@@ -462,6 +462,76 @@ class BPAAnalyzer:
 
         return self.violations
 
+    def analyze_model_fast(self, tmsl_json: Union[str, Dict], cfg: Optional[Dict[str, Any]] = None) -> List[BPAViolation]:
+        """Faster analysis with configurable sampling/filters.
+
+        cfg keys (optional):
+          - max_rules: int (limit number of rules evaluated)
+          - severity_at_least: 'INFO'|'WARNING'|'ERROR' (filter rules below threshold)
+          - include_categories: list[str] (only evaluate these categories)
+          - max_tables: int (limit number of tables processed)
+        """
+        if isinstance(tmsl_json, str):
+            try:
+                tmsl_model = json.loads(tmsl_json)
+            except json.JSONDecodeError:
+                return []
+        else:
+            tmsl_model = tmsl_json
+
+        model = (
+            tmsl_model.get('create', {}).get('database', {}).get('model', {})
+            or tmsl_model.get('model', {})
+        )
+        if not model and isinstance(tmsl_model, dict) and (
+            'tables' in tmsl_model or 'measures' in tmsl_model or 'relationships' in tmsl_model
+        ):
+            model = tmsl_model
+        if not model:
+            return []
+
+        cfg = cfg or {}
+        # Prepare filtered rules list
+        rules = list(self.rules)
+        # severity filter
+        sev = str(cfg.get('severity_at_least', '')).upper()
+        level = {'INFO': 1, 'WARNING': 2, 'ERROR': 3}.get(sev)
+        if level:
+            rules = [r for r in rules if int(r.severity) >= level]
+        # category filter
+        cats = cfg.get('include_categories') or []
+        if isinstance(cats, list) and cats:
+            lc = set(str(c).lower() for c in cats)
+            rules = [r for r in rules if str(r.category).lower() in lc]
+        # limit number of rules
+        try:
+            mr_val = cfg.get('max_rules')
+            mr = int(mr_val) if mr_val is not None and str(mr_val).strip() != '' else None
+        except Exception:
+            mr = None
+        if mr and mr > 0 and len(rules) > mr:
+            rules = rules[:mr]
+
+        # Optionally limit number of tables (lightweight sampling)
+        try:
+            mt_val = cfg.get('max_tables')
+            mt = int(mt_val) if mt_val is not None and str(mt_val).strip() != '' else None
+        except Exception:
+            mt = None
+        if mt and mt > 0 and isinstance(model.get('tables'), list) and len(model['tables']) > mt:
+            model = dict(model)
+            model['tables'] = model['tables'][:mt]
+
+        # Evaluate filtered/limited rule set
+        self.violations = []
+        for rule in rules:
+            try:
+                self._eval_depth = 0
+                self._analyze_rule(rule, model)
+            except Exception:
+                pass
+        return self.violations
+
     def get_violations_summary(self) -> Dict[str, int]:
         """Return a summary of violations by severity and category"""
         summary = {

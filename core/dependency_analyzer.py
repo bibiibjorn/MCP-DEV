@@ -200,6 +200,30 @@ class DependencyAnalyzer:
             referenced_columns = set()
             referenced_tables = set()
 
+            # Helper maps to resolve IDs -> names when Desktop returns only ID fields
+            tables_by_id = {}
+            try:
+                for t in tables:
+                    tid = t.get('ID') or t.get('TableID') or t.get('[ID]') or t.get('[TableID]')
+                    nm = t.get('Name') or t.get('[Name]')
+                    if tid is not None and nm:
+                        tables_by_id[str(tid)] = str(nm)
+            except Exception:
+                pass
+            columns_by_id = {}
+            try:
+                for c in columns:
+                    cid = c.get('ID') or c.get('ColumnID') or c.get('[ID]') or c.get('[ColumnID]')
+                    table_name = c.get('Table') or c.get('[Table]')
+                    name = c.get('Name') or c.get('[Name]')
+                    if cid is not None:
+                        columns_by_id[str(cid)] = {
+                            'table': str(table_name) if table_name else None,
+                            'name': str(name) if name else None,
+                        }
+            except Exception:
+                pass
+
             # Analyze all measure expressions
             for m in measures:
                 expr = m.get('Expression', '')
@@ -209,19 +233,46 @@ class DependencyAnalyzer:
                 referenced_columns.update(refs['columns'])
                 referenced_tables.update(refs['tables'])
 
-            # Check relationships for table/column usage
+            # Check relationships for table/column usage (resolve IDs when names absent)
             rels_result = self.executor.execute_info_query("RELATIONSHIPS")
             if rels_result.get('success'):
                 for rel in rels_result['rows']:
-                    from_table = rel.get('FromTable', '')
-                    to_table = rel.get('ToTable', '')
-                    from_col = rel.get('FromColumn', '')
-                    to_col = rel.get('ToColumn', '')
+                    ft = rel.get('FromTable') or rel.get('[FromTable]')
+                    tt = rel.get('ToTable') or rel.get('[ToTable]')
+                    fc = rel.get('FromColumn') or rel.get('[FromColumn]')
+                    tc = rel.get('ToColumn') or rel.get('[ToColumn]')
+                    # Resolve via IDs if names missing
+                    if not ft:
+                        ftid = rel.get('FromTableID') or rel.get('[FromTableID]')
+                        if ftid is not None and str(ftid) in tables_by_id:
+                            ft = tables_by_id[str(ftid)]
+                    if not tt:
+                        ttid = rel.get('ToTableID') or rel.get('[ToTableID]')
+                        if ttid is not None and str(ttid) in tables_by_id:
+                            tt = tables_by_id[str(ttid)]
+                    if not fc:
+                        fcid = rel.get('FromColumnID') or rel.get('[FromColumnID]')
+                        if fcid is not None and str(fcid) in columns_by_id:
+                            fc = columns_by_id[str(fcid)].get('name')
+                        # also try to pick table for this column if table still empty
+                        if not ft and fcid is not None and str(fcid) in columns_by_id:
+                            ft = columns_by_id[str(fcid)].get('table')
+                    if not tc:
+                        tcid = rel.get('ToColumnID') or rel.get('[ToColumnID]')
+                        if tcid is not None and str(tcid) in columns_by_id:
+                            tc = columns_by_id[str(tcid)].get('name')
+                        if not tt and tcid is not None and str(tcid) in columns_by_id:
+                            tt = columns_by_id[str(tcid)].get('table')
 
-                    referenced_tables.add(from_table)
-                    referenced_tables.add(to_table)
-                    referenced_columns.add(f"{from_table}[{from_col}]")
-                    referenced_columns.add(f"{to_table}[{to_col}]")
+                    # Only add when we have at least the table names
+                    if ft:
+                        referenced_tables.add(str(ft))
+                    if tt:
+                        referenced_tables.add(str(tt))
+                    if ft and fc:
+                        referenced_columns.add(f"{ft}[{fc}]")
+                    if tt and tc:
+                        referenced_columns.add(f"{tt}[{tc}]")
 
             # Find unused objects
             unused_measures = []
@@ -236,24 +287,32 @@ class DependencyAnalyzer:
 
             unused_columns = []
             for c in columns:
-                col_ref = f"{c.get('Table')}[{c.get('Name')}]"
+                # Coalesce to safe strings; attempt to resolve table via ID map
+                tbl = c.get('Table') or c.get('[Table]')
+                if not tbl:
+                    tid = c.get('TableID') or c.get('ID') or c.get('[TableID]') or c.get('[ID]')
+                    if tid is not None and str(tid) in tables_by_id:
+                        tbl = tables_by_id[str(tid)]
+                name = c.get('Name') or c.get('[Name]') or ''
+                col_ref = f"{tbl}[{name}]" if tbl else f"[${name}]"
                 if col_ref not in referenced_columns:
                     # Skip hidden and key columns
                     if not c.get('IsHidden') and not c.get('IsKey'):
                         unused_columns.append({
-                            'name': c.get('Name'),
-                            'table': c.get('Table'),
+                            'name': name,
+                            'table': tbl,
                             'type': c.get('Type')
                         })
 
             unused_tables = []
             for t in tables:
-                if t.get('Name') not in referenced_tables:
+                tname = t.get('Name') or t.get('[Name]')
+                if tname not in referenced_tables:
                     # Check if table has any non-calculated columns (data table)
-                    table_cols = [col for col in columns if col.get('Table') == t.get('Name')]
+                    table_cols = [col for col in columns if (col.get('Table') or col.get('[Table]')) == tname]
                     if table_cols and not t.get('IsHidden'):
                         unused_tables.append({
-                            'name': t.get('Name')
+                            'name': tname
                         })
 
             return {

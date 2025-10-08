@@ -132,6 +132,26 @@ def _paginate(result: Any, page_size: Optional[int], next_token: Optional[str], 
     return result
 
 
+def _schema_sample(rows: List[dict], sample_size: int) -> dict:
+    """Return a compact schema section with count and a small sample of rows.
+
+    Keeps payload sizes manageable for very large models while still providing
+    a preview. Caller is expected to expose pagination via section/page_size
+    if the full dataset is needed.
+    """
+    try:
+        total = len(rows) if isinstance(rows, list) else 0
+        n = max(0, int(sample_size))
+        sample = rows[:n] if isinstance(rows, list) else []
+        return {
+            'count': total,
+            'sample': sample,
+            'truncated': bool(total > n)
+        }
+    except Exception:
+        return {'count': 0, 'sample': [], 'truncated': False}
+
+
 def _dax_quote_table(name: str) -> str:
     """Escape single quotes in table names for DAX and wrap in single quotes."""
     name = (name or "").replace("'", "''")
@@ -734,7 +754,9 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
             )'''
         result = qe.validate_and_execute_dax(dmv_query, dmv_cap)
         attempts.append(('TMSCHEMA_DATA_SOURCES', result.get('success')))
-        if not result.get('success'):
+        # If DMV failed or returned an empty set, try TOM fallback which can expose PQ-only sources
+        dmv_empty = bool(result.get('success')) and len(result.get('rows', []) or []) == 0
+        if (not result.get('success')) or dmv_empty:
             # Attempt 2: TOM fallback
             try:
                 result = qe.list_data_sources_tom(dmv_cap)
@@ -797,11 +819,69 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
             result.setdefault('notes', []).append(f'top_n clamped to safety limit of {max_rows}')
         return result
     if name == "export_model_schema":
-        tables = qe.execute_info_query("TABLES")
-        columns = qe.execute_info_query("COLUMNS")
-        measures = qe.execute_info_query("MEASURES", exclude_columns=['Expression'])
-        relationships = qe.execute_info_query("RELATIONSHIPS")
-        return {'success': True, 'schema': {'tables': tables.get('rows', []), 'columns': columns.get('rows', []), 'measures': measures.get('rows', []), 'relationships': relationships.get('rows', [])}}
+        # Optional fine-grained export with pagination for a single section
+        section = (arguments.get('section') or '').strip().lower()
+        if section in {"tables", "columns", "measures", "relationships"}:
+            if section == "tables":
+                result = qe.execute_info_query("TABLES")
+            elif section == "columns":
+                result = qe.execute_info_query("COLUMNS")
+            elif section == "measures":
+                # Exclude potentially large expressions by default
+                result = qe.execute_info_query("MEASURES", exclude_columns=['Expression'])
+            else:  # relationships
+                result = qe.execute_info_query("RELATIONSHIPS")
+            return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
+
+        # Default: return compact counts + very small samples for each section to avoid
+        # producing extremely large responses that UIs struggle to render.
+        limits = connection_state.get_safety_limits()
+        # Keep the response lean even if the safety limit is high; allow override via preview_size
+        try:
+            req_preview = int(arguments.get('preview_size')) if arguments.get('preview_size') is not None else None
+        except Exception:
+            req_preview = None
+        # Conservative default sample size; can be increased by caller explicitly
+        default_preview = 30
+        sample_size = req_preview if (isinstance(req_preview, int) and req_preview >= 0) else default_preview
+        # Never exceed global per-call safety limit
+        try:
+            safety_cap = int(limits.get('max_rows_per_call', 10000) or 10000)
+        except Exception:
+            safety_cap = 10000
+        sample_size = min(sample_size, max(0, safety_cap))
+
+        # Allow callers to restrict which sections to include in the compact payload
+        include = arguments.get('include') or ["tables", "columns", "measures", "relationships"]
+        try:
+            include_set = {str(x).lower() for x in include}
+        except Exception:
+            include_set = {"tables", "columns", "measures", "relationships"}
+
+        schema = {}
+        if "tables" in include_set:
+            tables = qe.execute_info_query("TABLES")
+            schema['tables'] = _schema_sample(tables.get('rows', []), sample_size)
+        if "columns" in include_set:
+            columns = qe.execute_info_query("COLUMNS")
+            schema['columns'] = _schema_sample(columns.get('rows', []), sample_size)
+        if "measures" in include_set:
+            measures = qe.execute_info_query("MEASURES", exclude_columns=['Expression'])
+            schema['measures'] = _schema_sample(measures.get('rows', []), sample_size)
+        if "relationships" in include_set:
+            relationships = qe.execute_info_query("RELATIONSHIPS")
+            schema['relationships'] = _schema_sample(relationships.get('rows', []), sample_size)
+
+        notes = [
+            "Payload reduced for display. For full data, call export_model_schema with 'section' plus optional 'page_size' and 'next_token'.",
+            f"Compact preview_size={sample_size}. Override with 'preview_size' or request a single 'section' to page through full rows."
+        ]
+        result = {
+            'success': True,
+            'schema': schema,
+            'notes': notes
+        }
+        return result
     if name == "list_columns":
         table = arguments.get("table")
         result = qe.execute_info_query("COLUMNS", table_name=table)
@@ -905,9 +985,17 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
             return ErrorHandler.handle_manager_unavailable('bpa_analyzer')
         tmsl_result = qe.get_tmsl_definition()
         if tmsl_result.get('success'):
-            violations = bpa_analyzer.analyze_model(tmsl_result['tmsl'])
+            # Prefer fast mode with config-based limits to keep latency down
+            bpa_cfg = config.get('bpa', {})
+            if hasattr(bpa_analyzer, 'analyze_model_fast'):
+                violations = bpa_analyzer.analyze_model_fast(tmsl_result['tmsl'], bpa_cfg)
+            else:
+                violations = bpa_analyzer.analyze_model(tmsl_result['tmsl'])
             summary = bpa_analyzer.get_violations_summary()
-            return {'success': True, 'violations_count': len(violations), 'summary': summary, 'violations': [{'rule_id': v.rule_id, 'rule_name': v.rule_name, 'category': v.category, 'severity': getattr(v.severity, 'name', str(v.severity)), 'object_type': v.object_type, 'object_name': v.object_name, 'table_name': v.table_name, 'description': v.description} for v in violations]}
+            result = {'success': True, 'violations_count': len(violations), 'summary': summary, 'violations': [{'rule_id': v.rule_id, 'rule_name': v.rule_name, 'category': v.category, 'severity': getattr(v.severity, 'name', str(v.severity)), 'object_type': v.object_type, 'object_name': v.object_name, 'table_name': v.table_name, 'description': v.description} for v in violations]}
+            if isinstance(bpa_cfg, dict) and bpa_cfg:
+                result.setdefault('notes', []).append('BPA fast mode with configured filters applied')
+            return result
         return tmsl_result
     if name == "get_output_schemas":
         schemas = {
@@ -941,8 +1029,8 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
                 },
                 'export_relationship_graph': {
                     'json': {
-                        'nodes': 'array<object(id,label,hidden)>',
-                        'edges': 'array<object(from,to,fromColumn,toColumn,active,direction,cardinality)>'
+                        'nodes': 'array<object(id,label,hidden,details:object)>',
+                        'edges': 'array<object(id,from,to,fromColumn,toColumn,active,direction,cardinality,details:object)>'
                     },
                     'graphml': 'string (GraphML document)'
                 },
@@ -1093,7 +1181,21 @@ async def list_tools() -> List[Tool]:
         Tool(name="get_data_sources", description="Data sources", inputSchema={"type": "object", "properties": {"page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
         Tool(name="get_m_expressions", description="M expressions", inputSchema={"type": "object", "properties": {"page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
         Tool(name="preview_table_data", description="Preview table", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "top_n": {"type": "integer", "default": 10}}, "required": ["table"]}),
-        Tool(name="export_model_schema", description="Export schema", inputSchema={"type": "object", "properties": {}, "required": []}),
+        Tool(
+            name="export_model_schema",
+            description="Export model schema (compact overview by default; use 'section' to page through full data)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "section": {"type": "string", "enum": ["tables", "columns", "measures", "relationships"]},
+                    "page_size": {"type": "integer"},
+                    "next_token": {"type": "string"},
+                    "preview_size": {"type": "integer", "description": "Rows per section in compact preview (default 30)"},
+                    "include": {"type": "array", "items": {"type": "string"}, "description": "Subset of sections to include in compact preview"}
+                },
+                "required": []
+            }
+        ),
         Tool(name="upsert_measure", description="Create/update measure", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "expression": {"type": "string"}, "display_folder": {"type": "string"}}, "required": ["table", "measure", "expression"]}),
         Tool(name="delete_measure", description="Delete a measure", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}} , "required": ["table", "measure"]}),
     Tool(name="list_columns", description="List columns", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),

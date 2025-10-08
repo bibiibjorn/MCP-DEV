@@ -136,6 +136,9 @@ def run_full_analysis(
         dmv_cap = int(config.get('query.max_rows_preview', 1000))
     except Exception:
         dmv_cap = 1000
+    # Start a fresh timer for the M practices scan (was previously reusing the
+    # best-practices timer by mistake, inflating the reported duration)
+    t0 = time.time()
     sections['m_practices'] = scan_m_practices(query_executor, dmv_cap, issues_max)
     timings['m_practices_ms'] = round((time.time() - t0) * 1000, 2)
 
@@ -144,7 +147,12 @@ def run_full_analysis(
         t0 = time.time()
         tmsl = query_executor.get_tmsl_definition()
         if tmsl.get('success') and bpa_analyzer:
-            viols = bpa_analyzer.analyze_model(tmsl['tmsl'])
+            # Prefer faster BPA with sampling/filters from config when available
+            bpa_cfg = config.get('bpa', {})
+            if hasattr(bpa_analyzer, 'analyze_model_fast'):
+                viols = bpa_analyzer.analyze_model_fast(tmsl['tmsl'], bpa_cfg)
+            else:
+                viols = bpa_analyzer.analyze_model(tmsl['tmsl'])
             summary = bpa_analyzer.get_violations_summary()
             trimmed = []
             for v in viols[:issues_max]:
@@ -159,6 +167,8 @@ def run_full_analysis(
                     'description': v.description
                 })
             sections['bpa'] = {'success': True, 'violations_count': len(viols), 'summary': summary, 'violations': trimmed}
+            if isinstance(bpa_cfg, dict) and bpa_cfg:
+                sections['bpa'].setdefault('notes', []).append('BPA fast mode with configured filters applied')
         else:
             sections['bpa'] = {'success': False, 'error': 'TMSL unavailable or BPA analyzer missing'}
         timings['bpa_ms'] = round((time.time() - t0) * 1000, 2)
