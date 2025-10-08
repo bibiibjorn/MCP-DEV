@@ -195,13 +195,19 @@ class EnhancedAMOTraceAnalyzer:
                 'metrics_available': False,
                 'total_events': 0,
                 'query_end_events': 0,
-                'se_end_events': 0
+                'se_end_events': 0,
+                'event_counts': {}
             }
         # Map of events
         query_ends = [e for e in events if (e.get('event') == 'QueryEnd')]
         query_begins = [e for e in events if (e.get('event') == 'QueryBegin')]
         se_ends = [e for e in events if (e.get('event') == 'VertiPaqSEQueryEnd')]
         se_cache = [e for e in events if (e.get('event') == 'VertiPaqSEQueryCacheMatch')]
+        # Aggregate counts by event name
+        counts: Dict[str, int] = {}
+        for ev in events:
+            nm = str(ev.get('event') or '')
+            counts[nm] = counts.get(nm, 0) + 1
 
         # Choose the last QueryEnd as the one to report
         qe = query_ends[-1] if query_ends else None
@@ -242,7 +248,8 @@ class EnhancedAMOTraceAnalyzer:
             'metrics_available': total_ms > 0,
             'total_events': len(events),
             'query_end_events': len(query_ends),
-            'se_end_events': len(se_events)
+            'se_end_events': len(se_events),
+            'event_counts': counts
         }
 
     def _get_database_name(self, executor) -> Optional[str]:
@@ -265,9 +272,10 @@ class EnhancedAMOTraceAnalyzer:
             logger.warning(f"Cache clear failed: {e}")
 
     # ---- public API ----
-    def analyze_query(self, executor, query: str, runs: int = 3, clear_cache: bool = True) -> Dict[str, Any]:
+    def analyze_query(self, executor, query: str, runs: int = 3, clear_cache: bool = True, include_event_counts: bool = False) -> Dict[str, Any]:
         results: List[Dict[str, Any]] = []
-        for i in range(max(1, int(runs or 1))):
+        total_runs = max(1, int(runs or 1))
+        for i in range(total_runs):
             run_no = i + 1
             session_name = f"PBIXRay_XE_{uuid.uuid4().hex[:8]}"
             self._last_session = session_name
@@ -277,7 +285,8 @@ class EnhancedAMOTraceAnalyzer:
                 # Small delay to ensure the session is active
                 time.sleep(0.05)
 
-                if clear_cache:
+                # Only clear cache on the first run to provide cold vs warm comparison
+                if clear_cache and i == 0:
                     self._clear_cache(executor)
                     time.sleep(0.1)
 
@@ -302,8 +311,11 @@ class EnhancedAMOTraceAnalyzer:
                     'storage_engine_queries': metrics.get('se_queries', 0),
                     'storage_engine_cache_matches': metrics.get('se_cache_matches', 0),
                     'row_count': query_res.get('row_count', 0),
-                    'metrics_available': metrics.get('metrics_available', False)
+                    'metrics_available': metrics.get('metrics_available', False),
+                    'cache_state': 'cold' if (clear_cache and i == 0) else 'warm'
                 }
+                if include_event_counts:
+                    run_out['event_counts'] = metrics.get('event_counts', {})
                 if total > 0:
                     run_out['fe_percent'] = round((fe_ms / total) * 100, 1)
                     run_out['se_percent'] = round((se_ms / total) * 100, 1)
@@ -327,7 +339,7 @@ class EnhancedAMOTraceAnalyzer:
             avg_fe = sum(fe_times)/len(fe_times)
             avg_se = sum(se_times)/len(se_times)
             summary = {
-                'total_runs': runs,
+                'total_runs': total_runs,
                 'successful_runs': len(ok),
                 'avg_execution_ms': round(avg_exec, 2),
                 'min_execution_ms': round(min(exec_times), 2),
@@ -336,10 +348,10 @@ class EnhancedAMOTraceAnalyzer:
                 'avg_storage_engine_ms': round(avg_se, 2),
                 'fe_percent': round((avg_fe/avg_exec)*100, 1) if avg_exec > 0 else 0.0,
                 'se_percent': round((avg_se/avg_exec)*100, 1) if avg_exec > 0 else 0.0,
-                'cache_cleared': clear_cache
+                'cache_mode': 'cold_then_warm' if clear_cache else 'warm_only'
             }
         else:
-            summary = {'total_runs': runs, 'successful_runs': 0, 'error': 'All runs failed'}
+            summary = {'total_runs': total_runs, 'successful_runs': 0, 'error': 'All runs failed'}
 
         return {'success': len(ok) > 0, 'runs': results, 'summary': summary, 'query': query}
 

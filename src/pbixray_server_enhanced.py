@@ -90,7 +90,7 @@ async def list_tools() -> List[Tool]:
     # Public, simplified tool surface
     tools = [
         # Combined DAX runner (preview/analyze)
-    Tool(name="run_dax", description="Run a DAX query (preview/analyze) with safe limits", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "mode": {"type": "string", "enum": ["auto", "preview", "analyze"], "default": "auto"}, "runs": {"type": "integer"}, "top_n": {"type": "integer"}, "verbose": {"type": "boolean", "default": False}}, "required": ["query"]}),
+    Tool(name="run_dax", description="Run a DAX query (preview/analyze) with safe limits", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "mode": {"type": "string", "enum": ["auto", "preview", "analyze"], "default": "auto"}, "runs": {"type": "integer"}, "top_n": {"type": "integer"}, "verbose": {"type": "boolean", "default": False}, "include_event_counts": {"type": "boolean", "default": False}}, "required": ["query"]}),
         Tool(name="summarize_model", description="Lightweight model summary suitable for large models", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="document_model", description="Generate documentation or overview for the model", inputSchema={"type": "object", "properties": {"format": {"type": "string", "enum": ["markdown", "html", "json"], "default": "markdown"}, "include_examples": {"type": "boolean", "default": False}}, "required": []}),
         Tool(name="plan_query", description="Plan a safe query based on a high-level intent and optional table context", inputSchema={"type": "object", "properties": {"intent": {"type": "string"}, "table": {"type": "string"}, "max_rows": {"type": "integer"}}, "required": ["intent"]}),
@@ -100,20 +100,20 @@ async def list_tools() -> List[Tool]:
         Tool(name="detect_powerbi_desktop", description="Detect Power BI instances", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="connect_to_powerbi", description="Connect to instance", inputSchema={"type": "object", "properties": {"model_index": {"type": "integer"}}, "required": ["model_index"]}),
         # Core metadata utilities
-        Tool(name="list_tables", description="List tables", inputSchema={"type": "object", "properties": {}, "required": []}),
-        Tool(name="list_measures", description="List measures", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
-        Tool(name="describe_table", description="Describe table", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": ["table"]}),
+        Tool(name="list_tables", description="List tables", inputSchema={"type": "object", "properties": {"page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
+        Tool(name="list_measures", description="List measures", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
+    Tool(name="describe_table", description="Describe table", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "columns_page_size": {"type": "integer"}, "columns_next_token": {"type": "string"}, "measures_page_size": {"type": "integer"}, "measures_next_token": {"type": "string"}, "relationships_page_size": {"type": "integer"}, "relationships_next_token": {"type": "string"}}, "required": ["table"]}),
         Tool(name="get_measure_details", description="Measure details", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}}, "required": ["table", "measure"]}),
-        Tool(name="search_string", description="Search measures", inputSchema={"type": "object", "properties": {"search_text": {"type": "string"}, "search_in_expression": {"type": "boolean", "default": True}, "search_in_name": {"type": "boolean", "default": True}}, "required": ["search_text"]}),
-        Tool(name="list_calculated_columns", description="List calc columns", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
-        Tool(name="search_objects", description="Search objects", inputSchema={"type": "object", "properties": {"pattern": {"type": "string", "default": "*"}, "types": {"type": "array", "items": {"type": "string"}, "default": ["tables", "columns", "measures"]}}, "required": []}),
-        Tool(name="get_data_sources", description="Data sources", inputSchema={"type": "object", "properties": {}, "required": []}),
-        Tool(name="get_m_expressions", description="M expressions", inputSchema={"type": "object", "properties": {}, "required": []}),
+        Tool(name="search_string", description="Search measures", inputSchema={"type": "object", "properties": {"search_text": {"type": "string"}, "search_in_expression": {"type": "boolean", "default": True}, "search_in_name": {"type": "boolean", "default": True}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": ["search_text"]}),
+        Tool(name="list_calculated_columns", description="List calc columns", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
+        Tool(name="search_objects", description="Search objects", inputSchema={"type": "object", "properties": {"pattern": {"type": "string", "default": "*"}, "types": {"type": "array", "items": {"type": "string"}, "default": ["tables", "columns", "measures"]}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
+        Tool(name="get_data_sources", description="Data sources", inputSchema={"type": "object", "properties": {"page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
+        Tool(name="get_m_expressions", description="M expressions", inputSchema={"type": "object", "properties": {"page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
         Tool(name="preview_table_data", description="Preview table", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "top_n": {"type": "integer", "default": 10}}, "required": ["table"]}),
         Tool(name="export_model_schema", description="Export schema", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="upsert_measure", description="Create/update measure", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "expression": {"type": "string"}, "display_folder": {"type": "string"}}, "required": ["table", "measure", "expression"]}),
         Tool(name="delete_measure", description="Delete a measure", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}} , "required": ["table", "measure"]}),
-        Tool(name="list_columns", description="List columns", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
+    Tool(name="list_columns", description="List columns", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
         Tool(name="get_column_values", description="Column values", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}, "limit": {"type": "integer", "default": 100}}, "required": ["table", "column"]}),
         Tool(name="get_column_summary", description="Column stats", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}}, "required": ["table", "column"]}),
         Tool(name="get_vertipaq_stats", description="VertiPaq stats", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
@@ -160,8 +160,8 @@ async def list_tools() -> List[Tool]:
 
         # Diagnostics and maintenance (trimmed; hide cache/safety/agent internals)
     Tool(name="summarize_last_result", description="Return metadata about the last successful query result", inputSchema={"type": "object", "properties": {}, "required": []}),
-        Tool(name="warm_query_cache", description="Execute queries to warm both local and engine caches", inputSchema={"type": "object", "properties": {"queries": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer", "default": 1}, "clear_cache": {"type": "boolean", "default": True}}, "required": ["queries"]}),
-        Tool(name="analyze_queries_batch", description="Analyze performance for multiple DAX queries", inputSchema={"type": "object", "properties": {"queries": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer", "default": 3}, "clear_cache": {"type": "boolean", "default": True}}, "required": ["queries"]}),
+    Tool(name="warm_query_cache", description="Execute queries to warm both local and engine caches", inputSchema={"type": "object", "properties": {"queries": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer", "default": 1}, "clear_cache": {"type": "boolean", "default": True}}, "required": ["queries"]}),
+    Tool(name="analyze_queries_batch", description="Analyze performance for multiple DAX queries", inputSchema={"type": "object", "properties": {"queries": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer", "default": 3}, "clear_cache": {"type": "boolean", "default": True}, "include_event_counts": {"type": "boolean", "default": False}}, "required": ["queries"]}),
     Tool(name="profile_columns", description="Profile columns (min, max, distinct, nulls)", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "columns": {"type": "array", "items": {"type": "string"}}}, "required": ["table"]}),
     Tool(name="get_column_value_distribution", description="Top values distribution for a column", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}, "top_n": {"type": "integer", "default": 50}}, "required": ["table", "column"]}),
         Tool(name="validate_best_practices", description="Composite validator for modeling best practices", inputSchema={"type": "object", "properties": {}, "required": []}),
@@ -176,6 +176,10 @@ async def list_tools() -> List[Tool]:
         tools.append(Tool(name="analyze_model_bpa", description="Run BPA", inputSchema={"type": "object", "properties": {}, "required": []}))
     # M best practices
     tools.append(Tool(name="analyze_m_practices", description="Scan M expressions for common issues", inputSchema={"type": "object", "properties": {}, "required": []}))
+    # Output schemas and lineage export
+    tools.append(Tool(name="get_output_schemas", description="Describe output schemas for key tools", inputSchema={"type": "object", "properties": {}, "required": []}))
+    tools.append(Tool(name="export_relationship_graph", description="Export relationships as a graph (JSON or GraphML)", inputSchema={"type": "object", "properties": {"format": {"type": "string", "enum": ["json", "graphml"], "default": "json"}}, "required": []}))
+    tools.append(Tool(name="apply_tmdl_patch", description="Apply safe TMDL patch operations (measures only)", inputSchema={"type": "object", "properties": {"updates": {"type": "array", "items": {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "expression": {"type": "string"}, "display_folder": {"type": "string"}}, "required": ["table", "measure", "expression"]}}, "dry_run": {"type": "boolean", "default": False}}, "required": ["updates"]}))
     return tools
 
 
@@ -188,6 +192,34 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 instance_info = connection_manager.get_instance_info()
                 if instance_info and instance_info.get('port'):
                     result['port'] = str(instance_info.get('port'))
+            return result
+
+        def _paginate(result: Any, page_size: int | None, next_token: str | None, list_keys: List[str]) -> Any:
+            """Apply simple pagination to dicts with list fields. Returns next_token when truncated.
+
+            list_keys: the keys in result that are arrays to paginate (first one found used if multiple).
+            """
+            try:
+                ps = int(page_size) if page_size is not None else None
+            except Exception:
+                ps = None
+            token_index = 0
+            if next_token:
+                try:
+                    token_index = max(0, int(next_token))
+                except Exception:
+                    token_index = 0
+            if not isinstance(result, dict) or not ps or ps <= 0:
+                return result
+            for k in list_keys:
+                arr = result.get(k)
+                if isinstance(arr, list):
+                    end = token_index + ps
+                    sliced = arr[token_index:end]
+                    result[k] = sliced
+                    if end < len(arr):
+                        result['next_token'] = str(end)
+                    break
             return result
 
         def _dax_quote_table(name: str) -> str:
@@ -505,6 +537,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 arguments.get("max_rows"),
                 arguments.get("verbose", False),
                 arguments.get("bypass_cache", False),
+                arguments.get("include_event_counts", False),
             )
             return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
 
@@ -545,6 +578,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 arguments.get("top_n"),
                 arguments.get("verbose", False),
                 False,
+                arguments.get("include_event_counts", False),
             )
             return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
 
@@ -601,7 +635,8 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             result = agent_policy.warm_query_cache(connection_state, arguments.get('queries', []), arguments.get('runs'), arguments.get('clear_cache', False))
             return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
         if name == "analyze_queries_batch":
-            result = agent_policy.analyze_queries_batch(connection_state, arguments.get('queries', []), arguments.get('runs'), arguments.get('clear_cache', True))
+            inc = bool(arguments.get('include_event_counts', False))
+            result = agent_policy.analyze_queries_batch(connection_state, arguments.get('queries', []), arguments.get('runs'), arguments.get('clear_cache', True), inc)
             return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
         if name == "set_cache_policy":
             result = agent_policy.set_cache_policy(connection_state, arguments.get('ttl_seconds'))
@@ -688,25 +723,59 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
 
         if name == "list_tables":
             result = query_executor.execute_info_query("TABLES")
+            result = _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
         elif name == "list_measures":
             table = arguments.get("table")
             result = query_executor.execute_info_query("MEASURES", table_name=table, exclude_columns=['Expression'])
+            result = _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
         elif name == "describe_table":
             table = arguments["table"]
             cols = query_executor.execute_info_query("COLUMNS", table_name=table)
             measures = query_executor.execute_info_query("MEASURES", table_name=table, exclude_columns=['Expression'])
             rels = query_executor.execute_info_query("RELATIONSHIPS", f'[FromTable] = "{table}" || [ToTable] = "{table}"')
             result = {'success': True, 'table': table, 'columns': cols.get('rows', []), 'measures': measures.get('rows', []), 'relationships': rels.get('rows', [])}
+            # Per-section pagination
+            def _slice(arr, size, token):
+                try:
+                    ps = int(size) if size is not None else None
+                except Exception:
+                    ps = None
+                start = 0
+                if token:
+                    try:
+                        start = max(0, int(token))
+                    except Exception:
+                        start = 0
+                if not ps or ps <= 0 or not isinstance(arr, list):
+                    return arr, None
+                end = start + ps
+                nxt = str(end) if end < len(arr) else None
+                return arr[start:end], nxt
+            c, c_next = _slice(result['columns'], arguments.get('columns_page_size'), arguments.get('columns_next_token'))
+            m, m_next = _slice(result['measures'], arguments.get('measures_page_size'), arguments.get('measures_next_token'))
+            r, r_next = _slice(result['relationships'], arguments.get('relationships_page_size'), arguments.get('relationships_next_token'))
+            result['columns'] = c
+            result['measures'] = m
+            result['relationships'] = r
+            if c_next:
+                result['columns_next_token'] = c_next
+            if m_next:
+                result['measures_next_token'] = m_next
+            if r_next:
+                result['relationships_next_token'] = r_next
         elif name == "get_measure_details":
             result = query_executor.execute_info_query("MEASURES", filter_expr=f'[Name] = "{arguments["measure"]}"', table_name=arguments["table"])
         elif name == "search_string":
             result = query_executor.search_measures_dax(arguments['search_text'], arguments.get('search_in_expression', True), arguments.get('search_in_name', True))
+            result = _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
         elif name == "list_calculated_columns":
             table = arguments.get("table")
             filter_expr = f'[Type] = {COLUMN_TYPE_CALCULATED}'
             result = query_executor.execute_info_query("COLUMNS", filter_expr=filter_expr, table_name=table)
+            result = _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
         elif name == "search_objects":
             result = query_executor.search_objects_dax(arguments.get("pattern", "*"), arguments.get("types", ["tables", "columns", "measures"]))
+            result = _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows', 'items'])
         elif name == "get_data_sources":
             query = f'''EVALUATE
             SELECTCOLUMNS(
@@ -719,6 +788,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             result = query_executor.validate_and_execute_dax(query, dmv_cap)
             if result.get('success') and len(result.get('rows', [])) >= dmv_cap:
                 result.setdefault('notes', []).append(f"Result truncated to {dmv_cap} rows for safety.")
+            result = _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
         elif name == "get_m_expressions":
             query = f'''EVALUATE
             SELECTCOLUMNS(
@@ -730,6 +800,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             result = query_executor.validate_and_execute_dax(query, dmv_cap)
             if result.get('success') and len(result.get('rows', [])) >= dmv_cap:
                 result.setdefault('notes', []).append(f"Result truncated to {dmv_cap} rows for safety.")
+            result = _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
         elif name == "preview_table_data":
             limits = connection_state.get_safety_limits()
             max_rows = int(limits.get('max_rows_per_call', 10000))
@@ -759,6 +830,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
         elif name == "list_columns":
             table = arguments.get("table")
             result = query_executor.execute_info_query("COLUMNS", table_name=table)
+            result = _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
         elif name == "get_column_values":
             t = _dax_quote_table(arguments['table'])
             c = _dax_quote_column(arguments['column'])
@@ -828,14 +900,21 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                     query_executor,
                     arguments['query'],
                     arguments.get('runs', 3),
-                    arguments.get('clear_cache', True)
+                    arguments.get('clear_cache', True),
+                    arguments.get('include_event_counts', False)
                 )
                 if isinstance(analysis, dict):
                     analysis.setdefault('notes', []).append(warning.get('note'))
                     analysis.setdefault('warnings', []).append({k: v for k, v in warning.items() if k != 'success'})
                 result = analysis
             else:
-                result = performance_analyzer.analyze_query(query_executor, arguments['query'], arguments.get('runs', 3), arguments.get('clear_cache', True))
+                result = performance_analyzer.analyze_query(
+                    query_executor,
+                    arguments['query'],
+                    arguments.get('runs', 3),
+                    arguments.get('clear_cache', True),
+                    arguments.get('include_event_counts', False)
+                )
         elif name == "validate_dax_query":
             result = query_executor.analyze_dax_query(arguments['query'])
         elif name == "auto_route":
@@ -953,6 +1032,146 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             result = model_exporter.get_model_summary(query_executor) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
         elif name == "compare_models":
             result = model_exporter.compare_models(arguments['reference_tmsl']) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
+
+        # Output schemas (static)
+        elif name == "get_output_schemas":
+            schemas = {
+                'version': '1.0.0',
+                'tools': {
+                    'run_dax': {
+                        'preview': {
+                            'rows': 'array<object>',
+                            'row_count': 'number',
+                            'execution_time_ms': 'number'
+                        },
+                        'analyze': {
+                            'runs': 'array<object(run, execution_time_ms, formula_engine_ms, storage_engine_ms, metrics_available, cache_state, [event_counts?])>',
+                            'summary': 'object(avg_execution_ms, min_execution_ms, max_execution_ms, avg_formula_engine_ms, avg_storage_engine_ms, fe_percent, se_percent, cache_mode)'
+                        }
+                    },
+                    'relationships': {
+                        'relationships': 'array<object(FromTable, FromColumn, ToTable, ToColumn, IsActive, CrossFilterDirection, Cardinality)>',
+                        'analysis': 'object? (optimizer output)'
+                    },
+                    'get_vertipaq_stats': {
+                        'rows': 'array<object(TABLE_ID, TABLE_FULL_NAME, COLUMN_NAME, DICTIONARY_SIZE, ...)>',
+                    },
+                    'summarize_model': {
+                        'counts': 'object(tables:number, columns:number, measures:number, relationships:number)',
+                        'tables_by_name': 'object<string, object>'
+                    },
+                    'document_model': {
+                        'format': 'string(markdown|html|json)',
+                        'sections': 'object<string, any>'
+                    },
+                    'export_relationship_graph': {
+                        'json': {
+                            'nodes': 'array<object(id,label,hidden)>',
+                            'edges': 'array<object(from,to,fromColumn,toColumn,active,direction,cardinality)>'
+                        },
+                        'graphml': 'string (GraphML document)'
+                    },
+                    'validate_best_practices': {
+                        'issues': 'array<object(type,severity,object,description)>'
+                    },
+                    'export_model_overview': {
+                        'overview': 'object(same as summarize_model)'
+                    }
+                }
+            }
+            result = {'success': True, 'schemas': schemas, 'version': __version__}
+
+        # Relationship graph export (JSON/GraphML)
+        elif name == "export_relationship_graph":
+            tables = query_executor.execute_info_query("TABLES")
+            rels = query_executor.execute_info_query("RELATIONSHIPS")
+            nodes = []
+            edges = []
+            tnames = set()
+            if tables.get('success'):
+                for t in tables.get('rows', []):
+                    nm = t.get('Name')
+                    if nm and nm not in tnames:
+                        nodes.append({'id': nm, 'label': nm, 'hidden': bool(t.get('IsHidden'))})
+                        tnames.add(nm)
+            if rels.get('success'):
+                for r in rels.get('rows', []):
+                    edges.append({
+                        'from': r.get('FromTable'),
+                        'to': r.get('ToTable'),
+                        'fromColumn': r.get('FromColumn'),
+                        'toColumn': r.get('ToColumn'),
+                        'active': bool(r.get('IsActive')),
+                        'direction': r.get('CrossFilterDirection'),
+                        'cardinality': r.get('Cardinality'),
+                    })
+            fmt = (arguments.get('format') or 'json').lower()
+            if fmt == 'graphml':
+                parts = [
+                    '<?xml version="1.0" encoding="UTF-8"?>',
+                    '<graphml xmlns="http://graphml.graphdrawing.org/xmlns">',
+                    '  <graph edgedefault="directed">'
+                ]
+                for n in nodes:
+                    nid = (n.get('id') or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                    parts.append(f'    <node id="{nid}"/>')
+                for e in edges:
+                    s = (e.get('from') or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                    t = (e.get('to') or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                    parts.append(f'    <edge source="{s}" target="{t}">')
+                    def _data(k):
+                        v = e.get(k)
+                        if v is None:
+                            return
+                        text = str(v).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                        parts.append(f'      <data key="{k}">{text}</data>')
+                    for k in ('fromColumn','toColumn','active','direction','cardinality'):
+                        _data(k)
+                    parts.append('    </edge>')
+                parts.append('  </graph>')
+                parts.append('</graphml>')
+                graphml = '\n'.join(parts)
+                result = {'success': True, 'format': 'graphml', 'graphml': graphml, 'counts': {'nodes': len(nodes), 'edges': len(edges)}}
+            else:
+                result = {'success': True, 'format': 'json', 'nodes': nodes, 'edges': edges, 'counts': {'nodes': len(nodes), 'edges': len(edges)}}
+
+        # Guarded TMDL patch: measures only (uses dax_injector)
+        elif name == "apply_tmdl_patch":
+            updates = arguments.get('updates') or []
+            dry_run = bool(arguments.get('dry_run', False))
+            if not isinstance(updates, list) or not updates:
+                result = {'success': False, 'error': 'updates must be a non-empty array'}
+            else:
+                if len(updates) > 200:
+                    result = {'success': False, 'error': 'Too many updates; limit to 200 per call', 'error_type': 'limit_exceeded'}
+                else:
+                    plan = []
+                    errors = []
+                    for idx, u in enumerate(updates):
+                        t = (u or {}).get('table')
+                        m = (u or {}).get('measure')
+                        e = (u or {}).get('expression')
+                        df = (u or {}).get('display_folder')
+                        if not t or not m or e is None:
+                            errors.append({'index': idx, 'error': 'Missing table/measure/expression'})
+                            continue
+                        plan.append({'action': 'upsert_measure', 'table': t, 'measure': m, 'display_folder': df is not None})
+                    if errors:
+                        result = {'success': False, 'errors': errors, 'plan': plan}
+                    elif dry_run:
+                        result = {'success': True, 'dry_run': True, 'applied': 0, 'plan': plan}
+                    else:
+                        if not dax_injector:
+                            result = ErrorHandler.handle_manager_unavailable('dax_injector')
+                        else:
+                            applied = 0
+                            ops = []
+                            for u in updates:
+                                r = dax_injector.upsert_measure(u.get('table'), u.get('measure'), u.get('expression'), u.get('display_folder'))
+                                ops.append(r)
+                                if r.get('success'):
+                                    applied += 1
+                            result = {'success': True, 'applied': applied, 'operations': ops}
 
         # Performance Optimization
         elif name == "analyze_relationship_cardinality":

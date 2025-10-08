@@ -78,6 +78,7 @@ class AgentPolicy:
         max_rows: Optional[int] = None,
         verbose: bool = False,
         bypass_cache: bool = False,
+        include_event_counts: bool = False,
     ) -> Dict[str, Any]:
         """Validate, limit, and execute a DAX query. Optionally perform perf analysis."""
         if not connection_state.is_connected():
@@ -136,7 +137,7 @@ class AgentPolicy:
                 basic.setdefault("reason", "Requested performance analysis, but analyzer unavailable; returned basic execution")
                 return basic
 
-            result = performance_analyzer.analyze_query(query_executor, query, r, True)
+            result = performance_analyzer.analyze_query(query_executor, query, r, True, include_event_counts)
             result.setdefault("decision", "analyze")
             result.setdefault("reason", "Performance analysis selected to obtain FE/SE breakdown and average timings")
             return result
@@ -400,7 +401,7 @@ class AgentPolicy:
             stats.append({'query': q, 'success': ok, 'runs': r, 'avg_ms': round(sum(times)/len(times), 2) if times else 0})
         return {'success': True, 'warmed': len(stats), 'results': stats}
 
-    def analyze_queries_batch(self, connection_state, queries: List[str], runs: Optional[int] = 3, clear_cache: bool = True) -> Dict[str, Any]:
+    def analyze_queries_batch(self, connection_state, queries: List[str], runs: Optional[int] = 3, clear_cache: bool = True, include_event_counts: bool = False) -> Dict[str, Any]:
         if not connection_state.is_connected():
             return ErrorHandler.handle_not_connected()
         executor = connection_state.query_executor
@@ -411,7 +412,7 @@ class AgentPolicy:
         results: List[Dict[str, Any]] = []
         for q in queries or []:
             if perf:
-                results.append(perf.analyze_query(executor, q, r, bool(clear_cache)))
+                results.append(perf.analyze_query(executor, q, r, bool(clear_cache), include_event_counts))
             else:
                 # basic timing fallback
                 start = time.time()
