@@ -49,6 +49,48 @@ def clamp_list(obj: Dict[str, Any], key: str, max_items: int, note: str):
         pass
 
 
+def _simple_main_purpose(summary: Dict[str, Any]) -> str:
+    try:
+        purpose = (summary or {}).get('purpose') or {}
+        text = (purpose or {}).get('text')
+        if isinstance(text, str) and text.strip():
+            t = text.strip()
+            t = t.replace('Model geared towards', 'This report focuses on')
+            t = t.replace('row-level security', 'user-based access')
+            t = t.replace('time intelligence', 'time-based analysis')
+            return t
+        domains = (purpose or {}).get('domains') or []
+        if domains:
+            friendly = []
+            for d in domains:
+                dl = str(d).lower()
+                if 'period' in dl or 'time' in dl:
+                    friendly.append('time-based analysis')
+                elif 'row-level' in dl:
+                    friendly.append('user-based access')
+                elif 'currency' in dl or 'fx' in dl:
+                    friendly.append('currency conversion')
+                elif 'financial' in dl:
+                    friendly.append('financial reporting')
+                elif 'aging' in dl:
+                    friendly.append('receivables/payables aging')
+                elif 'customer' in dl or 'vendor' in dl:
+                    friendly.append('customer and vendor insights')
+                elif 'company' in dl or 'org' in dl:
+                    friendly.append('company and organizational analysis')
+                else:
+                    friendly.append(d)
+            seen = set()
+            friendly = [x for x in friendly if not (x in seen or seen.add(x))]
+            if friendly:
+                if len(friendly) == 1:
+                    return f"This report focuses on {friendly[0]}"
+                return f"This report focuses on {', '.join(friendly[:-1])} and {friendly[-1]}"
+        return 'This report provides general business analytics'
+    except Exception:
+        return 'This report provides general business analytics'
+
+
 def run_full_analysis(depth: str, include_bpa: bool, relationships_max: int, issues_max: int, profile: str = 'balanced') -> Dict[str, Any]:
     cm = ConnectionManager()
     instances = cm.detect_instances()
@@ -78,12 +120,13 @@ def run_full_analysis(depth: str, include_bpa: bool, relationships_max: int, iss
         sections['summary'] = {'success': False, 'error': 'Model exporter unavailable'}
     timings['summary_ms'] = round((time.time() - t0) * 1000, 2)
 
-    # Attach concise purpose if available
+    # Attach concise purpose if available and also add a simple, non-technical main_purpose
     try:
         if isinstance(sections.get('summary'), dict):
             purpose = sections['summary'].get('purpose')
             if purpose:
                 sections['model_purpose'] = {'success': True, **purpose}
+            sections['summary']['main_purpose'] = _simple_main_purpose(sections['summary'])
     except Exception:
         pass
 
@@ -104,18 +147,9 @@ def run_full_analysis(depth: str, include_bpa: bool, relationships_max: int, iss
             sections['narrative'] = generate_narrative(sections.get('summary') or {}, sections.get('relationships') or {})
         except Exception:
             pass
-        # concise purpose
-        what = None
-        try:
-            purpose = (sections.get('model_purpose') or {}).get('text')
-            if purpose:
-                what = purpose
-            else:
-                doms = (sections.get('model_purpose') or {}).get('domains') or []
-                if doms:
-                    what = ", ".join(doms[:5])
-        except Exception:
-            pass
+        # simple, non-technical main purpose
+        main_purpose = _simple_main_purpose(sections.get('summary') or {})
+        what = main_purpose
         return {
             'success': True,
             'depth': 'light',
@@ -125,6 +159,7 @@ def run_full_analysis(depth: str, include_bpa: bool, relationships_max: int, iss
             'timings_ms': timings,
             'sections': sections,
             'what_the_model_does': what,
+            'main_purpose': main_purpose,
             'instance': cm.get_instance_info(),
         }
 
@@ -207,17 +242,9 @@ def run_full_analysis(depth: str, include_bpa: bool, relationships_max: int, iss
         timings['relationship_cardinality_ms'] = round((time.time() - t0) * 1000, 2)
 
     # concise purpose at top-level
-    what = None
-    try:
-        purpose = (sections.get('model_purpose') or {}).get('text')
-        if purpose:
-            what = purpose
-        else:
-            doms = (sections.get('model_purpose') or {}).get('domains') or []
-            if doms:
-                what = ", ".join(doms[:5])
-    except Exception:
-        pass
+    # Compute a simple main purpose and mirror it at top-level
+    main_purpose = _simple_main_purpose(sections.get('summary') or {})
+    what = main_purpose
 
     return {
         'success': True,
@@ -228,6 +255,7 @@ def run_full_analysis(depth: str, include_bpa: bool, relationships_max: int, iss
         'timings_ms': timings,
         'sections': {**sections, 'narrative': generate_narrative(sections.get('summary') or {}, sections.get('relationships') or {})},
         'what_the_model_does': what,
+        'main_purpose': main_purpose,
         'instance': cm.get_instance_info(),
     }
 

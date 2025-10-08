@@ -5,6 +5,56 @@ from server.utils.m_practices import scan_m_practices
 from core.model_narrative import generate_narrative
 
 
+def _simple_main_purpose(summary: Dict[str, Any]) -> str:
+    """Return a short, non-technical main purpose string for the report/model.
+    Prefers summary.purpose.text; otherwise composes from purpose.domains; falls back to a general phrase.
+    """
+    try:
+        purpose = (summary or {}).get('purpose') or {}
+        text = (purpose or {}).get('text')
+        if isinstance(text, str) and text.strip():
+            # De-jargon some common phrases
+            t = text.strip()
+            t = t.replace('Model geared towards', 'This report focuses on')
+            t = t.replace('row-level security', 'user-based access')
+            t = t.replace('time intelligence', 'time-based analysis')
+            return t
+        # Build from domains if text missing
+        domains = (purpose or {}).get('domains') or []
+        if domains:
+            # Map domains to friendlier wording
+            friendly = []
+            for d in domains:
+                dl = str(d).lower()
+                if 'period' in dl or 'time' in dl:
+                    friendly.append('time-based analysis')
+                elif 'row-level' in dl:
+                    friendly.append('user-based access')
+                elif 'currency' in dl or 'fx' in dl:
+                    friendly.append('currency conversion')
+                elif 'financial' in dl:
+                    friendly.append('financial reporting')
+                elif 'aging' in dl:
+                    friendly.append('receivables/payables aging')
+                elif 'customer' in dl or 'vendor' in dl:
+                    friendly.append('customer and vendor insights')
+                elif 'company' in dl or 'org' in dl:
+                    friendly.append('company and organizational analysis')
+                else:
+                    friendly.append(d)
+            # De-duplicate while preserving order
+            seen = set()
+            friendly = [x for x in friendly if not (x in seen or seen.add(x))]
+            if friendly:
+                if len(friendly) == 1:
+                    return f"This report focuses on {friendly[0]}"
+                return f"This report focuses on {', '.join(friendly[:-1])} and {friendly[-1]}"
+        # Last resort
+        return 'This report provides general business analytics'
+    except Exception:
+        return 'This report provides general business analytics'
+
+
 def run_full_analysis(
     connection_state: Any,
     config: Any,
@@ -38,6 +88,8 @@ def run_full_analysis(
             purpose = sections['summary'].get('purpose')
             if purpose:
                 sections['model_purpose'] = {'success': True, **purpose}
+            # Always attach a simple, non-technical main_purpose inside the summary
+            sections['summary']['main_purpose'] = _simple_main_purpose(sections['summary'])
     except Exception:
         pass
 
@@ -57,17 +109,9 @@ def run_full_analysis(
             sections['narrative'] = generate_narrative(sections.get('summary') or {}, sections.get('relationships') or {})
         except Exception:
             pass
-        what = None
-        try:
-            purpose = (sections.get('model_purpose') or {}).get('text')
-            if purpose:
-                what = purpose
-            else:
-                doms = (sections.get('model_purpose') or {}).get('domains') or []
-                if doms:
-                    what = ", ".join(doms[:5])
-        except Exception:
-            pass
+        # Ensure a non-technical main purpose is available
+        main_purpose = _simple_main_purpose(sections.get('summary') or {})
+        what = main_purpose
         return {
             'success': True,
             'depth': 'light',
@@ -76,6 +120,7 @@ def run_full_analysis(
             'timings_ms': timings,
             'sections': sections,
             'what_the_model_does': what,
+            'main_purpose': main_purpose,
             'generated_at': time.time(),
         }
 
@@ -134,17 +179,9 @@ def run_full_analysis(
     except Exception:
         pass
 
-    what = None
-    try:
-        purpose = (sections.get('model_purpose') or {}).get('text')
-        if purpose:
-            what = purpose
-        else:
-            doms = (sections.get('model_purpose') or {}).get('domains') or []
-            if doms:
-                what = ", ".join(doms[:5])
-    except Exception:
-        pass
+    # Compute a simple main purpose for top-level convenience
+    main_purpose = _simple_main_purpose(sections.get('summary') or {})
+    what = main_purpose
 
     return {
         'success': True,
@@ -154,5 +191,6 @@ def run_full_analysis(
         'timings_ms': timings,
         'sections': sections,
         'what_the_model_does': what,
+        'main_purpose': main_purpose,
         'generated_at': time.time(),
     }
