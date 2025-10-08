@@ -157,6 +157,7 @@ async def list_tools() -> List[Tool]:
 
         # Performance Optimization
         Tool(name="analyze_relationship_cardinality", description="Analyze relationship cardinality", inputSchema={"type": "object", "properties": {}, "required": []}),
+    Tool(name="relationship_overview", description="List relationships with optional cardinality analysis", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="analyze_column_cardinality", description="Analyze column cardinality", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
         Tool(name="analyze_encoding_efficiency", description="Analyze encoding efficiency", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": ["table"]}),
 
@@ -167,6 +168,17 @@ async def list_tools() -> List[Tool]:
         # Diagnostics and maintenance
         Tool(name="flush_query_cache", description="Flushes the DAX query result cache for diagnostics or troubleshooting", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="get_recent_logs", description="Fetch the last N lines of the server log for diagnostics", inputSchema={"type": "object", "properties": {"lines": {"type": "integer", "default": 200}}, "required": []}),
+    Tool(name="summarize_logs", description="Summarize recent logs (error/warn counts, last events)", inputSchema={"type": "object", "properties": {"lines": {"type": "integer", "default": 500}}, "required": []}),
+        Tool(name="get_cache_stats", description="Return server query cache statistics", inputSchema={"type": "object", "properties": {}, "required": []}),
+        Tool(name="get_context", description="Get agent context memory (optionally by keys)", inputSchema={"type": "object", "properties": {"keys": {"type": "array", "items": {"type": "string"}}}, "required": []}),
+        Tool(name="set_context", description="Set agent context memory keys", inputSchema={"type": "object", "properties": {"data": {"type": "object"}}, "required": ["data"]}),
+        Tool(name="get_safety_limits", description="Get current safety limits", inputSchema={"type": "object", "properties": {}, "required": []}),
+        Tool(name="set_safety_limits", description="Set safety limits (e.g., max_rows_per_call)", inputSchema={"type": "object", "properties": {"max_rows_per_call": {"type": "integer"}}, "required": []}),
+    Tool(name="summarize_last_result", description="Return metadata about the last successful query result", inputSchema={"type": "object", "properties": {}, "required": []}),
+    Tool(name="set_perf_baseline", description="Record a performance baseline for a query name", inputSchema={"type": "object", "properties": {"name": {"type": "string"}, "query": {"type": "string"}, "runs": {"type": "integer", "default": 3}}, "required": ["name", "query"]}),
+    Tool(name="get_perf_baseline", description="Get a stored performance baseline by name", inputSchema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}),
+    Tool(name="list_perf_baselines", description="List all stored performance baselines", inputSchema={"type": "object", "properties": {}, "required": []}),
+    Tool(name="compare_perf_to_baseline", description="Compare a query's performance to a named baseline", inputSchema={"type": "object", "properties": {"name": {"type": "string"}, "query": {"type": "string"}, "runs": {"type": "integer", "default": 3}}, "required": ["name"]}),
         # New utilities & orchestrations
     Tool(name="warm_query_cache", description="Execute queries to warm both local and engine caches", inputSchema={"type": "object", "properties": {"queries": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer", "default": 1}, "clear_cache": {"type": "boolean", "default": True}}, "required": ["queries"]}),
     Tool(name="analyze_queries_batch", description="Analyze performance for multiple DAX queries", inputSchema={"type": "object", "properties": {"queries": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer", "default": 3}, "clear_cache": {"type": "boolean", "default": True}}, "required": ["queries"]}),
@@ -180,13 +192,21 @@ async def list_tools() -> List[Tool]:
         Tool(name="get_column_usage_heatmap", description="Column usage heat map across measures", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "limit": {"type": "integer", "default": 100}}, "required": []}),
     Tool(name="auto_document", description="Orchestrated: connect → summarize → docs", inputSchema={"type": "object", "properties": {"profile": {"type": "string", "default": "light"}, "include_lineage": {"type": "boolean", "default": False}}, "required": []}),
         Tool(name="auto_analyze_or_preview", description="Orchestrated: choose analyze vs preview by priority", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "runs": {"type": "integer"}, "max_rows": {"type": "integer"}, "priority": {"type": "string", "enum": ["speed", "depth"], "default": "depth"}}, "required": ["query"]}),
+        Tool(name="auto_route", description="Auto route a query to preview or analysis based on priority and size", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "runs": {"type": "integer"}, "max_rows": {"type": "integer"}, "priority": {"type": "string", "enum": ["speed", "depth"], "default": "depth"}}, "required": ["query"]}),
         Tool(name="apply_recommended_fixes", description="Compute a safe plan of recommended modeling fixes", inputSchema={"type": "object", "properties": {"actions": {"type": "array", "items": {"type": "string"}}}, "required": ["actions"]}),
         Tool(name="set_performance_trace", description="Enable/disable AMO session trace explicitly", inputSchema={"type": "object", "properties": {"enabled": {"type": "boolean"}}, "required": ["enabled"]}),
         Tool(name="format_dax", description="Lightweight DAX formatter (whitespace)", inputSchema={"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"]}),
     Tool(name="export_model_overview", description="Export a compact model overview (json/yaml)", inputSchema={"type": "object", "properties": {"format": {"type": "string", "enum": ["json", "yaml"], "default": "json"}, "include_counts": {"type": "boolean", "default": True}}, "required": []}),
+        # Introspection & tuning
+        Tool(name="get_query_history", description="Return recent query execution history (newest first)", inputSchema={"type": "object", "properties": {"limit": {"type": "integer", "default": 50}}, "required": []}),
+        Tool(name="clear_query_history", description="Clear the in-memory query history buffer", inputSchema={"type": "object", "properties": {}, "required": []}),
+        Tool(name="set_command_timeout", description="Set ADOMD command timeout seconds for queries", inputSchema={"type": "object", "properties": {"seconds": {"type": "integer"}}, "required": ["seconds"]}),
     ]
     if BPA_AVAILABLE:
         tools.append(Tool(name="analyze_model_bpa", description="Run BPA", inputSchema={"type": "object", "properties": {}, "required": []}))
+    # M best practices and instance switching
+    tools.append(Tool(name="analyze_m_practices", description="Scan M expressions for common issues", inputSchema={"type": "object", "properties": {}, "required": []}))
+    tools.append(Tool(name="switch_instance", description="Switch to next/prev/index Power BI instance", inputSchema={"type": "object", "properties": {"mode": {"type": "string", "enum": ["next", "prev", "index"], "default": "next"}, "index": {"type": "integer"}}, "required": []}))
     return tools
 
 
@@ -223,6 +243,124 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 return [TextContent(type="text", text="".join(tail))]
             except Exception as e:
                 return [TextContent(type="text", text=f"No log file available or could not read logs: {e}")]
+
+        if name == "summarize_logs":
+            lines = int(arguments.get("lines", 500) or 500)
+            log_path = LOG_PATH
+            try:
+                with open(log_path, "r", encoding="utf-8") as f:
+                    all_lines = f.readlines()
+                tail = all_lines[-lines:] if lines > 0 else all_lines
+                error_count = sum(1 for l in tail if "- ERROR -" in l)
+                warn_count = sum(1 for l in tail if "- WARNING -" in l or "- WARN -" in l)
+                info_count = sum(1 for l in tail if "- INFO -" in l)
+                last_entries = tail[-10:]
+                summary = {
+                    'success': True,
+                    'lines_analyzed': len(tail),
+                    'counts': {
+                        'error': error_count,
+                        'warning': warn_count,
+                        'info': info_count,
+                    },
+                    'last_entries': last_entries,
+                }
+                return [TextContent(type="text", text=json.dumps(summary, indent=2))]
+            except Exception as e:
+                return [TextContent(type="text", text=json.dumps({'success': False, 'error': str(e)}, indent=2))]
+
+        if name == "get_cache_stats":
+            if connection_state and connection_state.query_executor:
+                try:
+                    stats = connection_state.query_executor.get_cache_stats()
+                except Exception as e:
+                    stats = {'success': False, 'error': str(e)}
+            else:
+                stats = ErrorHandler.handle_manager_unavailable('query_executor')
+            return [TextContent(type="text", text=json.dumps(stats, indent=2))]
+
+        if name == "get_context":
+            keys = arguments.get('keys')
+            data = connection_state.get_context(keys) if connection_state else {}
+            return [TextContent(type="text", text=json.dumps({'success': True, 'context': data}, indent=2))]
+
+        if name == "set_context":
+            data = arguments.get('data', {})
+            current = connection_state.set_context(data) if connection_state else {}
+            return [TextContent(type="text", text=json.dumps({'success': True, 'context': current}, indent=2))]
+
+        if name == "get_safety_limits":
+            limits = connection_state.get_safety_limits() if connection_state else {}
+            return [TextContent(type="text", text=json.dumps({'success': True, 'limits': limits}, indent=2))]
+
+        if name == "set_safety_limits":
+            limits = {k: v for k, v in arguments.items() if k in {'max_rows_per_call'}}
+            current = connection_state.set_safety_limits(limits) if connection_state else {}
+            return [TextContent(type="text", text=json.dumps({'success': True, 'limits': current}, indent=2))]
+
+        if name == "summarize_last_result":
+            summary = connection_state.get_last_result_summary()
+            return [TextContent(type="text", text=json.dumps(summary, indent=2))]
+
+        if name == "set_perf_baseline":
+            # Ensure we can run queries
+            if not connection_state.is_connected():
+                return [TextContent(type="text", text=json.dumps(ErrorHandler.handle_not_connected(), indent=2))]
+            qe = connection_state.query_executor
+            runs = int(arguments.get('runs', 3) or 3)
+            elapsed = []
+            for _ in range(max(1, runs)):
+                r = qe.validate_and_execute_dax(arguments['query'], 0, True)
+                if not r.get('success'):
+                    return [TextContent(type="text", text=json.dumps(r, indent=2))]
+                elapsed.append(r.get('execution_time_ms', 0))
+            record = {
+                'query': arguments['query'],
+                'runs': runs,
+                'avg_ms': sum(elapsed)/len(elapsed) if elapsed else None,
+                'min_ms': min(elapsed) if elapsed else None,
+                'max_ms': max(elapsed) if elapsed else None,
+                'ts': time.time(),
+            }
+            saved = connection_state.set_perf_baseline_record(arguments['name'], record)
+            return [TextContent(type="text", text=json.dumps(saved, indent=2))]
+
+        if name == "get_perf_baseline":
+            res = connection_state.get_perf_baseline(arguments.get('name', ''))
+            return [TextContent(type="text", text=json.dumps(res, indent=2))]
+
+        if name == "list_perf_baselines":
+            res = connection_state.list_perf_baselines()
+            return [TextContent(type="text", text=json.dumps(res, indent=2))]
+
+        if name == "compare_perf_to_baseline":
+            base = connection_state.get_perf_baseline(arguments.get('name', ''))
+            if not base.get('success'):
+                return [TextContent(type="text", text=json.dumps(base, indent=2))]
+            baseline = base.get('baseline', {})
+            query = arguments.get('query') or baseline.get('query')
+            if not query:
+                return [TextContent(type="text", text=json.dumps({'success': False, 'error': 'Query is required if baseline does not store one'}, indent=2))]
+            runs = int(arguments.get('runs', 3) or 3)
+            qe = connection_state.query_executor
+            elapsed = []
+            for _ in range(max(1, runs)):
+                r = qe.validate_and_execute_dax(query, 0, True)
+                if not r.get('success'):
+                    return [TextContent(type="text", text=json.dumps(r, indent=2))]
+                elapsed.append(r.get('execution_time_ms', 0))
+            current = {
+                'runs': runs,
+                'avg_ms': sum(elapsed)/len(elapsed) if elapsed else None,
+                'min_ms': min(elapsed) if elapsed else None,
+                'max_ms': max(elapsed) if elapsed else None,
+            }
+            diff = {}
+            for k in ['avg_ms', 'min_ms', 'max_ms']:
+                if baseline.get(k) is not None and current.get(k) is not None:
+                    diff[k] = current[k] - baseline[k]
+            res = {'success': True, 'baseline': baseline, 'current': current, 'diff': diff}
+            return [TextContent(type="text", text=json.dumps(res, indent=2))]
 
         # Maintenance: flush cache
         if name == "flush_query_cache":
@@ -332,6 +470,63 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             result = agent_policy.ensure_connected(connection_manager, connection_state, arguments.get("preferred_index"))
             return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
 
+        if name == "switch_instance":
+            # Detect and choose target index
+            instances = connection_manager.detect_instances()
+            if not instances:
+                return [TextContent(type="text", text=json.dumps({'success': False, 'error': 'No instances detected'}, indent=2))]
+            mode = arguments.get('mode', 'next')
+            current = connection_manager.get_instance_info()
+            indices = {inst['port']: i for i, inst in enumerate(instances)}
+            target_index = 0
+            if mode == 'index' and isinstance(arguments.get('index'), int):
+                target_index = max(0, min(len(instances) - 1, int(arguments['index'])))
+            elif mode in ('next', 'prev') and current and current.get('port') in indices:
+                cur_i = indices[current['port']]
+                if mode == 'next':
+                    target_index = (cur_i + 1) % len(instances)
+                else:
+                    target_index = (cur_i - 1) % len(instances)
+            else:
+                target_index = 0
+            # Connect to target
+            result = connection_manager.connect(target_index)
+            if result.get('success'):
+                connection_state.set_connection_manager(connection_manager)
+                connection_state.initialize_managers(force_reinit=True)
+                result['managers_initialized'] = connection_state._managers_initialized
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        if name == "get_query_history":
+            limit = arguments.get('limit')
+            try:
+                data = connection_state.get_query_history(limit)
+                return [TextContent(type="text", text=json.dumps({'success': True, 'items': data, 'count': len(data)}, indent=2))]
+            except Exception as e:
+                return [TextContent(type="text", text=json.dumps({'success': False, 'error': str(e)}, indent=2))]
+
+        if name == "clear_query_history":
+            try:
+                removed = connection_state.clear_query_history()
+                return [TextContent(type="text", text=json.dumps({'success': True, 'cleared': removed}, indent=2))]
+            except Exception as e:
+                return [TextContent(type="text", text=json.dumps({'success': False, 'error': str(e)}, indent=2))]
+
+        if name == "set_command_timeout":
+            try:
+                secs = int(arguments.get('seconds'))
+            except Exception:
+                secs = None
+            if secs is None or secs < 0:
+                return [TextContent(type="text", text=json.dumps({'success': False, 'error': 'seconds must be a non-negative integer'}, indent=2))]
+            if connection_state and connection_state.query_executor:
+                try:
+                    connection_state.query_executor.command_timeout_seconds = secs
+                    return [TextContent(type="text", text=json.dumps({'success': True, 'command_timeout_seconds': secs}, indent=2))]
+                except Exception as e:
+                    return [TextContent(type="text", text=json.dumps({'success': False, 'error': str(e)}, indent=2))]
+            return [TextContent(type="text", text=json.dumps(ErrorHandler.handle_manager_unavailable('query_executor'), indent=2))]
+
         if name == "safe_run_dax":
             result = agent_policy.safe_run_dax(
                 connection_state,
@@ -362,6 +557,9 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
 
         if name == "generate_docs_safe":
             result = agent_policy.generate_docs_safe(connection_state)
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+        if name == "relationship_overview":
+            result = agent_policy.relationship_overview(connection_state)
             return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
 
         if name == "execute_intent":
@@ -527,9 +725,21 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             if result.get('success') and len(result.get('rows', [])) >= dmv_cap:
                 result.setdefault('notes', []).append(f"Result truncated to {dmv_cap} rows for safety.")
         elif name == "preview_table_data":
-            result = query_executor.execute_with_table_reference_fallback(arguments['table'], arguments.get('top_n', 10))
+            limits = connection_state.get_safety_limits()
+            max_rows = int(limits.get('max_rows_per_call', 10000))
+            req_top = int(arguments.get('top_n', 10) or 10)
+            top_n = min(req_top, max_rows) if req_top > 0 else req_top
+            result = query_executor.execute_with_table_reference_fallback(arguments['table'], top_n)
+            if req_top != top_n and isinstance(result, dict):
+                result.setdefault('notes', []).append(f'top_n clamped to safety limit of {max_rows}')
         elif name == "run_dax_query":
-            result = query_executor.validate_and_execute_dax(arguments['query'], arguments.get('top_n', 0), arguments.get('bypass_cache', False))
+            limits = connection_state.get_safety_limits()
+            max_rows = int(limits.get('max_rows_per_call', 10000))
+            req_top = int(arguments.get('top_n', 0) or 0)
+            top_n = min(req_top, max_rows) if req_top > 0 else req_top
+            result = query_executor.validate_and_execute_dax(arguments['query'], top_n, arguments.get('bypass_cache', False))
+            if req_top != top_n and isinstance(result, dict):
+                result.setdefault('notes', []).append(f'top_n clamped to safety limit of {max_rows}')
         elif name == "export_model_schema":
             tables = query_executor.execute_info_query("TABLES")
             columns = query_executor.execute_info_query("COLUMNS")
@@ -619,6 +829,38 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 result = performance_analyzer.analyze_query(query_executor, arguments['query'], arguments.get('runs', 3), arguments.get('clear_cache', True))
         elif name == "validate_dax_query":
             result = query_executor.analyze_dax_query(arguments['query'])
+        elif name == "auto_route":
+            result = agent_policy.auto_analyze_or_preview(connection_manager, connection_state, arguments.get('query', ''), arguments.get('runs'), arguments.get('max_rows'), arguments.get('priority', 'depth'))
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+        elif name == "analyze_m_practices":
+            # Simple heuristics over M expressions
+            query = f'''EVALUATE
+            SELECTCOLUMNS(
+                TOPN({dmv_cap}, $SYSTEM.TMSCHEMA_EXPRESSIONS),
+                "Name", [Name],
+                "Expression", [Expression],
+                "Kind", [Kind]
+            )'''
+            data = query_executor.validate_and_execute_dax(query, dmv_cap)
+            if not data.get('success'):
+                result = data
+            else:
+                issues = []
+                for row in data.get('rows', []):
+                    if str(row.get('Kind', '')).upper() != 'M':
+                        continue
+                    name = row.get('Name') or '<unknown>'
+                    expr = (row.get('Expression') or '')
+                    expr_lower = expr.lower()
+                    if 'table.buffer(' in expr_lower:
+                        issues.append({'rule': 'M001', 'severity': 'warning', 'name': name, 'description': 'Table.Buffer used; can cause high memory usage if misapplied.'})
+                    if 'web.contents(' in expr_lower and ('relativepath' not in expr_lower and 'query=' not in expr_lower):
+                        issues.append({'rule': 'M002', 'severity': 'info', 'name': name, 'description': 'Web.Contents without RelativePath/Query options may be less cache-friendly.'})
+                    if 'excel.workbook(file.contents(' in expr_lower and (':\\' in expr_lower or ':/'):
+                        issues.append({'rule': 'M003', 'severity': 'warning', 'name': name, 'description': 'Excel.Workbook(File.Contents) with absolute path detected; consider parameterizing path.'})
+                    if 'table.selectrows(' in expr_lower:
+                        issues.append({'rule': 'M004', 'severity': 'info', 'name': name, 'description': 'Table.SelectRows found; ensure filtering is pushed to source where possible.'})
+                result = {'success': True, 'count': len(issues), 'issues': issues}
         elif name == "analyze_model_bpa":
             if not BPA_AVAILABLE or not bpa_analyzer:
                 result = ErrorHandler.handle_manager_unavailable('bpa_analyzer')

@@ -49,11 +49,29 @@ You’re now ready to explore your model with Claude.
 
 Tip: For DMV queries using $SYSTEM.* with SELECTCOLUMNS, wrap the source in TOPN(...) first to materialize before projection.
 
+### Diagnostics & helpers
+
+- Log summary: `summarize_logs` reports counts of ERROR/WARNING/INFO and shows recent entries.
+- Query history: `get_query_history` (and `clear_query_history`) exposes a rolling, lightweight history of executed queries for quick recall and debugging.
+- Command timeout: `set_command_timeout(seconds: int)` lets you raise/lower the ADOMD command timeout per session when exploring heavy queries.
+- Cache stats: `get_cache_stats` returns size, ttl, hits/misses, and whether the LRU TTL cache is enabled.
+- Context memory: `set_context({ ... })` and `get_context(keys?: string[])` maintain lightweight session memory (e.g., default table/measure).
+- Safety limits: `set_safety_limits({ max_rows_per_call })` clamps high-row requests; enforced in `run_dax_query` and `preview_table_data`.
+- Last result: `summarize_last_result` returns metadata (columns, row_count, sample rows) from the last successful query.
+- Performance baselines: `set_perf_baseline(name, query, runs?)`, `get_perf_baseline(name)`, `list_perf_baselines()`, `compare_perf_to_baseline(name, query?, runs?)`.
+- Auto router: `auto_route` chooses preview vs performance analysis based on priority and context.
+- M analysis: `analyze_m_practices` scans `$SYSTEM.TMSCHEMA_EXPRESSIONS` for common M issues (heuristics).
+- Instance switching: `switch_instance(mode: next|prev|index, index?)` cycles between detected Power BI Desktop instances.
+
+Tip: To bypass cache on an individual query, pass `bypass_cache: true` in `run_dax_query` or use performance analysis tools.
+
 ## Install, update, uninstall
 
 - Installation steps, update notes, and cleanup are documented in INSTALL.md
 	- Claude config: `./scripts/install_to_claude.ps1`
 	- ChatGPT MCP config: `./scripts/install_to_chatgpt.ps1`
+
+If you use ChatGPT desktop with MCP, run the installer script to generate the JSON you can paste under Settings > Tools > Developer.
 
 ## Notes on privacy & security
 

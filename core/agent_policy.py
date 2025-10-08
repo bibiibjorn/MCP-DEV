@@ -509,6 +509,30 @@ class AgentPolicy:
         doc.setdefault('include_examples', include_examples)
         return doc
 
+    def relationship_overview(self, connection_state) -> Dict[str, Any]:
+        """Return relationships list plus optional cardinality checks.
+
+        This prevents brittle DMV/DAX attempts from the client and offers
+        a stable, typed response for relationship exploration.
+        """
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+        executor = connection_state.query_executor
+        if not executor:
+            return ErrorHandler.handle_manager_unavailable('query_executor')
+        rels = executor.execute_info_query('RELATIONSHIPS')
+        result: Dict[str, Any] = {'success': bool(rels.get('success')), 'relationships': rels.get('rows', []), 'count': len(rels.get('rows', []) if rels.get('success') else [])}
+        # Optionally attach issue analysis when available
+        perf_opt = getattr(connection_state, 'performance_optimizer', None)
+        try:
+            if perf_opt:
+                analysis = perf_opt.analyze_relationship_cardinality()
+                result['analysis'] = analysis
+        except Exception:
+            # Non-fatal; just omit analysis
+            pass
+        return result
+
     def create_model_changelog(self, connection_state, reference_tmsl) -> Dict[str, Any]:
         if not connection_state.is_connected():
             return ErrorHandler.handle_not_connected()
@@ -649,6 +673,12 @@ class AgentPolicy:
 
         text = (goal or "").lower()
 
+        # Relationship-focused intents: return list and analysis directly
+        if any(k in text for k in ["relationship", "relationships", "rels", "cardinality", "relations"]):
+            rel = self.relationship_overview(connection_state)
+            actions.append({"action": "relationship_overview", "result": rel})
+            return {"success": rel.get("success", False), "actions": actions, "final": rel}
+
         # Optimization benchmark if both candidates present
         if candidate_a and candidate_b:
             # Use optimize_variants for 2-candidate case to avoid duplicate tooling
@@ -657,7 +687,7 @@ class AgentPolicy:
             return {"success": bench.get("success", False), "actions": actions, "final": bench}
 
         # Documentation or model summary intents
-        if any(k in text for k in ["document", "documentation", "docs", "summarize", "overview", "schema", "structure", "model summary", "list tables", "list measures", "relationship"]):
+        if any(k in text for k in ["document", "documentation", "docs", "summarize", "overview", "schema", "structure", "model summary", "list tables", "list measures"]):
             # Prefer a safe summary
             summary = self.summarize_model_safely(connection_state)
             actions.append({"action": "summarize_model", "result": summary})

@@ -35,6 +35,17 @@ class ConnectionState:
         self._is_connected = False
         self._connection_info = None
         self._managers_initialized = False
+        # Rolling query history (lightweight)
+        self._query_history = []
+        self._query_history_max = 200
+        # Agent context memory and safety limits
+        self._context: Dict[str, Any] = {}
+        self._safety_limits: Dict[str, Any] = {
+            'max_rows_per_call': 10000,
+        }
+        # Performance baselines and last result summary
+        self._perf_baselines: Dict[str, Any] = {}
+        self._last_result_meta: Dict[str, Any] = {}
     
     def is_connected(self) -> bool:
         """Check if currently connected to Power BI."""
@@ -81,6 +92,11 @@ class ConnectionState:
             # Initialize query executor first (others depend on it)
             if not self.query_executor or force_reinit:
                 self.query_executor = OptimizedQueryExecutor(conn)
+                # Register history logger to capture executions
+                try:
+                    self.query_executor.set_history_logger(self._history_logger)
+                except Exception:
+                    pass
                 logger.info("✓ Query executor initialized")
             
             # Initialize performance analyzer
@@ -195,6 +211,109 @@ class ConnectionState:
         self._managers_initialized = False
         
         logger.info("Connection state cleaned up")
+
+    # ---- Query history helpers ----
+    def _history_logger(self, entry: dict) -> None:
+        """Internal callback used by query executor to log execution metadata."""
+        try:
+            # Attach timestamp and minimal connection hint
+            import time as _t
+            entry = dict(entry or {})
+            entry.setdefault('ts', _t.time())
+            try:
+                if self.connection_manager:
+                    info = self.connection_manager.get_instance_info() or {}
+                    if 'port' in info:
+                        entry.setdefault('port', info.get('port'))
+            except Exception:
+                pass
+            self._query_history.append(entry)
+            if len(self._query_history) > self._query_history_max:
+                # Trim oldest
+                overflow = len(self._query_history) - self._query_history_max
+                if overflow > 0:
+                    del self._query_history[0:overflow]
+            # Update last result meta for successes
+            try:
+                if entry.get('success'):
+                    keys = ['query', 'final_query', 'top_n', 'row_count', 'execution_time_ms', 'cached', 'columns', 'sample_rows', 'ts']
+                    self._last_result_meta = {k: entry.get(k) for k in keys if k in entry}
+            except Exception:
+                pass
+        except Exception:
+            # Never break execution on history issues
+            pass
+
+    def get_query_history(self, limit: Optional[int] = None) -> list[dict]:
+        """Return newest-first history up to limit (default: all)."""
+        data = list(self._query_history)
+        data.sort(key=lambda x: x.get('ts', 0), reverse=True)
+        if isinstance(limit, int) and limit > 0:
+            return data[:limit]
+        return data
+
+    def clear_query_history(self) -> int:
+        """Clear history and return number of items removed."""
+        n = len(self._query_history)
+        self._query_history.clear()
+        return n
+
+    # ---- Last result summary ----
+    def get_last_result_summary(self) -> Dict[str, Any]:
+        if not self._last_result_meta:
+            return {'success': False, 'error': 'No recent results'}
+        out = dict(self._last_result_meta)
+        out['success'] = True
+        return out
+
+    # ---- Performance baselines ----
+    def set_perf_baseline_record(self, name: str, record: Dict[str, Any]) -> Dict[str, Any]:
+        if not name:
+            return {'success': False, 'error': 'Baseline name required'}
+        self._perf_baselines[name] = dict(record or {})
+        return {'success': True, 'name': name, 'baseline': self._perf_baselines[name]}
+
+    def get_perf_baseline(self, name: str) -> Dict[str, Any]:
+        if name in self._perf_baselines:
+            return {'success': True, 'name': name, 'baseline': dict(self._perf_baselines[name])}
+        return {'success': False, 'error': f'Baseline "{name}" not found'}
+
+    def list_perf_baselines(self) -> Dict[str, Any]:
+        return {'success': True, 'baselines': {k: v for k, v in self._perf_baselines.items()}}
+
+    # ---- Context helpers ----
+    def set_context(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Merge provided key/values into context and return current context."""
+        try:
+            self._context.update(dict(data or {}))
+        except Exception:
+            pass
+        return dict(self._context)
+
+    def get_context(self, keys: Optional[list[str]] = None) -> Dict[str, Any]:
+        """Return full context or only selected keys."""
+        if keys is None:
+            return dict(self._context)
+        out: Dict[str, Any] = {}
+        for k in keys:
+            if k in self._context:
+                out[k] = self._context[k]
+        return out
+
+    # ---- Safety limits ----
+    def set_safety_limits(self, limits: Dict[str, Any]) -> Dict[str, Any]:
+        """Update safety limits; unknown keys ignored. Returns current limits."""
+        allowed = {'max_rows_per_call'}
+        try:
+            for k, v in dict(limits or {}).items():
+                if k in allowed:
+                    self._safety_limits[k] = v
+        except Exception:
+            pass
+        return dict(self._safety_limits)
+
+    def get_safety_limits(self) -> Dict[str, Any]:
+        return dict(self._safety_limits)
     
     def get_status(self) -> Dict[str, Any]:
         """

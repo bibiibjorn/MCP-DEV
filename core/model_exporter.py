@@ -436,9 +436,19 @@ class ModelExporter:
             tables_result = query_executor.execute_info_query("TABLES")
             if tables_result.get('success'):
                 tables = tables_result['rows']
+                # Normalize table names to avoid nulls in clients
+                def _table_name(row: Dict[str, Any]) -> str:
+                    for k in ('Name', 'Table', 'TABLE_NAME', 'TableName'):
+                        v = row.get(k)
+                        if v not in (None, ""):
+                            return str(v)
+                    # As a last resort use ID if present
+                    v = row.get('ID') or row.get('TableID')
+                    return str(v) if v not in (None, "") else "Unknown"
+
                 summary['tables'] = {
                     'count': len(tables),
-                    'list': [{'name': t.get('Name'), 'hidden': t.get('IsHidden', False)}
+                    'list': [{'name': _table_name(t), 'hidden': t.get('IsHidden', False)}
                              for t in tables]
                 }
 
@@ -451,7 +461,7 @@ class ModelExporter:
                     'by_table': {}
                 }
                 for m in measures:
-                    table = m.get('Table', 'Unknown')
+                    table = m.get('Table') or m.get('TableName') or 'Unknown'
                     if table not in summary['measures']['by_table']:
                         summary['measures']['by_table'][table] = 0
                     summary['measures']['by_table'][table] += 1
@@ -466,7 +476,7 @@ class ModelExporter:
                     'by_table': {}
                 }
                 for c in columns:
-                    table = c.get('Table', 'Unknown')
+                    table = c.get('Table') or c.get('TableName') or 'Unknown'
                     if table not in summary['columns']['by_table']:
                         summary['columns']['by_table'][table] = 0
                     summary['columns']['by_table'][table] += 1

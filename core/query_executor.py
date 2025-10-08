@@ -78,6 +78,26 @@ class OptimizedQueryExecutor:
         self._table_cache = None
         self._table_id_by_name: Optional[Dict[str, Any]] = None
         self._table_name_by_id: Optional[Dict[Any, str]] = None
+        # Command timeout (seconds) for ADOMD command execution
+        try:
+            self.command_timeout_seconds = int(config.get('performance.command_timeout_seconds', 60) or 60)
+        except Exception:
+            self.command_timeout_seconds = 60
+        # Optional history logger callback: callable(dict)
+        self._history_logger = None
+        # Cache stats
+        self.cache_hits = 0
+        self.cache_misses = 0
+        self.cache_bypass = 0
+
+    def set_history_logger(self, logger_cb) -> None:
+        """Register a callback to receive execution history events.
+
+        logger_cb will be invoked with a dict containing keys like
+        { 'query': str, 'final_query': str, 'top_n': int, 'success': bool,
+          'row_count': int, 'execution_time_ms': float, 'error': str|None, 'cached': bool }
+        """
+        self._history_logger = logger_cb
 
     def _ensure_table_mappings(self) -> None:
         """Load table ID<->name mappings once for fast lookups."""
@@ -135,119 +155,21 @@ class OptimizedQueryExecutor:
         res['cache'].update({'hit': True, 'age_seconds': round(age, 3)})
         return res
 
-    def _cache_set(self, key: Tuple[str, int], value: Dict[str, Any]) -> None:
-        """Insert item into cache and enforce size limit."""
-        if self.cache_ttl_seconds <= 0:
-            return
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Return cache statistics and configuration."""
         try:
-            cached = dict(value)
-            cached['__cached_at__'] = time.time()
-            # Do not let cache metadata grow
-            self.query_cache[key] = cached
-            self.query_cache.move_to_end(key)
-            if len(self.query_cache) > self.max_cache_items:
-                self.query_cache.popitem(last=False)
-        except Exception:
-            # Never fail user flow because of cache problems
-            pass
-
-    def flush_cache(self) -> Dict[str, Any]:
-        """Clear the in-memory query cache and return stats."""
-        try:
-            size_before = len(self.query_cache)
-            self.query_cache.clear()
             return {
                 'success': True,
-                'cleared_items': size_before,
-                'cache_enabled': self.cache_ttl_seconds > 0
+                'size': len(self.query_cache),
+                'max_items': self.max_cache_items,
+                'ttl_seconds': self.cache_ttl_seconds,
+                'hits': self.cache_hits,
+                'misses': self.cache_misses,
+                'bypassed': self.cache_bypass,
+                'enabled': self.cache_ttl_seconds > 0,
             }
         except Exception as e:
-            logger.error(f"Error flushing cache: {e}")
             return {'success': False, 'error': str(e)}
-
-    def _escape_dax_string(self, text: str) -> str:
-        """Escape single quotes in DAX strings."""
-        return text.replace("'", "''") if text else text
-
-    def _get_info_columns(self, function_name: str) -> List[str]:
-        """
-        Get available columns for INFO functions.
-
-        Args:
-            function_name: Name of INFO function (TABLES, COLUMNS, MEASURES, RELATIONSHIPS)
-
-        Returns:
-            List of column names
-        """
-        # IMPORTANT: INFO.* DMV tables use TableID (not Table) for table references
-        column_map = {
-            'MEASURES': ['Name', 'TableID', 'DataType', 'IsHidden', 'DisplayFolder', 'Expression'],
-            'TABLES': ['Name', 'IsHidden', 'ModifiedTime', 'DataCategory'],
-            'COLUMNS': ['Name', 'TableID', 'DataType', 'IsHidden', 'IsKey', 'Type'],
-            'RELATIONSHIPS': ['FromTable', 'FromColumn', 'ToTable', 'ToColumn', 'IsActive', 'CrossFilterDirection', 'Cardinality']
-        }
-        return column_map.get(function_name, [])
-
-    def _analyze_dax_error(self, error_msg: str, dax_query: str) -> List[str]:
-        """
-        Analyze DAX error and provide helpful suggestions.
-
-        Args:
-            error_msg: Error message from DAX execution
-            dax_query: The DAX query that failed
-
-        Returns:
-            List of suggestion strings
-        """
-        suggestions = []
-        error_lower = error_msg.lower()
-
-        # Table reference issues
-        if "table" in error_lower and ("not found" in error_lower or "doesn't exist" in error_lower):
-            suggestions.extend([
-                "Verify table exists with list_tables",
-                "Check case-sensitive spelling",
-                "Try single quotes: 'TableName'"
-            ])
-
-        # Column reference issues
-        if "column" in error_lower and ("not found" in error_lower or "doesn't exist" in error_lower):
-            suggestions.extend([
-                "Verify column with describe_table",
-                "Check case-sensitive spelling",
-                "Try [Table][Column] syntax"
-            ])
-
-        # Syntax issues
-        if "syntax" in error_lower:
-            suggestions.extend([
-                "Ensure EVALUATE for table expressions",
-                "Check balanced delimiters",
-                "Verify function parameters"
-            ])
-
-        # Function issues
-        if "function" in error_lower:
-            suggestions.extend([
-                "Check function name spelling",
-                "Verify parameter types/count"
-            ])
-
-        # Measure/calculation errors
-        if "error" in error_lower and "measure" in error_lower:
-            suggestions.extend([
-                "Check for circular dependencies",
-                "Test expressions individually"
-            ])
-
-        if not suggestions:
-            suggestions.extend([
-                "Check DAX syntax",
-                "Verify references exist",
-                "Simplify query to isolate issue"
-            ])
-
-        return suggestions
 
     def _get_table_id_from_name(self, table_name: str) -> Optional[int]:
         """
@@ -273,6 +195,81 @@ class OptimizedQueryExecutor:
             return (self._table_name_by_id or {}).get(table_id)
         except Exception:
             return None
+
+    def _cache_set(self, key: Tuple[str, int], value: Dict[str, Any]) -> None:
+        """Insert item into cache and enforce size limit."""
+        if self.cache_ttl_seconds <= 0:
+            return
+        try:
+            cached = dict(value)
+            cached['__cached_at__'] = time.time()
+            self.query_cache[key] = cached
+            self.query_cache.move_to_end(key)
+            if len(self.query_cache) > self.max_cache_items:
+                self.query_cache.popitem(last=False)
+        except Exception:
+            pass
+
+    def flush_cache(self) -> Dict[str, Any]:
+        """Clear the in-memory query cache and return stats."""
+        try:
+            size_before = len(self.query_cache)
+            self.query_cache.clear()
+            return {'success': True, 'cleared_items': size_before, 'cache_enabled': self.cache_ttl_seconds > 0}
+        except Exception as e:
+            logger.error(f"Error flushing cache: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def _escape_dax_string(self, text: str) -> str:
+        return text.replace("'", "''") if text else text
+
+    def _get_info_columns(self, function_name: str) -> List[str]:
+        column_map = {
+            'MEASURES': ['Name', 'TableID', 'DataType', 'IsHidden', 'DisplayFolder', 'Expression'],
+            'TABLES': ['Name', 'IsHidden', 'ModifiedTime', 'DataCategory'],
+            'COLUMNS': ['Name', 'TableID', 'DataType', 'IsHidden', 'IsKey', 'Type'],
+            'RELATIONSHIPS': ['FromTable', 'FromColumn', 'ToTable', 'ToColumn', 'IsActive', 'CrossFilterDirection', 'Cardinality']
+        }
+        return column_map.get(function_name, [])
+
+    def _analyze_dax_error(self, error_msg: str, dax_query: str) -> List[str]:
+        suggestions: List[str] = []
+        error_lower = (error_msg or '').lower()
+        if "table" in error_lower and ("not found" in error_lower or "doesn't exist" in error_lower):
+            suggestions.extend([
+                "Verify table exists with list_tables",
+                "Check case-sensitive spelling",
+                "Try single quotes: 'TableName'"
+            ])
+        if "column" in error_lower and ("not found" in error_lower or "doesn't exist" in error_lower):
+            suggestions.extend([
+                "Verify column with describe_table",
+                "Check case-sensitive spelling",
+                "Try [Table][Column] syntax"
+            ])
+        if "syntax" in error_lower:
+            suggestions.extend([
+                "Ensure EVALUATE for table expressions",
+                "Check balanced delimiters",
+                "Verify function parameters"
+            ])
+        if "function" in error_lower:
+            suggestions.extend([
+                "Check function name spelling",
+                "Verify parameter types/count"
+            ])
+        if "error" in error_lower and "measure" in error_lower:
+            suggestions.extend([
+                "Check for circular dependencies",
+                "Test expressions individually"
+            ])
+        if not suggestions:
+            suggestions.extend([
+                "Check DAX syntax",
+                "Verify references exist",
+                "Simplify query to isolate issue"
+            ])
+        return suggestions
 
     def execute_info_query(self, function_name: str, filter_expr: Optional[str] = None, exclude_columns: Optional[List[str]] = None, table_name: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -467,6 +464,7 @@ class OptimizedQueryExecutor:
         Returns:
             Query result dictionary with success status, data, and metadata
         """
+        original_query = query
         try:
             # Pre-execution syntax validation
             syntax_errors = DaxValidator.validate_query_syntax(query)
@@ -483,7 +481,6 @@ class OptimizedQueryExecutor:
                 }
 
             # Auto-add EVALUATE if needed
-            original_query = query
             if not query.strip().upper().startswith('EVALUATE'):
                 if self._is_table_expression(query):
                     query = f"EVALUATE TOPN({top_n}, {query})" if top_n > 0 else f"EVALUATE {query}"
@@ -495,22 +492,61 @@ class OptimizedQueryExecutor:
             if not bypass_cache:
                 cached = self._cache_get(cache_key)
                 if cached is not None:
+                    # Count hit and emit history event
+                    try:
+                        self.cache_hits += 1
+                    except Exception:
+                        pass
+                    try:
+                        if callable(self._history_logger):
+                            self._history_logger({
+                                'query': original_query,
+                                'final_query': query,
+                                'top_n': int(top_n or 0),
+                                'success': True,
+                                'row_count': cached.get('row_count', 0),
+                                'execution_time_ms': 0,
+                                'cached': True,
+                                'columns': cached.get('columns'),
+                                'sample_rows': cached.get('rows', [])[: min(5, len(cached.get('rows', [])))],
+                            })
+                    except Exception:
+                        pass
                     return cached
+                else:
+                    # Cache miss
+                    try:
+                        self.cache_misses += 1
+                    except Exception:
+                        pass
+            else:
+                try:
+                    self.cache_bypass += 1
+                except Exception:
+                    pass
 
             start_time = time.time()
             cmd = AdomdCommand(query, self.connection)
+            # Apply command timeout if supported
+            try:
+                # Some bindings expose CommandTimeout as property, ensure integer seconds
+                if hasattr(cmd, 'CommandTimeout'):
+                    setattr(cmd, 'CommandTimeout', int(self.command_timeout_seconds))
+            except Exception:
+                # Do not fail execution if setting timeout isn't supported
+                pass
             reader = cmd.ExecuteReader()
 
             # Get columns
             columns = [reader.GetName(i) for i in range(reader.FieldCount)]
-            rows = []
+            rows: List[Dict[str, Any]] = []
 
             # Read rows with proper error handling
             max_rows = 10000  # Safety limit
             row_count = 0
 
             while reader.Read() and row_count < max_rows:
-                row = {}
+                row: Dict[str, Any] = {}
                 for i, col in enumerate(columns):
                     try:
                         val = reader.GetValue(i)
@@ -522,7 +558,7 @@ class OptimizedQueryExecutor:
                             row[col] = str(val)
                     except Exception as col_error:
                         logger.warning(f"Error reading column {col}: {col_error}")
-                        row[col] = f"<read_error>"
+                        row[col] = "<read_error>"
 
                 rows.append(row)
                 row_count += 1
@@ -530,7 +566,7 @@ class OptimizedQueryExecutor:
             reader.Close()
             execution_time = (time.time() - start_time) * 1000
 
-            result = {
+            result: Dict[str, Any] = {
                 'success': True,
                 'columns': columns,
                 'rows': rows,
@@ -546,6 +582,23 @@ class OptimizedQueryExecutor:
                 # Add cache metadata to response
                 result.setdefault('cache', {})
                 result['cache'].update({'hit': False, 'ttl_seconds': self.cache_ttl_seconds})
+            # else: bypassed; stats already counted
+            # Emit history event (trim heavy payload)
+            try:
+                if callable(self._history_logger):
+                    self._history_logger({
+                        'query': original_query,
+                        'final_query': query,
+                        'top_n': int(top_n or 0),
+                        'success': True,
+                        'row_count': result.get('row_count', 0),
+                        'execution_time_ms': result.get('execution_time_ms'),
+                        'cached': False if bypass_cache else bool(result.get('cache', {}).get('hit') is True),
+                        'columns': columns,
+                        'sample_rows': rows[: min(5, len(rows))],
+                    })
+            except Exception:
+                pass
             return result
 
         except Exception as e:
@@ -554,13 +607,29 @@ class OptimizedQueryExecutor:
 
             suggestions = self._analyze_dax_error(error_msg, query)
 
-            return {
+            result: Dict[str, Any] = {
                 'success': False,
                 'error': error_msg,
                 'error_type': 'query_execution_error',
                 'query': query,
                 'suggestions': suggestions
             }
+            # Emit history event for failures
+            try:
+                if callable(self._history_logger):
+                    self._history_logger({
+                        'query': original_query,
+                        'final_query': query,
+                        'top_n': int(top_n or 0),
+                        'success': False,
+                        'row_count': 0,
+                        'execution_time_ms': None,
+                        'error': error_msg,
+                        'cached': False,
+                    })
+            except Exception:
+                pass
+            return result
 
     def execute_with_table_reference_fallback(self, table_name: str, max_rows: int = 10) -> Dict[str, Any]:
         """

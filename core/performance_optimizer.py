@@ -19,6 +19,17 @@ class PerformanceOptimizer:
     def analyze_relationship_cardinality(self) -> Dict[str, Any]:
         """Analyze actual vs configured relationship cardinality."""
         try:
+            def _to_int(v, default=0):
+                try:
+                    if v is None:
+                        return default
+                    if isinstance(v, (int, float)):
+                        return int(v)
+                    s = str(v).replace(',', '').strip()
+                    return int(float(s)) if s else default
+                except Exception:
+                    return default
+
             # Get all relationships
             rels_result = self.executor.execute_info_query("RELATIONSHIPS")
             if not rels_result.get('success'):
@@ -48,10 +59,10 @@ class PerformanceOptimizer:
                     result = self.executor.validate_and_execute_dax(check_query)
                     if result.get('success') and result.get('rows'):
                         row = result['rows'][0]
-                        total = row.get('TotalRows', 0)
-                        unique = row.get('UniqueValues', 0)
+                        total = _to_int(row.get('TotalRows', 0))
+                        unique = _to_int(row.get('UniqueValues', 0))
 
-                        if total != unique and total > 0:
+                        if total > 0 and total != unique:
                             duplicate_count = total - unique
                             issues.append({
                                 'relationship': f"{from_table}[{from_col}] -> {to_table}[{to_col}]",
@@ -90,6 +101,17 @@ class PerformanceOptimizer:
             Cardinality analysis with recommendations
         """
         try:
+            def _to_int(v, default=0):
+                try:
+                    if v is None:
+                        return default
+                    if isinstance(v, (int, float)):
+                        return int(v)
+                    s = str(v).replace(',', '').strip()
+                    return int(float(s)) if s else default
+                except Exception:
+                    return default
+
             # Get columns
             cols_result = self.executor.execute_info_query("COLUMNS", table_name=table)
 
@@ -122,9 +144,9 @@ class PerformanceOptimizer:
                 result = self.executor.validate_and_execute_dax(card_query)
                 if result.get('success') and result.get('rows'):
                     row = result['rows'][0]
-                    row_count = row.get('RowCount', 0)
-                    distinct_count = row.get('DistinctCount', 0)
-                    null_count = row.get('NullCount', 0)
+                    row_count = _to_int(row.get('RowCount', 0))
+                    distinct_count = _to_int(row.get('DistinctCount', 0))
+                    null_count = _to_int(row.get('NullCount', 0))
 
                     # Calculate metrics
                     cardinality_ratio = distinct_count / row_count if row_count > 0 else 0
@@ -189,6 +211,17 @@ class PerformanceOptimizer:
             Encoding analysis with recommendations
         """
         try:
+            def _to_int(v, default=0):
+                try:
+                    if v is None:
+                        return default
+                    if isinstance(v, (int, float)):
+                        return int(v)
+                    s = str(v).replace(',', '').strip()
+                    return int(float(s)) if s else default
+                except Exception:
+                    return default
+
             # Query VertiPaq storage info
             query = f"""
             EVALUATE
@@ -215,8 +248,8 @@ class PerformanceOptimizer:
 
             for row in rows:
                 column = row.get('COLUMN_ID', 'Unknown')
-                data_size = row.get('DICTIONARY_SIZE', 0) or 0
-                cardinality = row.get('DICTIONARY_COUNT', 0) or 0
+                data_size = _to_int(row.get('DICTIONARY_SIZE', 0))
+                cardinality = _to_int(row.get('DICTIONARY_COUNT', 0))
 
                 total_size += data_size
                 total_cardinality += cardinality
