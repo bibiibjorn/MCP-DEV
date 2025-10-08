@@ -59,6 +59,21 @@ except Exception as e:
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("pbixray_v2.3")
 
+# Configure file-based logging so get_recent_logs can read from a stable file
+try:
+    logs_dir = os.path.join(parent_dir, "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    LOG_PATH = os.path.join(logs_dir, "pbixray.log")
+    # Avoid duplicate handlers on reloads
+    if not any(isinstance(h, logging.FileHandler) and getattr(h, 'baseFilename', None) == LOG_PATH for h in logger.handlers):
+        _fh = logging.FileHandler(LOG_PATH, encoding="utf-8")
+        _fh.setLevel(logging.INFO)
+        _fh.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        logger.addHandler(_fh)
+except Exception as _e:
+    # Continue without file logging; get_recent_logs will report absence
+    LOG_PATH = os.path.join(os.path.dirname(__file__), "..", "pbixray.log")
+
 # Track server start time
 start_time = time.time()
 
@@ -169,17 +184,28 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                     result['port'] = str(instance_info.get('port'))
             return result
 
+        def _dax_quote_table(name: str) -> str:
+            """Escape single quotes in table names for DAX and wrap in single quotes."""
+            name = (name or "").replace("'", "''")
+            return f"'{name}'"
+
+        def _dax_quote_column(name: str) -> str:
+            """Escape closing brackets in column names for DAX by doubling.
+            DAX uses [Column] notation; a ']' in the name is represented as ']]'."""
+            name = (name or "").replace("]", "]]")
+            return f"[{name}]"
+
         # Diagnostics: logs
         if name == "get_recent_logs":
             lines = int(arguments.get("lines", 200) or 200)
-            log_path = os.path.join(os.path.dirname(__file__), "..", "pbixray.log")
+            log_path = LOG_PATH
             try:
                 with open(log_path, "r", encoding="utf-8") as f:
                     all_lines = f.readlines()
                 tail = all_lines[-lines:] if lines > 0 else all_lines
                 return [TextContent(type="text", text="".join(tail))]
             except Exception as e:
-                return [TextContent(type="text", text=f"Error reading log: {e}")]
+                return [TextContent(type="text", text=f"No log file available or could not read logs: {e}")]
 
         # Maintenance: flush cache
         if name == "flush_query_cache":
@@ -243,6 +269,12 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             now = time.time()
             system_info = {}
             psutil_note = None
+            # Determine drive letter for current working directory on Windows (e.g., C:)
+            try:
+                cwd = os.getcwd()
+                drive = os.path.splitdrive(cwd)[0] or None
+            except Exception:
+                drive = None
             try:
                 import psutil  # type: ignore
                 process_mem = psutil.Process().memory_info().rss / 1024 / 1024
@@ -252,12 +284,14 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                     'memory_usage_mb': process_mem,
                     'cpu_percent': cpu,
                     'disk_usage_percent': disk,
+                    'disk_drive': drive,
                 }
             except Exception as e:
                 psutil_note = f"psutil unavailable or failed: {e}"
                 system_info = {
                     'psutil_unavailable': True,
                     'note': psutil_note,
+                    'disk_drive': drive,
                 }
 
             health_info = {
@@ -443,10 +477,19 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             table = arguments.get("table")
             result = query_executor.execute_info_query("COLUMNS", table_name=table)
         elif name == "get_column_values":
-            query = f"EVALUATE TOPN({arguments.get('limit', 100)}, VALUES('{arguments['table']}'[{arguments['column']}]))"
+            t = _dax_quote_table(arguments['table'])
+            c = _dax_quote_column(arguments['column'])
+            query = f"EVALUATE TOPN({arguments.get('limit', 100)}, VALUES({t}{c}))"
             result = query_executor.validate_and_execute_dax(query)
         elif name == "get_column_summary":
-            query = f"EVALUATE ROW(\"Min\", MIN('{arguments['table']}'[{arguments['column']}] ), \"Max\", MAX('{arguments['table']}'[{arguments['column']}] ), \"Distinct\", DISTINCTCOUNT('{arguments['table']}'[{arguments['column']}] ), \"Nulls\", COUNTBLANK('{arguments['table']}'[{arguments['column']}] ))"
+            t = _dax_quote_table(arguments['table'])
+            c = _dax_quote_column(arguments['column'])
+            query = (
+                f"EVALUATE ROW(\"Min\", MIN({t}{c}), "
+                f"\"Max\", MAX({t}{c}), "
+                f"\"Distinct\", DISTINCTCOUNT({t}{c}), "
+                f"\"Nulls\", COUNTBLANK({t}{c}))"
+            )
             result = query_executor.validate_and_execute_dax(query)
         elif name == "list_relationships":
             active_only = arguments.get("active_only")
@@ -462,13 +505,14 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 query = f"""
                 EVALUATE
                 VAR Src = INFO.STORAGETABLECOLUMNS()
+                VAR Exact = FILTER(Src, [TABLE_FULL_NAME] = "{table}" || [TABLE_ID] = "{table}")
                 RETURN
                 IF(
-                    COUNTROWS(FILTER(Src, [TABLE_ID] = "{table}")) > 0,
-                    FILTER(Src, [TABLE_ID] = "{table}"),
+                    COUNTROWS(Exact) > 0,
+                    Exact,
                     FILTER(
                         Src,
-                        CONTAINSSTRING([TABLE_ID], "{table}") || (TRY(CONTAINSSTRING([TABLE_FULL_NAME], "{table}")) = TRUE())
+                        CONTAINSSTRING([TABLE_FULL_NAME], "{table}") || CONTAINSSTRING([TABLE_ID], "{table}")
                     )
                 )
                 """
@@ -477,12 +521,12 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             result = query_executor.validate_and_execute_dax(query)
         elif name == "analyze_query_performance":
             if not performance_analyzer:
-                result = {
-                    'success': False,
-                    'error': 'Performance analyzer not initialized',
-                    'error_type': 'analyzer_not_available',
-                    'suggestions': ['Connect to Power BI Desktop first']
-                }
+                # Fallback to basic execution with a clear note
+                basic = query_executor.validate_and_execute_dax(arguments['query'], 0, arguments.get('clear_cache', True))
+                basic.setdefault('notes', []).append('Performance analyzer not initialized; returned basic execution only')
+                basic.setdefault('decision', 'analyze')
+                basic.setdefault('reason', 'Requested performance analysis, but analyzer unavailable; returned basic execution')
+                result = basic
             elif not performance_analyzer.amo_server:
                 warning = {
                     'success': False,

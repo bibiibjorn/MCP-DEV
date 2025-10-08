@@ -57,8 +57,10 @@ Tip: For DMV queries using $SYSTEM.* with SELECTCOLUMNS, wrap the source in TOPN
 
 ## Notes on privacy & security
 
-- All analysis is local and the server binds to 127.0.0.1
-- Claude conversations may be stored by Anthropic; avoid pasting sensitive data
+- All analysis is local. The MCP server communicates with the client over stdio (no TCP port is opened).
+- Connections to Power BI Desktop use the local loopback (localhost/127.0.0.1) to the model's embedded Analysis Services. Nothing is exposed to the network by default.
+- Logs are written to `logs/pbixray.log` for diagnostics (also accessible via the `get_recent_logs` tool).
+- Claude conversations may be stored by Anthropic; avoid pasting sensitive data.
 
 Developer note: IDEs may show warnings for clr imports (pythonnet) until runtime. On Windows with the included lib/dotnet DLLs, these resolve when the server runs.
 
