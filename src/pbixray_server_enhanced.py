@@ -146,6 +146,34 @@ def _dax_quote_column(name: str) -> str:
 
 
 # ----------------------------
+# Standardized notes helpers
+# ----------------------------
+def _add_note(result: Any, note: str) -> Any:
+    try:
+        if isinstance(result, dict):
+            result.setdefault('notes', []).append(note)
+    except Exception:
+        pass
+    return result
+
+
+def _note_truncated(result: Any, limit: int) -> Any:
+    return _add_note(result, f"Result truncated to {limit} rows for safety.")
+
+
+def _note_tom_fallback(result: Any) -> Any:
+    return _add_note(result, "Used TOM fallback (DMV unavailable on this Desktop build).")
+
+
+def _note_client_filter_columns(result: Any, table: str) -> Any:
+    return _add_note(result, f"Used client-side filtering to select rows for table '{table}'.")
+
+
+def _note_client_filter_vertipaq(result: Any, table: str) -> Any:
+    return _add_note(result, f"Used INFO.STORAGETABLECOLUMNS() with client-side filtering for table '{table}' for cross-version compatibility.")
+
+
+# ----------------------------
 # Small handler groups (reduce call_tool complexity)
 # ----------------------------
 def _handle_logs_and_health(name: str, arguments: Any) -> Optional[dict]:
@@ -678,15 +706,21 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
             try:
                 result = qe.list_data_sources_tom(dmv_cap)
                 attempts.append(('TOM', result.get('success')))
+                if result.get('success'):
+                    _note_tom_fallback(result)
             except Exception as _e:
                 result = {'success': False, 'error': str(_e)}
         if result.get('success') and len(result.get('rows', [])) >= dmv_cap:
-            result.setdefault('notes', []).append(f"Result truncated to {dmv_cap} rows for safety.")
+            _note_truncated(result, dmv_cap)
         if not result.get('success'):
             # Graceful empty with note
-            result = {'success': True, 'rows': [], 'row_count': 0, 'notes': [
-                'Data sources DMV not available; TOM fallback also unavailable on this Desktop build.'
-            ], 'attempts': attempts}
+            result = {
+                'success': True,
+                'rows': [],
+                'row_count': 0,
+                'attempts': attempts
+            }
+            _add_note(result, 'Data sources DMV not available; TOM fallback also unavailable on this Desktop build.')
         return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
     if name == "get_m_expressions":
         query = f'''EVALUATE
@@ -703,12 +737,13 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
             try:
                 result = qe.enumerate_m_expressions_tom(dmv_cap)
                 tried_dmv = False
+                if result.get('success'):
+                    _note_tom_fallback(result)
             except Exception as _e:
                 result = {'success': False, 'error': str(_e)}
         if result.get('success') and len(result.get('rows', [])) >= dmv_cap:
-            result.setdefault('notes', []).append(f"Result truncated to {dmv_cap} rows for safety.")
-        if result.get('success') and not tried_dmv:
-            result.setdefault('notes', []).append('DMV blocked; returned TOM-based expressions list.')
+            _note_truncated(result, dmv_cap)
+        # Note: TOM fallback note is standardized above when used
         return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
     if name == "preview_table_data":
         limits = connection_state.get_safety_limits()
@@ -742,7 +777,8 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
             all_cols = qe.execute_info_query("COLUMNS")
             if all_cols.get('success'):
                 rows = [r for r in all_cols.get('rows', []) if str(r.get('Table') or '') == str(table)]
-                result = {'success': True, 'rows': rows, 'row_count': len(rows), 'notes': [f'Client-side filtered for table {table} due to ID lookup issue']}
+                result = {'success': True, 'rows': rows, 'row_count': len(rows)}
+                _note_client_filter_columns(result, str(table))
         return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
     if name == "get_column_values":
         t = _dax_quote_table(arguments['table'])
@@ -787,7 +823,9 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
                         return True
                 return False
             filtered = [r for r in dsp.get('rows', []) if isinstance(r, dict) and match_row(r)]
-            return {'success': True, 'rows': filtered, 'row_count': len(filtered), 'notes': [f'Client-side filtered for table {table}']}
+            res = {'success': True, 'rows': filtered, 'row_count': len(filtered)}
+            _note_client_filter_vertipaq(res, str(table))
+            return res
         return dsp
     if name == "analyze_query_performance":
         if not performance_analyzer:

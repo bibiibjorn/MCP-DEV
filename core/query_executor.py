@@ -806,7 +806,17 @@ class OptimizedQueryExecutor:
 
         except Exception as e:
             error_msg = str(e)
-            logger.error(f"DAX query error: {error_msg}")
+            # Demote expected DMV-probe errors (e.g., $SYSTEM.TMSCHEMA_* or DISCOVER_*) to debug
+            q_upper = (query or "").upper()
+            is_expected_dmv_probe = (
+                "$SYSTEM.TMSCHEMA_" in q_upper
+                or "$SYSTEM.DISCOVER" in q_upper
+                or "DISCOVER_" in q_upper
+            )
+            if is_expected_dmv_probe:
+                logger.debug(f"DMV probe failed (expected on some Desktop builds): {error_msg}")
+            else:
+                logger.error(f"DAX query error: {error_msg}")
 
             suggestions = self._analyze_dax_error(error_msg, query)
 

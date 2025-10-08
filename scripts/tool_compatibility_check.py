@@ -137,6 +137,12 @@ def main():
     meas_table, sample_measure = _get_first_measure()
     col_table, sample_column = _get_first_column(sample_table or meas_table)
 
+    sampling_notes: Dict[str, Any] = {
+        'table_selection': 'preferred in order: d_Date/d_Period/f_FINREP, then first non-hidden, else first table',
+        'measure_selection': 'first non-hidden with table if available, else any',
+        'column_selection': 'for selected table: first non-calculated, else first; if no table then first available pair',
+    }
+
     # Prepare reference TMSL for compare_models: export full TMSL and use its model
     reference_tmsl: Dict[str, Any] | None = None
     try:
@@ -229,6 +235,7 @@ def main():
         'sample_table': sample_table,
         'sample_measure': {'table': meas_table, 'name': sample_measure},
         'sample_column': {'table': col_table, 'name': sample_column},
+        'sampling_notes': sampling_notes,
         'tools': [],
         'summary': {},
     }
