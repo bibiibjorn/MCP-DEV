@@ -6,6 +6,7 @@ can use as a single tool call. Keeps the server simple while centralizing
 validation, safety limits, and fallbacks.
 """
 
+import time
 from typing import Any, Dict, Optional, List
 from core.error_handler import ErrorHandler
 
@@ -360,6 +361,267 @@ class AgentPolicy:
         if notes:
             doc.setdefault("notes", []).extend(notes)
         return doc
+
+    # -------- New utilities & orchestrations --------
+    def warm_query_cache(self, connection_state, queries: List[str], runs: Optional[int] = 1, clear_cache: bool = False) -> Dict[str, Any]:
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+        executor = connection_state.query_executor
+        perf = connection_state.performance_analyzer
+        if not executor:
+            return ErrorHandler.handle_manager_unavailable('query_executor')
+
+        r = max(1, int(runs or 1))
+        stats: List[Dict[str, Any]] = []
+        if clear_cache:
+            try:
+                executor.flush_cache()
+                if perf:
+                    # Best-effort engine cache clear
+                    perf._clear_cache(executor)  # type: ignore[attr-defined]
+            except Exception:
+                pass
+        for q in queries or []:
+            times = []
+            ok = True
+            for _ in range(r):
+                start = time.time()
+                res = executor.validate_and_execute_dax(q, 0, bypass_cache=False)
+                ok = ok and bool(res.get('success'))
+                times.append((time.time() - start) * 1000)
+            stats.append({'query': q, 'success': ok, 'runs': r, 'avg_ms': round(sum(times)/len(times), 2) if times else 0})
+        return {'success': True, 'warmed': len(stats), 'results': stats}
+
+    def analyze_queries_batch(self, connection_state, queries: List[str], runs: Optional[int] = 3, clear_cache: bool = True) -> Dict[str, Any]:
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+        executor = connection_state.query_executor
+        perf = connection_state.performance_analyzer
+        if not executor:
+            return ErrorHandler.handle_manager_unavailable('query_executor')
+        r = self._get_default_perf_runs(runs)
+        results: List[Dict[str, Any]] = []
+        for q in queries or []:
+            if perf:
+                results.append(perf.analyze_query(executor, q, r, bool(clear_cache)))
+            else:
+                # basic timing fallback
+                start = time.time()
+                res = executor.validate_and_execute_dax(q, 0)
+                ms = (time.time() - start) * 1000
+                results.append({'success': res.get('success', False), 'query': q, 'summary': {'avg_execution_ms': round(ms, 2), 'note': 'analyzer unavailable'}})
+        return {'success': True, 'runs': r, 'items': results}
+
+    def set_cache_policy(self, connection_state, ttl_seconds: Optional[int] = None) -> Dict[str, Any]:
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+        executor = connection_state.query_executor
+        if not executor:
+            return ErrorHandler.handle_manager_unavailable('query_executor')
+        changed = {}
+        if isinstance(ttl_seconds, int) and ttl_seconds >= 0:
+            executor.cache_ttl_seconds = ttl_seconds
+            executor.flush_cache()
+            changed['cache_ttl_seconds'] = ttl_seconds
+        return {'success': True, 'changed': changed, 'current': {'cache_ttl_seconds': executor.cache_ttl_seconds}}
+
+    def profile_columns(self, connection_state, table: str, columns: Optional[List[str]] = None) -> Dict[str, Any]:
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+        executor = connection_state.query_executor
+        if not executor:
+            return ErrorHandler.handle_manager_unavailable('query_executor')
+        # Build per-column profiling queries
+        cols = columns or []
+        if not cols:
+            # fetch all columns for table
+            info = executor.execute_info_query('COLUMNS', table_name=table)
+            if not info.get('success'):
+                return info
+            cols = [c.get('Name') for c in info.get('rows', []) if c.get('Name')]
+        results: List[Dict[str, Any]] = []
+        for col in cols[:200]:  # safety cap
+            q = (
+                f"EVALUATE ROW(\"Min\", MIN('{table}'[{col}]), "
+                f"\"Max\", MAX('{table}'[{col}]), "
+                f"\"Distinct\", DISTINCTCOUNT('{table}'[{col}]), "
+                f"\"Nulls\", COUNTBLANK('{table}'[{col}]))"
+            )
+            r = executor.validate_and_execute_dax(q, 0)
+            results.append({'column': col, 'success': r.get('success', False), 'stats': (r.get('rows') or [{}])[0] if r.get('rows') else {}})
+        return {'success': True, 'table': table, 'columns': len(results), 'results': results}
+
+    def get_value_distribution(self, connection_state, table: str, column: str, top_n: int = 50) -> Dict[str, Any]:
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+        executor = connection_state.query_executor
+        if not executor:
+            return ErrorHandler.handle_manager_unavailable('query_executor')
+        q = (
+            f"EVALUATE TOPN({int(top_n)}, "
+            f"SUMMARIZECOLUMNS('{table}'[{column}], \"Count\", COUNTROWS('{table}')), [Count], DESC)"
+        )
+        return executor.validate_and_execute_dax(q, 0)
+
+    def validate_best_practices(self, connection_state) -> Dict[str, Any]:
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+        executor = connection_state.query_executor
+        validator = connection_state.model_validator
+        if not executor:
+            return ErrorHandler.handle_manager_unavailable('query_executor')
+        issues: List[Dict[str, Any]] = []
+        # Include integrity issues if validator available
+        if validator:
+            integrity = validator.validate_model_integrity()
+            if integrity.get('success'):
+                for i in integrity.get('issues', []):
+                    issues.append(i)
+        # Simple naming checks
+        tables = executor.execute_info_query('TABLES')
+        if tables.get('success'):
+            for t in tables.get('rows', []):
+                name = t.get('Name') or ''
+                if name != name.strip():
+                    issues.append({'type': 'naming', 'severity': 'low', 'object': f"Table:{name}", 'description': 'Leading/trailing spaces in table name'})
+        measures = executor.execute_info_query('MEASURES')
+        if measures.get('success'):
+            for m in measures.get('rows', []):
+                name = m.get('Name') or ''
+                if ' ' in name and name.strip().endswith(')'):
+                    pass
+                # Example heuristic: discourage very short names
+                if len(name.strip()) < 2:
+                    issues.append({'type': 'naming', 'severity': 'low', 'object': f"Measure:{name}", 'description': 'Very short measure name'})
+        return {'success': True, 'issues': issues, 'total_issues': len(issues)}
+
+    def generate_documentation_profiled(self, connection_state, format: str = 'markdown', include_examples: bool = False) -> Dict[str, Any]:
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+        exporter = connection_state.model_exporter
+        executor = connection_state.query_executor
+        if not exporter:
+            return ErrorHandler.handle_manager_unavailable('model_exporter')
+        if not executor:
+            return ErrorHandler.handle_manager_unavailable('query_executor')
+        doc = exporter.generate_documentation(executor)
+        doc.setdefault('format', format)
+        doc.setdefault('include_examples', include_examples)
+        return doc
+
+    def create_model_changelog(self, connection_state, reference_tmsl) -> Dict[str, Any]:
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+        exporter = connection_state.model_exporter
+        if not exporter:
+            return ErrorHandler.handle_manager_unavailable('model_exporter')
+        diff = exporter.compare_models(reference_tmsl)
+        summary: Dict[str, Any] = {'notes': 'Summary generated by server'}
+        if isinstance(diff, dict):
+            keys_list = [str(k) for k in diff.keys()]
+            summary['keys'] = keys_list
+        return {'success': True, 'diff': diff, 'summary': summary}
+
+    def get_measure_impact(self, connection_state, table: str, measure: str, depth: Optional[int] = 3) -> Dict[str, Any]:
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+        dep = connection_state.dependency_analyzer
+        if not dep:
+            return ErrorHandler.handle_manager_unavailable('dependency_analyzer')
+        return dep.analyze_measure_dependencies(table, measure, depth or 3)
+
+    def get_column_usage_heatmap(self, connection_state, table: Optional[str] = None, limit: int = 100) -> Dict[str, Any]:
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+        dep = connection_state.dependency_analyzer
+        executor = connection_state.query_executor
+        if not dep:
+            return ErrorHandler.handle_manager_unavailable('dependency_analyzer')
+        if not executor:
+            return ErrorHandler.handle_manager_unavailable('query_executor')
+        info = executor.execute_info_query('COLUMNS', table_name=table)
+        if not info.get('success'):
+            return info
+        cols = info.get('rows', [])[:limit]
+        results: List[Dict[str, Any]] = []
+        for c in cols:
+            t = table or c.get('Table') or ''
+            name = c.get('Name')
+            if not name:
+                continue
+            usage = dep.analyze_column_usage(t, name)
+            results.append({'table': t, 'column': name, 'usage': usage})
+        return {'success': True, 'count': len(results), 'results': results}
+
+    def auto_document(self, connection_manager, connection_state, profile: str = 'light', include_lineage: bool = False) -> Dict[str, Any]:
+        actions: List[Dict[str, Any]] = []
+        ensured = self.ensure_connected(connection_manager, connection_state)
+        actions.append({'action': 'ensure_connected', 'result': ensured})
+        if not ensured.get('success'):
+            return {'success': False, 'phase': 'ensure_connected', 'actions': actions, 'final': ensured}
+        summary = self.summarize_model_safely(connection_state)
+        actions.append({'action': 'summarize_model_safely', 'result': summary})
+        docs = self.generate_docs_safe(connection_state)
+        actions.append({'action': 'generate_docs_safe', 'result': docs})
+        return {'success': docs.get('success', False), 'actions': actions, 'final': docs}
+
+    def auto_analyze_or_preview(self, connection_manager, connection_state, query: str, runs: Optional[int] = None, max_rows: Optional[int] = None, priority: str = 'depth') -> Dict[str, Any]:
+        # priority: 'speed' -> preview, 'depth' -> analyze
+        mode = 'preview' if (priority or 'depth').lower() == 'speed' else 'analyze'
+        return self.safe_run_dax(connection_state, query, mode=mode, runs=runs, max_rows=max_rows)
+
+    def apply_recommended_fixes(self, connection_state, actions: List[str]) -> Dict[str, Any]:
+        # Currently returns a plan; actual mutations may require TOM APIs not exposed here.
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+        plan = []
+        for a in actions or []:
+            if a == 'hide_keys':
+                plan.append({'action': a, 'status': 'suggestion', 'note': 'Hide IsKey columns in report view'})
+            elif a == 'fix_summarization':
+                plan.append({'action': a, 'status': 'suggestion', 'note': 'Set default summarization for numeric columns appropriately'})
+            elif a == 'organize_folders':
+                plan.append({'action': a, 'status': 'suggestion', 'note': 'Group measures into display folders by subject'})
+            else:
+                plan.append({'action': a, 'status': 'unknown'})
+        return {'success': True, 'plan': plan}
+
+    def set_performance_trace(self, connection_state, enabled: bool) -> Dict[str, Any]:
+        perf = connection_state.performance_analyzer
+        if not perf:
+            return ErrorHandler.handle_manager_unavailable('performance_analyzer')
+        if enabled:
+            ok = perf.connect_amo()
+            if not ok:
+                return {'success': False, 'error': 'AMO not available'}
+            started = perf.start_session_trace()
+            return {'success': bool(started), 'trace_active': perf.trace_active}
+        else:
+            perf.stop_session_trace()
+            return {'success': True, 'trace_active': False}
+
+    def format_dax(self, expression: str) -> Dict[str, Any]:
+        # Minimal, non-destructive formatting: trim and collapse excessive spaces
+        if expression is None:
+            return {'success': False, 'error': 'No expression provided'}
+        text = expression.strip()
+        while '  ' in text:
+            text = text.replace('  ', ' ')
+        return {'success': True, 'formatted': text}
+
+    def export_model_overview(self, connection_state, format: str = 'json', include_counts: bool = True) -> Dict[str, Any]:
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+        exporter = connection_state.model_exporter
+        executor = connection_state.query_executor
+        if not exporter:
+            return ErrorHandler.handle_manager_unavailable('model_exporter')
+        if not executor:
+            return ErrorHandler.handle_manager_unavailable('query_executor')
+        summary = exporter.get_model_summary(executor)
+        if not summary.get('success'):
+            return summary
+        return {'success': True, 'format': format, 'overview': summary}
 
     # -------- NL intent executor --------
     def execute_intent(

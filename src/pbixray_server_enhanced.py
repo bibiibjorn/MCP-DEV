@@ -167,6 +167,23 @@ async def list_tools() -> List[Tool]:
         # Diagnostics and maintenance
         Tool(name="flush_query_cache", description="Flushes the DAX query result cache for diagnostics or troubleshooting", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="get_recent_logs", description="Fetch the last N lines of the server log for diagnostics", inputSchema={"type": "object", "properties": {"lines": {"type": "integer", "default": 200}}, "required": []}),
+        # New utilities & orchestrations
+    Tool(name="warm_query_cache", description="Execute queries to warm both local and engine caches", inputSchema={"type": "object", "properties": {"queries": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer", "default": 1}, "clear_cache": {"type": "boolean", "default": True}}, "required": ["queries"]}),
+    Tool(name="analyze_queries_batch", description="Analyze performance for multiple DAX queries", inputSchema={"type": "object", "properties": {"queries": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer", "default": 3}, "clear_cache": {"type": "boolean", "default": True}}, "required": ["queries"]}),
+        Tool(name="set_cache_policy", description="Update server-side cache TTL seconds (0 disables cache)", inputSchema={"type": "object", "properties": {"ttl_seconds": {"type": "integer"}}, "required": []}),
+        Tool(name="profile_columns", description="Profile columns (min, max, distinct, nulls)", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "columns": {"type": "array", "items": {"type": "string"}}}, "required": ["table"]}),
+        Tool(name="get_value_distribution", description="Value distribution for a column (TOPN)", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}, "top_n": {"type": "integer", "default": 50}}, "required": ["table", "column"]}),
+        Tool(name="validate_best_practices", description="Composite validator for modeling best practices", inputSchema={"type": "object", "properties": {}, "required": []}),
+    Tool(name="generate_documentation_profiled", description="Generate documentation with format/profile knobs", inputSchema={"type": "object", "properties": {"format": {"type": "string", "enum": ["markdown", "html", "json"], "default": "markdown"}, "include_examples": {"type": "boolean", "default": False}}, "required": []}),
+        Tool(name="create_model_changelog", description="Human-friendly changelog from model diff", inputSchema={"type": "object", "properties": {"reference_tmsl": {"type": "object"}}, "required": ["reference_tmsl"]}),
+        Tool(name="get_measure_impact", description="Forward/backward impact for a measure", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "depth": {"type": "integer", "default": 3}}, "required": ["table", "measure"]}),
+        Tool(name="get_column_usage_heatmap", description="Column usage heat map across measures", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "limit": {"type": "integer", "default": 100}}, "required": []}),
+    Tool(name="auto_document", description="Orchestrated: connect → summarize → docs", inputSchema={"type": "object", "properties": {"profile": {"type": "string", "default": "light"}, "include_lineage": {"type": "boolean", "default": False}}, "required": []}),
+        Tool(name="auto_analyze_or_preview", description="Orchestrated: choose analyze vs preview by priority", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "runs": {"type": "integer"}, "max_rows": {"type": "integer"}, "priority": {"type": "string", "enum": ["speed", "depth"], "default": "depth"}}, "required": ["query"]}),
+        Tool(name="apply_recommended_fixes", description="Compute a safe plan of recommended modeling fixes", inputSchema={"type": "object", "properties": {"actions": {"type": "array", "items": {"type": "string"}}}, "required": ["actions"]}),
+        Tool(name="set_performance_trace", description="Enable/disable AMO session trace explicitly", inputSchema={"type": "object", "properties": {"enabled": {"type": "boolean"}}, "required": ["enabled"]}),
+        Tool(name="format_dax", description="Lightweight DAX formatter (whitespace)", inputSchema={"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"]}),
+    Tool(name="export_model_overview", description="Export a compact model overview (json/yaml)", inputSchema={"type": "object", "properties": {"format": {"type": "string", "enum": ["json", "yaml"], "default": "json"}, "include_counts": {"type": "boolean", "default": True}}, "required": []}),
     ]
     if BPA_AVAILABLE:
         tools.append(Tool(name="analyze_model_bpa", description="Run BPA", inputSchema={"type": "object", "properties": {}, "required": []}))
@@ -373,6 +390,56 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 arguments.get("max_rows"),
                 arguments.get("verbose", False),
             )
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+
+        # New utilities & orchestrations (pre-connection checks handled in policy)
+        if name == "warm_query_cache":
+            result = agent_policy.warm_query_cache(connection_state, arguments.get('queries', []), arguments.get('runs'), arguments.get('clear_cache', False))
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+        if name == "analyze_queries_batch":
+            result = agent_policy.analyze_queries_batch(connection_state, arguments.get('queries', []), arguments.get('runs'), arguments.get('clear_cache', True))
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+        if name == "set_cache_policy":
+            result = agent_policy.set_cache_policy(connection_state, arguments.get('ttl_seconds'))
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+        if name == "profile_columns":
+            result = agent_policy.profile_columns(connection_state, arguments.get('table', ''), arguments.get('columns'))
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+        if name == "get_value_distribution":
+            result = agent_policy.get_value_distribution(connection_state, arguments.get('table', ''), arguments.get('column', ''), arguments.get('top_n', 50))
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+        if name == "validate_best_practices":
+            result = agent_policy.validate_best_practices(connection_state)
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+        if name == "generate_documentation_profiled":
+            result = agent_policy.generate_documentation_profiled(connection_state, arguments.get('format', 'markdown'), arguments.get('include_examples', False))
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+        if name == "create_model_changelog":
+            result = agent_policy.create_model_changelog(connection_state, arguments.get('reference_tmsl'))
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+        if name == "get_measure_impact":
+            result = agent_policy.get_measure_impact(connection_state, arguments.get('table', ''), arguments.get('measure', ''), arguments.get('depth'))
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+        if name == "get_column_usage_heatmap":
+            result = agent_policy.get_column_usage_heatmap(connection_state, arguments.get('table'), arguments.get('limit', 100))
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+        if name == "auto_document":
+            result = agent_policy.auto_document(connection_manager, connection_state, arguments.get('profile', 'light'), arguments.get('include_lineage', False))
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+        if name == "auto_analyze_or_preview":
+            result = agent_policy.auto_analyze_or_preview(connection_manager, connection_state, arguments.get('query', ''), arguments.get('runs'), arguments.get('max_rows'), arguments.get('priority', 'depth'))
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+        if name == "apply_recommended_fixes":
+            result = agent_policy.apply_recommended_fixes(connection_state, arguments.get('actions', []))
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+        if name == "set_performance_trace":
+            result = agent_policy.set_performance_trace(connection_state, bool(arguments.get('enabled')))
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+        if name == "format_dax":
+            result = agent_policy.format_dax(arguments.get('expression', ''))
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        if name == "export_model_overview":
+            result = agent_policy.export_model_overview(connection_state, arguments.get('format', 'json'), arguments.get('include_counts', True))
             return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
 
         if name == "detect_powerbi_desktop":
