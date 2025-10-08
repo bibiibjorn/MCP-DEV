@@ -34,6 +34,7 @@ logger = logging.getLogger("pbixray_full_analysis")
 from core.connection_manager import ConnectionManager
 from core.connection_state import connection_state
 from core.config_manager import config
+from core.model_narrative import generate_narrative
 
 
 def clamp_list(obj: Dict[str, Any], key: str, max_items: int, note: str):
@@ -90,6 +91,10 @@ def run_full_analysis(depth: str, include_bpa: bool, relationships_max: int, iss
 
     # FAST profile: return early with just summary + relationships
     if (profile or 'balanced').lower() == 'fast':
+        try:
+            sections['narrative'] = generate_narrative(sections.get('summary') or {}, sections.get('relationships') or {})
+        except Exception:
+            pass
         return {
             'success': True,
             'depth': 'light',
@@ -186,7 +191,7 @@ def run_full_analysis(depth: str, include_bpa: bool, relationships_max: int, iss
         'include_bpa': include_bpa,
         'generated_at': time.time(),
         'timings_ms': timings,
-        'sections': sections,
+        'sections': {**sections, 'narrative': generate_narrative(sections.get('summary') or {}, sections.get('relationships') or {})},
         'instance': cm.get_instance_info(),
     }
 

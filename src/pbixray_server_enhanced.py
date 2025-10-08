@@ -35,6 +35,7 @@ from core.rls_manager import RLSManager
 from core.model_exporter import ModelExporter
 from core.performance_optimizer import PerformanceOptimizer
 from core.model_validator import ModelValidator
+from core.model_narrative import generate_narrative
 
 from core.error_handler import ErrorHandler
 from core.agent_policy import AgentPolicy
@@ -1212,6 +1213,11 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
 
             # FAST profile: only summary + relationships for speed
             if profile == 'fast':
+                # Narrative based on summary + relationships
+                try:
+                    sections['narrative'] = generate_narrative(sections.get('summary') or {}, sections.get('relationships') or {})
+                except Exception:
+                    pass
                 result = {
                     'success': True,
                     'depth': 'light',
@@ -1298,6 +1304,12 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 t0 = time.time()
                 sections['relationship_cardinality'] = performance_optimizer.analyze_relationship_cardinality()
                 timings['relationship_cardinality_ms'] = round((time.time() - t0) * 1000, 2)
+
+            # Attach narrative last (uses summary + relationships)
+            try:
+                sections['narrative'] = generate_narrative(sections.get('summary') or {}, sections.get('relationships') or {})
+            except Exception:
+                pass
 
             result = {
                 'success': True,

@@ -441,19 +441,53 @@ class ModelExporter:
             }
             tables_by_name: Dict[str, Any] = {}
 
+            # Helpers to read DMV rows with flexible key names (supports [Name] etc.)
+            def _get_any(row: Dict[str, Any], keys: list[str]) -> Any:
+                for k in keys:
+                    if k in row and row[k] not in (None, ""):
+                        return row[k]
+                    bk = f"[{k}]"
+                    if bk in row and row[bk] not in (None, ""):
+                        return row[bk]
+                return None
+
+            def _to_bool(v: Any) -> bool:
+                if isinstance(v, bool):
+                    return v
+                s = str(v).strip().lower()
+                return s in ("true", "1", "yes")
+
+            def _safe_get(mapping: Dict[int, Any], key: int | None, default: Any = None) -> Any:
+                try:
+                    if key is None:
+                        return default
+                    return mapping.get(int(key), default)
+                except Exception:
+                    return default
+
             # Get tables with row counts
             tables_result = query_executor.execute_info_query("TABLES")
-            if tables_result.get('success'):
-                tables = tables_result['rows']
+            tables = tables_result['rows'] if tables_result.get('success') else []
+            # ID and name maps for joins
+            tables_by_id: Dict[int, str] = {}
+            def _get_id(row: Dict[str, Any], keys: list[str]) -> int | None:
+                v = _get_any(row, keys)
+                try:
+                    if v is None:
+                        return None
+                    return int(str(v))
+                except Exception:
+                    return None
+
+            if tables:
                 top_counts['tables'] = len(tables)
                 # Normalize table names to avoid nulls in clients
                 def _table_name(row: Dict[str, Any]) -> str:
-                    for k in ('Name', 'Table', 'TABLE_NAME', 'TableName'):
-                        v = row.get(k)
-                        if v not in (None, ""):
-                            return str(v)
+                    v = _get_any(row, ['Name', 'Table', 'TABLE_NAME', 'TableName'])
+                    if v not in (None, ""):
+                        return str(v)
                     # As a last resort use ID if present
-                    v = row.get('ID') or row.get('TableID')
+                    v = _get_any(row, ['ID', 'TableID'])
                     return str(v) if v not in (None, "") else "Unknown"
 
                 table_list = [{'name': _table_name(t), 'hidden': t.get('IsHidden', False)} for t in tables]
@@ -467,6 +501,12 @@ class ModelExporter:
                         'columns': 0,
                         'measures': 0,
                     }
+                # Build tables_by_id for joins
+                for tr in tables:
+                    tid = _get_id(tr, ['ID', 'TableID'])
+                    nm = _table_name(tr)
+                    if tid is not None and nm:
+                        tables_by_id[tid] = nm
 
             # Get measures
             measures_result = query_executor.execute_info_query("MEASURES")
@@ -478,7 +518,13 @@ class ModelExporter:
                     'by_table': {}
                 }
                 for m in measures:
-                    table = m.get('Table') or m.get('TableName') or 'Unknown'
+                    table = _get_any(m, ['Table', 'TableName'])
+                    if not table:
+                        # Try joining by TableID
+                        mid = _get_id(m, ['TableID'])
+                        if mid is not None and mid in tables_by_id:
+                            table = tables_by_id[mid]
+                    table = table or 'Unknown'
                     if table not in summary['measures']['by_table']:
                         summary['measures']['by_table'][table] = 0
                     summary['measures']['by_table'][table] += 1
@@ -489,19 +535,33 @@ class ModelExporter:
 
             # Get columns
             columns_result = query_executor.execute_info_query("COLUMNS")
+            columns_by_id: Dict[int, Dict[str, Any]] = {}
             if columns_result.get('success'):
                 columns = columns_result['rows']
                 top_counts['columns'] = len(columns)
                 summary['columns'] = {
                     'count': len(columns),
-                    'calculated': len([c for c in columns if c.get('Type') == 'Calculated']),
+                    'calculated': len([c for c in columns if str(_get_any(c, ['Type'])).lower() == 'calculated']),
                     'by_table': {}
                 }
                 for c in columns:
-                    table = c.get('Table') or c.get('TableName') or 'Unknown'
+                    table = _get_any(c, ['Table', 'TableName'])
+                    if not table:
+                        # Join via TableID
+                        cid_tid = _get_id(c, ['TableID'])
+                        if cid_tid is not None and cid_tid in tables_by_id:
+                            table = tables_by_id[cid_tid]
+                    table = table or 'Unknown'
                     if table not in summary['columns']['by_table']:
                         summary['columns']['by_table'][table] = 0
                     summary['columns']['by_table'][table] += 1
+                    # Build columns_by_id for relationship endpoint names
+                    col_id = _get_id(c, ['ID', 'ColumnID'])
+                    if col_id is not None and col_id not in columns_by_id:
+                        columns_by_id[col_id] = {
+                            'name': str(_get_any(c, ['Name']) or ''),
+                            'table': table
+                        }
                 # Populate per-table columns count
                 for tbl, cnt in summary['columns']['by_table'].items():
                     tables_by_name.setdefault(tbl, {'hidden': False, 'columns': 0, 'measures': 0})
@@ -512,12 +572,26 @@ class ModelExporter:
             if rels_result.get('success'):
                 rels = rels_result['rows']
                 top_counts['relationships'] = len(rels)
+                rel_list = []
+                active_count = 0
+                for r in rels:
+                    is_active = _to_bool(_get_any(r, ['IsActive']))
+                    if is_active:
+                        active_count += 1
+                    ftid = _get_id(r, ['FromTableID'])
+                    fcid = _get_id(r, ['FromColumnID'])
+                    ttid = _get_id(r, ['ToTableID'])
+                    tcid = _get_id(r, ['ToColumnID'])
+                    ft = _safe_get(tables_by_id, ftid, _get_any(r, ['FromTable']) or '?')
+                    tt = _safe_get(tables_by_id, ttid, _get_any(r, ['ToTable']) or '?')
+                    fc = (_safe_get(columns_by_id, fcid, {}) or {}).get('name') or _get_any(r, ['FromColumn']) or '?'
+                    tc = (_safe_get(columns_by_id, tcid, {}) or {}).get('name') or _get_any(r, ['ToColumn']) or '?'
+                    rel_list.append(f"{ft}[{fc}] -> {tt}[{tc}]")
                 summary['relationships'] = {
                     'count': len(rels),
-                    'active': len([r for r in rels if r.get('IsActive')]),
-                    'inactive': len([r for r in rels if not r.get('IsActive')]),
-                    'list': [f"{r.get('FromTable')}[{r.get('FromColumn')}] -> {r.get('ToTable')}[{r.get('ToColumn')}]"
-                             for r in rels]
+                    'active': active_count,
+                    'inactive': max(0, len(rels) - active_count),
+                    'list': rel_list
                 }
 
             # Attach top-level counts and a convenience map by table name
