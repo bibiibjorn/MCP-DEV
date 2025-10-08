@@ -115,9 +115,13 @@ class AgentPolicy:
                 basic = query_executor.validate_and_execute_dax(query, 0)
                 basic.setdefault("notes", []).append("Performance analyzer unavailable; returned basic execution only")
                 basic["success"] = basic.get("success", False)
+                basic.setdefault("decision", "analyze")
+                basic.setdefault("reason", "Requested performance analysis, but analyzer unavailable; returned basic execution")
                 return basic
 
             result = performance_analyzer.analyze_query(query_executor, query, r, True)
+            result.setdefault("decision", "analyze")
+            result.setdefault("reason", "Performance analysis selected to obtain FE/SE breakdown and average timings")
             return result
 
         # Preview/standard execution path with safe TOPN
@@ -134,6 +138,11 @@ class AgentPolicy:
         exec_result = query_executor.validate_and_execute_dax(query, lim)
         if verbose and notes:
             exec_result.setdefault("notes", []).extend(notes)
+        exec_result.setdefault("decision", "preview")
+        exec_result.setdefault("reason", "Fast preview chosen to minimize latency and limit rows safely with TOPN")
+        if verbose:
+            # Attach lightweight analysis/suggestions for best practices visibility
+            exec_result.setdefault("analysis", analysis)
         return exec_result
 
     def summarize_model_safely(self, connection_state) -> Dict[str, Any]:
@@ -234,10 +243,9 @@ class AgentPolicy:
             # Prefer average total time when available
             avg_total = None
             if res.get("success"):
-                avg_total = (
-                    res.get("metrics", {}).get("avg_total_ms")
-                    or res.get("summary", {}).get("avg_total_ms")
-                )
+                # Standard path in EnhancedAMOTraceAnalyzer
+                summary = res.get("summary") or {}
+                avg_total = summary.get("avg_execution_ms")
             return {
                 "success": bool(res.get("success")),
                 "execution_time_ms": avg_total or 0,
@@ -255,7 +263,94 @@ class AgentPolicy:
             "candidate_a": a,
             "candidate_b": b,
             "winner": winner,
+            "decision": "optimize_query",
+            "reason": f"Chose candidate {winner} based on the lower average execution time"
         }
+
+    def optimize_variants(
+        self,
+        connection_state,
+        candidates: List[str],
+        runs: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Benchmark N DAX variants and return the fastest.
+
+        Returns per-variant timings and a winner with minimal avg_execution_ms.
+        """
+        if not connection_state.is_connected():
+            return {"success": False, "error": "Not connected", "error_type": "not_connected"}
+        if not candidates or len([c for c in candidates if (c or "").strip()]) < 2:
+            return {"success": False, "error": "Provide at least two non-empty candidates", "error_type": "invalid_input"}
+
+        query_executor = connection_state.query_executor
+        perf = connection_state.performance_analyzer
+        r = self._get_default_perf_runs(runs)
+
+        def run_bench(q: str) -> Dict[str, Any]:
+            q = q or ""
+            if perf:
+                res = perf.analyze_query(query_executor, q, r, True)
+                summary = res.get("summary") or {}
+                avg_ms = summary.get("avg_execution_ms") or 0
+                return {"success": bool(res.get("success")), "execution_time_ms": avg_ms, "raw": res}
+            else:
+                res = query_executor.validate_and_execute_dax(q, 0)
+                return {"success": bool(res.get("success")), "execution_time_ms": res.get("execution_time_ms", 0), "raw": res}
+
+        results: List[Dict[str, Any]] = []
+        for idx, cand in enumerate(candidates):
+            results.append({"candidate": idx, **run_bench(cand)})
+
+        # Choose the minimal positive time; if all zero/False, mark no_winner
+        valid = [r for r in results if r.get("success") and r.get("execution_time_ms", 0) >= 0]
+        if not valid:
+            return {"success": False, "error": "All candidates failed", "results": results}
+        winner = min(valid, key=lambda r: r.get("execution_time_ms", float("inf")))
+        return {"success": True, "runs": r, "results": results, "winner": winner, "decision": "optimize_variants", "reason": "Selected variant with minimum average execution time across runs"}
+
+    def decide_and_run(
+        self,
+        connection_manager,
+        connection_state,
+        goal: str,
+        query: Optional[str] = None,
+        candidates: Optional[List[str]] = None,
+        runs: Optional[int] = None,
+        max_rows: Optional[int] = None,
+        verbose: bool = False,
+    ) -> Dict[str, Any]:
+        """Performance-first decision orchestrator.
+
+        - Ensures connection
+        - If multiple candidates → benchmark and return the winner
+        - Else if goal mentions performance → analyze query
+        - Else → fast preview with safe TOPN
+        """
+        actions: List[Dict[str, Any]] = []
+        ensured = self.ensure_connected(connection_manager, connection_state)
+        actions.append({"action": "ensure_connected", "result": ensured})
+        if not ensured.get("success"):
+            return {"success": False, "phase": "ensure_connected", "actions": actions, "final": ensured}
+
+        text = (goal or "").lower()
+        nonempty_candidates = [c for c in (candidates or []) if (c or "").strip()]
+
+        if len(nonempty_candidates) >= 2:
+            bench = self.optimize_variants(connection_state, nonempty_candidates, runs)
+            actions.append({"action": "optimize_variants", "result": bench})
+            return {"success": bench.get("success", False), "decision": "optimize_variants", "reason": "Multiple candidates provided; benchmarking to pick the fastest", "actions": actions, "final": bench}
+
+        if any(k in text for k in ["analyze", "performance", "perf", "se/fe", "storage engine", "formula engine"]):
+            if not query:
+                return {"success": False, "error": "No query provided for performance analysis", "phase": "input_validation", "actions": actions}
+            res = self.safe_run_dax(connection_state, query, mode="analyze", runs=runs, max_rows=max_rows, verbose=verbose)
+            actions.append({"action": "safe_run_dax(analyze)", "result": res})
+            return {"success": res.get("success", False), "decision": "analyze", "reason": "Goal indicates performance focus; running analyzer for FE/SE breakdown", "actions": actions, "final": res}
+
+        # Default to preview for speed
+        res = self.safe_run_dax(connection_state, query or "", mode="preview", runs=runs, max_rows=max_rows, verbose=verbose)
+        actions.append({"action": "safe_run_dax(preview)", "result": res})
+        return {"success": res.get("success", False), "decision": "preview", "reason": "No performance focus or multiple candidates; using fast safe preview for minimal latency", "actions": actions, "final": res}
 
     def agent_health(self, connection_manager, connection_state) -> Dict[str, Any]:
         """Consolidated health: server info, connection status, and a quick summary."""

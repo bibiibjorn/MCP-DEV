@@ -13,9 +13,10 @@ Based on fabric-toolbox best practices.
 
 import time
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from collections import OrderedDict
 from core.dax_validator import DaxValidator
+from core.config_manager import config
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +71,85 @@ class OptimizedQueryExecutor:
             connection: Active ADOMD connection
         """
         self.connection = connection
-        self.query_cache = OrderedDict()
+        # Simple TTL-based LRU cache for query results
+        self.query_cache: "OrderedDict[Tuple[str, int], Dict[str, Any]]" = OrderedDict()
         self.max_cache_items = 200
+        self.cache_ttl_seconds = max(0, int(config.get('performance.cache_ttl_seconds', 300) or 0))
         self._table_cache = None
+        self._table_id_by_name: Optional[Dict[str, Any]] = None
+        self._table_name_by_id: Optional[Dict[Any, str]] = None
+
+    def _ensure_table_mappings(self) -> None:
+        """Load table ID<->name mappings once for fast lookups."""
+        try:
+            if self._table_id_by_name is not None and self._table_name_by_id is not None:
+                return
+            # Load all columns from INFO.TABLES() (no projection) to include ID
+            result = self.validate_and_execute_dax("EVALUATE INFO.TABLES()", 0)
+            if not result.get('success'):
+                logger.error(f"Failed to load table mappings: {result.get('error')}")
+                self._table_id_by_name, self._table_name_by_id = {}, {}
+                return
+            id_by_name: Dict[str, Any] = {}
+            name_by_id: Dict[Any, str] = {}
+            for row in result.get('rows', []):
+                name = row.get('Name')
+                tid = row.get('ID') if 'ID' in row else row.get('TableID')
+                if name is not None and tid is not None:
+                    id_by_name[name] = tid
+                    name_by_id[tid] = name
+            self._table_id_by_name = id_by_name
+            self._table_name_by_id = name_by_id
+        except Exception as e:
+            logger.error(f"Error building table mappings: {e}")
+            self._table_id_by_name, self._table_name_by_id = {}, {}
+
+    def _cache_get(self, key: Tuple[str, int]) -> Optional[Dict[str, Any]]:
+        """Get cached item if not expired; maintains LRU order."""
+        if self.cache_ttl_seconds <= 0:
+            return None
+        item = self.query_cache.get(key)
+        if not item:
+            return None
+        ts = item.get('__cached_at__')
+        if ts is None:
+            # Invalid cache record; drop it
+            try:
+                del self.query_cache[key]
+            except Exception:
+                pass
+            return None
+        age = time.time() - ts
+        if age > self.cache_ttl_seconds:
+            # Expired
+            try:
+                del self.query_cache[key]
+            except Exception:
+                pass
+            return None
+        # Refresh LRU order
+        self.query_cache.move_to_end(key)
+        # Return a shallow copy with cache metadata
+        res = dict(item)
+        res.setdefault('cache', {})
+        res['cache'].update({'hit': True, 'age_seconds': round(age, 3)})
+        return res
+
+    def _cache_set(self, key: Tuple[str, int], value: Dict[str, Any]) -> None:
+        """Insert item into cache and enforce size limit."""
+        if self.cache_ttl_seconds <= 0:
+            return
+        try:
+            cached = dict(value)
+            cached['__cached_at__'] = time.time()
+            # Do not let cache metadata grow
+            self.query_cache[key] = cached
+            self.query_cache.move_to_end(key)
+            if len(self.query_cache) > self.max_cache_items:
+                self.query_cache.popitem(last=False)
+        except Exception:
+            # Never fail user flow because of cache problems
+            pass
 
     def _escape_dax_string(self, text: str) -> str:
         """Escape single quotes in DAX strings."""
@@ -169,22 +246,21 @@ class OptimizedQueryExecutor:
             Numeric table ID or None if not found
         """
         try:
-            # Cache table mappings for performance
-            if self._table_cache is None:
-                query = "EVALUATE INFO.TABLES()"
-                result = self.validate_and_execute_dax(query, 0)
-                if result.get('success'):
-                    self._table_cache = {row['Name']: row['ID'] for row in result.get('rows', [])}
-                else:
-                    logger.error(f"Failed to load table cache: {result.get('error')}")
-                    return None
-
-            return self._table_cache.get(table_name)
+            self._ensure_table_mappings()
+            return (self._table_id_by_name or {}).get(table_name)
         except Exception as e:
             logger.error(f"Error getting table ID for {table_name}: {e}")
             return None
 
-    def execute_info_query(self, function_name: str, filter_expr: str = None, exclude_columns: List[str] = None, table_name: str = None) -> Dict[str, Any]:
+    def _get_table_name_from_id(self, table_id: Any) -> Optional[str]:
+        """Map numeric/guid TableID back to human-readable table name."""
+        try:
+            self._ensure_table_mappings()
+            return (self._table_name_by_id or {}).get(table_id)
+        except Exception:
+            return None
+
+    def execute_info_query(self, function_name: str, filter_expr: Optional[str] = None, exclude_columns: Optional[List[str]] = None, table_name: Optional[str] = None) -> Dict[str, Any]:
         """
         Execute INFO.* DAX query with optional filtering.
         Automatically converts TableID to Table for MEASURES and COLUMNS.
@@ -233,8 +309,13 @@ class OptimizedQueryExecutor:
             if result.get('success') and function_name in ['MEASURES', 'COLUMNS']:
                 rows = result.get('rows', [])
                 for row in rows:
-                    if 'TableID' in row:
-                        row['Table'] = row['TableID']
+                    if 'TableID' in row and 'Table' not in row:
+                        name = self._get_table_name_from_id(row.get('TableID'))
+                        if name:
+                            row['Table'] = name
+                        else:
+                            # Fallback to string form of TableID
+                            row['Table'] = str(row.get('TableID'))
 
             return result
         except Exception as e:
@@ -265,7 +346,15 @@ class OptimizedQueryExecutor:
             filter_expr = ' || '.join(conditions) if conditions else 'TRUE()'
             query = f"EVALUATE FILTER(INFO.MEASURES(), {filter_expr})"
 
-            return self.validate_and_execute_dax(query)
+            result = self.validate_and_execute_dax(query)
+            # Map TableID -> Table name for usability
+            if result.get('success'):
+                rows = result.get('rows', [])
+                for row in rows:
+                    if 'TableID' in row and 'Table' not in row:
+                        name = self._get_table_name_from_id(row.get('TableID'))
+                        row['Table'] = name or str(row.get('TableID'))
+            return result
         except Exception as e:
             logger.error(f"Error searching measures: {e}")
             return {'success': False, 'error': str(e)}
@@ -306,13 +395,18 @@ class OptimizedQueryExecutor:
                     FILTER(INFO.COLUMNS(), SEARCH("{escaped_text}", [Name], 1, 0) > 0),
                     "type", "column",
                     "Name", [Name],
-                    "Table", [Table],
+                    "TableID", [TableID],
                     "DataType", [DataType],
                     "IsHidden", [IsHidden]
                 )
                 """
                 r = self.validate_and_execute_dax(query)
                 if r.get('success'):
+                    # Map TableID -> Table name
+                    for row in r.get('rows', []):
+                        if 'TableID' in row:
+                            name = self._get_table_name_from_id(row.get('TableID'))
+                            row['Table'] = name or str(row.get('TableID'))
                     results_list.extend(r['rows'])
 
             if "measures" in object_types:
@@ -321,7 +415,7 @@ class OptimizedQueryExecutor:
                     FILTER(INFO.MEASURES(), SEARCH("{escaped_text}", [Name], 1, 0) > 0),
                     "type", "measure",
                     "Name", [Name],
-                    "Table", [Table],
+                    "TableID", [TableID],
                     "DataType", [DataType],
                     "IsHidden", [IsHidden],
                     "DisplayFolder", [DisplayFolder]
@@ -329,6 +423,10 @@ class OptimizedQueryExecutor:
                 """
                 r = self.validate_and_execute_dax(query)
                 if r.get('success'):
+                    for row in r.get('rows', []):
+                        if 'TableID' in row:
+                            name = self._get_table_name_from_id(row.get('TableID'))
+                            row['Table'] = name or str(row.get('TableID'))
                     results_list.extend(r['rows'])
 
             return {'success': True, 'results': results_list, 'count': len(results_list)}
@@ -344,7 +442,7 @@ class OptimizedQueryExecutor:
         ]
         return any(kw in query.upper() for kw in table_keywords)
 
-    def validate_and_execute_dax(self, query: str, top_n: int = 0) -> Dict[str, Any]:
+    def validate_and_execute_dax(self, query: str, top_n: int = 0, bypass_cache: bool = False) -> Dict[str, Any]:
         """
         Validate and execute DAX query with comprehensive error handling.
 
@@ -371,11 +469,19 @@ class OptimizedQueryExecutor:
                 }
 
             # Auto-add EVALUATE if needed
+            original_query = query
             if not query.strip().upper().startswith('EVALUATE'):
                 if self._is_table_expression(query):
                     query = f"EVALUATE TOPN({top_n}, {query})" if top_n > 0 else f"EVALUATE {query}"
                 else:
                     query = f'EVALUATE ROW("Value", {query})'
+
+            # Cache lookup based on normalized final query and top_n
+            cache_key = (query, int(top_n or 0))
+            if not bypass_cache:
+                cached = self._cache_get(cache_key)
+                if cached is not None:
+                    return cached
 
             start_time = time.time()
             cmd = AdomdCommand(query, self.connection)
@@ -410,7 +516,7 @@ class OptimizedQueryExecutor:
             reader.Close()
             execution_time = (time.time() - start_time) * 1000
 
-            return {
+            result = {
                 'success': True,
                 'columns': columns,
                 'rows': rows,
@@ -419,6 +525,14 @@ class OptimizedQueryExecutor:
                 'truncated': row_count >= max_rows,
                 'query': query
             }
+
+            # Store in cache only on success and if not bypassing cache
+            if not bypass_cache:
+                self._cache_set(cache_key, result)
+                # Add cache metadata to response
+                result.setdefault('cache', {})
+                result['cache'].update({'hit': False, 'ttl_seconds': self.cache_ttl_seconds})
+            return result
 
         except Exception as e:
             error_msg = str(e)
@@ -545,7 +659,7 @@ class OptimizedQueryExecutor:
             if os.path.exists(tabular_dll):
                 clr.AddReference(tabular_dll)
 
-            from Microsoft.AnalysisServices.Tabular import Server as AMOServer, JsonSerializer, SerializeOptions
+            from Microsoft.AnalysisServices.Tabular import Server as AMOServer, JsonSerializer, JsonSerializeOptions
 
             # Get database name
             db_query = "SELECT [CATALOG_NAME] FROM $SYSTEM.DBSCHEMA_CATALOGS"
@@ -565,13 +679,13 @@ class OptimizedQueryExecutor:
             server.Connect(self.connection.ConnectionString)
             database = server.Databases.GetByName(db_name)
 
-            # Serialize to TMSL
-            options = SerializeOptions()
+            # Serialize to TMSL using JsonSerializeOptions for better compatibility
+            options = JsonSerializeOptions()
+            options.IgnoreInferredObjects = False
+            options.IgnoreInferredProperties = False
             options.IgnoreTimestamps = True
-            options.IgnoreInferredObjects = True
-            options.IgnoreInferredProperties = True
 
-            tmsl_json = JsonSerializer.SerializeDatabase(database, options)
+            tmsl_json = JsonSerializer.SerializeObject(database.Model, options)
             server.Disconnect()
 
             return {

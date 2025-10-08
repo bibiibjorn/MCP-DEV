@@ -38,7 +38,7 @@ class DaxValidator:
             True if valid and safe
         """
         return (
-            identifier and
+            bool(identifier) and
             len(identifier.strip()) > 0 and
             len(identifier) <= 128 and
             '\0' not in identifier
@@ -300,5 +300,13 @@ class DaxValidator:
         iterator_count = len(re.findall(r'\b(SUMX|AVERAGEX|COUNTX|MAXX|MINX)\b', query, re.IGNORECASE))
         if iterator_count > 2:
             suggestions.append("Multiple iterator functions detected - ensure they are necessary")
+
+        # Prefer SUMMARIZECOLUMNS over SUMMARIZE in query context
+        if re.search(r'\bSUMMARIZE\b', query, re.IGNORECASE) and not re.search(r'\bSUMMARIZECOLUMNS\b', query, re.IGNORECASE):
+            suggestions.append("Consider SUMMARIZECOLUMNS instead of SUMMARIZE for queries to avoid context transition issues")
+
+        # DMV best practice: materialize before projection
+        if re.search(r'\$SYSTEM\.', query, re.IGNORECASE) and re.search(r'\bSELECTCOLUMNS\b', query, re.IGNORECASE) and not re.search(r'\bTOPN\s*\(', query, re.IGNORECASE):
+            suggestions.append("When querying $SYSTEM DMVs with SELECTCOLUMNS, wrap the source in TOPN(...) to ensure proper materialization")
 
         return suggestions
