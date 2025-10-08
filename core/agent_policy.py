@@ -102,6 +102,14 @@ class AgentPolicy:
             }
 
         lim = self._get_preview_limit(max_rows)
+        # Enforce safety limits from connection_state
+        try:
+            limits = connection_state.get_safety_limits()
+            max_rows_cap = int(limits.get('max_rows_per_call', 10000))
+            if isinstance(lim, int) and lim > 0:
+                lim = min(lim, max_rows_cap)
+        except Exception:
+            pass
         effective_mode = (mode or "auto").lower()
         notes: List[str] = []
 

@@ -87,21 +87,19 @@ agent_policy = AgentPolicy(config)
 
 @app.list_tools()
 async def list_tools() -> List[Tool]:
+    # Public, simplified tool surface
     tools = [
-        Tool(name="get_server_info", description="Get server version and connection status", inputSchema={"type": "object", "properties": {}, "required": []}),
-        Tool(name="health_check", description="Comprehensive server health check", inputSchema={"type": "object", "properties": {}, "required": []}),
-        # Agent meta-tools (guardrailed orchestration)
-        Tool(name="ensure_connected", description="Ensure connection to a Power BI Desktop instance (detects and connects if needed)", inputSchema={"type": "object", "properties": {"preferred_index": {"type": "integer"}}, "required": []}),
-        Tool(name="safe_run_dax", description="Validate and safely execute a DAX query; optionally analyze performance", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "mode": {"type": "string", "enum": ["auto", "preview", "analyze"], "default": "auto"}, "runs": {"type": "integer"}, "max_rows": {"type": "integer"}, "verbose": {"type": "boolean", "default": False}, "bypass_cache": {"type": "boolean", "default": False}}, "required": ["query"]}),
+        # Combined DAX runner (preview/analyze)
+    Tool(name="run_dax", description="Run a DAX query (preview/analyze) with safe limits", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "mode": {"type": "string", "enum": ["auto", "preview", "analyze"], "default": "auto"}, "runs": {"type": "integer"}, "top_n": {"type": "integer"}, "verbose": {"type": "boolean", "default": False}}, "required": ["query"]}),
         Tool(name="summarize_model", description="Lightweight model summary suitable for large models", inputSchema={"type": "object", "properties": {}, "required": []}),
+        Tool(name="document_model", description="Generate documentation or overview for the model", inputSchema={"type": "object", "properties": {"format": {"type": "string", "enum": ["markdown", "html", "json"], "default": "markdown"}, "include_examples": {"type": "boolean", "default": False}}, "required": []}),
         Tool(name="plan_query", description="Plan a safe query based on a high-level intent and optional table context", inputSchema={"type": "object", "properties": {"intent": {"type": "string"}, "table": {"type": "string"}, "max_rows": {"type": "integer"}}, "required": ["intent"]}),
         Tool(name="optimize_variants", description="Benchmark multiple DAX variants and return the fastest", inputSchema={"type": "object", "properties": {"candidates": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer"}}, "required": ["candidates"]}),
-        Tool(name="agent_health", description="Consolidated agent/server health and quick model snapshot", inputSchema={"type": "object", "properties": {}, "required": []}),
-        Tool(name="generate_docs_safe", description="Generate documentation with large-model safeguards", inputSchema={"type": "object", "properties": {}, "required": []}),
-        Tool(name="execute_intent", description="Natural-language intent execution (connect, preview, analyze, document)", inputSchema={"type": "object", "properties": {"goal": {"type": "string"}, "query": {"type": "string"}, "table": {"type": "string"}, "runs": {"type": "integer"}, "max_rows": {"type": "integer"}, "candidate_a": {"type": "string"}, "candidate_b": {"type": "string"}, "verbose": {"type": "boolean", "default": False}}, "required": ["goal"]}),
-        Tool(name="decide_and_run", description="Performance-first decision orchestrator (benchmarks variants or analyzes/preview)", inputSchema={"type": "object", "properties": {"goal": {"type": "string"}, "query": {"type": "string"}, "candidates": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer"}, "max_rows": {"type": "integer"}, "verbose": {"type": "boolean", "default": False}}, "required": ["goal"]}),
+        Tool(name="relationships", description="List relationships with optional cardinality analysis", inputSchema={"type": "object", "properties": {}, "required": []}),
+        # Instance discovery and connect remain available
         Tool(name="detect_powerbi_desktop", description="Detect Power BI instances", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="connect_to_powerbi", description="Connect to instance", inputSchema={"type": "object", "properties": {"model_index": {"type": "integer"}}, "required": ["model_index"]}),
+        # Core metadata utilities
         Tool(name="list_tables", description="List tables", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="list_measures", description="List measures", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
         Tool(name="describe_table", description="Describe table", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": ["table"]}),
@@ -112,16 +110,13 @@ async def list_tools() -> List[Tool]:
         Tool(name="get_data_sources", description="Data sources", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="get_m_expressions", description="M expressions", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="preview_table_data", description="Preview table", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "top_n": {"type": "integer", "default": 10}}, "required": ["table"]}),
-        Tool(name="run_dax_query", description="Run DAX", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "top_n": {"type": "integer", "default": 0}, "bypass_cache": {"type": "boolean", "default": False}}, "required": ["query"]}),
         Tool(name="export_model_schema", description="Export schema", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="upsert_measure", description="Create/update measure", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "expression": {"type": "string"}, "display_folder": {"type": "string"}}, "required": ["table", "measure", "expression"]}),
-        Tool(name="delete_measure", description="Delete a measure", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}}, "required": ["table", "measure"]}),
+        Tool(name="delete_measure", description="Delete a measure", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}} , "required": ["table", "measure"]}),
         Tool(name="list_columns", description="List columns", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
         Tool(name="get_column_values", description="Column values", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}, "limit": {"type": "integer", "default": 100}}, "required": ["table", "column"]}),
         Tool(name="get_column_summary", description="Column stats", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}}, "required": ["table", "column"]}),
-        Tool(name="list_relationships", description="List relationships", inputSchema={"type": "object", "properties": {"active_only": {"type": "boolean"}}, "required": []}),
         Tool(name="get_vertipaq_stats", description="VertiPaq stats", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
-        Tool(name="analyze_query_performance", description="Analyze performance", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "runs": {"type": "integer", "default": 3}, "clear_cache": {"type": "boolean", "default": True}}, "required": ["query"]}),
         Tool(name="validate_dax_query", description="Validate DAX syntax and analyze complexity", inputSchema={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}),
 
         # Dependency Analysis
@@ -144,8 +139,7 @@ async def list_tools() -> List[Tool]:
         Tool(name="refresh_table", description="Refresh table", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "refresh_type": {"type": "string", "default": "full"}}, "required": ["table"]}),
 
         # RLS Management
-        Tool(name="list_roles", description="List security roles", inputSchema={"type": "object", "properties": {}, "required": []}),
-        Tool(name="test_role_filter", description="Test RLS role", inputSchema={"type": "object", "properties": {"role_name": {"type": "string"}, "test_query": {"type": "string"}}, "required": ["role_name", "test_query"]}),
+    Tool(name="list_roles", description="List security roles", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="validate_rls_coverage", description="Validate RLS coverage", inputSchema={"type": "object", "properties": {}, "required": []}),
 
         # Model Export
@@ -155,58 +149,33 @@ async def list_tools() -> List[Tool]:
         Tool(name="get_model_summary", description="Get lightweight model summary", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="compare_models", description="Compare models", inputSchema={"type": "object", "properties": {"reference_tmsl": {"type": "object"}}, "required": ["reference_tmsl"]}),
 
-        # Performance Optimization
-        Tool(name="analyze_relationship_cardinality", description="Analyze relationship cardinality", inputSchema={"type": "object", "properties": {}, "required": []}),
-    Tool(name="relationship_overview", description="List relationships with optional cardinality analysis", inputSchema={"type": "object", "properties": {}, "required": []}),
+    # Performance Optimization
+    Tool(name="analyze_relationship_cardinality", description="Analyze relationship cardinality", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="analyze_column_cardinality", description="Analyze column cardinality", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
-        Tool(name="analyze_encoding_efficiency", description="Analyze encoding efficiency", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": ["table"]}),
+        Tool(name="analyze_storage_compression", description="Analyze storage/compression efficiency for a table", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": ["table"]}),
 
         # Model Validation
         Tool(name="validate_model_integrity", description="Validate model integrity", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="analyze_data_freshness", description="Analyze data freshness", inputSchema={"type": "object", "properties": {}, "required": []}),
 
-        # Diagnostics and maintenance
-        Tool(name="flush_query_cache", description="Flushes the DAX query result cache for diagnostics or troubleshooting", inputSchema={"type": "object", "properties": {}, "required": []}),
-        Tool(name="get_recent_logs", description="Fetch the last N lines of the server log for diagnostics", inputSchema={"type": "object", "properties": {"lines": {"type": "integer", "default": 200}}, "required": []}),
-    Tool(name="summarize_logs", description="Summarize recent logs (error/warn counts, last events)", inputSchema={"type": "object", "properties": {"lines": {"type": "integer", "default": 500}}, "required": []}),
-        Tool(name="get_cache_stats", description="Return server query cache statistics", inputSchema={"type": "object", "properties": {}, "required": []}),
-        Tool(name="get_context", description="Get agent context memory (optionally by keys)", inputSchema={"type": "object", "properties": {"keys": {"type": "array", "items": {"type": "string"}}}, "required": []}),
-        Tool(name="set_context", description="Set agent context memory keys", inputSchema={"type": "object", "properties": {"data": {"type": "object"}}, "required": ["data"]}),
-        Tool(name="get_safety_limits", description="Get current safety limits", inputSchema={"type": "object", "properties": {}, "required": []}),
-        Tool(name="set_safety_limits", description="Set safety limits (e.g., max_rows_per_call)", inputSchema={"type": "object", "properties": {"max_rows_per_call": {"type": "integer"}}, "required": []}),
+        # Diagnostics and maintenance (trimmed; hide cache/safety/agent internals)
     Tool(name="summarize_last_result", description="Return metadata about the last successful query result", inputSchema={"type": "object", "properties": {}, "required": []}),
-    Tool(name="set_perf_baseline", description="Record a performance baseline for a query name", inputSchema={"type": "object", "properties": {"name": {"type": "string"}, "query": {"type": "string"}, "runs": {"type": "integer", "default": 3}}, "required": ["name", "query"]}),
-    Tool(name="get_perf_baseline", description="Get a stored performance baseline by name", inputSchema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}),
-    Tool(name="list_perf_baselines", description="List all stored performance baselines", inputSchema={"type": "object", "properties": {}, "required": []}),
-    Tool(name="compare_perf_to_baseline", description="Compare a query's performance to a named baseline", inputSchema={"type": "object", "properties": {"name": {"type": "string"}, "query": {"type": "string"}, "runs": {"type": "integer", "default": 3}}, "required": ["name"]}),
-        # New utilities & orchestrations
-    Tool(name="warm_query_cache", description="Execute queries to warm both local and engine caches", inputSchema={"type": "object", "properties": {"queries": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer", "default": 1}, "clear_cache": {"type": "boolean", "default": True}}, "required": ["queries"]}),
-    Tool(name="analyze_queries_batch", description="Analyze performance for multiple DAX queries", inputSchema={"type": "object", "properties": {"queries": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer", "default": 3}, "clear_cache": {"type": "boolean", "default": True}}, "required": ["queries"]}),
-        Tool(name="set_cache_policy", description="Update server-side cache TTL seconds (0 disables cache)", inputSchema={"type": "object", "properties": {"ttl_seconds": {"type": "integer"}}, "required": []}),
-        Tool(name="profile_columns", description="Profile columns (min, max, distinct, nulls)", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "columns": {"type": "array", "items": {"type": "string"}}}, "required": ["table"]}),
-        Tool(name="get_value_distribution", description="Value distribution for a column (TOPN)", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}, "top_n": {"type": "integer", "default": 50}}, "required": ["table", "column"]}),
+        Tool(name="warm_query_cache", description="Execute queries to warm both local and engine caches", inputSchema={"type": "object", "properties": {"queries": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer", "default": 1}, "clear_cache": {"type": "boolean", "default": True}}, "required": ["queries"]}),
+        Tool(name="analyze_queries_batch", description="Analyze performance for multiple DAX queries", inputSchema={"type": "object", "properties": {"queries": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer", "default": 3}, "clear_cache": {"type": "boolean", "default": True}}, "required": ["queries"]}),
+    Tool(name="profile_columns", description="Profile columns (min, max, distinct, nulls)", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "columns": {"type": "array", "items": {"type": "string"}}}, "required": ["table"]}),
+    Tool(name="get_column_value_distribution", description="Top values distribution for a column", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}, "top_n": {"type": "integer", "default": 50}}, "required": ["table", "column"]}),
         Tool(name="validate_best_practices", description="Composite validator for modeling best practices", inputSchema={"type": "object", "properties": {}, "required": []}),
-    Tool(name="generate_documentation_profiled", description="Generate documentation with format/profile knobs", inputSchema={"type": "object", "properties": {"format": {"type": "string", "enum": ["markdown", "html", "json"], "default": "markdown"}, "include_examples": {"type": "boolean", "default": False}}, "required": []}),
-        Tool(name="create_model_changelog", description="Human-friendly changelog from model diff", inputSchema={"type": "object", "properties": {"reference_tmsl": {"type": "object"}}, "required": ["reference_tmsl"]}),
+    # Hidden agent orchestration variants are removed from public list (document_model covers docs)
         Tool(name="get_measure_impact", description="Forward/backward impact for a measure", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "depth": {"type": "integer", "default": 3}}, "required": ["table", "measure"]}),
         Tool(name="get_column_usage_heatmap", description="Column usage heat map across measures", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "limit": {"type": "integer", "default": 100}}, "required": []}),
-    Tool(name="auto_document", description="Orchestrated: connect → summarize → docs", inputSchema={"type": "object", "properties": {"profile": {"type": "string", "default": "light"}, "include_lineage": {"type": "boolean", "default": False}}, "required": []}),
-        Tool(name="auto_analyze_or_preview", description="Orchestrated: choose analyze vs preview by priority", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "runs": {"type": "integer"}, "max_rows": {"type": "integer"}, "priority": {"type": "string", "enum": ["speed", "depth"], "default": "depth"}}, "required": ["query"]}),
-        Tool(name="auto_route", description="Auto route a query to preview or analysis based on priority and size", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "runs": {"type": "integer"}, "max_rows": {"type": "integer"}, "priority": {"type": "string", "enum": ["speed", "depth"], "default": "depth"}}, "required": ["query"]}),
-        Tool(name="apply_recommended_fixes", description="Compute a safe plan of recommended modeling fixes", inputSchema={"type": "object", "properties": {"actions": {"type": "array", "items": {"type": "string"}}}, "required": ["actions"]}),
-        Tool(name="set_performance_trace", description="Enable/disable AMO session trace explicitly", inputSchema={"type": "object", "properties": {"enabled": {"type": "boolean"}}, "required": ["enabled"]}),
         Tool(name="format_dax", description="Lightweight DAX formatter (whitespace)", inputSchema={"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"]}),
     Tool(name="export_model_overview", description="Export a compact model overview (json/yaml)", inputSchema={"type": "object", "properties": {"format": {"type": "string", "enum": ["json", "yaml"], "default": "json"}, "include_counts": {"type": "boolean", "default": True}}, "required": []}),
         # Introspection & tuning
-        Tool(name="get_query_history", description="Return recent query execution history (newest first)", inputSchema={"type": "object", "properties": {"limit": {"type": "integer", "default": 50}}, "required": []}),
-        Tool(name="clear_query_history", description="Clear the in-memory query history buffer", inputSchema={"type": "object", "properties": {}, "required": []}),
-        Tool(name="set_command_timeout", description="Set ADOMD command timeout seconds for queries", inputSchema={"type": "object", "properties": {"seconds": {"type": "integer"}}, "required": ["seconds"]}),
     ]
     if BPA_AVAILABLE:
         tools.append(Tool(name="analyze_model_bpa", description="Run BPA", inputSchema={"type": "object", "properties": {}, "required": []}))
-    # M best practices and instance switching
+    # M best practices
     tools.append(Tool(name="analyze_m_practices", description="Scan M expressions for common issues", inputSchema={"type": "object", "properties": {}, "required": []}))
-    tools.append(Tool(name="switch_instance", description="Switch to next/prev/index Power BI instance", inputSchema={"type": "object", "properties": {"mode": {"type": "string", "enum": ["next", "prev", "index"], "default": "next"}, "index": {"type": "integer"}}, "required": []}))
     return tools
 
 
@@ -562,6 +531,43 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             result = agent_policy.relationship_overview(connection_state)
             return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
 
+        # Public wrappers that auto-ensure connection and hide agent internals
+        if name == "run_dax":
+            ensured = agent_policy.ensure_connected(connection_manager, connection_state, None)
+            if not ensured.get('success'):
+                return [TextContent(type="text", text=json.dumps(ensured, indent=2))]
+            # Map top_n -> max_rows for policy
+            result = agent_policy.safe_run_dax(
+                connection_state,
+                arguments.get("query", ""),
+                arguments.get("mode", "auto"),
+                arguments.get("runs"),
+                arguments.get("top_n"),
+                arguments.get("verbose", False),
+                False,
+            )
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+
+        if name == "relationships":
+            ensured = agent_policy.ensure_connected(connection_manager, connection_state, None)
+            if not ensured.get('success'):
+                return [TextContent(type="text", text=json.dumps(ensured, indent=2))]
+            result = agent_policy.relationship_overview(connection_state)
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+
+        if name == "document_model":
+            ensured = agent_policy.ensure_connected(connection_manager, connection_state, None)
+            if not ensured.get('success'):
+                return [TextContent(type="text", text=json.dumps(ensured, indent=2))]
+            # Prefer profiled doc generator to honor params; falls back to safe docs
+            fmt = arguments.get('format', 'markdown')
+            include_examples = bool(arguments.get('include_examples', False))
+            try:
+                result = agent_policy.generate_documentation_profiled(connection_state, fmt, include_examples)
+            except Exception:
+                result = agent_policy.generate_docs_safe(connection_state)
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+
         if name == "execute_intent":
             result = agent_policy.execute_intent(
                 connection_manager,
@@ -768,6 +774,9 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 f"\"Nulls\", COUNTBLANK({t}{c}))"
             )
             result = query_executor.validate_and_execute_dax(query)
+        elif name == "get_column_value_distribution":
+            # Alias to prior get_value_distribution with clearer name
+            result = agent_policy.get_value_distribution(connection_state, arguments.get('table', ''), arguments.get('column', ''), arguments.get('top_n', 50))
         elif name == "list_relationships":
             active_only = arguments.get("active_only")
             if active_only is True:
@@ -950,7 +959,8 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             result = performance_optimizer.analyze_relationship_cardinality() if performance_optimizer else ErrorHandler.handle_manager_unavailable('performance_optimizer')
         elif name == "analyze_column_cardinality":
             result = performance_optimizer.analyze_column_cardinality(arguments.get('table')) if performance_optimizer else ErrorHandler.handle_manager_unavailable('performance_optimizer')
-        elif name == "analyze_encoding_efficiency":
+        elif name == "analyze_storage_compression":
+            # New, clearer name; call the same underlying optimizer
             result = performance_optimizer.analyze_encoding_efficiency(arguments['table']) if performance_optimizer else ErrorHandler.handle_manager_unavailable('performance_optimizer')
 
         # Model Validation
