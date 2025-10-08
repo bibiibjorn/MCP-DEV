@@ -717,6 +717,12 @@ class AgentPolicy:
             actions.append({"action": "safe_run_dax(analyze)", "result": res})
             return {"success": res.get("success", False), "actions": actions, "final": res}
 
+        # If user asks to analyze the model without specifics, propose options (fast vs normal)
+        if any(k in text for k in ["analyze", "analysis"]) and not query and not any(k in text for k in ["performance", "perf", "se/fe", "storage engine", "formula engine"]):
+            proposal = self.propose_analysis_options(connection_state, goal)
+            actions.append({"action": "propose_analysis_options", "result": proposal})
+            return {"success": True, "decision": "propose_analysis", "actions": actions, "final": proposal}
+
         # Generic run/query/preview intents
         if query or any(k in text for k in ["run", "execute", "preview", "query", "show"]):
             res = self.safe_run_dax(connection_state, query or "", mode="preview", runs=runs, max_rows=max_rows, verbose=verbose)
@@ -733,3 +739,55 @@ class AgentPolicy:
         plan = self.plan_query(text, table, max_rows)
         actions.append({"action": "plan_query", "result": plan})
         return {"success": True, "actions": actions, "final": plan}
+
+    def propose_analysis_options(self, connection_state, goal: Optional[str] = None) -> Dict[str, Any]:
+        """Return a simple decision card offering Fast vs Normal analysis using full_analysis.
+
+        - Fast: summary + relationships only (profile=fast, depth=light, include_bpa=false)
+        - Normal: full sections (profile=balanced, depth=standard, include_bpa=true when available)
+        """
+        # Determine if connected for realistic expectation
+        connected = connection_state.is_connected()
+        notes = []
+        if not connected:
+            notes.append("Not connected yet; choose an option to auto-connect and run.")
+        options: List[Dict[str, Any]] = [
+            {
+                'name': 'Fast summary',
+                'id': 'fast',
+                'description': 'Very quick summary of model (tables, columns, measures, relationships) with relationship list.',
+                'estimated_time': 'few seconds',
+                'call': {
+                    'tool': 'full_analysis',
+                    'arguments': {
+                        'profile': 'fast',
+                        'depth': 'light',
+                        'include_bpa': False,
+                        'limits': {'relationships_max': 200, 'issues_max': 200}
+                    }
+                }
+            },
+            {
+                'name': 'Normal analysis',
+                'id': 'normal',
+                'description': 'Comprehensive analysis including best practices and M scan; optionally BPA if available.',
+                'estimated_time': 'tens of seconds',
+                'call': {
+                    'tool': 'full_analysis',
+                    'arguments': {
+                        'profile': 'balanced',
+                        'depth': 'standard',
+                        'include_bpa': True,
+                        'limits': {'relationships_max': 200, 'issues_max': 200}
+                    }
+                }
+            }
+        ]
+        return {
+            'success': True,
+            'decision': 'propose_analysis',
+            'goal': goal,
+            'connected': connected,
+            'options': options,
+            'notes': notes
+        }

@@ -30,6 +30,11 @@ class EnhancedAMOTraceAnalyzer:
         # Back-compat fields referenced elsewhere
         self.amo_server = True  # truthy to indicate analyzer is available
         self.trace_active = False
+        # Tunable waits (seconds) to minimize latency while keeping reliability
+        self._session_start_wait = 0.03  # wait after session create
+        self._cache_clear_wait = 0.08    # wait after cache clear
+        self._event_poll_interval = 0.03 # interval when polling ring_buffer
+        self._max_event_flush_wait = 0.25 # maximum time to wait for events
 
     # Back-compat: older code calls connect_amo() and checks amo_server
     def connect_amo(self) -> bool:
@@ -101,9 +106,9 @@ class EnhancedAMOTraceAnalyzer:
               <event package=\"AS\" name=\"VertiPaqSEQueryCacheMatch\"> 
                 <action package=\"AS\" name=\"ActivityID\"/>
               </event>
-              <target package=\"package0\" name=\"ring_buffer\"> 
-                <parameter name=\"bufferSize\" value=\"50000\"/>
-              </target>
+                            <target package=\"package0\" name=\"ring_buffer\"> 
+                                <parameter name=\"bufferSize\" value=\"10000\"/>
+                            </target>
             </event_session>
           </ddl300_300:XEvent>
         </Trace>
@@ -184,7 +189,7 @@ class EnhancedAMOTraceAnalyzer:
             logger.warning(f"Failed parsing ring_buffer XML: {e}")
         return events
 
-    def _analyze_events(self, events: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _analyze_events(self, events: List[Dict[str, Any]], compute_counts: bool = True) -> Dict[str, Any]:
         if not events:
             return {
                 'total_duration_ms': 0.0,
@@ -196,7 +201,7 @@ class EnhancedAMOTraceAnalyzer:
                 'total_events': 0,
                 'query_end_events': 0,
                 'se_end_events': 0,
-                'event_counts': {}
+                'event_counts': {} if compute_counts else None
             }
         # Map of events
         query_ends = [e for e in events if (e.get('event') == 'QueryEnd')]
@@ -205,9 +210,10 @@ class EnhancedAMOTraceAnalyzer:
         se_cache = [e for e in events if (e.get('event') == 'VertiPaqSEQueryCacheMatch')]
         # Aggregate counts by event name
         counts: Dict[str, int] = {}
-        for ev in events:
-            nm = str(ev.get('event') or '')
-            counts[nm] = counts.get(nm, 0) + 1
+        if compute_counts:
+            for ev in events:
+                nm = str(ev.get('event') or '')
+                counts[nm] = counts.get(nm, 0) + 1
 
         # Choose the last QueryEnd as the one to report
         qe = query_ends[-1] if query_ends else None
@@ -249,7 +255,7 @@ class EnhancedAMOTraceAnalyzer:
             'total_events': len(events),
             'query_end_events': len(query_ends),
             'se_end_events': len(se_events),
-            'event_counts': counts
+            'event_counts': counts if compute_counts else None
         }
 
     def _get_database_name(self, executor) -> Optional[str]:
@@ -283,21 +289,27 @@ class EnhancedAMOTraceAnalyzer:
                 # Create session first
                 self._create_xe_session(executor, session_name)
                 # Small delay to ensure the session is active
-                time.sleep(0.05)
+                time.sleep(self._session_start_wait)
 
                 # Only clear cache on the first run to provide cold vs warm comparison
                 if clear_cache and i == 0:
                     self._clear_cache(executor)
-                    time.sleep(0.1)
+                    time.sleep(self._cache_clear_wait)
 
                 t0 = time.time()
                 query_res = executor.validate_and_execute_dax(query, 0)
                 wall_ms = (time.time() - t0) * 1000.0
-                time.sleep(0.2)  # allow events to flush to ring buffer
-
-                # Fetch events
-                events = self._fetch_ring_buffer(executor, session_name)
-                metrics = self._analyze_events(events)
+                # Poll ring buffer briefly; return early once QueryEnd appears
+                deadline = time.time() + self._max_event_flush_wait
+                events: List[Dict[str, Any]] = []
+                while True:
+                    events = self._fetch_ring_buffer(executor, session_name)
+                    if any((e.get('event') == 'QueryEnd') for e in events):
+                        break
+                    if time.time() >= deadline:
+                        break
+                    time.sleep(self._event_poll_interval)
+                metrics = self._analyze_events(events, include_event_counts)
                 total = metrics.get('total_duration_ms') or wall_ms
                 se_ms = metrics.get('se_duration_ms', 0.0)
                 fe_ms = max(0.0, total - se_ms)
@@ -315,7 +327,7 @@ class EnhancedAMOTraceAnalyzer:
                     'cache_state': 'cold' if (clear_cache and i == 0) else 'warm'
                 }
                 if include_event_counts:
-                    run_out['event_counts'] = metrics.get('event_counts', {})
+                    run_out['event_counts'] = metrics.get('event_counts', {}) or {}
                 if total > 0:
                     run_out['fe_percent'] = round((fe_ms / total) * 100, 1)
                     run_out['se_percent'] = round((se_ms / total) * 100, 1)

@@ -15,7 +15,7 @@ AMO_AVAILABLE = False
 AMOServer = None
 
 try:
-    import clr
+    import clr  # type: ignore
     import os
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -27,13 +27,13 @@ try:
     tabular_dll = os.path.join(dll_folder, "Microsoft.AnalysisServices.Tabular.dll")
 
     if os.path.exists(core_dll):
-        clr.AddReference(core_dll)
+        clr.AddReference(core_dll)  # type: ignore[attr-defined]
     if os.path.exists(amo_dll):
-        clr.AddReference(amo_dll)
+        clr.AddReference(amo_dll)  # type: ignore[attr-defined]
     if os.path.exists(tabular_dll):
-        clr.AddReference(tabular_dll)
+        clr.AddReference(tabular_dll)  # type: ignore[attr-defined]
 
-    from Microsoft.AnalysisServices.Tabular import Server as AMOServer
+    from Microsoft.AnalysisServices.Tabular import Server as AMOServer  # type: ignore
     AMO_AVAILABLE = True
     logger.info("AMO available for model export")
 
@@ -61,7 +61,7 @@ class ModelExporter:
                 'error': 'AMO not available for TMSL export'
             }
 
-        server = AMOServer()
+        server = AMOServer()  # type: ignore[operator]
         try:
             server.Connect(self.connection.ConnectionString)
 
@@ -72,7 +72,7 @@ class ModelExporter:
             db = server.Databases[0]
 
             # Get TMSL as JSON using JsonSerializer
-            from Microsoft.AnalysisServices.Tabular import JsonSerializer, JsonSerializeOptions
+            from Microsoft.AnalysisServices.Tabular import JsonSerializer, JsonSerializeOptions  # type: ignore
 
             options = JsonSerializeOptions()
             options.IgnoreInferredObjects = False
@@ -142,7 +142,7 @@ class ModelExporter:
                 'error': 'AMO not available for TMDL export'
             }
 
-        server = AMOServer()
+        server = AMOServer()  # type: ignore[operator]
         try:
             server.Connect(self.connection.ConnectionString)
 
@@ -427,15 +427,25 @@ class ModelExporter:
         Useful for comparing large models without exporting full TMSL.
         """
         try:
-            summary = {
+            summary: Dict[str, Any] = {
                 'success': True,
                 'timestamp': datetime.now().isoformat()
             }
+
+            # Initialize aggregations to build top-level counts and per-table info
+            top_counts = {
+                'tables': 0,
+                'columns': 0,
+                'measures': 0,
+                'relationships': 0,
+            }
+            tables_by_name: Dict[str, Any] = {}
 
             # Get tables with row counts
             tables_result = query_executor.execute_info_query("TABLES")
             if tables_result.get('success'):
                 tables = tables_result['rows']
+                top_counts['tables'] = len(tables)
                 # Normalize table names to avoid nulls in clients
                 def _table_name(row: Dict[str, Any]) -> str:
                     for k in ('Name', 'Table', 'TABLE_NAME', 'TableName'):
@@ -446,16 +456,23 @@ class ModelExporter:
                     v = row.get('ID') or row.get('TableID')
                     return str(v) if v not in (None, "") else "Unknown"
 
+                table_list = [{'name': _table_name(t), 'hidden': t.get('IsHidden', False)} for t in tables]
                 summary['tables'] = {
                     'count': len(tables),
-                    'list': [{'name': _table_name(t), 'hidden': t.get('IsHidden', False)}
-                             for t in tables]
+                    'list': table_list
                 }
+                for t in table_list:
+                    tables_by_name[t['name']] = {
+                        'hidden': t.get('hidden', False),
+                        'columns': 0,
+                        'measures': 0,
+                    }
 
             # Get measures
             measures_result = query_executor.execute_info_query("MEASURES")
             if measures_result.get('success'):
                 measures = measures_result['rows']
+                top_counts['measures'] = len(measures)
                 summary['measures'] = {
                     'count': len(measures),
                     'by_table': {}
@@ -465,11 +482,16 @@ class ModelExporter:
                     if table not in summary['measures']['by_table']:
                         summary['measures']['by_table'][table] = 0
                     summary['measures']['by_table'][table] += 1
+                # Populate per-table measures count
+                for tbl, cnt in summary['measures']['by_table'].items():
+                    tables_by_name.setdefault(tbl, {'hidden': False, 'columns': 0, 'measures': 0})
+                    tables_by_name[tbl]['measures'] = cnt
 
             # Get columns
             columns_result = query_executor.execute_info_query("COLUMNS")
             if columns_result.get('success'):
                 columns = columns_result['rows']
+                top_counts['columns'] = len(columns)
                 summary['columns'] = {
                     'count': len(columns),
                     'calculated': len([c for c in columns if c.get('Type') == 'Calculated']),
@@ -480,11 +502,16 @@ class ModelExporter:
                     if table not in summary['columns']['by_table']:
                         summary['columns']['by_table'][table] = 0
                     summary['columns']['by_table'][table] += 1
+                # Populate per-table columns count
+                for tbl, cnt in summary['columns']['by_table'].items():
+                    tables_by_name.setdefault(tbl, {'hidden': False, 'columns': 0, 'measures': 0})
+                    tables_by_name[tbl]['columns'] = cnt
 
             # Get relationships
             rels_result = query_executor.execute_info_query("RELATIONSHIPS")
             if rels_result.get('success'):
                 rels = rels_result['rows']
+                top_counts['relationships'] = len(rels)
                 summary['relationships'] = {
                     'count': len(rels),
                     'active': len([r for r in rels if r.get('IsActive')]),
@@ -492,6 +519,10 @@ class ModelExporter:
                     'list': [f"{r.get('FromTable')}[{r.get('FromColumn')}] -> {r.get('ToTable')}[{r.get('ToColumn')}]"
                              for r in rels]
                 }
+
+            # Attach top-level counts and a convenience map by table name
+            summary['counts'] = top_counts
+            summary['tables_by_name'] = tables_by_name
 
             return summary
 

@@ -41,6 +41,20 @@ You’re now ready to explore your model with Claude.
 - Model export: “Export TMSL/TMDL” or “Generate documentation”
 - Discovery: “Search for measures containing ‘CALCULATE’”
 
+### Full analysis: normal vs fast
+
+- full_analysis: Runs a comprehensive model analysis with sections for summary, relationships, best practices, M scan, and optionally BPA.
+	- Parameters:
+		- profile: "fast" | "balanced" | "deep" (default: balanced)
+		- depth: "light" | "standard" | "deep" (default: standard)
+		- include_bpa: boolean (default: true; ignored when profile=fast)
+	- Fast profile returns only summary + relationships for a very quick overview.
+
+- propose_analysis: Returns a small decision card offering:
+	- Fast summary (profile=fast, depth=light, include_bpa=false)
+	- Normal analysis (profile=balanced, depth=standard, include_bpa=true)
+	Use this when the user asks “analyze the model” and wants a choice.
+
 ## Performance tools and cache
 
 - optimize_variants: Benchmark multiple DAX variants and return the fastest. Provide an array of candidate queries; the agent will run each for N runs and choose the minimal average execution time.

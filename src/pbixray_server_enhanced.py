@@ -180,6 +180,10 @@ async def list_tools() -> List[Tool]:
     tools.append(Tool(name="get_output_schemas", description="Describe output schemas for key tools", inputSchema={"type": "object", "properties": {}, "required": []}))
     tools.append(Tool(name="export_relationship_graph", description="Export relationships as a graph (JSON or GraphML)", inputSchema={"type": "object", "properties": {"format": {"type": "string", "enum": ["json", "graphml"], "default": "json"}}, "required": []}))
     tools.append(Tool(name="apply_tmdl_patch", description="Apply safe TMDL patch operations (measures only)", inputSchema={"type": "object", "properties": {"updates": {"type": "array", "items": {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "expression": {"type": "string"}, "display_folder": {"type": "string"}}, "required": ["table", "measure", "expression"]}}, "dry_run": {"type": "boolean", "default": False}}, "required": ["updates"]}))
+    # Orchestrated comprehensive analysis
+    tools.append(Tool(name="full_analysis", description="Run a comprehensive model analysis (summary, relationships, best practices, M scan, optional BPA)", inputSchema={"type": "object", "properties": {"include_bpa": {"type": "boolean", "default": True}, "depth": {"type": "string", "enum": ["light", "standard", "deep"], "default": "standard"}, "profile": {"type": "string", "enum": ["fast", "balanced", "deep"], "default": "balanced"}, "limits": {"type": "object", "properties": {"relationships_max": {"type": "integer", "default": 200}, "issues_max": {"type": "integer", "default": 200}}, "default": {}}}, "required": []}))
+    # Proposal helper so the agent can offer options to the user
+    tools.append(Tool(name="propose_analysis", description="Propose normal vs fast analysis options depending on need", inputSchema={"type": "object", "properties": {"goal": {"type": "string"}}, "required": []}))
     return tools
 
 
@@ -629,6 +633,11 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 arguments.get("verbose", False),
             )
             return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+
+        if name == "propose_analysis":
+            # Can be offered without requiring a connection
+            proposal = agent_policy.propose_analysis_options(connection_state, arguments.get('goal'))
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(proposal), indent=2))]
 
         # New utilities & orchestrations (pre-connection checks handled in policy)
         if name == "warm_query_cache":
@@ -1172,6 +1181,133 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                                 if r.get('success'):
                                     applied += 1
                             result = {'success': True, 'applied': applied, 'operations': ops}
+
+        # Orchestrated comprehensive analysis
+        elif name == "full_analysis":
+            t_start = time.time()
+            include_bpa = bool(arguments.get('include_bpa', True)) and BPA_AVAILABLE and (bpa_analyzer is not None)
+            depth = (arguments.get('depth') or 'standard').lower()
+            profile = (arguments.get('profile') or 'balanced').lower()
+            limits = arguments.get('limits') or {}
+            rel_max = int(limits.get('relationships_max', 200) or 200)
+            issues_max = int(limits.get('issues_max', 200) or 200)
+
+            sections: dict[str, Any] = {}
+            timings: dict[str, float] = {}
+
+            # Summary
+            t0 = time.time()
+            sections['summary'] = model_exporter.get_model_summary(query_executor) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
+            timings['summary_ms'] = round((time.time() - t0) * 1000, 2)
+
+            # Relationships
+            t0 = time.time()
+            rels = query_executor.execute_info_query("RELATIONSHIPS")
+            if rels.get('success') and isinstance(rels.get('rows'), list) and len(rels['rows']) > rel_max:
+                rels = dict(rels)
+                rels['rows'] = rels['rows'][:rel_max]
+                rels.setdefault('notes', []).append(f"Truncated to {rel_max} relationships")
+            sections['relationships'] = rels
+            timings['relationships_ms'] = round((time.time() - t0) * 1000, 2)
+
+            # FAST profile: only summary + relationships for speed
+            if profile == 'fast':
+                result = {
+                    'success': True,
+                    'depth': 'light',
+                    'profile': profile,
+                    'include_bpa': False,
+                    'timings_ms': timings,
+                    'sections': sections,
+                    'generated_at': time.time(),
+                }
+                return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+
+            # Best practices (lightweight composite)
+            t0 = time.time()
+            sections['best_practices'] = agent_policy.validate_best_practices(connection_state)
+            timings['best_practices_ms'] = round((time.time() - t0) * 1000, 2)
+
+            # M practices scan (same heuristics as analyze_m_practices)
+            t0 = time.time()
+            try:
+                dmv_cap = int(config.get('query.max_rows_preview', 1000))
+            except Exception:
+                dmv_cap = 1000
+            m_query = f'''EVALUATE
+            SELECTCOLUMNS(
+                TOPN({dmv_cap}, $SYSTEM.TMSCHEMA_EXPRESSIONS),
+                "Name", [Name],
+                "Expression", [Expression],
+                "Kind", [Kind]
+            )'''
+            m_data = query_executor.validate_and_execute_dax(m_query, dmv_cap)
+            if not m_data.get('success'):
+                sections['m_practices'] = m_data
+            else:
+                issues = []
+                for row in m_data.get('rows', []):
+                    if str(row.get('Kind', '')).upper() != 'M':
+                        continue
+                    name = row.get('Name') or '<unknown>'
+                    expr = (row.get('Expression') or '')
+                    expr_lower = expr.lower()
+                    if 'table.buffer(' in expr_lower:
+                        issues.append({'rule': 'M001', 'severity': 'warning', 'name': name, 'description': 'Table.Buffer used; can cause high memory usage if misapplied.'})
+                    if 'web.contents(' in expr_lower and ('relativepath' not in expr_lower and 'query=' not in expr_lower):
+                        issues.append({'rule': 'M002', 'severity': 'info', 'name': name, 'description': 'Web.Contents without RelativePath/Query options may be less cache-friendly.'})
+                    if 'excel.workbook(file.contents(' in expr_lower and (':\\' in expr_lower or ':/'):
+                        issues.append({'rule': 'M003', 'severity': 'warning', 'name': name, 'description': 'Excel.Workbook(File.Contents) with absolute path detected; consider parameterizing path.'})
+                    if 'table.selectrows(' in expr_lower:
+                        issues.append({'rule': 'M004', 'severity': 'info', 'name': name, 'description': 'Table.SelectRows found; ensure filtering is pushed to source where possible.'})
+                if len(issues) > issues_max:
+                    issues = issues[:issues_max]
+                sections['m_practices'] = {'success': True, 'count': len(issues), 'issues': issues}
+            timings['m_practices_ms'] = round((time.time() - t0) * 1000, 2)
+
+            # Optional BPA
+            if include_bpa and profile != 'fast':
+                t0 = time.time()
+                tmsl = query_executor.get_tmsl_definition()
+                if tmsl.get('success') and bpa_analyzer:
+                    viols = bpa_analyzer.analyze_model(tmsl['tmsl'])
+                    summary = bpa_analyzer.get_violations_summary()
+                    trimmed = []
+                    for v in viols[:issues_max]:
+                        trimmed.append({
+                            'rule_id': v.rule_id,
+                            'rule_name': v.rule_name,
+                            'category': v.category,
+                            'severity': getattr(v.severity, 'name', str(v.severity)),
+                            'object_type': v.object_type,
+                            'object_name': v.object_name,
+                            'table_name': v.table_name,
+                            'description': v.description
+                        })
+                    sections['bpa'] = {'success': True, 'violations_count': len(viols), 'summary': summary, 'violations': trimmed}
+                else:
+                    sections['bpa'] = {'success': False, 'error': 'TMSL unavailable or BPA analyzer missing'}
+                timings['bpa_ms'] = round((time.time() - t0) * 1000, 2)
+
+            # Optional deeper checks
+            if depth in ('standard', 'deep') and performance_optimizer:
+                t0 = time.time()
+                sections['cardinality_overview'] = performance_optimizer.analyze_column_cardinality(None)
+                timings['cardinality_overview_ms'] = round((time.time() - t0) * 1000, 2)
+            if depth == 'deep' and performance_optimizer:
+                t0 = time.time()
+                sections['relationship_cardinality'] = performance_optimizer.analyze_relationship_cardinality()
+                timings['relationship_cardinality_ms'] = round((time.time() - t0) * 1000, 2)
+
+            result = {
+                'success': True,
+                'depth': depth,
+                'profile': profile,
+                'include_bpa': include_bpa,
+                'timings_ms': timings,
+                'sections': sections,
+                'generated_at': time.time(),
+            }
 
         # Performance Optimization
         elif name == "analyze_relationship_cardinality":
