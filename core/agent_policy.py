@@ -294,3 +294,74 @@ class AgentPolicy:
         if notes:
             doc.setdefault("notes", []).extend(notes)
         return doc
+
+    # -------- NL intent executor --------
+    def execute_intent(
+        self,
+        connection_manager,
+        connection_state,
+        goal: str,
+        query: Optional[str] = None,
+        table: Optional[str] = None,
+        runs: Optional[int] = None,
+        max_rows: Optional[int] = None,
+        verbose: bool = False,
+        candidate_a: Optional[str] = None,
+        candidate_b: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Simple rule-based intent executor so users don't need to say 'run safely'.
+        Decides which orchestrations to call based on keywords and inputs.
+        """
+        # Ensure connection first
+        ensured = self.ensure_connected(connection_manager, connection_state)
+        actions: List[Dict[str, Any]] = [{"action": "ensure_connected", "result": ensured}]
+        if not ensured.get("success"):
+            return {"success": False, "error": "Connection not established", "phase": "ensure_connected", "details": ensured}
+
+        text = (goal or "").lower()
+
+        # Optimization benchmark if both candidates present
+        if candidate_a and candidate_b:
+            bench = self.optimize_query(connection_state, candidate_a, candidate_b, runs)
+            actions.append({"action": "optimize_query", "result": bench})
+            return {"success": bench.get("success", False), "actions": actions, "final": bench}
+
+        # Documentation or model summary intents
+        if any(k in text for k in ["document", "documentation", "docs", "summarize", "overview", "schema", "structure", "model summary", "list tables", "list measures", "relationship"]):
+            # Prefer a safe summary
+            summary = self.summarize_model_safely(connection_state)
+            actions.append({"action": "summarize_model", "result": summary})
+            if not summary.get("success"):
+                return {"success": False, "phase": "summarize_model", "actions": actions, "final": summary}
+            # If explicitly asked to document, proceed to docs
+            if any(k in text for k in ["document", "documentation", "docs"]):
+                doc = self.generate_docs_safe(connection_state)
+                actions.append({"action": "generate_docs_safe", "result": doc})
+                return {"success": doc.get("success", False), "actions": actions, "final": doc}
+            return {"success": True, "actions": actions, "final": summary}
+
+        # Performance analysis intents
+        if any(k in text for k in ["analyze performance", "performance", "perf", "se/fe", "storage engine", "formula engine"]):
+            if not query:
+                return {"success": False, "error": "No query provided for performance analysis", "phase": "input_validation", "actions": actions}
+            res = self.safe_run_dax(connection_state, query, mode="analyze", runs=runs, max_rows=max_rows, verbose=verbose)
+            actions.append({"action": "safe_run_dax(analyze)", "result": res})
+            return {"success": res.get("success", False), "actions": actions, "final": res}
+
+        # Generic run/query/preview intents
+        if query or any(k in text for k in ["run", "execute", "preview", "query", "show"]):
+            res = self.safe_run_dax(connection_state, query or "", mode="preview", runs=runs, max_rows=max_rows, verbose=verbose)
+            actions.append({"action": "safe_run_dax(preview)", "result": res})
+            return {"success": res.get("success", False), "actions": actions, "final": res}
+
+        # Health/status intents
+        if any(k in text for k in ["health", "status", "connected", "ready"]):
+            health = self.agent_health(connection_manager, connection_state)
+            actions.append({"action": "agent_health", "result": health})
+            return {"success": health.get("success", False), "actions": actions, "final": health}
+
+        # Default: plan based on table context
+        plan = self.plan_query(text, table, max_rows)
+        actions.append({"action": "plan_query", "result": plan})
+        return {"success": True, "actions": actions, "final": plan}

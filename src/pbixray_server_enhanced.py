@@ -75,6 +75,11 @@ async def list_tools() -> List[Tool]:
         Tool(name="ensure_connected", description="Ensure connection to a Power BI Desktop instance (detects and connects if needed)", inputSchema={"type": "object", "properties": {"preferred_index": {"type": "integer"}}, "required": []}),
         Tool(name="safe_run_dax", description="Validate and safely execute a DAX query; optionally analyze performance", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "mode": {"type": "string", "enum": ["auto", "preview", "analyze"], "default": "auto"}, "runs": {"type": "integer"}, "max_rows": {"type": "integer"}}, "required": ["query"]}),
         Tool(name="summarize_model", description="Lightweight model summary suitable for large models", inputSchema={"type": "object", "properties": {}, "required": []}),
+        Tool(name="plan_query", description="Plan a safe query based on a high-level intent and optional table context", inputSchema={"type": "object", "properties": {"intent": {"type": "string"}, "table": {"type": "string"}, "max_rows": {"type": "integer"}}, "required": ["intent"]}),
+        Tool(name="optimize_query", description="Benchmark two DAX variants and pick the faster one", inputSchema={"type": "object", "properties": {"candidate_a": {"type": "string"}, "candidate_b": {"type": "string"}, "runs": {"type": "integer"}}, "required": ["candidate_a", "candidate_b"]}),
+        Tool(name="agent_health", description="Consolidated agent/server health and quick model snapshot", inputSchema={"type": "object", "properties": {}, "required": []}),
+        Tool(name="generate_docs_safe", description="Generate documentation with large-model safeguards", inputSchema={"type": "object", "properties": {}, "required": []}),
+    Tool(name="execute_intent", description="Natural-language intent execution (connect, preview, analyze, document)", inputSchema={"type": "object", "properties": {"goal": {"type": "string"}, "query": {"type": "string"}, "table": {"type": "string"}, "runs": {"type": "integer"}, "max_rows": {"type": "integer"}, "candidate_a": {"type": "string"}, "candidate_b": {"type": "string"}, "verbose": {"type": "boolean", "default": False}}, "required": ["goal"]}),
         Tool(name="detect_powerbi_desktop", description="Detect Power BI instances", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="connect_to_powerbi", description="Connect to instance", inputSchema={"type": "object", "properties": {"model_index": {"type": "integer"}}, "required": ["model_index"]}),
         Tool(name="list_tables", description="List tables", inputSchema={"type": "object", "properties": {}, "required": []}),
@@ -201,6 +206,32 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
         elif name == "summarize_model":
             result = agent_policy.summarize_model_safely(connection_state)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        elif name == "plan_query":
+            result = agent_policy.plan_query(arguments.get("intent", ""), arguments.get("table"), arguments.get("max_rows"))
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        elif name == "optimize_query":
+            result = agent_policy.optimize_query(connection_state, arguments.get("candidate_a", ""), arguments.get("candidate_b", ""), arguments.get("runs"))
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        elif name == "agent_health":
+            result = agent_policy.agent_health(connection_manager, connection_state)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        elif name == "generate_docs_safe":
+            result = agent_policy.generate_docs_safe(connection_state)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        elif name == "execute_intent":
+            result = agent_policy.execute_intent(
+                connection_manager,
+                connection_state,
+                arguments.get("goal", ""),
+                arguments.get("query"),
+                arguments.get("table"),
+                arguments.get("runs"),
+                arguments.get("max_rows"),
+                arguments.get("verbose", False),
+                arguments.get("candidate_a"),
+                arguments.get("candidate_b"),
+            )
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
         if name == "detect_powerbi_desktop":
             instances = connection_manager.detect_instances()
