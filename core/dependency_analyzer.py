@@ -6,6 +6,7 @@ Analyzes measure and column dependencies across the model
 import re
 import logging
 from typing import Dict, Any, List, Set, Optional
+from core.query_executor import COLUMN_TYPE_CALCULATED
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,8 @@ class DependencyAnalyzer:
             # Get measure details
             measure_result = self.executor.execute_info_query(
                 "MEASURES",
-                f'[Table] = "{table}" && [Name] = "{measure}"'
+                filter_expr=f'[Name] = "{measure}"',
+                table_name=table
             )
 
             if not measure_result.get('success') or not measure_result.get('rows'):
@@ -298,7 +300,7 @@ class DependencyAnalyzer:
                         })
 
             # Check calculated columns
-            calc_cols_query = 'EVALUATE FILTER(INFO.COLUMNS(), [Type] = "Calculated")'
+            calc_cols_query = f'EVALUATE FILTER(INFO.COLUMNS(), [Type] = {COLUMN_TYPE_CALCULATED})'
             calc_result = self.executor.validate_and_execute_dax(calc_cols_query)
             if calc_result.get('success'):
                 for row in calc_result.get('rows', []):

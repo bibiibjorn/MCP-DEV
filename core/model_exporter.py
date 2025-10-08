@@ -71,8 +71,15 @@ class ModelExporter:
 
             db = server.Databases[0]
 
-            # Get TMSL as JSON
-            tmsl_json = db.Model.ToJson()
+            # Get TMSL as JSON using JsonSerializer
+            from Microsoft.AnalysisServices.Tabular import JsonSerializer, JsonSerializeOptions
+
+            options = JsonSerializeOptions()
+            options.IgnoreInferredObjects = False
+            options.IgnoreInferredProperties = False
+            options.IgnoreTimestamps = True
+
+            tmsl_json = JsonSerializer.SerializeObject(db.Model, options)
             tmsl_data = json.loads(tmsl_json)
 
             # Calculate statistics
@@ -286,7 +293,7 @@ class ModelExporter:
                     doc_lines.append(f"### {table_name}{hidden_tag}\n")
 
                     # Get columns for this table
-                    cols_result = query_executor.execute_info_query("COLUMNS", f'[Table] = "{table_name}"')
+                    cols_result = query_executor.execute_info_query("COLUMNS", table_name=table_name)
                     if cols_result.get('success'):
                         doc_lines.append("**Columns:**")
                         for col in cols_result['rows']:

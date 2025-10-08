@@ -1,0 +1,34 @@
+{
+  "server": {
+    "name": "pbixray-v2.3",
+    "log_level": "INFO",
+    "timeout_seconds": 60
+  },
+  "performance": {
+    "cache_ttl_seconds": 300,
+    "max_query_timeout": 60,
+    "default_top_n": 1000,
+    "enable_trace_logging": false
+  },
+  "detection": {
+    "cache_instances_seconds": 60,
+    "detection_timeout": 10,
+    "max_instances": 10
+  },
+  "query": {
+    "max_rows_preview": 1000,
+    "max_dax_query_length": 50000,
+    "enable_query_validation": true
+  },
+  "logging": {
+    "structured_logging": false,
+    "log_queries": false,
+    "log_performance": true
+  },
+  "features": {
+    "enable_bpa": true,
+    "enable_performance_analysis": true,
+    "enable_bulk_operations": true,
+    "enable_calculation_groups": true
+  }
+}

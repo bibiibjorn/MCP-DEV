@@ -91,8 +91,7 @@ class PerformanceOptimizer:
         """
         try:
             # Get columns
-            filter_expr = f'[Table] = "{table}"' if table else None
-            cols_result = self.executor.execute_info_query("COLUMNS", filter_expr)
+            cols_result = self.executor.execute_info_query("COLUMNS", table_name=table)
 
             if not cols_result.get('success'):
                 return {'success': False, 'error': 'Failed to get columns'}

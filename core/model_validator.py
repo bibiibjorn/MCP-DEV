@@ -307,15 +307,16 @@ class ModelValidator:
     def analyze_data_freshness(self) -> Dict[str, Any]:
         """Check data refresh status."""
         try:
-            # Query for table refresh times
-            query = """
-            SELECT
-                [DIMENSION_NAME] AS [Table],
-                [LAST_DATA_UPDATE] AS [LastRefresh]
-            FROM $SYSTEM.DISCOVER_STORAGE_TABLES
-            WHERE [TABLE_TYPE] = 'TABLE'
-            ORDER BY [LAST_DATA_UPDATE] DESC
-            """
+            # Query for table refresh times - DMV needs materialization with TOPN
+            query = '''EVALUATE
+            SELECTCOLUMNS(
+                FILTER(
+                    TOPN(999999, $SYSTEM.DISCOVER_STORAGE_TABLES),
+                    [TABLE_TYPE] = "TABLE"
+                ),
+                "Table", [DIMENSION_NAME],
+                "LastRefresh", [LAST_DATA_UPDATE]
+            )'''
 
             result = self.executor.validate_and_execute_dax(query)
 

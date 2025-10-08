@@ -19,6 +19,12 @@ from core.dax_validator import DaxValidator
 
 logger = logging.getLogger(__name__)
 
+# DMV Column Type Constants (INFO.COLUMNS()[Type] field)
+# These are numeric values, not text
+COLUMN_TYPE_DATA = 1        # Regular data column from source
+COLUMN_TYPE_CALCULATED = 2  # Calculated column with DAX expression
+COLUMN_TYPE_HIERARCHY = 3   # Hierarchy
+
 # Try to load ADOMD.NET
 ADOMD_AVAILABLE = False
 AdomdConnection = None
@@ -82,10 +88,11 @@ class OptimizedQueryExecutor:
         Returns:
             List of column names
         """
+        # IMPORTANT: INFO.* DMV tables use TableID (not Table) for table references
         column_map = {
-            'MEASURES': ['Name', 'Table', 'DataType', 'IsHidden', 'DisplayFolder', 'Expression'],
+            'MEASURES': ['Name', 'TableID', 'DataType', 'IsHidden', 'DisplayFolder', 'Expression'],
             'TABLES': ['Name', 'IsHidden', 'ModifiedTime', 'DataCategory'],
-            'COLUMNS': ['Name', 'Table', 'DataType', 'IsHidden', 'IsKey', 'Type'],
+            'COLUMNS': ['Name', 'TableID', 'DataType', 'IsHidden', 'IsKey', 'Type'],
             'RELATIONSHIPS': ['FromTable', 'FromColumn', 'ToTable', 'ToColumn', 'IsActive', 'CrossFilterDirection', 'Cardinality']
         }
         return column_map.get(function_name, [])
@@ -151,19 +158,65 @@ class OptimizedQueryExecutor:
 
         return suggestions
 
-    def execute_info_query(self, function_name: str, filter_expr: str = None, exclude_columns: List[str] = None) -> Dict[str, Any]:
+    def _get_table_id_from_name(self, table_name: str) -> Optional[int]:
+        """
+        Get the numeric TableID from a table name by querying INFO.TABLES().
+
+        Args:
+            table_name: Name of the table
+
+        Returns:
+            Numeric table ID or None if not found
+        """
+        try:
+            # Cache table mappings for performance
+            if self._table_cache is None:
+                query = "EVALUATE INFO.TABLES()"
+                result = self.validate_and_execute_dax(query, 0)
+                if result.get('success'):
+                    self._table_cache = {row['Name']: row['ID'] for row in result.get('rows', [])}
+                else:
+                    logger.error(f"Failed to load table cache: {result.get('error')}")
+                    return None
+
+            return self._table_cache.get(table_name)
+        except Exception as e:
+            logger.error(f"Error getting table ID for {table_name}: {e}")
+            return None
+
+    def execute_info_query(self, function_name: str, filter_expr: str = None, exclude_columns: List[str] = None, table_name: str = None) -> Dict[str, Any]:
         """
         Execute INFO.* DAX query with optional filtering.
+        Automatically converts TableID to Table for MEASURES and COLUMNS.
+        Handles table_name parameter by looking up the numeric TableID.
 
         Args:
             function_name: INFO function name (TABLES, COLUMNS, MEASURES, RELATIONSHIPS)
-            filter_expr: Optional DAX filter expression
+            filter_expr: Optional DAX filter expression (uses TableID as integer)
             exclude_columns: Optional list of columns to exclude
+            table_name: Optional table name to filter by (will be converted to numeric TableID)
 
         Returns:
-            Query result dictionary
+            Query result dictionary with Table column instead of TableID
         """
         try:
+            # If table_name is provided, look up the numeric TableID and build filter
+            if table_name:
+                table_id = self._get_table_id_from_name(table_name)
+                if table_id is None:
+                    return {
+                        'success': False,
+                        'error': f'Table "{table_name}" not found',
+                        'error_type': 'table_not_found',
+                        'suggestions': ['Verify table name with list_tables', 'Check case-sensitive spelling']
+                    }
+                # Build or append to filter expression using numeric TableID
+                table_filter = f'[TableID] = {table_id}'
+                if filter_expr:
+                    filter_expr = f'({filter_expr}) && ({table_filter})'
+                else:
+                    filter_expr = table_filter
+
             if exclude_columns:
                 cols = self._get_info_columns(function_name)
                 selected = [f'"{col}", [{col}]' for col in cols if col not in exclude_columns]
@@ -174,7 +227,16 @@ class OptimizedQueryExecutor:
             if filter_expr:
                 query = f"EVALUATE FILTER(INFO.{function_name}(), {filter_expr})"
 
-            return self.validate_and_execute_dax(query, 0)
+            result = self.validate_and_execute_dax(query, 0)
+
+            # Convert TableID to Table for better usability
+            if result.get('success') and function_name in ['MEASURES', 'COLUMNS']:
+                rows = result.get('rows', [])
+                for row in rows:
+                    if 'TableID' in row:
+                        row['Table'] = row['TableID']
+
+            return result
         except Exception as e:
             logger.error(f"Error executing INFO query: {e}")
             return {'success': False, 'error': str(e)}

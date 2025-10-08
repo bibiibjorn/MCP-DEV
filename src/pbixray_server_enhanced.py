@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PBIXRay MCP Server v2.2 - Optimized Edition
+PBIXRay MCP Server v2.3 - Professional Edition
 Uses modular core services with enhanced DAX execution and error handling.
 """
 
@@ -9,6 +9,7 @@ import json
 import logging
 import sys
 import os
+import time
 from typing import Any, List
 
 from mcp.server import Server
@@ -23,7 +24,7 @@ if parent_dir not in sys.path:
 
 from __version__ import __version__
 from core.connection_manager import ConnectionManager
-from core.query_executor import OptimizedQueryExecutor
+from core.query_executor import OptimizedQueryExecutor, COLUMN_TYPE_CALCULATED
 from core.performance_analyzer import EnhancedAMOTraceAnalyzer
 from core.dax_injector import DAXInjector
 from core.dependency_analyzer import DependencyAnalyzer
@@ -35,36 +36,39 @@ from core.model_exporter import ModelExporter
 from core.performance_optimizer import PerformanceOptimizer
 from core.model_validator import ModelValidator
 
+from core.error_handler import ErrorHandler
+
+# Import configuration and connection state
+from core.config_manager import config
+from core.connection_state import connection_state
+
 BPA_AVAILABLE = False
 try:
     from core.bpa_analyzer import BPAAnalyzer
     BPA_AVAILABLE = True
-except:
-    pass
+except ImportError as e:
+    print(f"BPA not available: {e}")
+except Exception as e:
+    print(f"Unexpected error loading BPA: {e}")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("pbixray_v2.2")
+logger = logging.getLogger("pbixray_v2.3")
 
+# Track server start time
+start_time = time.time()
+
+# Initialize connection manager
 connection_manager = ConnectionManager()
-query_executor = None
-performance_analyzer = None
-dax_injector = None
-bpa_analyzer = None
-dependency_analyzer = None
-bulk_operations = None
-calc_group_manager = None
-partition_manager = None
-rls_manager = None
-model_exporter = None
-performance_optimizer = None
-model_validator = None
+connection_state.set_connection_manager(connection_manager)
 
-app = Server("pbixray-v2.2")
+app = Server("pbixray-v2.3")
 
 
 @app.list_tools()
 async def list_tools() -> List[Tool]:
     tools = [
+        Tool(name="get_server_info", description="Get server version and connection status", inputSchema={"type": "object", "properties": {}, "required": []}),
+        Tool(name="health_check", description="Comprehensive server health check", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="detect_powerbi_desktop", description="Detect Power BI instances", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="connect_to_powerbi", description="Connect to instance", inputSchema={"type": "object", "properties": {"model_index": {"type": "integer"}}, "required": ["model_index"]}),
         Tool(name="list_tables", description="List tables", inputSchema={"type": "object", "properties": {}, "required": []}),
@@ -136,99 +140,134 @@ async def list_tools() -> List[Tool]:
 
 @app.call_tool()
 async def call_tool(name: str, arguments: Any) -> List[TextContent]:
-    global query_executor, performance_analyzer, dax_injector, bpa_analyzer
-    global dependency_analyzer, bulk_operations, calc_group_manager, partition_manager
-    global rls_manager, model_exporter, performance_optimizer, model_validator
-
     try:
+        # Tools that don't require a live connection
+        if name == "get_server_info":
+            info = {
+                'success': True,
+                'version': __version__,
+                'server': app.name,
+                'connected': connection_state.is_connected(),
+                'bpa_available': BPA_AVAILABLE,
+                'config': config.get_all()
+            }
+            if connection_state.is_connected():
+                instance_info = connection_manager.get_instance_info()
+                if instance_info:
+                    info['port'] = instance_info.get('port')
+            return [TextContent(type="text", text=json.dumps(info, indent=2))]
+        
+        elif name == "health_check":
+            import psutil
+            import time
+            
+            health_info = {
+                'success': True,
+                'timestamp': time.time(),
+                'server': {
+                    'version': __version__,
+                    'name': app.name,
+                    'uptime_seconds': time.time() - start_time if 'start_time' in globals() else 0
+                },
+                'connection': connection_state.get_status(),
+                'system': {
+                    'memory_usage_mb': psutil.Process().memory_info().rss / 1024 / 1024,
+                    'cpu_percent': psutil.cpu_percent(),
+                    'disk_usage_percent': psutil.disk_usage('.').percent
+                },
+                'configuration': {
+                    'cache_enabled': config.get('performance.cache_ttl_seconds', 0) > 0,
+                    'features_enabled': config.get_section('features')
+                }
+            }
+            return [TextContent(type="text", text=json.dumps(health_info, indent=2))]
         if name == "detect_powerbi_desktop":
             instances = connection_manager.detect_instances()
             result = {'success': True, 'total_instances': len(instances), 'instances': instances}
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "connect_to_powerbi":
-            query_executor = None
-            performance_analyzer = None
-            dax_injector = None
-            dependency_analyzer = None
-            bulk_operations = None
-            calc_group_manager = None
-            partition_manager = None
-            rls_manager = None
-            model_exporter = None
-            performance_optimizer = None
-            model_validator = None
-
+            # Clean up any existing state
+            connection_state.cleanup()
+            
             result = connection_manager.connect(arguments.get("model_index", 0))
             if result.get('success'):
-                conn = connection_manager.get_connection()
-                query_executor = OptimizedQueryExecutor(conn)
-
-                # Initialize performance analyzer with AMO
-                performance_analyzer = EnhancedAMOTraceAnalyzer(connection_manager.connection_string)
-                amo_connected = performance_analyzer.connect_amo()
-
-                if amo_connected:
-                    result['performance_analysis'] = 'AMO SessionTrace available'
-                    logger.info("✓ Performance analyzer initialized with AMO SessionTrace")
-                else:
-                    result['performance_analysis'] = 'AMO not available - performance analysis will use fallback mode'
-                    logger.warning("✗ AMO not available - performance analysis limited")
-
-                # Initialize all managers
-                dax_injector = DAXInjector(conn)
-                dependency_analyzer = DependencyAnalyzer(query_executor)
-                bulk_operations = BulkOperationsManager(dax_injector)
-                calc_group_manager = CalculationGroupManager(conn)
-                partition_manager = PartitionManager(conn)
-                rls_manager = RLSManager(conn, query_executor)
-                model_exporter = ModelExporter(conn)
-                performance_optimizer = PerformanceOptimizer(query_executor)
-                model_validator = ModelValidator(query_executor)
-
-                if BPA_AVAILABLE:
-                    try:
-                        rules_path = os.path.join(parent_dir, "core", "bpa.json")
-                        bpa_analyzer = BPAAnalyzer(rules_path)
-                    except:
-                        pass
-
+                # Update connection state
+                connection_state.set_connection_manager(connection_manager)
+                
+                # Initialize all managers through connection state
+                connection_state.initialize_managers()
+                
+                result['managers_initialized'] = connection_state._managers_initialized
+                result['performance_analysis'] = 'Available' if connection_state.performance_analyzer else 'Limited'
+            
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
-        if not connection_manager.is_connected() or not query_executor:
-            return [TextContent(type="text", text=json.dumps({"error": "Not connected"}, indent=2))]
+        if not connection_state.is_connected():
+            return [TextContent(type="text", text=json.dumps({"error": "Not connected to Power BI Desktop", "error_type": "not_connected"}, indent=2))]
 
         result = {}
+
+        # Use connection state managers with fallback
+        query_executor = connection_state.query_executor
+        performance_analyzer = connection_state.performance_analyzer
+        dax_injector = connection_state.dax_injector
+        bpa_analyzer = connection_state.bpa_analyzer
+        dependency_analyzer = connection_state.dependency_analyzer
+        bulk_operations = connection_state.bulk_operations
+        calc_group_manager = connection_state.calc_group_manager
+        partition_manager = connection_state.partition_manager
+        rls_manager = connection_state.rls_manager
+        model_exporter = connection_state.model_exporter
+        performance_optimizer = connection_state.performance_optimizer
+        model_validator = connection_state.model_validator
+
+        # Check if query executor is available (required for most operations)
+        if not query_executor:
+            return [TextContent(type="text", text=json.dumps({"error": "Query executor not available", "error_type": "service_unavailable"}, indent=2))]
 
         if name == "list_tables":
             result = query_executor.execute_info_query("TABLES")
         elif name == "list_measures":
             table = arguments.get("table")
-            filter_expr = f'[Table] = "{table}"' if table else None
-            result = query_executor.execute_info_query("MEASURES", filter_expr, exclude_columns=['Expression'])
+            result = query_executor.execute_info_query("MEASURES", table_name=table, exclude_columns=['Expression'])
         elif name == "describe_table":
             table = arguments["table"]
-            cols = query_executor.execute_info_query("COLUMNS", f'[Table] = "{table}"')
-            measures = query_executor.execute_info_query("MEASURES", f'[Table] = "{table}"', exclude_columns=['Expression'])
+            cols = query_executor.execute_info_query("COLUMNS", table_name=table)
+            measures = query_executor.execute_info_query("MEASURES", table_name=table, exclude_columns=['Expression'])
             rels = query_executor.execute_info_query("RELATIONSHIPS", f'[FromTable] = "{table}" || [ToTable] = "{table}"')
             result = {'success': True, 'table': table, 'columns': cols.get('rows', []), 'measures': measures.get('rows', []), 'relationships': rels.get('rows', [])}
         elif name == "get_measure_details":
-            result = query_executor.execute_info_query("MEASURES", f'[Table] = "{arguments["table"]}" && [Name] = "{arguments["measure"]}"')
+            result = query_executor.execute_info_query("MEASURES", filter_expr=f'[Name] = "{arguments["measure"]}"', table_name=arguments["table"])
         elif name == "search_string":
             result = query_executor.search_measures_dax(arguments['search_text'], arguments.get('search_in_expression', True), arguments.get('search_in_name', True))
         elif name == "list_calculated_columns":
             table = arguments.get("table")
-            filter_expr = '[Type] = "Calculated"'
-            if table:
-                filter_expr += f' && [Table] = "{table}"'
-            query = f'EVALUATE FILTER(INFO.COLUMNS(), {filter_expr})'
-            result = query_executor.validate_and_execute_dax(query)
+            filter_expr = f'[Type] = {COLUMN_TYPE_CALCULATED}'
+            result = query_executor.execute_info_query("COLUMNS", filter_expr=filter_expr, table_name=table)
         elif name == "search_objects":
             result = query_executor.search_objects_dax(arguments.get("pattern", "*"), arguments.get("types", ["tables", "columns", "measures"]))
         elif name == "get_data_sources":
-            result = query_executor.validate_and_execute_dax("SELECT * FROM $SYSTEM.DISCOVER_DATASOURCES")
+            # DMV queries need special handling - materialize with TOPN before SELECTCOLUMNS
+            query = '''EVALUATE
+            SELECTCOLUMNS(
+                TOPN(999999, $SYSTEM.DISCOVER_DATASOURCES),
+                "DataSourceID", [DataSourceID],
+                "Name", [Name],
+                "Description", [Description],
+                "Type", [Type]
+            )'''
+            result = query_executor.validate_and_execute_dax(query)
         elif name == "get_m_expressions":
-            result = query_executor.validate_and_execute_dax("SELECT * FROM $SYSTEM.TMSCHEMA_EXPRESSIONS")
+            # DMV queries need special handling - materialize with TOPN before SELECTCOLUMNS
+            query = '''EVALUATE
+            SELECTCOLUMNS(
+                TOPN(999999, $SYSTEM.TMSCHEMA_EXPRESSIONS),
+                "Name", [Name],
+                "Expression", [Expression],
+                "Kind", [Kind]
+            )'''
+            result = query_executor.validate_and_execute_dax(query)
         elif name == "preview_table_data":
             result = query_executor.execute_with_table_reference_fallback(arguments['table'], arguments.get('top_n', 10))
         elif name == "run_dax_query":
@@ -245,7 +284,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             result = dax_injector.delete_measure(arguments["table"], arguments["measure"]) if dax_injector else {'success': False, 'error': 'Not available'}
         elif name == "list_columns":
             table = arguments.get("table")
-            result = query_executor.execute_info_query("COLUMNS", f'[Table] = "{table}"' if table else None)
+            result = query_executor.execute_info_query("COLUMNS", table_name=table)
         elif name == "get_column_values":
             query = f"EVALUATE TOPN({arguments.get('limit', 100)}, VALUES('{arguments['table']}'[{arguments['column']}]))"
             result = query_executor.validate_and_execute_dax(query)
@@ -254,11 +293,18 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             result = query_executor.validate_and_execute_dax(query)
         elif name == "list_relationships":
             active_only = arguments.get("active_only")
-            filter_expr = "[IsActive] = TRUE" if active_only is True else "[IsActive] = FALSE" if active_only is False else None
-            result = query_executor.execute_info_query("RELATIONSHIPS", filter_expr)
+            if active_only is True:
+                result = query_executor.execute_info_query("RELATIONSHIPS", "[IsActive] = TRUE")
+            elif active_only is False:
+                result = query_executor.execute_info_query("RELATIONSHIPS", "[IsActive] = FALSE")
+            else:
+                result = query_executor.execute_info_query("RELATIONSHIPS")
         elif name == "get_vertipaq_stats":
             table = arguments.get("table")
-            query = f'EVALUATE FILTER(INFO.STORAGETABLECOLUMNS(), LEFT([TABLE_ID], LEN("{table}")) = "{table}")' if table else "EVALUATE INFO.STORAGETABLECOLUMNS()"
+            if table:
+                query = f'EVALUATE FILTER(INFO.STORAGETABLECOLUMNS(), [TABLE_ID] = "{table}")'
+            else:
+                query = "EVALUATE INFO.STORAGETABLECOLUMNS()"
             result = query_executor.validate_and_execute_dax(query)
         elif name == "analyze_query_performance":
             if not performance_analyzer:
@@ -389,9 +435,10 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
 
         # Only add minimal connection info to reduce token usage
         if isinstance(result, dict) and result.get('success'):
-            instance_info = connection_manager.get_instance_info()
-            if instance_info:
-                result['port'] = instance_info.get('port')
+            if connection_state.is_connected():
+                instance_info = connection_manager.get_instance_info()
+                if instance_info and instance_info.get('port'):
+                    result['port'] = str(instance_info.get('port'))
 
         return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
