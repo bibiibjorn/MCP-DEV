@@ -44,13 +44,17 @@ from core.config_manager import config
 from core.connection_state import connection_state
 
 BPA_AVAILABLE = False
+BPA_STATUS = {"available": False, "reason": None}
 try:
     from core.bpa_analyzer import BPAAnalyzer
     BPA_AVAILABLE = True
+    BPA_STATUS["available"] = True
 except ImportError as e:
     logging.getLogger("pbixray_v2.3").warning(f"BPA not available: {e}")
+    BPA_STATUS["reason"] = str(e)
 except Exception as e:
     logging.getLogger("pbixray_v2.3").warning(f"Unexpected error loading BPA: {e}")
+    BPA_STATUS["reason"] = str(e)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("pbixray_v2.3")
@@ -194,6 +198,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 'server': app.name,
                 'connected': connection_state.is_connected(),
                 'bpa_available': BPA_AVAILABLE,
+                'bpa_status': BPA_STATUS,
                 'config': config.get_all(),
                 'error_schema': {
                     'not_connected': {
@@ -235,8 +240,26 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             return [TextContent(type="text", text=json.dumps(info, indent=2))]
 
         if name == "health_check":
-            import psutil
             now = time.time()
+            system_info = {}
+            psutil_note = None
+            try:
+                import psutil  # type: ignore
+                process_mem = psutil.Process().memory_info().rss / 1024 / 1024
+                cpu = psutil.cpu_percent()
+                disk = psutil.disk_usage('.').percent
+                system_info = {
+                    'memory_usage_mb': process_mem,
+                    'cpu_percent': cpu,
+                    'disk_usage_percent': disk,
+                }
+            except Exception as e:
+                psutil_note = f"psutil unavailable or failed: {e}"
+                system_info = {
+                    'psutil_unavailable': True,
+                    'note': psutil_note,
+                }
+
             health_info = {
                 'success': True,
                 'timestamp': now,
@@ -246,11 +269,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                     'uptime_seconds': now - start_time
                 },
                 'connection': connection_state.get_status(),
-                'system': {
-                    'memory_usage_mb': psutil.Process().memory_info().rss / 1024 / 1024,
-                    'cpu_percent': psutil.cpu_percent(),
-                    'disk_usage_percent': psutil.disk_usage('.').percent
-                },
+                'system': system_info,
                 'configuration': {
                     'cache_enabled': config.get('performance.cache_ttl_seconds', 0) > 0,
                     'features_enabled': config.get_section('features')
@@ -465,7 +484,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                     'suggestions': ['Connect to Power BI Desktop first']
                 }
             elif not performance_analyzer.amo_server:
-                result = {
+                warning = {
                     'success': False,
                     'error': 'AMO SessionTrace not available - using fallback mode',
                     'error_type': 'amo_not_connected',
@@ -475,7 +494,16 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                     ],
                     'note': 'Using fallback mode (basic timing only)'
                 }
-                result = performance_analyzer.analyze_query(query_executor, arguments['query'], arguments.get('runs', 3), arguments.get('clear_cache', True))
+                analysis = performance_analyzer.analyze_query(
+                    query_executor,
+                    arguments['query'],
+                    arguments.get('runs', 3),
+                    arguments.get('clear_cache', True)
+                )
+                if isinstance(analysis, dict):
+                    analysis.setdefault('notes', []).append(warning.get('note'))
+                    analysis.setdefault('warnings', []).append({k: v for k, v in warning.items() if k != 'success'})
+                result = analysis
             else:
                 result = performance_analyzer.analyze_query(query_executor, arguments['query'], arguments.get('runs', 3), arguments.get('clear_cache', True))
         elif name == "validate_dax_query":

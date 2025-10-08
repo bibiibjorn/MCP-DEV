@@ -340,10 +340,21 @@ class AgentPolicy:
             notes.append("Model summary unavailable; proceeding to basic documentation")
             return exporter.generate_documentation(executor)
 
-        # If measure/table counts are very high, skip any heavy exports
+        # If model scale is high, prefer lightweight docs
         counts = summary.get("counts") or {}
-        high = any((counts.get(k, 0) > 10000) for k in ["rows", "columns"])  # heuristic placeholder
-        if high:
+        # Prefer named counts if provided by exporter; otherwise fallback heuristics
+        measures_count = counts.get("measures", counts.get("measure_count", 0))
+        tables_count = counts.get("tables", counts.get("table_count", 0))
+        columns_count = counts.get("columns", counts.get("column_count", 0))
+        relationships_count = counts.get("relationships", counts.get("relationship_count", 0))
+
+        is_large = (
+            measures_count > 2000 or
+            tables_count > 200 or
+            columns_count > 10000 or
+            relationships_count > 5000
+        )
+        if is_large:
             notes.append("Large model detected; generating lightweight documentation")
         doc = exporter.generate_documentation(executor)
         if notes:
