@@ -598,6 +598,99 @@ class ModelExporter:
             summary['counts'] = top_counts
             summary['tables_by_name'] = tables_by_name
 
+            # Heuristic purpose/capabilities summary so consumers know what the model likely does
+            try:
+                tbl_names = set(tables_by_name.keys())
+                name_str = " ".join(tbl_names).lower()
+
+                def present(substrs):
+                    return any(s.lower() in name_str for s in substrs)
+
+                domains = []
+                signals = []
+
+                # Time intelligence
+                if any(k in tbl_names for k in ('d_Date', 'd_Period')) or present(['time', 'period', 'calendar']):
+                    domains.append('Period/Time')
+                    signals.append('Time intelligence (Date/Period tables)')
+
+                # Currency conversion
+                if present(['currency', 'fx']) or any(k in tbl_names for k in ('d_Currency_From', 'd_Currency_Report', 'd_Currency_Rates')):
+                    domains.append('Currency/FX')
+                    signals.append('Currency conversion present (currency tables)')
+
+                # Scenario/versioning
+                if present(['scenario', 'version']):
+                    domains.append('Scenario/Version')
+                    signals.append('Scenario/version switching')
+
+                # Financial reporting / GL / P&L / Balance Sheet
+                if present(['gl', 'p&l', 'pl', 'balance', 'bs', 'cash flow', 'cf', 'finrep']) or 'f_FINREP' in tbl_names or 'd_GL Account' in tbl_names:
+                    domains.append('Financial Reporting')
+                    signals.append('General Ledger / P&L / BS indicators detected')
+
+                # Aging / AR / AP
+                if present(['aging']) or any(k in tbl_names for k in ('f_Aging_Customer', 'f_Aging_Vendor')):
+                    domains.append('Aging/AR/AP')
+                    signals.append('Accounts receivable/payable aging')
+
+                # RLS
+                if present(['rls']) or any(n.startswith('r_RLS_') for n in tbl_names):
+                    domains.append('Row-Level Security')
+                    signals.append('RLS artifacts detected (roles/tables)')
+
+                # Customer/Vendor
+                if any(k in tbl_names for k in ('d_Customer', 'd_Vendor')) or present(['customer', 'vendor', 'supplier']):
+                    domains.append('Customer/Vendor')
+
+                # Organization (Cost/Profit/Company)
+                if any(k in tbl_names for k in ('d_Company', 'd_CostCenter', 'd_Profit Center')) or present(['company', 'cost center', 'profit center']):
+                    domains.append('Company/Org')
+
+                # Star schema hint
+                star_hint = None
+                if any(n.startswith('f_') for n in tbl_names) and any(n.startswith('d_') for n in tbl_names):
+                    star_hint = 'Star-schema oriented (facts linked to multiple dimensions)'
+                    signals.append(star_hint)
+
+                # Measure hub hint
+                if 'm_Measures' in tbl_names:
+                    signals.append('Central measure table (m_Measures)')
+
+                # Compose a short purpose text
+                lead = []
+                if 'Financial Reporting' in domains:
+                    lead.append('financial reporting')
+                if 'Currency/FX' in domains:
+                    lead.append('currency conversion')
+                if 'Row-Level Security' in domains:
+                    lead.append('row-level security')
+                if 'Period/Time' in domains:
+                    lead.append('time intelligence')
+
+                if lead:
+                    purpose_text = f"Model geared towards {', '.join(lead[:-1]) + (' and ' if len(lead) > 1 else '') + lead[-1]}"
+                else:
+                    purpose_text = 'General analytics model'
+
+                if star_hint and star_hint not in signals:
+                    signals.append(star_hint)
+
+                # De-duplicate while preserving order
+                seen = set()
+                signals = [s for s in signals if not (s in seen or seen.add(s))]
+                dom_seen = set()
+                domains = [d for d in domains if not (d in dom_seen or dom_seen.add(d))]
+
+                summary['purpose'] = {
+                    'text': purpose_text,
+                    'domains': domains,
+                    'signals': signals,
+                }
+            except Exception:
+                # Non-fatal: keep summary usable even if heuristics fail
+                pass
+
             return summary
 
         except Exception as e:

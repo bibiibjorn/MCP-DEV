@@ -78,6 +78,15 @@ def run_full_analysis(depth: str, include_bpa: bool, relationships_max: int, iss
         sections['summary'] = {'success': False, 'error': 'Model exporter unavailable'}
     timings['summary_ms'] = round((time.time() - t0) * 1000, 2)
 
+    # Attach concise purpose if available
+    try:
+        if isinstance(sections.get('summary'), dict):
+            purpose = sections['summary'].get('purpose')
+            if purpose:
+                sections['model_purpose'] = {'success': True, **purpose}
+    except Exception:
+        pass
+
     # Relationships
     t0 = time.time()
     if qe:
@@ -95,6 +104,18 @@ def run_full_analysis(depth: str, include_bpa: bool, relationships_max: int, iss
             sections['narrative'] = generate_narrative(sections.get('summary') or {}, sections.get('relationships') or {})
         except Exception:
             pass
+        # concise purpose
+        what = None
+        try:
+            purpose = (sections.get('model_purpose') or {}).get('text')
+            if purpose:
+                what = purpose
+            else:
+                doms = (sections.get('model_purpose') or {}).get('domains') or []
+                if doms:
+                    what = ", ".join(doms[:5])
+        except Exception:
+            pass
         return {
             'success': True,
             'depth': 'light',
@@ -103,6 +124,7 @@ def run_full_analysis(depth: str, include_bpa: bool, relationships_max: int, iss
             'generated_at': time.time(),
             'timings_ms': timings,
             'sections': sections,
+            'what_the_model_does': what,
             'instance': cm.get_instance_info(),
         }
 
@@ -184,6 +206,19 @@ def run_full_analysis(depth: str, include_bpa: bool, relationships_max: int, iss
         sections['relationship_cardinality'] = perf_opt.analyze_relationship_cardinality()
         timings['relationship_cardinality_ms'] = round((time.time() - t0) * 1000, 2)
 
+    # concise purpose at top-level
+    what = None
+    try:
+        purpose = (sections.get('model_purpose') or {}).get('text')
+        if purpose:
+            what = purpose
+        else:
+            doms = (sections.get('model_purpose') or {}).get('domains') or []
+            if doms:
+                what = ", ".join(doms[:5])
+    except Exception:
+        pass
+
     return {
         'success': True,
         'depth': depth,
@@ -192,6 +227,7 @@ def run_full_analysis(depth: str, include_bpa: bool, relationships_max: int, iss
         'generated_at': time.time(),
         'timings_ms': timings,
         'sections': {**sections, 'narrative': generate_narrative(sections.get('summary') or {}, sections.get('relationships') or {})},
+        'what_the_model_does': what,
         'instance': cm.get_instance_info(),
     }
 
