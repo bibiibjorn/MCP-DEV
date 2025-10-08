@@ -86,16 +86,29 @@ class ModelValidator:
         """Check for orphaned records in relationships."""
         issues = []
 
+        # Helper to fetch DMV fields that may arrive as "Name" or "[Name]"
+        def _get_any(row: Dict[str, Any], keys: List[str]) -> Any:
+            for k in keys:
+                if k in row and row[k] not in (None, ""):
+                    return row[k]
+                bk = f"[{k}]"
+                if bk in row and row[bk] not in (None, ""):
+                    return row[bk]
+            return None
+
         try:
             rels_result = self.executor.execute_info_query("RELATIONSHIPS")
             if not rels_result.get('success'):
                 return issues
 
             for rel in rels_result['rows'][:10]:  # Check first 10 relationships
-                from_table = rel.get('FromTable')
-                from_col = rel.get('FromColumn')
-                to_table = rel.get('ToTable')
-                to_col = rel.get('ToColumn')
+                from_table = _get_any(rel, ['FromTable'])
+                from_col = _get_any(rel, ['FromColumn'])
+                to_table = _get_any(rel, ['ToTable'])
+                to_col = _get_any(rel, ['ToColumn'])
+                if not from_table or not from_col or not to_table or not to_col:
+                    # Skip incomplete rows
+                    continue
 
                 # Check for orphaned records
                 query = f"""
@@ -132,6 +145,15 @@ class ModelValidator:
         """Check for duplicate keys in dimension tables."""
         issues = []
 
+        def _get_any(row: Dict[str, Any], keys: List[str]) -> Any:
+            for k in keys:
+                if k in row and row[k] not in (None, ""):
+                    return row[k]
+                bk = f"[{k}]"
+                if bk in row and row[bk] not in (None, ""):
+                    return row[bk]
+            return None
+
         try:
             # Get relationships to identify dimension tables
             rels_result = self.executor.execute_info_query("RELATIONSHIPS")
@@ -142,8 +164,10 @@ class ModelValidator:
             checked_tables = set()
 
             for rel in rels_result['rows'][:10]:
-                to_table = rel.get('ToTable')
-                to_col = rel.get('ToColumn')
+                to_table = _get_any(rel, ['ToTable'])
+                to_col = _get_any(rel, ['ToColumn'])
+                if not to_table or not to_col:
+                    continue
 
                 table_col = f"{to_table}[{to_col}]"
                 if table_col in checked_tables:
@@ -186,6 +210,15 @@ class ModelValidator:
         """Check for null values in key columns."""
         issues = []
 
+        def _get_any(row: Dict[str, Any], keys: List[str]) -> Any:
+            for k in keys:
+                if k in row and row[k] not in (None, ""):
+                    return row[k]
+                bk = f"[{k}]"
+                if bk in row and row[bk] not in (None, ""):
+                    return row[bk]
+            return None
+
         try:
             rels_result = self.executor.execute_info_query("RELATIONSHIPS")
             if not rels_result.get('success'):
@@ -196,8 +229,10 @@ class ModelValidator:
             for rel in rels_result['rows'][:10]:
                 # Check both sides
                 for side in ['From', 'To']:
-                    table = rel.get(f'{side}Table')
-                    col = rel.get(f'{side}Column')
+                    table = _get_any(rel, [f'{side}Table'])
+                    col = _get_any(rel, [f'{side}Column'])
+                    if not table or not col:
+                        continue
 
                     table_col = f"{table}[{col}]"
                     if table_col in checked:
@@ -307,25 +342,46 @@ class ModelValidator:
     def analyze_data_freshness(self) -> Dict[str, Any]:
         """Check data refresh status."""
         try:
-            # Query for table refresh times - DMV needs materialization with TOPN
-            query = '''EVALUATE
+            # Attempt 1: Desktop-incompatible DMV may fail; try TMSCHEMA partitions first
+            attempts = []
+            query_tmschema = '''EVALUATE
             SELECTCOLUMNS(
-                FILTER(
-                    TOPN(999999, $SYSTEM.DISCOVER_STORAGE_TABLES),
-                    [TABLE_TYPE] = "TABLE"
-                ),
-                "Table", [DIMENSION_NAME],
-                "LastRefresh", [LAST_DATA_UPDATE]
+                TOPN(999999, $SYSTEM.TMSCHEMA_TABLES),
+                "Table", [Name],
+                "LastRefresh", [ModifiedTime]
             )'''
-
-            result = self.executor.validate_and_execute_dax(query)
+            result = self.executor.validate_and_execute_dax(query_tmschema)
+            attempts.append(('TMSCHEMA_TABLES', result.get('success')))
+            if not result.get('success'):
+                # Attempt 2: Legacy DISCOVER_STORAGE_TABLES (may fail on Desktop)
+                query = '''EVALUATE
+                SELECTCOLUMNS(
+                    FILTER(
+                        TOPN(999999, $SYSTEM.DISCOVER_STORAGE_TABLES),
+                        [TABLE_TYPE] = "TABLE"
+                    ),
+                    "Table", [DIMENSION_NAME],
+                    "LastRefresh", [LAST_DATA_UPDATE]
+                )'''
+                result = self.executor.validate_and_execute_dax(query)
+                attempts.append(('DISCOVER_STORAGE_TABLES', result.get('success')))
+            if not result.get('success'):
+                # Attempt 3: TOM fallback - partitions LastProcessed
+                try:
+                    result = self.executor.get_partition_freshness_tom()
+                    attempts.append(('TOM', result.get('success')))
+                except Exception as _e:
+                    result = {'success': False, 'error': str(_e)}
 
             if result.get('success'):
+                rows = result.get('rows', []) or result.get('tables', [])
                 return {
                     'success': True,
-                    'tables': result.get('rows', [])
+                    'tables': rows,
+                    'attempts': attempts
                 }
             else:
+                result.setdefault('attempts', attempts)
                 return result
 
         except Exception as e:

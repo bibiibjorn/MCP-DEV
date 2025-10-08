@@ -660,17 +660,33 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
         result = qe.search_objects_dax(arguments.get("pattern", "*"), arguments.get("types", ["tables", "columns", "measures"]))
         return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows', 'items'])
     if name == "get_data_sources":
-        query = f'''EVALUATE
+        # Try Desktop-friendly DMV first, then TOM fallback
+        attempts = []
+        # Attempt 1: TMSCHEMA_DATA_SOURCES (preferred for Desktop)
+        dmv_query = f'''EVALUATE
             SELECTCOLUMNS(
-                TOPN({dmv_cap}, $SYSTEM.DISCOVER_DATASOURCES),
-                "DataSourceID", [DataSourceID],
+                TOPN({dmv_cap}, $SYSTEM.TMSCHEMA_DATA_SOURCES),
+                "DataSourceID", [ID],
                 "Name", [Name],
                 "Description", [Description],
                 "Type", [Type]
             )'''
-        result = qe.validate_and_execute_dax(query, dmv_cap)
+        result = qe.validate_and_execute_dax(dmv_query, dmv_cap)
+        attempts.append(('TMSCHEMA_DATA_SOURCES', result.get('success')))
+        if not result.get('success'):
+            # Attempt 2: TOM fallback
+            try:
+                result = qe.list_data_sources_tom(dmv_cap)
+                attempts.append(('TOM', result.get('success')))
+            except Exception as _e:
+                result = {'success': False, 'error': str(_e)}
         if result.get('success') and len(result.get('rows', [])) >= dmv_cap:
             result.setdefault('notes', []).append(f"Result truncated to {dmv_cap} rows for safety.")
+        if not result.get('success'):
+            # Graceful empty with note
+            result = {'success': True, 'rows': [], 'row_count': 0, 'notes': [
+                'Data sources DMV not available; TOM fallback also unavailable on this Desktop build.'
+            ], 'attempts': attempts}
         return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
     if name == "get_m_expressions":
         query = f'''EVALUATE
@@ -681,8 +697,18 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
                 "Kind", [Kind]
             )'''
         result = qe.validate_and_execute_dax(query, dmv_cap)
+        tried_dmv = True
+        if not result.get('success'):
+            # Fallback to TOM enumeration
+            try:
+                result = qe.enumerate_m_expressions_tom(dmv_cap)
+                tried_dmv = False
+            except Exception as _e:
+                result = {'success': False, 'error': str(_e)}
         if result.get('success') and len(result.get('rows', [])) >= dmv_cap:
             result.setdefault('notes', []).append(f"Result truncated to {dmv_cap} rows for safety.")
+        if result.get('success') and not tried_dmv:
+            result.setdefault('notes', []).append('DMV blocked; returned TOM-based expressions list.')
         return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
     if name == "preview_table_data":
         limits = connection_state.get_safety_limits()
@@ -711,6 +737,12 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
     if name == "list_columns":
         table = arguments.get("table")
         result = qe.execute_info_query("COLUMNS", table_name=table)
+        # Fallback: if table-specific lookup fails, fetch all and filter client-side
+        if table and not result.get('success'):
+            all_cols = qe.execute_info_query("COLUMNS")
+            if all_cols.get('success'):
+                rows = [r for r in all_cols.get('rows', []) if str(r.get('Table') or '') == str(table)]
+                result = {'success': True, 'rows': rows, 'row_count': len(rows), 'notes': [f'Client-side filtered for table {table} due to ID lookup issue']}
         return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
     if name == "get_column_values":
         t = _dax_quote_table(arguments['table'])
@@ -738,24 +770,25 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
         return qe.execute_info_query("RELATIONSHIPS")
     if name == "get_vertipaq_stats":
         table = arguments.get("table")
-        if table:
-            query = f"""
-                EVALUATE
-                VAR Src = INFO.STORAGETABLECOLUMNS()
-                VAR Exact = FILTER(Src, [TABLE_FULL_NAME] = "{table}" || [TABLE_ID] = "{table}")
-                RETURN
-                IF(
-                    COUNTROWS(Exact) > 0,
-                    Exact,
-                    FILTER(
-                        Src,
-                        CONTAINSSTRING([TABLE_FULL_NAME], "{table}") || CONTAINSSTRING([TABLE_ID], "{table}")
-                    )
-                )
-                """
-        else:
-            query = "EVALUATE INFO.STORAGETABLECOLUMNS()"
-        return qe.validate_and_execute_dax(query)
+        # Safest cross-version behavior: query full INFO.STORAGETABLECOLUMNS and apply client-side filtering if requested
+        dsp = qe.validate_and_execute_dax("EVALUATE INFO.STORAGETABLECOLUMNS()")
+        if table and dsp.get('success'):
+            t = str(table)
+            keys = [
+                'TABLE_FULL_NAME', 'TABLE_ID', 'TABLE_NAME', 'Table', 'TABLE', 'Name'
+            ]
+            def match_row(r: dict) -> bool:
+                for k in keys:
+                    v = r.get(k)
+                    if v is None:
+                        continue
+                    sv = str(v)
+                    if sv == t or t in sv:
+                        return True
+                return False
+            filtered = [r for r in dsp.get('rows', []) if isinstance(r, dict) and match_row(r)]
+            return {'success': True, 'rows': filtered, 'row_count': len(filtered), 'notes': [f'Client-side filtered for table {table}']}
+        return dsp
     if name == "analyze_query_performance":
         if not performance_analyzer:
             basic = qe.validate_and_execute_dax(arguments['query'], 0, arguments.get('clear_cache', True))

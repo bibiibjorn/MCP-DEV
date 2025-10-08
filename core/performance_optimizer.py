@@ -19,6 +19,45 @@ class PerformanceOptimizer:
     def analyze_relationship_cardinality(self) -> Dict[str, Any]:
         """Analyze actual vs configured relationship cardinality."""
         try:
+            # Helpers for robust DMV field access and ID->name mapping
+            def _get_any(row, keys):
+                for k in keys:
+                    if k in row and row[k] not in (None, ""):
+                        return row[k]
+                    bk = f"[{k}]"
+                    if bk in row and row[bk] not in (None, ""):
+                        return row[bk]
+                return None
+
+            def _build_maps():
+                tables_map = {}
+                cols_map = {}
+                # Tables
+                t_res = self.executor.execute_info_query("TABLES")
+                if t_res.get('success'):
+                    for tr in t_res.get('rows', []):
+                        tid = _get_any(tr, ['ID', 'TableID'])
+                        name = _get_any(tr, ['Name', 'Table'])
+                        try:
+                            if tid is not None and name:
+                                tables_map[int(str(tid))] = str(name)
+                        except Exception:
+                            pass
+                # Columns
+                c_res = self.executor.execute_info_query("COLUMNS")
+                if c_res.get('success'):
+                    for cr in c_res.get('rows', []):
+                        cid = _get_any(cr, ['ID', 'ColumnID'])
+                        cname = _get_any(cr, ['Name'])
+                        try:
+                            if cid is not None and cname:
+                                cols_map[int(str(cid))] = str(cname)
+                        except Exception:
+                            pass
+                return tables_map, cols_map
+
+            tables_by_id, columns_by_id = _build_maps()
+
             def _to_int(v, default=0):
                 try:
                     if v is None:
@@ -39,11 +78,41 @@ class PerformanceOptimizer:
             issues = []
 
             for rel in relationships:
-                from_table = rel.get('FromTable')
-                from_col = rel.get('FromColumn')
-                to_table = rel.get('ToTable')
-                to_col = rel.get('ToColumn')
-                configured_card = rel.get('Cardinality', 'Unknown')
+                # Prefer name fields; if missing, resolve from IDs
+                from_table = _get_any(rel, ['FromTable'])
+                to_table = _get_any(rel, ['ToTable'])
+                from_col = _get_any(rel, ['FromColumn'])
+                to_col = _get_any(rel, ['ToColumn'])
+                if not from_table:
+                    ftid = _get_any(rel, ['FromTableID'])
+                    try:
+                        from_table = tables_by_id.get(int(str(ftid))) if ftid is not None else None
+                    except Exception:
+                        from_table = None
+                if not to_table:
+                    ttid = _get_any(rel, ['ToTableID'])
+                    try:
+                        to_table = tables_by_id.get(int(str(ttid))) if ttid is not None else None
+                    except Exception:
+                        to_table = None
+                if not from_col:
+                    fcid = _get_any(rel, ['FromColumnID'])
+                    try:
+                        from_col = columns_by_id.get(int(str(fcid))) if fcid is not None else None
+                    except Exception:
+                        from_col = None
+                if not to_col:
+                    tcid = _get_any(rel, ['ToColumnID'])
+                    try:
+                        to_col = columns_by_id.get(int(str(tcid))) if tcid is not None else None
+                    except Exception:
+                        to_col = None
+
+                configured_card = str(_get_any(rel, ['Cardinality']) or 'Unknown')
+
+                # Skip incomplete rows to avoid 'None' table references
+                if not to_table or not to_col or not from_table or not from_col:
+                    continue
 
                 # Query to check for duplicates in "one" side
                 if 'One' in configured_card:
@@ -112,6 +181,29 @@ class PerformanceOptimizer:
                 except Exception:
                     return default
 
+            # Helpers for robust DMV field access and ID->name mapping
+            def _get_any(row, keys):
+                for k in keys:
+                    if k in row and row[k] not in (None, ""):
+                        return row[k]
+                    bk = f"[{k}]"
+                    if bk in row and row[bk] not in (None, ""):
+                        return row[bk]
+                return None
+
+            # Build table and column ID maps
+            tables_by_id = {}
+            t_res = self.executor.execute_info_query("TABLES")
+            if t_res.get('success'):
+                for tr in t_res.get('rows', []):
+                    tid = _get_any(tr, ['ID', 'TableID'])
+                    tname = _get_any(tr, ['Name', 'Table'])
+                    try:
+                        if tid is not None and tname:
+                            tables_by_id[int(str(tid))] = str(tname)
+                    except Exception:
+                        pass
+
             # Get columns
             cols_result = self.executor.execute_info_query("COLUMNS", table_name=table)
 
@@ -123,8 +215,17 @@ class PerformanceOptimizer:
 
             # Analyze up to 20 columns to avoid long execution
             for col in columns[:20]:
-                col_table = col.get('Table')
-                col_name = col.get('Name')
+                col_table = _get_any(col, ['Table', 'TableName'])
+                col_name = _get_any(col, ['Name'])
+                if not col_table:
+                    tid = _get_any(col, ['TableID'])
+                    try:
+                        col_table = tables_by_id.get(int(str(tid))) if tid is not None else None
+                    except Exception:
+                        col_table = None
+                if not col_table or not col_name:
+                    # Skip incomplete rows to avoid queries like 'None'[col]
+                    continue
                 data_type = col.get('DataType', 'Unknown')
 
                 # Skip hidden columns

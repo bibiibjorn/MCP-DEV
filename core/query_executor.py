@@ -28,8 +28,8 @@ COLUMN_TYPE_HIERARCHY = 3   # Hierarchy
 
 # Try to load ADOMD.NET
 ADOMD_AVAILABLE = False
-AdomdConnection = None
-AdomdCommand = None
+AdomdConnection: Any = None
+AdomdCommand: Any = None
 
 try:
     import clr
@@ -43,12 +43,34 @@ try:
     # Load ADOMD.NET
     adomd_dll = os.path.join(dll_folder, "Microsoft.AnalysisServices.AdomdClient.dll")
     if os.path.exists(adomd_dll):
-        clr.AddReference(adomd_dll)
-        from Microsoft.AnalysisServices.AdomdClient import AdomdConnection, AdomdCommand
+        clr.AddReference(adomd_dll)  # type: ignore[attr-defined]
+        from Microsoft.AnalysisServices.AdomdClient import AdomdConnection, AdomdCommand  # type: ignore
         ADOMD_AVAILABLE = True
         logger.info("ADOMD.NET loaded successfully")
 except Exception as e:
     logger.warning(f"ADOMD.NET not available: {e}")
+
+# Try to load AMO/TOM assemblies early so helpers can use them
+AMO_AVAILABLE = False
+try:
+    import clr  # type: ignore
+    import os as _os
+    _script_dir = _os.path.dirname(_os.path.abspath(__file__))
+    _parent_dir = _os.path.dirname(_script_dir)
+    _dll_folder = _os.path.join(_parent_dir, "lib", "dotnet")
+    _core_dll = _os.path.join(_dll_folder, "Microsoft.AnalysisServices.Core.dll")
+    _amo_dll = _os.path.join(_dll_folder, "Microsoft.AnalysisServices.dll")
+    _tabular_dll = _os.path.join(_dll_folder, "Microsoft.AnalysisServices.Tabular.dll")
+    if _os.path.exists(_core_dll):
+        clr.AddReference(_core_dll)  # type: ignore[attr-defined]
+    if _os.path.exists(_amo_dll):
+        clr.AddReference(_amo_dll)  # type: ignore[attr-defined]
+    if _os.path.exists(_tabular_dll):
+        clr.AddReference(_tabular_dll)  # type: ignore[attr-defined]
+    from Microsoft.AnalysisServices.Tabular import Server as _AMOServer  # type: ignore
+    AMO_AVAILABLE = True
+except Exception as _e:
+    logger.warning(f"AMO/TOM not available: {_e}")
 
 
 class OptimizedQueryExecutor:
@@ -89,6 +111,179 @@ class OptimizedQueryExecutor:
         self.cache_hits = 0
         self.cache_misses = 0
         self.cache_bypass = 0
+
+    # --------------------
+    # AMO/TOM helper methods
+    # --------------------
+    def _get_database_name(self) -> Optional[str]:
+        """Resolve the current database name via ADOMD catalogs DMV."""
+        try:
+            if not AdomdCommand:
+                return None
+            db_query = "SELECT [CATALOG_NAME] FROM $SYSTEM.DBSCHEMA_CATALOGS"
+            cmd = AdomdCommand(db_query, self.connection)
+            reader = cmd.ExecuteReader()
+            db_name = None
+            if reader.Read():
+                db_name = str(reader.GetValue(0))
+            reader.Close()
+            return db_name
+        except Exception as e:
+            logger.debug(f"_get_database_name failed: {e}")
+            return None
+
+    def _connect_amo_server_db(self):
+        """Return (server, database) using AMO/TOM or (None, None) if unavailable."""
+        if not AMO_AVAILABLE:
+            return None, None
+        try:
+            from Microsoft.AnalysisServices.Tabular import Server as AMOServer  # type: ignore
+            srv = AMOServer()
+            # Reuse ADOMD connection string when possible
+            conn_str = getattr(self.connection, 'ConnectionString', None)
+            if not conn_str:
+                return None, None
+            srv.Connect(conn_str)
+            # Use current DB name if available
+            db_name = self._get_database_name()
+            db = None
+            if db_name and hasattr(srv, 'Databases'):
+                try:
+                    db = srv.Databases.GetByName(db_name)
+                except Exception:
+                    db = srv.Databases[0] if srv.Databases.Count > 0 else None
+            else:
+                db = srv.Databases[0] if srv.Databases.Count > 0 else None
+            if not db:
+                try:
+                    srv.Disconnect()
+                except Exception:
+                    pass
+                return None, None
+            return srv, db
+        except Exception as e:
+            logger.debug(f"_connect_amo_server_db failed: {e}")
+            return None, None
+
+    def enumerate_m_expressions_tom(self, limit: int | None = None) -> Dict[str, Any]:
+        """Enumerate M expressions via TOM as a fallback when DMV is blocked."""
+        server, db = self._connect_amo_server_db()
+        if not server or not db:
+            return {
+                'success': False,
+                'error': 'AMO/TOM unavailable to enumerate expressions',
+                'error_type': 'amo_not_available'
+            }
+        try:
+            rows: List[Dict[str, Any]] = []
+            # Model.Expressions holds shared expressions (M queries)
+            model = db.Model
+            exprs = getattr(model, 'Expressions', None)
+            if exprs is not None:
+                for exp in exprs:
+                    rows.append({
+                        'Name': getattr(exp, 'Name', ''),
+                        'Expression': getattr(exp, 'Expression', ''),
+                        'Kind': getattr(exp, 'Kind', 'M') or 'M'
+                    })
+                    if isinstance(limit, int) and limit > 0 and len(rows) >= limit:
+                        break
+            # Some models keep M in data sources as well (Mashup)
+            if (not rows) and hasattr(model, 'DataSources'):
+                for ds in model.DataSources:
+                    mexp = getattr(ds, 'Expression', None)
+                    if mexp:
+                        rows.append({
+                            'Name': getattr(ds, 'Name', 'DataSource'),
+                            'Expression': mexp,
+                            'Kind': 'M'
+                        })
+                        if isinstance(limit, int) and limit > 0 and len(rows) >= limit:
+                            break
+            return {'success': True, 'rows': rows, 'row_count': len(rows), 'method': 'TOM'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+        finally:
+            try:
+                server.Disconnect()
+            except Exception:
+                pass
+
+    def list_data_sources_tom(self, limit: int | None = None) -> Dict[str, Any]:
+        """List data sources via TOM for Desktop compatibility."""
+        server, db = self._connect_amo_server_db()
+        if not server or not db:
+            return {
+                'success': False,
+                'error': 'AMO/TOM unavailable to list data sources',
+                'error_type': 'amo_not_available'
+            }
+        try:
+            rows: List[Dict[str, Any]] = []
+            model = db.Model
+            if hasattr(model, 'DataSources'):
+                for ds in model.DataSources:
+                    try:
+                        ds_type = type(ds).__name__
+                        rows.append({
+                            'DataSourceID': getattr(ds, 'Name', None) or getattr(ds, 'ID', None) or getattr(ds, 'ConnectionName', None),
+                            'Name': getattr(ds, 'Name', None) or getattr(ds, 'ConnectionName', None) or 'DataSource',
+                            'Description': getattr(ds, 'Description', None),
+                            'Type': ds_type
+                        })
+                        if isinstance(limit, int) and limit > 0 and len(rows) >= limit:
+                            break
+                    except Exception:
+                        # Continue on per-datasource read errors
+                        pass
+            return {'success': True, 'rows': rows, 'row_count': len(rows), 'method': 'TOM'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+        finally:
+            try:
+                server.Disconnect()
+            except Exception:
+                pass
+
+    def get_partition_freshness_tom(self) -> Dict[str, Any]:
+        """Aggregate partition refresh timestamps per table via TOM."""
+        server, db = self._connect_amo_server_db()
+        if not server or not db:
+            return {'success': False, 'error': 'AMO/TOM unavailable', 'error_type': 'amo_not_available'}
+        try:
+            model = db.Model
+            per_table: Dict[str, Any] = {}
+            if hasattr(model, 'Tables'):
+                for tbl in model.Tables:
+                    last_dt = None
+                    try:
+                        for part in tbl.Partitions:
+                            # Prefer LastProcessed or RefreshedTime depending on TOM version
+                            val = getattr(part, 'LastProcessed', None) or getattr(part, 'RefreshedTime', None)
+                            if val:
+                                try:
+                                    # val may be .NET DateTime; convert to ISO string sortable
+                                    iso = val.isoformat()
+                                except Exception:
+                                    iso = str(val)
+                                # Track max
+                                if (last_dt is None) or (iso > last_dt):
+                                    last_dt = iso
+                    except Exception:
+                        pass
+                    per_table[tbl.Name] = {
+                        'Table': tbl.Name,
+                        'LastRefresh': last_dt
+                    }
+            rows = list(per_table.values())
+            return {'success': True, 'rows': rows, 'row_count': len(rows), 'method': 'TOM'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+        finally:
+            try:
+                server.Disconnect()
+            except Exception:
+                pass
 
     def set_history_logger(self, logger_cb) -> None:
         """Register a callback to receive execution history events.
@@ -466,6 +661,14 @@ class OptimizedQueryExecutor:
         """
         original_query = query
         try:
+            # Ensure ADOMD is available
+            if not ADOMD_AVAILABLE:
+                return {
+                    'success': False,
+                    'error': 'ADOMD.NET not available; cannot execute DAX',
+                    'error_type': 'adomd_not_available'
+                }
+
             # Pre-execution syntax validation
             syntax_errors = DaxValidator.validate_query_syntax(query)
             if syntax_errors:
@@ -526,7 +729,7 @@ class OptimizedQueryExecutor:
                     pass
 
             start_time = time.time()
-            cmd = AdomdCommand(query, self.connection)
+            cmd = AdomdCommand(query, self.connection)  # type: ignore
             # Apply command timeout if supported
             try:
                 # Some bindings expose CommandTimeout as property, ensure integer seconds
@@ -723,54 +926,38 @@ class OptimizedQueryExecutor:
             TMSL definition dictionary with metadata
         """
         try:
-            # Import AMO
-            import clr
-            import os
-
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            parent_dir = os.path.dirname(script_dir)
-            dll_folder = os.path.join(parent_dir, "lib", "dotnet")
-
-            core_dll = os.path.join(dll_folder, "Microsoft.AnalysisServices.Core.dll")
-            amo_dll = os.path.join(dll_folder, "Microsoft.AnalysisServices.dll")
-            tabular_dll = os.path.join(dll_folder, "Microsoft.AnalysisServices.Tabular.dll")
-
-            if os.path.exists(core_dll):
-                clr.AddReference(core_dll)
-            if os.path.exists(amo_dll):
-                clr.AddReference(amo_dll)
-            if os.path.exists(tabular_dll):
-                clr.AddReference(tabular_dll)
-
-            from Microsoft.AnalysisServices.Tabular import Server as AMOServer, JsonSerializer, JsonSerializeOptions
-
-            # Get database name
-            db_query = "SELECT [CATALOG_NAME] FROM $SYSTEM.DBSCHEMA_CATALOGS"
-            cmd = AdomdCommand(db_query, self.connection)
-            reader = cmd.ExecuteReader()
-
-            db_name = None
-            if reader.Read():
-                db_name = str(reader.GetValue(0))
-            reader.Close()
-
+            if not AMO_AVAILABLE:
+                return {'success': False, 'error': 'AMO/TOM not available'}
+            from Microsoft.AnalysisServices.Tabular import Server as AMOServer  # type: ignore
+            # Resolve database
+            db_name = self._get_database_name()
             if not db_name:
                 return {'success': False, 'error': 'Could not determine database name'}
-
-            # Connect with AMO
             server = AMOServer()
             server.Connect(self.connection.ConnectionString)
             database = server.Databases.GetByName(db_name)
+            # Try to serialize with options, fall back if unavailable
+            tmsl_json = None
+            try:
+                from Microsoft.AnalysisServices.Tabular import JsonSerializer, JsonSerializeOptions  # type: ignore
+                options = JsonSerializeOptions()
+                # Some versions may not support these props; guard with setattr
+                try:
+                    setattr(options, 'IgnoreInferredObjects', False)
+                    setattr(options, 'IgnoreInferredProperties', False)
+                    setattr(options, 'IgnoreTimestamps', True)
+                except Exception:
+                    pass
+                tmsl_json = JsonSerializer.SerializeObject(database.Model, options)
+            except Exception:
+                try:
+                    from Microsoft.AnalysisServices.Tabular import JsonSerializer  # type: ignore
+                    tmsl_json = JsonSerializer.SerializeObject(database.Model)
+                except Exception as inner:
+                    server.Disconnect()
+                    return {'success': False, 'error': f'TMSL serialization not supported by installed AMO: {inner}'}
 
-            # Serialize to TMSL using JsonSerializeOptions for better compatibility
-            options = JsonSerializeOptions()
-            options.IgnoreInferredObjects = False
-            options.IgnoreInferredProperties = False
-            options.IgnoreTimestamps = True
-
-            tmsl_json = JsonSerializer.SerializeObject(database.Model, options)
             server.Disconnect()
-
             return {
                 'success': True,
                 'tmsl': tmsl_json,

@@ -16,7 +16,11 @@ def scan_m_practices(query_executor: Any, dmv_cap: int = 1000, issues_max: Optio
         )'''
         data = query_executor.validate_and_execute_dax(m_query, dmv_cap)
         if not isinstance(data, dict) or not data.get('success'):
-            return data if isinstance(data, dict) else {'success': False, 'error': 'Unknown error scanning M expressions'}
+            # Fallback to TOM enumeration on Desktop where DMV may be blocked
+            try:
+                data = query_executor.enumerate_m_expressions_tom(dmv_cap)
+            except Exception as _e:
+                return data if isinstance(data, dict) else {'success': False, 'error': str(_e)}
         issues: List[Dict[str, Any]] = []
         for row in data.get('rows', []):
             if str(row.get('Kind', '')).upper() != 'M':

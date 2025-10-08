@@ -71,15 +71,21 @@ class ModelExporter:
 
             db = server.Databases[0]
 
-            # Get TMSL as JSON using JsonSerializer
-            from Microsoft.AnalysisServices.Tabular import JsonSerializer, JsonSerializeOptions  # type: ignore
-
-            options = JsonSerializeOptions()
-            options.IgnoreInferredObjects = False
-            options.IgnoreInferredProperties = False
-            options.IgnoreTimestamps = True
-
-            tmsl_json = JsonSerializer.SerializeObject(db.Model, options)
+            # Get TMSL as JSON using JsonSerializer (with options if available)
+            tmsl_json = None
+            try:
+                from Microsoft.AnalysisServices.Tabular import JsonSerializer, JsonSerializeOptions  # type: ignore
+                options = JsonSerializeOptions()
+                try:
+                    options.IgnoreInferredObjects = False
+                    options.IgnoreInferredProperties = False
+                    options.IgnoreTimestamps = True
+                except Exception:
+                    pass
+                tmsl_json = JsonSerializer.SerializeObject(db.Model, options)
+            except Exception:
+                from Microsoft.AnalysisServices.Tabular import JsonSerializer  # type: ignore
+                tmsl_json = JsonSerializer.SerializeObject(db.Model)
             tmsl_data = json.loads(tmsl_json)
 
             # Calculate statistics
