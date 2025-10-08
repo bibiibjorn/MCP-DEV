@@ -75,6 +75,7 @@ class AgentPolicy:
         runs: Optional[int] = None,
         max_rows: Optional[int] = None,
         verbose: bool = False,
+        bypass_cache: bool = False,
     ) -> Dict[str, Any]:
         """Validate, limit, and execute a DAX query. Optionally perform perf analysis."""
         if not connection_state.is_connected():
@@ -112,7 +113,7 @@ class AgentPolicy:
             r = self._get_default_perf_runs(runs)
             if not performance_analyzer:
                 # Fallback to basic execution with a note
-                basic = query_executor.validate_and_execute_dax(query, 0)
+                basic = query_executor.validate_and_execute_dax(query, 0, bypass_cache=bypass_cache)
                 basic.setdefault("notes", []).append("Performance analyzer unavailable; returned basic execution only")
                 basic["success"] = basic.get("success", False)
                 basic.setdefault("decision", "analyze")
@@ -135,7 +136,7 @@ class AgentPolicy:
             except Exception:
                 pass
 
-        exec_result = query_executor.validate_and_execute_dax(query, lim)
+        exec_result = query_executor.validate_and_execute_dax(query, lim, bypass_cache=bypass_cache)
         if verbose and notes:
             exec_result.setdefault("notes", []).extend(notes)
         exec_result.setdefault("decision", "preview")
@@ -213,59 +214,7 @@ class AgentPolicy:
         ]
         return plan
 
-    def optimize_query(
-        self,
-        connection_state,
-        candidate_a: str,
-        candidate_b: str,
-        runs: Optional[int] = None,
-    ) -> Dict[str, Any]:
-        """Benchmark two DAX variants and pick a winner."""
-        if not connection_state.is_connected():
-            return {"success": False, "error": "Not connected", "error_type": "not_connected"}
-        query_executor = connection_state.query_executor
-        perf = connection_state.performance_analyzer
-        r = self._get_default_perf_runs(runs)
-
-        def basic_exec(q: str) -> Dict[str, Any]:
-            res = query_executor.validate_and_execute_dax(q, 0)
-            return {
-                "success": bool(res.get("success")),
-                "execution_time_ms": res.get("execution_time_ms", 0),
-                "engine": "basic",
-                "raw": res,
-            }
-
-        def perf_exec(q: str) -> Dict[str, Any]:
-            if not perf:
-                return basic_exec(q)
-            res = perf.analyze_query(query_executor, q, r, True)
-            # Prefer average total time when available
-            avg_total = None
-            if res.get("success"):
-                # Standard path in EnhancedAMOTraceAnalyzer
-                summary = res.get("summary") or {}
-                avg_total = summary.get("avg_execution_ms")
-            return {
-                "success": bool(res.get("success")),
-                "execution_time_ms": avg_total or 0,
-                "engine": "perf" if perf else "basic",
-                "raw": res,
-            }
-
-        a = perf_exec(candidate_a)
-        b = perf_exec(candidate_b)
-
-        winner = "A" if (a.get("execution_time_ms", 0) or 9e18) < (b.get("execution_time_ms", 0) or 9e18) else "B"
-        return {
-            "success": True,
-            "runs": r,
-            "candidate_a": a,
-            "candidate_b": b,
-            "winner": winner,
-            "decision": "optimize_query",
-            "reason": f"Chose candidate {winner} based on the lower average execution time"
-        }
+    # optimize_query removed; use optimize_variants for both 2+ candidates
 
     def optimize_variants(
         self,
@@ -418,8 +367,9 @@ class AgentPolicy:
 
         # Optimization benchmark if both candidates present
         if candidate_a and candidate_b:
-            bench = self.optimize_query(connection_state, candidate_a, candidate_b, runs)
-            actions.append({"action": "optimize_query", "result": bench})
+            # Use optimize_variants for 2-candidate case to avoid duplicate tooling
+            bench = self.optimize_variants(connection_state, [candidate_a, candidate_b], runs)
+            actions.append({"action": "optimize_variants", "result": bench})
             return {"success": bench.get("success", False), "actions": actions, "final": bench}
 
         # Documentation or model summary intents

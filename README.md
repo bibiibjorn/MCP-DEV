@@ -41,6 +41,14 @@ You’re now ready to explore your model with Claude.
 - Model export: “Export TMSL/TMDL” or “Generate documentation”
 - Discovery: “Search for measures containing ‘CALCULATE’”
 
+## Performance tools and cache
+
+- optimize_variants: Benchmark multiple DAX variants and return the fastest. Provide an array of candidate queries; the agent will run each for N runs and choose the minimal average execution time.
+- decide_and_run: Give a goal plus an optional query or list of candidates; it will connect, decide whether to analyze or preview, or benchmark candidates when provided.
+- Cache bypass: safe_run_dax and run_dax_query accept a bypass_cache flag to force a fresh execution and ignore the TTL LRU cache when needed.
+
+Tip: For DMV queries using $SYSTEM.* with SELECTCOLUMNS, wrap the source in TOPN(...) first to materialize before projection.
+
 ## Install, update, uninstall
 
 - Installation steps, update notes, and cleanup are documented in INSTALL.md
@@ -51,6 +59,8 @@ You’re now ready to explore your model with Claude.
 
 - All analysis is local and the server binds to 127.0.0.1
 - Claude conversations may be stored by Anthropic; avoid pasting sensitive data
+
+Developer note: IDEs may show warnings for clr imports (pythonnet) until runtime. On Windows with the included lib/dotnet DLLs, these resolve when the server runs.
 
 ## Support
 
