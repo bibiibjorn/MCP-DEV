@@ -48,9 +48,9 @@ try:
     from core.bpa_analyzer import BPAAnalyzer
     BPA_AVAILABLE = True
 except ImportError as e:
-    print(f"BPA not available: {e}")
+    logging.getLogger("pbixray_v2.3").warning(f"BPA not available: {e}")
 except Exception as e:
-    print(f"Unexpected error loading BPA: {e}")
+    logging.getLogger("pbixray_v2.3").warning(f"Unexpected error loading BPA: {e}")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("pbixray_v2.3")
@@ -73,9 +73,9 @@ async def list_tools() -> List[Tool]:
         Tool(name="health_check", description="Comprehensive server health check", inputSchema={"type": "object", "properties": {}, "required": []}),
         # Agent meta-tools (guardrailed orchestration)
         Tool(name="ensure_connected", description="Ensure connection to a Power BI Desktop instance (detects and connects if needed)", inputSchema={"type": "object", "properties": {"preferred_index": {"type": "integer"}}, "required": []}),
-    Tool(name="safe_run_dax", description="Validate and safely execute a DAX query; optionally analyze performance", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "mode": {"type": "string", "enum": ["auto", "preview", "analyze"], "default": "auto"}, "runs": {"type": "integer"}, "max_rows": {"type": "integer"}, "verbose": {"type": "boolean", "default": False}, "bypass_cache": {"type": "boolean", "default": False}}, "required": ["query"]}),
+        Tool(name="safe_run_dax", description="Validate and safely execute a DAX query; optionally analyze performance", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "mode": {"type": "string", "enum": ["auto", "preview", "analyze"], "default": "auto"}, "runs": {"type": "integer"}, "max_rows": {"type": "integer"}, "verbose": {"type": "boolean", "default": False}, "bypass_cache": {"type": "boolean", "default": False}}, "required": ["query"]}),
         Tool(name="summarize_model", description="Lightweight model summary suitable for large models", inputSchema={"type": "object", "properties": {}, "required": []}),
-    Tool(name="plan_query", description="Plan a safe query based on a high-level intent and optional table context", inputSchema={"type": "object", "properties": {"intent": {"type": "string"}, "table": {"type": "string"}, "max_rows": {"type": "integer"}}, "required": ["intent"]}),
+        Tool(name="plan_query", description="Plan a safe query based on a high-level intent and optional table context", inputSchema={"type": "object", "properties": {"intent": {"type": "string"}, "table": {"type": "string"}, "max_rows": {"type": "integer"}}, "required": ["intent"]}),
         Tool(name="optimize_variants", description="Benchmark multiple DAX variants and return the fastest", inputSchema={"type": "object", "properties": {"candidates": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer"}}, "required": ["candidates"]}),
         Tool(name="agent_health", description="Consolidated agent/server health and quick model snapshot", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="generate_docs_safe", description="Generate documentation with large-model safeguards", inputSchema={"type": "object", "properties": {}, "required": []}),
@@ -93,7 +93,7 @@ async def list_tools() -> List[Tool]:
         Tool(name="get_data_sources", description="Data sources", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="get_m_expressions", description="M expressions", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="preview_table_data", description="Preview table", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "top_n": {"type": "integer", "default": 10}}, "required": ["table"]}),
-    Tool(name="run_dax_query", description="Run DAX", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "top_n": {"type": "integer", "default": 0}, "bypass_cache": {"type": "boolean", "default": False}}, "required": ["query"]}),
+        Tool(name="run_dax_query", description="Run DAX", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "top_n": {"type": "integer", "default": 0}, "bypass_cache": {"type": "boolean", "default": False}}, "required": ["query"]}),
         Tool(name="export_model_schema", description="Export schema", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="upsert_measure", description="Create/update measure", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "expression": {"type": "string"}, "display_folder": {"type": "string"}}, "required": ["table", "measure", "expression"]}),
         Tool(name="delete_measure", description="Delete a measure", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}}, "required": ["table", "measure"]}),
@@ -144,6 +144,10 @@ async def list_tools() -> List[Tool]:
         # Model Validation
         Tool(name="validate_model_integrity", description="Validate model integrity", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="analyze_data_freshness", description="Analyze data freshness", inputSchema={"type": "object", "properties": {}, "required": []}),
+
+        # Diagnostics and maintenance
+        Tool(name="flush_query_cache", description="Flushes the DAX query result cache for diagnostics or troubleshooting", inputSchema={"type": "object", "properties": {}, "required": []}),
+        Tool(name="get_recent_logs", description="Fetch the last N lines of the server log for diagnostics", inputSchema={"type": "object", "properties": {"lines": {"type": "integer", "default": 200}}, "required": []}),
     ]
     if BPA_AVAILABLE:
         tools.append(Tool(name="analyze_model_bpa", description="Run BPA", inputSchema={"type": "object", "properties": {}, "required": []}))
@@ -153,6 +157,35 @@ async def list_tools() -> List[Tool]:
 @app.call_tool()
 async def call_tool(name: str, arguments: Any) -> List[TextContent]:
     try:
+        def attach_port_if_connected(result: Any) -> Any:
+            """Attach minimal port info on success to reduce token usage."""
+            if isinstance(result, dict) and result.get('success') and connection_state.is_connected():
+                instance_info = connection_manager.get_instance_info()
+                if instance_info and instance_info.get('port'):
+                    result['port'] = str(instance_info.get('port'))
+            return result
+
+        # Diagnostics: logs
+        if name == "get_recent_logs":
+            lines = int(arguments.get("lines", 200) or 200)
+            log_path = os.path.join(os.path.dirname(__file__), "..", "pbixray.log")
+            try:
+                with open(log_path, "r", encoding="utf-8") as f:
+                    all_lines = f.readlines()
+                tail = all_lines[-lines:] if lines > 0 else all_lines
+                return [TextContent(type="text", text="".join(tail))]
+            except Exception as e:
+                return [TextContent(type="text", text=f"Error reading log: {e}")]
+
+        # Maintenance: flush cache
+        if name == "flush_query_cache":
+            if not connection_state.is_connected():
+                return [TextContent(type="text", text=json.dumps(ErrorHandler.handle_not_connected(), indent=2))]
+            if not connection_state.query_executor:
+                return [TextContent(type="text", text=json.dumps(ErrorHandler.handle_manager_unavailable('query_executor'), indent=2))]
+            result = connection_state.query_executor.flush_cache()
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
         # Tools that don't require a live connection
         if name == "get_server_info":
             info = {
@@ -161,25 +194,56 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 'server': app.name,
                 'connected': connection_state.is_connected(),
                 'bpa_available': BPA_AVAILABLE,
-                'config': config.get_all()
+                'config': config.get_all(),
+                'error_schema': {
+                    'not_connected': {
+                        'success': False,
+                        'error_type': 'not_connected',
+                        'error': 'No Power BI Desktop instance is connected.'
+                    },
+                    'manager_unavailable': {
+                        'success': False,
+                        'error_type': 'manager_unavailable',
+                        'error': 'Required manager is unavailable.'
+                    },
+                    'unknown_tool': {
+                        'success': False,
+                        'error_type': 'unknown_tool',
+                        'error': 'Requested tool is not recognized.'
+                    },
+                    'unexpected_error': {
+                        'success': False,
+                        'error_type': 'unexpected_error',
+                        'error': 'An unexpected error occurred.'
+                    },
+                    'no_instances': {
+                        'success': False,
+                        'error_type': 'no_instances',
+                        'error': 'No Power BI Desktop instances detected.'
+                    },
+                    'syntax_validation_error': {
+                        'success': False,
+                        'error_type': 'syntax_validation_error',
+                        'error': 'Query validation failed.'
+                    }
+                }
             }
             if connection_state.is_connected():
                 instance_info = connection_manager.get_instance_info()
                 if instance_info:
                     info['port'] = instance_info.get('port')
             return [TextContent(type="text", text=json.dumps(info, indent=2))]
-        
-        elif name == "health_check":
+
+        if name == "health_check":
             import psutil
-            import time
-            
+            now = time.time()
             health_info = {
                 'success': True,
-                'timestamp': time.time(),
+                'timestamp': now,
                 'server': {
                     'version': __version__,
                     'name': app.name,
-                    'uptime_seconds': time.time() - start_time if 'start_time' in globals() else 0
+                    'uptime_seconds': now - start_time
                 },
                 'connection': connection_state.get_status(),
                 'system': {
@@ -193,10 +257,12 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 }
             }
             return [TextContent(type="text", text=json.dumps(health_info, indent=2))]
-        elif name == "ensure_connected":
+
+        if name == "ensure_connected":
             result = agent_policy.ensure_connected(connection_manager, connection_state, arguments.get("preferred_index"))
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
-        elif name == "safe_run_dax":
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+
+        if name == "safe_run_dax":
             result = agent_policy.safe_run_dax(
                 connection_state,
                 arguments.get("query", ""),
@@ -206,23 +272,29 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 arguments.get("verbose", False),
                 arguments.get("bypass_cache", False),
             )
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
-        elif name == "summarize_model":
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+
+        if name == "summarize_model":
             result = agent_policy.summarize_model_safely(connection_state)
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
-        elif name == "plan_query":
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+
+        if name == "plan_query":
             result = agent_policy.plan_query(arguments.get("intent", ""), arguments.get("table"), arguments.get("max_rows"))
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
-        elif name == "optimize_variants":
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+
+        if name == "optimize_variants":
             result = agent_policy.optimize_variants(connection_state, arguments.get("candidates", []), arguments.get("runs"))
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
-        elif name == "agent_health":
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+
+        if name == "agent_health":
             result = agent_policy.agent_health(connection_manager, connection_state)
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
-        elif name == "generate_docs_safe":
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+
+        if name == "generate_docs_safe":
             result = agent_policy.generate_docs_safe(connection_state)
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
-        elif name == "execute_intent":
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+
+        if name == "execute_intent":
             result = agent_policy.execute_intent(
                 connection_manager,
                 connection_state,
@@ -235,8 +307,9 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 arguments.get("candidate_a"),
                 arguments.get("candidate_b"),
             )
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
-        elif name == "decide_and_run":
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+
+        if name == "decide_and_run":
             result = agent_policy.decide_and_run(
                 connection_manager,
                 connection_state,
@@ -247,35 +320,29 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 arguments.get("max_rows"),
                 arguments.get("verbose", False),
             )
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
+
         if name == "detect_powerbi_desktop":
             instances = connection_manager.detect_instances()
             result = {'success': True, 'total_instances': len(instances), 'instances': instances}
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
-        elif name == "connect_to_powerbi":
+        if name == "connect_to_powerbi":
             # Clean up any existing state
             connection_state.cleanup()
-            
             result = connection_manager.connect(arguments.get("model_index", 0))
             if result.get('success'):
-                # Update connection state
                 connection_state.set_connection_manager(connection_manager)
-                
-                # Initialize all managers through connection state
                 connection_state.initialize_managers()
-                
                 result['managers_initialized'] = connection_state._managers_initialized
                 result['performance_analysis'] = 'Available' if connection_state.performance_analyzer else 'Limited'
-            
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
+        # Require live connection for remaining tools
         if not connection_state.is_connected():
-            return [TextContent(type="text", text=json.dumps({"error": "Not connected to Power BI Desktop", "error_type": "not_connected"}, indent=2))]
+            return [TextContent(type="text", text=json.dumps(ErrorHandler.handle_not_connected(), indent=2))]
 
-        result = {}
-
-        # Use connection state managers with fallback
+        # Shortcut references
         query_executor = connection_state.query_executor
         performance_analyzer = connection_state.performance_analyzer
         dax_injector = connection_state.dax_injector
@@ -289,9 +356,11 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
         performance_optimizer = connection_state.performance_optimizer
         model_validator = connection_state.model_validator
 
-        # Check if query executor is available (required for most operations)
         if not query_executor:
-            return [TextContent(type="text", text=json.dumps({"error": "Query executor not available", "error_type": "service_unavailable"}, indent=2))]
+            return [TextContent(type="text", text=json.dumps(ErrorHandler.handle_manager_unavailable('query_executor'), indent=2))]
+
+        # DMV cap for $SYSTEM.* helpers
+        dmv_cap = int(config.get('query.max_rows_preview', config.get('query', {}).get('max_rows_preview', 1000)))
 
         if name == "list_tables":
             result = query_executor.execute_info_query("TABLES")
@@ -315,26 +384,28 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
         elif name == "search_objects":
             result = query_executor.search_objects_dax(arguments.get("pattern", "*"), arguments.get("types", ["tables", "columns", "measures"]))
         elif name == "get_data_sources":
-            # DMV queries need special handling - materialize with TOPN before SELECTCOLUMNS
-            query = '''EVALUATE
+            query = f'''EVALUATE
             SELECTCOLUMNS(
-                TOPN(999999, $SYSTEM.DISCOVER_DATASOURCES),
+                TOPN({dmv_cap}, $SYSTEM.DISCOVER_DATASOURCES),
                 "DataSourceID", [DataSourceID],
                 "Name", [Name],
                 "Description", [Description],
                 "Type", [Type]
             )'''
-            result = query_executor.validate_and_execute_dax(query)
+            result = query_executor.validate_and_execute_dax(query, dmv_cap)
+            if result.get('success') and len(result.get('rows', [])) >= dmv_cap:
+                result.setdefault('notes', []).append(f"Result truncated to {dmv_cap} rows for safety.")
         elif name == "get_m_expressions":
-            # DMV queries need special handling - materialize with TOPN before SELECTCOLUMNS
-            query = '''EVALUATE
+            query = f'''EVALUATE
             SELECTCOLUMNS(
-                TOPN(999999, $SYSTEM.TMSCHEMA_EXPRESSIONS),
+                TOPN({dmv_cap}, $SYSTEM.TMSCHEMA_EXPRESSIONS),
                 "Name", [Name],
                 "Expression", [Expression],
                 "Kind", [Kind]
             )'''
-            result = query_executor.validate_and_execute_dax(query)
+            result = query_executor.validate_and_execute_dax(query, dmv_cap)
+            if result.get('success') and len(result.get('rows', [])) >= dmv_cap:
+                result.setdefault('notes', []).append(f"Result truncated to {dmv_cap} rows for safety.")
         elif name == "preview_table_data":
             result = query_executor.execute_with_table_reference_fallback(arguments['table'], arguments.get('top_n', 10))
         elif name == "run_dax_query":
@@ -346,9 +417,9 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             relationships = query_executor.execute_info_query("RELATIONSHIPS")
             result = {'success': True, 'schema': {'tables': tables.get('rows', []), 'columns': columns.get('rows', []), 'measures': measures.get('rows', []), 'relationships': relationships.get('rows', [])}}
         elif name == "upsert_measure":
-            result = dax_injector.upsert_measure(arguments["table"], arguments["measure"], arguments["expression"], arguments.get("display_folder")) if dax_injector else {'success': False, 'error': 'Not available'}
+            result = dax_injector.upsert_measure(arguments["table"], arguments["measure"], arguments["expression"], arguments.get("display_folder")) if dax_injector else ErrorHandler.handle_manager_unavailable('dax_injector')
         elif name == "delete_measure":
-            result = dax_injector.delete_measure(arguments["table"], arguments["measure"]) if dax_injector else {'success': False, 'error': 'Not available'}
+            result = dax_injector.delete_measure(arguments["table"], arguments["measure"]) if dax_injector else ErrorHandler.handle_manager_unavailable('dax_injector')
         elif name == "list_columns":
             table = arguments.get("table")
             result = query_executor.execute_info_query("COLUMNS", table_name=table)
@@ -356,7 +427,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             query = f"EVALUATE TOPN({arguments.get('limit', 100)}, VALUES('{arguments['table']}'[{arguments['column']}]))"
             result = query_executor.validate_and_execute_dax(query)
         elif name == "get_column_summary":
-            query = f"EVALUATE ROW(\"Min\", MIN('{arguments['table']}'[{arguments['column']}]), \"Max\", MAX('{arguments['table']}'[{arguments['column']}]), \"Distinct\", DISTINCTCOUNT('{arguments['table']}'[{arguments['column']}]), \"Nulls\", COUNTBLANK('{arguments['table']}'[{arguments['column']}]))"
+            query = f"EVALUATE ROW(\"Min\", MIN('{arguments['table']}'[{arguments['column']}] ), \"Max\", MAX('{arguments['table']}'[{arguments['column']}] ), \"Distinct\", DISTINCTCOUNT('{arguments['table']}'[{arguments['column']}] ), \"Nulls\", COUNTBLANK('{arguments['table']}'[{arguments['column']}] ))"
             result = query_executor.validate_and_execute_dax(query)
         elif name == "list_relationships":
             active_only = arguments.get("active_only")
@@ -369,7 +440,6 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
         elif name == "get_vertipaq_stats":
             table = arguments.get("table")
             if table:
-                # Try exact match on TABLE_ID, else fallback to partial match on TABLE_ID or TABLE_FULL_NAME
                 query = f"""
                 EVALUATE
                 VAR Src = INFO.STORAGETABLECOLUMNS()
@@ -405,22 +475,20 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                     ],
                     'note': 'Using fallback mode (basic timing only)'
                 }
-                # Execute with fallback
                 result = performance_analyzer.analyze_query(query_executor, arguments['query'], arguments.get('runs', 3), arguments.get('clear_cache', True))
             else:
-                # AMO is connected, execute normally
                 result = performance_analyzer.analyze_query(query_executor, arguments['query'], arguments.get('runs', 3), arguments.get('clear_cache', True))
         elif name == "validate_dax_query":
             result = query_executor.analyze_dax_query(arguments['query'])
         elif name == "analyze_model_bpa":
             if not BPA_AVAILABLE or not bpa_analyzer:
-                result = {"error": "BPA not available"}
+                result = ErrorHandler.handle_manager_unavailable('bpa_analyzer')
             else:
                 tmsl_result = query_executor.get_tmsl_definition()
                 if tmsl_result.get('success'):
                     violations = bpa_analyzer.analyze_model(tmsl_result['tmsl'])
                     summary = bpa_analyzer.get_violations_summary()
-                    result = {'success': True, 'violations_count': len(violations), 'summary': summary, 'violations': [{'rule_id': v.rule_id, 'rule_name': v.rule_name, 'category': v.category, 'severity': v.severity.name if hasattr(v.severity, 'name') else str(v.severity), 'object_type': v.object_type, 'object_name': v.object_name, 'table_name': v.table_name, 'description': v.description} for v in violations]}
+                    result = {'success': True, 'violations_count': len(violations), 'summary': summary, 'violations': [{'rule_id': v.rule_id, 'rule_name': v.rule_name, 'category': v.category, 'severity': getattr(v.severity, 'name', str(v.severity)), 'object_type': v.object_type, 'object_name': v.object_name, 'table_name': v.table_name, 'description': v.description} for v in violations]}
                 else:
                     result = tmsl_result
 
@@ -430,119 +498,101 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 arguments['table'],
                 arguments['measure'],
                 arguments.get('depth', 3)
-            ) if dependency_analyzer else {'success': False, 'error': 'Not available'}
+            ) if dependency_analyzer else ErrorHandler.handle_manager_unavailable('dependency_analyzer')
         elif name == "find_unused_objects":
-            result = dependency_analyzer.find_unused_objects() if dependency_analyzer else {'success': False, 'error': 'Not available'}
+            result = dependency_analyzer.find_unused_objects() if dependency_analyzer else ErrorHandler.handle_manager_unavailable('dependency_analyzer')
         elif name == "analyze_column_usage":
             result = dependency_analyzer.analyze_column_usage(
                 arguments['table'],
                 arguments['column']
-            ) if dependency_analyzer else {'success': False, 'error': 'Not available'}
+            ) if dependency_analyzer else ErrorHandler.handle_manager_unavailable('dependency_analyzer')
 
         # Bulk Operations
         elif name == "bulk_create_measures":
-            result = bulk_operations.bulk_create_measures(arguments['measures']) if bulk_operations else {'success': False, 'error': 'Not available'}
+            result = bulk_operations.bulk_create_measures(arguments['measures']) if bulk_operations else ErrorHandler.handle_manager_unavailable('bulk_operations')
         elif name == "bulk_delete_measures":
-            result = bulk_operations.bulk_delete_measures(arguments['measures']) if bulk_operations else {'success': False, 'error': 'Not available'}
+            result = bulk_operations.bulk_delete_measures(arguments['measures']) if bulk_operations else ErrorHandler.handle_manager_unavailable('bulk_operations')
 
         # Calculation Groups
         elif name == "list_calculation_groups":
-            result = calc_group_manager.list_calculation_groups() if calc_group_manager else {'success': False, 'error': 'Not available'}
+            result = calc_group_manager.list_calculation_groups() if calc_group_manager else ErrorHandler.handle_manager_unavailable('calc_group_manager')
         elif name == "create_calculation_group":
             result = calc_group_manager.create_calculation_group(
                 arguments['name'],
                 arguments['items'],
                 arguments.get('description'),
                 arguments.get('precedence', 0)
-            ) if calc_group_manager else {'success': False, 'error': 'Not available'}
+            ) if calc_group_manager else ErrorHandler.handle_manager_unavailable('calc_group_manager')
         elif name == "delete_calculation_group":
-            result = calc_group_manager.delete_calculation_group(arguments['name']) if calc_group_manager else {'success': False, 'error': 'Not available'}
+            result = calc_group_manager.delete_calculation_group(arguments['name']) if calc_group_manager else ErrorHandler.handle_manager_unavailable('calc_group_manager')
 
         # Partition Management
         elif name == "list_partitions":
-            result = partition_manager.list_table_partitions(arguments.get('table')) if partition_manager else {'success': False, 'error': 'Not available'}
+            result = partition_manager.list_table_partitions(arguments.get('table')) if partition_manager else ErrorHandler.handle_manager_unavailable('partition_manager')
         elif name == "refresh_partition":
             result = partition_manager.refresh_partition(
                 arguments['table'],
                 arguments['partition'],
                 arguments.get('refresh_type', 'full')
-            ) if partition_manager else {'success': False, 'error': 'Not available'}
+            ) if partition_manager else ErrorHandler.handle_manager_unavailable('partition_manager')
         elif name == "refresh_table":
             result = partition_manager.refresh_table(
                 arguments['table'],
                 arguments.get('refresh_type', 'full')
-            ) if partition_manager else {'success': False, 'error': 'Not available'}
+            ) if partition_manager else ErrorHandler.handle_manager_unavailable('partition_manager')
 
         # RLS Management
         elif name == "list_roles":
-            result = rls_manager.list_roles() if rls_manager else {'success': False, 'error': 'Not available'}
+            result = rls_manager.list_roles() if rls_manager else ErrorHandler.handle_manager_unavailable('rls_manager')
         elif name == "test_role_filter":
             result = rls_manager.test_role_filter(
                 arguments['role_name'],
                 arguments['test_query']
-            ) if rls_manager else {'success': False, 'error': 'Not available'}
+            ) if rls_manager else ErrorHandler.handle_manager_unavailable('rls_manager')
         elif name == "validate_rls_coverage":
-            result = rls_manager.validate_rls_coverage() if rls_manager else {'success': False, 'error': 'Not available'}
+            result = rls_manager.validate_rls_coverage() if rls_manager else ErrorHandler.handle_manager_unavailable('rls_manager')
 
         # Model Export
         elif name == "export_tmsl":
-            result = model_exporter.export_tmsl(arguments.get('include_full_model', False)) if model_exporter else {'success': False, 'error': 'Not available'}
+            result = model_exporter.export_tmsl(arguments.get('include_full_model', False)) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
         elif name == "export_tmdl":
-            result = model_exporter.export_tmdl_structure() if model_exporter else {'success': False, 'error': 'Not available'}
+            result = model_exporter.export_tmdl_structure() if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
         elif name == "generate_documentation":
-            result = model_exporter.generate_documentation(query_executor) if model_exporter else {'success': False, 'error': 'Not available'}
+            result = model_exporter.generate_documentation(query_executor) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
         elif name == "get_model_summary":
-            result = model_exporter.get_model_summary(query_executor) if model_exporter else {'success': False, 'error': 'Not available'}
+            result = model_exporter.get_model_summary(query_executor) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
         elif name == "compare_models":
-            result = model_exporter.compare_models(arguments['reference_tmsl']) if model_exporter else {'success': False, 'error': 'Not available'}
+            result = model_exporter.compare_models(arguments['reference_tmsl']) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
 
         # Performance Optimization
         elif name == "analyze_relationship_cardinality":
-            result = performance_optimizer.analyze_relationship_cardinality() if performance_optimizer else {'success': False, 'error': 'Not available'}
+            result = performance_optimizer.analyze_relationship_cardinality() if performance_optimizer else ErrorHandler.handle_manager_unavailable('performance_optimizer')
         elif name == "analyze_column_cardinality":
-            result = performance_optimizer.analyze_column_cardinality(arguments.get('table')) if performance_optimizer else {'success': False, 'error': 'Not available'}
+            result = performance_optimizer.analyze_column_cardinality(arguments.get('table')) if performance_optimizer else ErrorHandler.handle_manager_unavailable('performance_optimizer')
         elif name == "analyze_encoding_efficiency":
-            result = performance_optimizer.analyze_encoding_efficiency(arguments['table']) if performance_optimizer else {'success': False, 'error': 'Not available'}
+            result = performance_optimizer.analyze_encoding_efficiency(arguments['table']) if performance_optimizer else ErrorHandler.handle_manager_unavailable('performance_optimizer')
 
         # Model Validation
         elif name == "validate_model_integrity":
-            result = model_validator.validate_model_integrity() if model_validator else {'success': False, 'error': 'Not available'}
+            result = model_validator.validate_model_integrity() if model_validator else ErrorHandler.handle_manager_unavailable('model_validator')
         elif name == "analyze_data_freshness":
-            result = model_validator.analyze_data_freshness() if model_validator else {'success': False, 'error': 'Not available'}
+            result = model_validator.analyze_data_freshness() if model_validator else ErrorHandler.handle_manager_unavailable('model_validator')
 
         else:
-            result = {'error': f'Unknown tool: {name}'}
+            result = ErrorHandler.handle_unknown_tool(name)
 
-        # Only add minimal connection info to reduce token usage
-        if isinstance(result, dict) and result.get('success'):
-            if connection_state.is_connected():
-                instance_info = connection_manager.get_instance_info()
-                if instance_info and instance_info.get('port'):
-                    result['port'] = str(instance_info.get('port'))
-
-        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        return [TextContent(type="text", text=json.dumps(attach_port_if_connected(result), indent=2))]
 
     except Exception as e:
         logger.error(f"Error in {name}: {e}", exc_info=True)
-        return [TextContent(type="text", text=json.dumps({"error": str(e), "tool": name}, indent=2))]
+        return [TextContent(type="text", text=json.dumps(ErrorHandler.handle_unexpected_error(name, e), indent=2))]
 
 
 async def main():
     logger.info("=" * 80)
     logger.info(f"PBIXRay MCP Server v{__version__} - Complete Edition")
     logger.info("=" * 80)
-    logger.info("48 Tools Available (47 + BPA):")
-    logger.info("  • Core (14): Detection, Connection, Tables, Measures, Columns")
-    logger.info("  • DAX (3): Query Execution, Validation, Performance Analysis")
-    logger.info("  • Dependencies (3): Measure Dependencies, Column Usage, Unused Objects")
-    logger.info("  • Bulk Operations (2): Batch Create/Delete Measures")
-    logger.info("  • Calculation Groups (3): List, Create, Delete")
-    logger.info("  • Partitions (3): List, Refresh Partition/Table, Data Freshness")
-    logger.info("  • RLS (3): List Roles, Test Filters, Validate Coverage")
-    logger.info("  • Export (5): TMSL, TMDL, Documentation, Summary, Compare")
-    logger.info("  • Optimization (3): Cardinality, Encoding, VertiPaq Analysis")
-    logger.info("  • Validation (2): Model Integrity, BPA Analysis")
-    logger.info("=" * 80)
+    logger.info("Tools available")
 
     async with stdio_server() as (read_stream, write_stream):
         await app.run(read_stream, write_stream, app.create_initialization_options())

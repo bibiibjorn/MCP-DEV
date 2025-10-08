@@ -62,6 +62,21 @@ Tip: For DMV queries using $SYSTEM.* with SELECTCOLUMNS, wrap the source in TOPN
 
 Developer note: IDEs may show warnings for clr imports (pythonnet) until runtime. On Windows with the included lib/dotnet DLLs, these resolve when the server runs.
 
+### Standard error envelopes
+
+All tools return consistent envelopes to simplify client handling:
+
+- Not connected:
+	- { "success": false, "error_type": "not_connected", "error": "Not connected to Power BI Desktop", "suggestions": ["detect_powerbi_desktop", "connect_to_powerbi"] }
+- Manager unavailable (feature not initialized):
+	- { "success": false, "error_type": "manager_unavailable", "error": "<manager> not available", "required_manager": "<manager>" }
+- Unknown tool:
+	- { "success": false, "error_type": "unknown_tool", "tool_name": "<name>" }
+- Unexpected error:
+	- { "success": false, "error_type": "unexpected_error", "tool_name": "<name>", "error": "<message>" }
+
+On success, responses include minimal connection metadata when available: { "port": "<desktop-port>" }.
+
 ## Support
 
 - If something doesn’t work: ensure Power BI Desktop has a model open, rerun detection, and reconnect. Check `logs/` if needed.

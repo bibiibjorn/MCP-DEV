@@ -7,6 +7,7 @@ validation, safety limits, and fallbacks.
 """
 
 from typing import Any, Dict, Optional, List
+from core.error_handler import ErrorHandler
 
 
 class AgentPolicy:
@@ -79,13 +80,13 @@ class AgentPolicy:
     ) -> Dict[str, Any]:
         """Validate, limit, and execute a DAX query. Optionally perform perf analysis."""
         if not connection_state.is_connected():
-            return {"success": False, "error": "Not connected", "error_type": "not_connected"}
+            return ErrorHandler.handle_not_connected()
 
         query_executor = connection_state.query_executor
         performance_analyzer = connection_state.performance_analyzer
 
         if not query_executor:
-            return {"success": False, "error": "Query executor not available", "error_type": "service_unavailable"}
+            return ErrorHandler.handle_manager_unavailable('query_executor')
 
         # First, static analysis (syntax, complexity, patterns)
         analysis = query_executor.analyze_dax_query(query)
@@ -104,9 +105,15 @@ class AgentPolicy:
         notes: List[str] = []
 
         # Decide mode automatically: if user supplied EVALUATE and likely table expr, do preview; else analyze if explicitly requested
-        do_perf = effective_mode in ("analyze",) or (
-            effective_mode == "auto" and False
-        )
+        if effective_mode == "auto":
+            q_upper = (query or "").strip().upper()
+            # If EVALUATE and not a scalar, prefer preview
+            if q_upper.startswith("EVALUATE") and "TOPN(" not in q_upper:
+                do_perf = False
+            else:
+                do_perf = True
+        else:
+            do_perf = effective_mode in ("analyze",)
 
         if do_perf:
             # Performance analysis path
@@ -149,12 +156,14 @@ class AgentPolicy:
     def summarize_model_safely(self, connection_state) -> Dict[str, Any]:
         """Prefer lightweight summary over full exports for large models."""
         if not connection_state.is_connected():
-            return {"success": False, "error": "Not connected", "error_type": "not_connected"}
+            return ErrorHandler.handle_not_connected()
 
         model_exporter = connection_state.model_exporter
         query_executor = connection_state.query_executor
-        if not model_exporter or not query_executor:
-            return {"success": False, "error": "Required services not available", "error_type": "service_unavailable"}
+        if not model_exporter:
+            return ErrorHandler.handle_manager_unavailable('model_exporter')
+        if not query_executor:
+            return ErrorHandler.handle_manager_unavailable('query_executor')
 
         # Prefer summary
         summary = model_exporter.get_model_summary(query_executor)
@@ -227,7 +236,7 @@ class AgentPolicy:
         Returns per-variant timings and a winner with minimal avg_execution_ms.
         """
         if not connection_state.is_connected():
-            return {"success": False, "error": "Not connected", "error_type": "not_connected"}
+            return ErrorHandler.handle_not_connected()
         if not candidates or len([c for c in candidates if (c or "").strip()]) < 2:
             return {"success": False, "error": "Provide at least two non-empty candidates", "error_type": "invalid_input"}
 
@@ -316,11 +325,13 @@ class AgentPolicy:
     def generate_docs_safe(self, connection_state) -> Dict[str, Any]:
         """Generate documentation, preferring safe/lightweight operations for large models."""
         if not connection_state.is_connected():
-            return {"success": False, "error": "Not connected", "error_type": "not_connected"}
+            return ErrorHandler.handle_not_connected()
         exporter = connection_state.model_exporter
         executor = connection_state.query_executor
-        if not exporter or not executor:
-            return {"success": False, "error": "Required services not available", "error_type": "service_unavailable"}
+        if not exporter:
+            return ErrorHandler.handle_manager_unavailable('model_exporter')
+        if not executor:
+            return ErrorHandler.handle_manager_unavailable('query_executor')
 
         # Use get_model_summary first to get scale hints
         summary = exporter.get_model_summary(executor)

@@ -151,6 +151,20 @@ class OptimizedQueryExecutor:
             # Never fail user flow because of cache problems
             pass
 
+    def flush_cache(self) -> Dict[str, Any]:
+        """Clear the in-memory query cache and return stats."""
+        try:
+            size_before = len(self.query_cache)
+            self.query_cache.clear()
+            return {
+                'success': True,
+                'cleared_items': size_before,
+                'cache_enabled': self.cache_ttl_seconds > 0
+            }
+        except Exception as e:
+            logger.error(f"Error flushing cache: {e}")
+            return {'success': False, 'error': str(e)}
+
     def _escape_dax_string(self, text: str) -> str:
         """Escape single quotes in DAX strings."""
         return text.replace("'", "''") if text else text
