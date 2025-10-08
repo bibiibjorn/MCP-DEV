@@ -23,9 +23,10 @@ Powerful local MCP server that lets Claude analyze your Power BI Desktop models:
 
 1) Extract the folder to a path you control (recommended: `C:\Tools\pbixray-mcp-server`).
 2) Open Power BI Desktop with a .pbix file loaded and wait a few seconds.
-3) Configure Claude Desktop:
+3) Configure Claude Desktop (or ChatGPT):
 	- In PowerShell from the project folder: `./scripts/install_to_claude.ps1`
 	- Fully restart Claude Desktop afterwards.
+	- For ChatGPT desktop with MCP: `./scripts/install_to_chatgpt.ps1` then restart the ChatGPT app.
 4) Optional sanity check: `./scripts/test_connection.ps1`.
 5) Ask Claude:
 	- “Detect my Power BI Desktop instances” → then “Connect to instance 0”
@@ -43,6 +44,8 @@ You’re now ready to explore your model with Claude.
 ## Install, update, uninstall
 
 - Installation steps, update notes, and cleanup are documented in INSTALL.md
+	- Claude config: `./scripts/install_to_claude.ps1`
+	- ChatGPT MCP config: `./scripts/install_to_chatgpt.ps1`
 
 ## Notes on privacy & security
 

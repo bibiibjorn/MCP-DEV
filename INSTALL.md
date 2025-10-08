@@ -30,7 +30,7 @@ cd "C:\Tools\pbixray-mcp-server"
 
 This lists available tools and validates the local environment.
 
-## 3) Configure Claude Desktop
+## 3) Configure Claude Desktop (or ChatGPT)
 
 From the project folder, run:
 
@@ -42,6 +42,14 @@ Then fully restart Claude Desktop (quit the app from the tray/Task Manager and r
 
 - Command: `venv\Scripts\python.exe`
 - Args: `src\pbixray_server_enhanced.py`
+
+For ChatGPT desktop (with MCP support), run:
+
+```powershell
+./scripts/install_to_chatgpt.ps1
+```
+
+Then restart the ChatGPT app.
 
 ## 4) Connect and test
 

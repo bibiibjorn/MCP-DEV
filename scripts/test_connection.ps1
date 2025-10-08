@@ -39,9 +39,9 @@ except Exception as e:
     print(f"ERROR - CLR: {e}")
     sys.exit(1)
 
-# Test DLL path
+# Test DLL path (inside project root)
 script_dir = os.path.dirname(os.path.abspath(__file__))
-dll_folder = os.path.join(os.path.dirname(script_dir), "lib", "dotnet")
+dll_folder = os.path.join(script_dir, "lib", "dotnet")
 
 if os.path.exists(dll_folder):
     dlls = [f for f in os.listdir(dll_folder) if f.endswith('.dll')]
