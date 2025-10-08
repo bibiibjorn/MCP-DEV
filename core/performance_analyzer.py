@@ -50,13 +50,36 @@ class EnhancedAMOTraceAnalyzer:
 
     # ---- XMLA helpers ----
     def _exec_xmla(self, executor, xmla: str) -> None:
-        from Microsoft.AnalysisServices.AdomdClient import AdomdCommand
+        """Execute an XMLA command using ADOMD with the correct command type.
+
+        Without explicitly setting CommandType=Xmla, ADOMD treats the text as
+        MDX/DAX and the server returns a protocol/parse error. This method
+        ensures proper XMLA execution and applies a conservative timeout.
+        """
+        from Microsoft.AnalysisServices.AdomdClient import AdomdCommand, AdomdCommandType
         cmd = AdomdCommand(xmla, executor.connection)
+        try:
+            # Ensure ADOMD understands this is XMLA, not DAX/MDX text
+            cmd.CommandType = AdomdCommandType.Xmla  # type: ignore[attr-defined]
+        except Exception:
+            # Older clients may not expose the enum; best-effort fallback
+            pass
+        # Honor executor timeout if available
+        try:
+            timeout = int(getattr(executor, 'command_timeout_seconds', 60) or 60)
+            cmd.CommandTimeout = timeout
+        except Exception:
+            pass
         cmd.ExecuteNonQuery()
 
     def _query_rowset(self, executor, rowset_sql: str):
         from Microsoft.AnalysisServices.AdomdClient import AdomdCommand
         cmd = AdomdCommand(rowset_sql, executor.connection)
+        try:
+            timeout = int(getattr(executor, 'command_timeout_seconds', 60) or 60)
+            cmd.CommandTimeout = timeout
+        except Exception:
+            pass
         reader = cmd.ExecuteReader()
         columns = [reader.GetName(i) for i in range(reader.FieldCount)]
         rows: List[Dict[str, Any]] = []
@@ -267,10 +290,15 @@ class EnhancedAMOTraceAnalyzer:
 
     def _clear_cache(self, executor):
         db_name = self._get_database_name(executor)
+        # Use a proper XMLA Execute envelope to ensure protocol correctness
         xmla_clear = (
-            '<ClearCache xmlns="http://schemas.microsoft.com/analysisservices/2003/engine">'
-            '<Object><DatabaseID>{db}</DatabaseID></Object>'
-            '</ClearCache>'
+            '<Execute xmlns="urn:schemas-microsoft-com:xml-analysis">'
+            '  <Command>'
+            '    <ClearCache xmlns="http://schemas.microsoft.com/analysisservices/2003/engine">'
+            '      <Object><DatabaseID>{db}</DatabaseID></Object>'
+            '    </ClearCache>'
+            '  </Command>'
+            '</Execute>'
         ).format(db=db_name or '')
         try:
             self._exec_xmla(executor, xmla_clear)

@@ -57,7 +57,7 @@ You’re now ready to explore your model with Claude.
 
 ## Performance tools and cache
 
-- optimize_variants: Benchmark multiple DAX variants and return the fastest. Provide an array of candidate queries; the agent will run each for N runs and choose the minimal average execution time.
+ 
 - decide_and_run: Give a goal plus an optional query or list of candidates; it will connect, decide whether to analyze or preview, or benchmark candidates when provided.
 - Cache bypass: safe_run_dax and run_dax_query accept a bypass_cache flag to force a fresh execution and ignore the TTL LRU cache when needed.
 
@@ -71,7 +71,7 @@ Tip: For DMV queries using $SYSTEM.* with SELECTCOLUMNS, wrap the source in TOPN
 - Cache stats: `get_cache_stats` returns size, ttl, hits/misses, and whether the LRU TTL cache is enabled.
 - Context memory: `set_context({ ... })` and `get_context(keys?: string[])` maintain lightweight session memory (e.g., default table/measure).
 - Safety limits: `set_safety_limits({ max_rows_per_call })` clamps high-row requests; enforced in `run_dax_query` and `preview_table_data`.
-- Last result: `summarize_last_result` returns metadata (columns, row_count, sample rows) from the last successful query.
+ 
 - Performance baselines: `set_perf_baseline(name, query, runs?)`, `get_perf_baseline(name)`, `list_perf_baselines()`, `compare_perf_to_baseline(name, query?, runs?)`.
 - Auto router: `auto_route` chooses preview vs performance analysis based on priority and context.
 - M analysis: `analyze_m_practices` scans `$SYSTEM.TMSCHEMA_EXPRESSIONS` for common M issues (heuristics).

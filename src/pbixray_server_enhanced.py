@@ -359,9 +359,7 @@ def _handle_context_and_limits(name: str, arguments: Any) -> Optional[dict]:
         current = connection_state.set_safety_limits(limits) if connection_state else {}
         return {'success': True, 'limits': current}
 
-    if name == "summarize_last_result":
-        summary = connection_state.get_last_result_summary()
-        return summary
+    # summarize_last_result tool removed
 
     if name == "get_query_history":
         limit = arguments.get('limit')
@@ -997,52 +995,6 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
                 result.setdefault('notes', []).append('BPA fast mode with configured filters applied')
             return result
         return tmsl_result
-    if name == "get_output_schemas":
-        schemas = {
-            'version': '1.0.0',
-            'tools': {
-                'run_dax': {
-                    'preview': {
-                        'rows': 'array<object>',
-                        'row_count': 'number',
-                        'execution_time_ms': 'number'
-                    },
-                    'analyze': {
-                        'runs': 'array<object(run, execution_time_ms, formula_engine_ms, storage_engine_ms, metrics_available, cache_state, [event_counts?])>',
-                        'summary': 'object(avg_execution_ms, min_execution_ms, max_execution_ms, avg_formula_engine_ms, avg_storage_engine_ms, fe_percent, se_percent, cache_mode)'
-                    }
-                },
-                'relationships': {
-                    'relationships': 'array<object(FromTable, FromColumn, ToTable, ToColumn, IsActive, CrossFilterDirection, Cardinality)>',
-                    'analysis': 'object? (optimizer output)'
-                },
-                'get_vertipaq_stats': {
-                    'rows': 'array<object(TABLE_ID, TABLE_FULL_NAME, COLUMN_NAME, DICTIONARY_SIZE, ...)>',
-                },
-                'summarize_model': {
-                    'counts': 'object(tables:number, columns:number, measures:number, relationships:number)',
-                    'tables_by_name': 'object<string, object>'
-                },
-                'document_model': {
-                    'format': 'string(markdown|html|json)',
-                    'sections': 'object<string, any>'
-                },
-                'export_relationship_graph': {
-                    'json': {
-                        'nodes': 'array<object(id,label,hidden,details:object)>',
-                        'edges': 'array<object(id,from,to,fromColumn,toColumn,active,direction,cardinality,details:object)>'
-                    },
-                    'graphml': 'string (GraphML document)'
-                },
-                'validate_best_practices': {
-                    'issues': 'array<object(type,severity,object,description)>'
-                },
-                'export_model_overview': {
-                    'overview': 'object(same as summarize_model)'
-                }
-            }
-        }
-        return {'success': True, 'schemas': schemas, 'version': __version__}
     if name == "export_relationship_graph":
         return _export_relationship_graph(qe, arguments.get('format', 'json'))
     if name == "full_analysis":
@@ -1055,8 +1007,7 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
         return performance_optimizer.analyze_encoding_efficiency(arguments['table']) if performance_optimizer else ErrorHandler.handle_manager_unavailable('performance_optimizer')
     if name == "validate_model_integrity":
         return model_validator.validate_model_integrity() if model_validator else ErrorHandler.handle_manager_unavailable('model_validator')
-    if name == "analyze_data_freshness":
-        return model_validator.analyze_data_freshness() if model_validator else ErrorHandler.handle_manager_unavailable('model_validator')
+    # analyze_data_freshness tool removed from public surface
     return None
 
 
@@ -1096,10 +1047,7 @@ def _handle_dependency_and_bulk(name: str, arguments: Any) -> Optional[dict]:
         return calc_group_manager.delete_calculation_group(arguments['name']) if calc_group_manager else ErrorHandler.handle_manager_unavailable('calc_group_manager')
     if name == "list_partitions":
         return partition_manager.list_table_partitions(arguments.get('table')) if partition_manager else ErrorHandler.handle_manager_unavailable('partition_manager')
-    if name == "refresh_partition":
-        return partition_manager.refresh_partition(arguments['table'], arguments['partition'], arguments.get('refresh_type', 'full')) if partition_manager else ErrorHandler.handle_manager_unavailable('partition_manager')
-    if name == "refresh_table":
-        return partition_manager.refresh_table(arguments['table'], arguments.get('refresh_type', 'full')) if partition_manager else ErrorHandler.handle_manager_unavailable('partition_manager')
+    # Refresh operations removed from public tool surface
     if name == "list_roles":
         return rls_manager.list_roles() if rls_manager else ErrorHandler.handle_manager_unavailable('rls_manager')
     if name == "test_role_filter":
@@ -1165,7 +1113,7 @@ async def list_tools() -> List[Tool]:
         Tool(name="summarize_model", description="Lightweight model summary suitable for large models", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="document_model", description="Generate documentation or overview for the model", inputSchema={"type": "object", "properties": {"format": {"type": "string", "enum": ["markdown", "html", "json"], "default": "markdown"}, "include_examples": {"type": "boolean", "default": False}}, "required": []}),
         Tool(name="plan_query", description="Plan a safe query based on a high-level intent and optional table context", inputSchema={"type": "object", "properties": {"intent": {"type": "string"}, "table": {"type": "string"}, "max_rows": {"type": "integer"}}, "required": ["intent"]}),
-        Tool(name="optimize_variants", description="Benchmark multiple DAX variants and return the fastest", inputSchema={"type": "object", "properties": {"candidates": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer"}}, "required": ["candidates"]}),
+    # optimize_variants: intentionally hidden from public tool list (used internally by agent_policy)
         Tool(name="relationships", description="List relationships with optional cardinality analysis", inputSchema={"type": "object", "properties": {}, "required": []}),
         # Instance discovery and connect remain available
         Tool(name="detect_powerbi_desktop", description="Detect Power BI instances", inputSchema={"type": "object", "properties": {}, "required": []}),
@@ -1219,9 +1167,7 @@ async def list_tools() -> List[Tool]:
         Tool(name="delete_calculation_group", description="Delete calculation group", inputSchema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}),
 
         # Partition Management
-        Tool(name="list_partitions", description="List table partitions", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
-        Tool(name="refresh_partition", description="Refresh partition", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "partition": {"type": "string"}, "refresh_type": {"type": "string", "default": "full"}}, "required": ["table", "partition"]}),
-        Tool(name="refresh_table", description="Refresh table", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "refresh_type": {"type": "string", "default": "full"}}, "required": ["table"]}),
+    Tool(name="list_partitions", description="List table partitions", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
 
         # RLS Management
     Tool(name="list_roles", description="List security roles", inputSchema={"type": "object", "properties": {}, "required": []}),
@@ -1240,12 +1186,10 @@ async def list_tools() -> List[Tool]:
         Tool(name="analyze_storage_compression", description="Analyze storage/compression efficiency for a table", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": ["table"]}),
 
         # Model Validation
-        Tool(name="validate_model_integrity", description="Validate model integrity", inputSchema={"type": "object", "properties": {}, "required": []}),
-        Tool(name="analyze_data_freshness", description="Analyze data freshness", inputSchema={"type": "object", "properties": {}, "required": []}),
+    Tool(name="validate_model_integrity", description="Validate model integrity", inputSchema={"type": "object", "properties": {}, "required": []}),
 
         # Diagnostics and maintenance (trimmed; hide cache/safety/agent internals)
-    Tool(name="summarize_last_result", description="Return metadata about the last successful query result", inputSchema={"type": "object", "properties": {}, "required": []}),
-    Tool(name="warm_query_cache", description="Execute queries to warm both local and engine caches", inputSchema={"type": "object", "properties": {"queries": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer", "default": 1}, "clear_cache": {"type": "boolean", "default": True}}, "required": ["queries"]}),
+    # warm_query_cache: intentionally hidden from public tool list (internal utility)
     Tool(name="analyze_queries_batch", description="Analyze performance for multiple DAX queries", inputSchema={"type": "object", "properties": {"queries": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer", "default": 3}, "clear_cache": {"type": "boolean", "default": True}, "include_event_counts": {"type": "boolean", "default": False}}, "required": ["queries"]}),
     Tool(name="profile_columns", description="Profile columns (min, max, distinct, nulls)", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "columns": {"type": "array", "items": {"type": "string"}}}, "required": ["table"]}),
     Tool(name="get_column_value_distribution", description="Top values distribution for a column", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}, "top_n": {"type": "integer", "default": 50}}, "required": ["table", "column"]}),
@@ -1262,7 +1206,6 @@ async def list_tools() -> List[Tool]:
     # M best practices
     tools.append(Tool(name="analyze_m_practices", description="Scan M expressions for common issues", inputSchema={"type": "object", "properties": {}, "required": []}))
     # Output schemas and lineage export
-    tools.append(Tool(name="get_output_schemas", description="Describe output schemas for key tools", inputSchema={"type": "object", "properties": {}, "required": []}))
     tools.append(Tool(name="export_relationship_graph", description="Export relationships as a graph (JSON or GraphML)", inputSchema={"type": "object", "properties": {"format": {"type": "string", "enum": ["json", "graphml"], "default": "json"}}, "required": []}))
     tools.append(Tool(name="apply_tmdl_patch", description="Apply safe TMDL patch operations (measures only)", inputSchema={"type": "object", "properties": {"updates": {"type": "array", "items": {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "expression": {"type": "string"}, "display_folder": {"type": "string"}}, "required": ["table", "measure", "expression"]}}, "dry_run": {"type": "boolean", "default": False}}, "required": ["updates"]}))
     # Orchestrated comprehensive analysis

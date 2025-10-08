@@ -136,11 +136,32 @@ class AgentPolicy:
                 basic.setdefault("decision", "analyze")
                 basic.setdefault("reason", "Requested performance analysis, but analyzer unavailable; returned basic execution")
                 return basic
-
-            result = performance_analyzer.analyze_query(query_executor, query, r, True, include_event_counts)
-            result.setdefault("decision", "analyze")
-            result.setdefault("reason", "Performance analysis selected to obtain FE/SE breakdown and average timings")
-            return result
+            try:
+                result = performance_analyzer.analyze_query(query_executor, query, r, True, include_event_counts)
+                if not result.get("success"):
+                    raise RuntimeError(result.get("error") or "analysis_failed")
+                result.setdefault("decision", "analyze")
+                result.setdefault("reason", "Performance analysis selected to obtain FE/SE breakdown and average timings")
+                return result
+            except Exception as _e:
+                # Graceful fallback to preview when XMLA/xEvents is blocked or errors
+                q_upper = (query or "").strip().upper()
+                if q_upper.startswith("EVALUATE") and "TOPN(" not in q_upper:
+                    try:
+                        body = (query.strip()[len("EVALUATE"):]).strip()
+                        query = f"EVALUATE TOPN({lim}, {body})"
+                        notes.append(f"Applied TOPN({lim}) to EVALUATE query for safety (analyze fallback)")
+                    except Exception:
+                        pass
+                exec_result = query_executor.validate_and_execute_dax(query, lim, bypass_cache=bypass_cache)
+                exec_result.setdefault("notes", []).append(
+                    f"Analyzer error; returned preview instead: {str(_e)}"
+                )
+                exec_result.setdefault("decision", "analyze_fallback_preview")
+                exec_result.setdefault("reason", "XMLA/xEvents unavailable or errored; provided successful preview with safe TOPN")
+                if verbose and notes:
+                    exec_result.setdefault("notes", []).extend(notes)
+                return exec_result
 
         # Preview/standard execution path with safe TOPN
         # If query starts with EVALUATE and lacks TOPN, force safe TOPN by rewriting
