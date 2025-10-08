@@ -107,10 +107,10 @@ class DAXInjector:
                 "error_type": "amo_unavailable"
             }
 
-        if not all([table_name, measure_name, dax_expression]):
+        if not table_name or not measure_name:
             return {
                 "success": False,
-                "error": "Table name, measure name, and DAX expression are required",
+                "error": "Table name and measure name are required",
                 "error_type": "invalid_parameters"
             }
 
@@ -158,7 +158,8 @@ class DAXInjector:
 
             if measure:
                 # Update existing measure
-                measure.Expression = dax_expression
+                if dax_expression:
+                    measure.Expression = dax_expression
 
                 if display_folder is not None:
                     measure.DisplayFolder = display_folder
@@ -173,7 +174,13 @@ class DAXInjector:
                 logger.info(f"Updated measure '{measure_name}' in table '{table_name}'")
 
             else:
-                # Create new measure
+                # Create new measure (requires an expression)
+                if not dax_expression:
+                    return {
+                        "success": False,
+                        "error": "Expression is required when creating a new measure",
+                        "error_type": "invalid_parameters"
+                    }
                 measure = Measure()
                 measure.Name = measure_name
                 measure.Expression = dax_expression
@@ -201,6 +208,8 @@ class DAXInjector:
                 "measure": measure_name,
                 "expression": dax_expression,
                 "display_folder": display_folder,
+                "description": description,
+                "format_string": format_string,
                 "message": f"Successfully {action} measure '{measure_name}' in table '{table_name}'"
             }
 

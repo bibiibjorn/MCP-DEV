@@ -76,11 +76,50 @@ def run_full_analysis(
 
     sections: dict[str, Any] = {}
     timings: dict[str, float] = {}
+    notes: list[str] = []
+
+    # Soft SLA per profile (milliseconds). If exceeded, return partials with a note.
+    sla_map = {
+        'fast': 2500,
+        'balanced': 8000,
+        'deep': 15000,
+    }
+    sla_ms = sla_map.get(profile, 8000)
+    _start = time.time()
+
+    def _elapsed_ms() -> float:
+        return (time.time() - _start) * 1000.0
+
+    def _timeout(section_name: str) -> Dict[str, Any]:
+        # Return a partial result with timing and notes
+        notes.append(f"Soft SLA exceeded after section '{section_name}' for profile '{profile}' ({int(_elapsed_ms())} ms > {sla_ms} ms)")
+        result = {
+            'success': True,
+            'depth': 'light' if profile == 'fast' else depth,
+            'profile': profile,
+            'include_bpa': include_bpa,
+            'timings_ms': timings,
+            'sections': sections,
+            'timed_out': True,
+            'timeout_after_section': section_name,
+            'generated_at': time.time(),
+        }
+        if notes:
+            result['notes'] = notes
+        # Attach main purpose if we already have summary
+        try:
+            result['main_purpose'] = _simple_main_purpose(sections.get('summary') or {})
+            result['what_the_model_does'] = result['main_purpose']
+        except Exception:
+            pass
+        return result
 
     # Summary
     t0 = time.time()
     sections['summary'] = model_exporter.get_model_summary(query_executor) if model_exporter else {'success': False, 'error': 'Model exporter unavailable'}
     timings['summary_ms'] = round((time.time() - t0) * 1000, 2)
+    if _elapsed_ms() > sla_ms:
+        return _timeout('summary')
 
     # Attach concise purpose if available in summary
     try:
@@ -102,6 +141,8 @@ def run_full_analysis(
         rels.setdefault('notes', []).append(f"Truncated to {rel_max} relationships")
     sections['relationships'] = rels
     timings['relationships_ms'] = round((time.time() - t0) * 1000, 2)
+    if _elapsed_ms() > sla_ms:
+        return _timeout('relationships')
 
     # FAST profile: only summary + relationships for speed
     if profile == 'fast':
@@ -130,6 +171,8 @@ def run_full_analysis(
     t0 = time.time()
     sections['best_practices'] = ap.validate_best_practices(connection_state)
     timings['best_practices_ms'] = round((time.time() - t0) * 1000, 2)
+    if _elapsed_ms() > sla_ms:
+        return _timeout('best_practices')
 
     # M practices
     try:
@@ -141,6 +184,8 @@ def run_full_analysis(
     t0 = time.time()
     sections['m_practices'] = scan_m_practices(query_executor, dmv_cap, issues_max)
     timings['m_practices_ms'] = round((time.time() - t0) * 1000, 2)
+    if _elapsed_ms() > sla_ms:
+        return _timeout('m_practices')
 
     # Optional BPA
     if include_bpa and profile != 'fast':
@@ -172,16 +217,22 @@ def run_full_analysis(
         else:
             sections['bpa'] = {'success': False, 'error': 'TMSL unavailable or BPA analyzer missing'}
         timings['bpa_ms'] = round((time.time() - t0) * 1000, 2)
+        if _elapsed_ms() > sla_ms:
+            return _timeout('bpa')
 
     # Optional deeper checks
     if depth in ('standard', 'deep') and performance_optimizer:
         t0 = time.time()
         sections['cardinality_overview'] = performance_optimizer.analyze_column_cardinality(None)
         timings['cardinality_overview_ms'] = round((time.time() - t0) * 1000, 2)
+        if _elapsed_ms() > sla_ms:
+            return _timeout('cardinality_overview')
     if depth == 'deep' and performance_optimizer:
         t0 = time.time()
         sections['relationship_cardinality'] = performance_optimizer.analyze_relationship_cardinality()
         timings['relationship_cardinality_ms'] = round((time.time() - t0) * 1000, 2)
+        if _elapsed_ms() > sla_ms:
+            return _timeout('relationship_cardinality')
 
     # Narrative last
     try:
@@ -193,7 +244,7 @@ def run_full_analysis(
     main_purpose = _simple_main_purpose(sections.get('summary') or {})
     what = main_purpose
 
-    return {
+    result = {
         'success': True,
         'depth': depth,
         'profile': profile,
@@ -204,3 +255,6 @@ def run_full_analysis(
         'main_purpose': main_purpose,
         'generated_at': time.time(),
     }
+    if notes:
+        result['notes'] = notes
+    return result

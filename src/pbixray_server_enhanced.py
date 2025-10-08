@@ -10,6 +10,7 @@ import logging
 import sys
 import os
 import time
+from collections import deque
 from typing import Any, List, Optional
 
 from mcp.server import Server
@@ -82,6 +83,10 @@ except Exception as _e:
 
 # Track server start time
 start_time = time.time()
+
+# Rolling call telemetry (in-memory)
+_TELEMETRY_MAX = 200
+_telemetry = deque(maxlen=_TELEMETRY_MAX)
 
 # Initialize connection manager
 connection_manager = ConnectionManager()
@@ -234,6 +239,23 @@ def _handle_logs_and_health(name: str, arguments: Any) -> Optional[dict]:
             return {'success': False, 'error': str(e)}
 
     if name == "get_server_info":
+        # Build compact telemetry summary
+        try:
+            total_calls = len(_telemetry)
+            successes = sum(1 for t in _telemetry if t.get('success'))
+            failures = total_calls - successes
+            last = _telemetry[-1] if total_calls else None
+            recent = list(_telemetry)[-10:]
+            telemetry_summary = {
+                'total_calls': total_calls,
+                'successes': successes,
+                'failures': failures,
+                'last_call': last,
+                'recent': recent,
+                'capacity': _TELEMETRY_MAX,
+            }
+        except Exception:
+            telemetry_summary = {'error': 'telemetry_unavailable'}
         info = {
             'success': True,
             'version': __version__,
@@ -242,6 +264,7 @@ def _handle_logs_and_health(name: str, arguments: Any) -> Optional[dict]:
             'bpa_available': BPA_AVAILABLE,
             'bpa_status': BPA_STATUS,
             'config': config.get_all(),
+            'telemetry': telemetry_summary,
             'error_schema': {
                 'not_connected': {
                     'success': False,
@@ -522,6 +545,10 @@ def _handle_agent_tools(name: str, arguments: Any) -> Optional[dict]:
             arguments.get("include_event_counts", False),
         )
     if name == "summarize_model":
+        # Ensure connection for a smoother experience
+        ensured = agent_policy.ensure_connected(connection_manager, connection_state, None)
+        if not ensured.get('success'):
+            return ensured
         return agent_policy.summarize_model_safely(connection_state)
     if name == "plan_query":
         return agent_policy.plan_query(arguments.get("intent", ""), arguments.get("table"), arguments.get("max_rows"))
@@ -596,10 +623,19 @@ def _handle_agent_tools(name: str, arguments: Any) -> Optional[dict]:
     if name == "set_cache_policy":
         return agent_policy.set_cache_policy(connection_state, arguments.get('ttl_seconds'))
     if name == "profile_columns":
+        ensured = agent_policy.ensure_connected(connection_manager, connection_state, None)
+        if not ensured.get('success'):
+            return ensured
         return agent_policy.profile_columns(connection_state, arguments.get('table', ''), arguments.get('columns'))
     if name == "get_value_distribution":
+        ensured = agent_policy.ensure_connected(connection_manager, connection_state, None)
+        if not ensured.get('success'):
+            return ensured
         return agent_policy.get_value_distribution(connection_state, arguments.get('table', ''), arguments.get('column', ''), arguments.get('top_n', 50))
     if name == "validate_best_practices":
+        ensured = agent_policy.ensure_connected(connection_manager, connection_state, None)
+        if not ensured.get('success'):
+            return ensured
         return agent_policy.validate_best_practices(connection_state)
     if name == "generate_documentation_profiled":
         return agent_policy.generate_documentation_profiled(connection_state, arguments.get('format', 'markdown'), arguments.get('include_examples', False))
@@ -620,6 +656,9 @@ def _handle_agent_tools(name: str, arguments: Any) -> Optional[dict]:
     if name == "format_dax":
         return agent_policy.format_dax(arguments.get('expression', ''))
     if name == "export_model_overview":
+        ensured = agent_policy.ensure_connected(connection_manager, connection_state, None)
+        if not ensured.get('success'):
+            return ensured
         return agent_policy.export_model_overview(connection_state, arguments.get('format', 'json'), arguments.get('include_counts', True))
     if name == "auto_route":
         return agent_policy.auto_analyze_or_preview(connection_manager, connection_state, arguments.get('query', ''), arguments.get('runs'), arguments.get('max_rows'), arguments.get('priority', 'depth'))
@@ -1055,7 +1094,14 @@ def _handle_dependency_and_bulk(name: str, arguments: Any) -> Optional[dict]:
     if name == "validate_rls_coverage":
         return rls_manager.validate_rls_coverage() if rls_manager else ErrorHandler.handle_manager_unavailable('rls_manager')
     if name == "upsert_measure":
-        return dax_injector.upsert_measure(arguments["table"], arguments["measure"], arguments["expression"], arguments.get("display_folder")) if dax_injector else ErrorHandler.handle_manager_unavailable('dax_injector')
+        return (dax_injector.upsert_measure(
+            arguments["table"],
+            arguments["measure"],
+            arguments["expression"],
+            arguments.get("display_folder"),
+            arguments.get("description"),
+            arguments.get("format_string")
+        ) if dax_injector else ErrorHandler.handle_manager_unavailable('dax_injector'))
     if name == "delete_measure":
         return dax_injector.delete_measure(arguments["table"], arguments["measure"]) if dax_injector else ErrorHandler.handle_manager_unavailable('dax_injector')
     if name == "export_tmsl":
@@ -1068,6 +1114,48 @@ def _handle_dependency_and_bulk(name: str, arguments: Any) -> Optional[dict]:
         return model_exporter.get_model_summary(connection_state.query_executor) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
     if name == "compare_models":
         return model_exporter.compare_models(arguments['reference_tmsl']) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
+    if name == "apply_tmdl_patch":
+        # Safe patch application limited to measures only; supports dry_run
+        updates = arguments.get('updates', []) or []
+        dry_run = bool(arguments.get('dry_run', False))
+        if not isinstance(updates, list) or not updates:
+            return {'success': False, 'error': 'updates array is required', 'error_type': 'invalid_input'}
+        if not dax_injector:
+            return ErrorHandler.handle_manager_unavailable('dax_injector')
+        # Validate payload and optionally execute
+        plan = []
+        results = []
+        for u in updates:
+            try:
+                tbl = (u or {}).get('table')
+                meas = (u or {}).get('measure')
+                expr = (u or {}).get('expression')
+                disp = (u or {}).get('display_folder')
+                descr = (u or {}).get('description')
+                fmt = (u or {}).get('format_string')
+                if not tbl or not meas:
+                    results.append({'success': False, 'error': 'Missing table or measure', 'error_type': 'invalid_input', 'item': u})
+                    continue
+                if expr is None and disp is None and descr is None and fmt is None:
+                    results.append({'success': False, 'error': 'No changes specified (need one of expression/display_folder/description/format_string)', 'error_type': 'invalid_input', 'item': u})
+                    continue
+                if dry_run:
+                    plan.append({'action': 'upsert_measure', 'table': tbl, 'measure': meas, 'display_folder': disp, 'description': descr, 'format_string': fmt, 'expression_present': expr is not None})
+                else:
+                    # Ensure non-None string for expression; injector will handle metadata-only update when empty
+                    expr_str = str(expr) if expr is not None else ""
+                    res = dax_injector.upsert_measure(str(tbl), str(meas), expr_str, disp, descr, fmt)
+                    # Normalize and attach item for traceability
+                    if isinstance(res, dict):
+                        res.setdefault('table', tbl)
+                        res.setdefault('measure', meas)
+                    results.append(res)
+            except Exception as e:
+                results.append({'success': False, 'error': str(e), 'item': u})
+        if dry_run:
+            return {'success': True, 'dry_run': True, 'planned': plan, 'count': len(plan)}
+        ok = all(bool(r.get('success')) for r in results) if results else False
+        return {'success': ok, 'updated': sum(1 for r in results if r.get('success')), 'results': results}
     return None
 
 
@@ -1111,8 +1199,8 @@ async def list_tools() -> List[Tool]:
         # Combined DAX runner (preview/analyze)
     Tool(name="run_dax", description="Run a DAX query (preview/analyze) with safe limits", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "mode": {"type": "string", "enum": ["auto", "preview", "analyze"], "default": "auto"}, "runs": {"type": "integer"}, "top_n": {"type": "integer"}, "verbose": {"type": "boolean", "default": False}, "include_event_counts": {"type": "boolean", "default": False}}, "required": ["query"]}),
         Tool(name="summarize_model", description="Lightweight model summary suitable for large models", inputSchema={"type": "object", "properties": {}, "required": []}),
-        Tool(name="document_model", description="Generate documentation or overview for the model", inputSchema={"type": "object", "properties": {"format": {"type": "string", "enum": ["markdown", "html", "json"], "default": "markdown"}, "include_examples": {"type": "boolean", "default": False}}, "required": []}),
-        Tool(name="plan_query", description="Plan a safe query based on a high-level intent and optional table context", inputSchema={"type": "object", "properties": {"intent": {"type": "string"}, "table": {"type": "string"}, "max_rows": {"type": "integer"}}, "required": ["intent"]}),
+    Tool(name="document_model", description="Generate documentation or overview for the model", inputSchema={"type": "object", "properties": {"format": {"type": "string", "enum": ["markdown", "html", "json"], "default": "markdown"}, "include_examples": {"type": "boolean", "default": False}}, "required": []}),
+    # plan_query intentionally hidden from public tool list (still callable internally)
     # optimize_variants: intentionally hidden from public tool list (used internally by agent_policy)
         Tool(name="relationships", description="List relationships with optional cardinality analysis", inputSchema={"type": "object", "properties": {}, "required": []}),
         # Instance discovery and connect remain available
@@ -1143,8 +1231,8 @@ async def list_tools() -> List[Tool]:
                 },
                 "required": []
             }
-        ),
-        Tool(name="upsert_measure", description="Create/update measure", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "expression": {"type": "string"}, "display_folder": {"type": "string"}}, "required": ["table", "measure", "expression"]}),
+    ),
+    Tool(name="upsert_measure", description="Create/update measure", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "expression": {"type": "string"}, "display_folder": {"type": "string"}, "description": {"type": "string"}, "format_string": {"type": "string"}}, "required": ["table", "measure", "expression"]}),
         Tool(name="delete_measure", description="Delete a measure", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}} , "required": ["table", "measure"]}),
     Tool(name="list_columns", description="List columns", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
         Tool(name="get_column_values", description="Column values", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}, "limit": {"type": "integer", "default": 100}}, "required": ["table", "column"]}),
@@ -1207,7 +1295,7 @@ async def list_tools() -> List[Tool]:
     tools.append(Tool(name="analyze_m_practices", description="Scan M expressions for common issues", inputSchema={"type": "object", "properties": {}, "required": []}))
     # Output schemas and lineage export
     tools.append(Tool(name="export_relationship_graph", description="Export relationships as a graph (JSON or GraphML)", inputSchema={"type": "object", "properties": {"format": {"type": "string", "enum": ["json", "graphml"], "default": "json"}}, "required": []}))
-    tools.append(Tool(name="apply_tmdl_patch", description="Apply safe TMDL patch operations (measures only)", inputSchema={"type": "object", "properties": {"updates": {"type": "array", "items": {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "expression": {"type": "string"}, "display_folder": {"type": "string"}}, "required": ["table", "measure", "expression"]}}, "dry_run": {"type": "boolean", "default": False}}, "required": ["updates"]}))
+    tools.append(Tool(name="apply_tmdl_patch", description="Apply safe TMDL patch operations (measures only)", inputSchema={"type": "object", "properties": {"updates": {"type": "array", "items": {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "expression": {"type": "string"}, "display_folder": {"type": "string"}, "description": {"type": "string"}, "format_string": {"type": "string"}}, "required": ["table", "measure"]}}, "dry_run": {"type": "boolean", "default": False}}, "required": ["updates"]}))
     # Orchestrated comprehensive analysis
     tools.append(Tool(name="full_analysis", description="Run a comprehensive model analysis (summary, relationships, best practices, M scan, optional BPA)", inputSchema={"type": "object", "properties": {"include_bpa": {"type": "boolean", "default": True}, "depth": {"type": "string", "enum": ["light", "standard", "deep"], "default": "standard"}, "profile": {"type": "string", "enum": ["fast", "balanced", "deep"], "default": "balanced"}, "limits": {"type": "object", "properties": {"relationships_max": {"type": "integer", "default": 200}, "issues_max": {"type": "integer", "default": 200}}, "default": {}}}, "required": []}))
     # Proposal helper so the agent can offer options to the user
@@ -1218,7 +1306,18 @@ async def list_tools() -> List[Tool]:
 @app.call_tool()
 async def call_tool(name: str, arguments: Any) -> List[TextContent]:
     try:
+        _t0 = time.time()
         result = _dispatch_tool(name, arguments)
+        _dur = round((time.time() - _t0) * 1000, 2)
+        try:
+            _telemetry.append({
+                'name': name,
+                'duration_ms': _dur,
+                'success': bool(isinstance(result, dict) and result.get('success', False)),
+                'ts': time.time()
+            })
+        except Exception:
+            pass
         # Special-case get_recent_logs to return plain text to preserve formatting in clients
         if name == "get_recent_logs" and isinstance(result, dict) and 'logs' in result:
             return [TextContent(type="text", text=result['logs'])]
