@@ -180,6 +180,14 @@ def run_full_analysis(depth: str, include_bpa: bool, relationships_max: int, iss
         m_query = f'''EVALUATE\n            SELECTCOLUMNS(\n                TOPN({dmv_cap}, $SYSTEM.TMSCHEMA_EXPRESSIONS),\n                "Name", [Name],\n                "Expression", [Expression],\n                "Kind", [Kind]\n            )'''
         m_data = qe.validate_and_execute_dax(m_query, dmv_cap)
         if not m_data.get('success'):
+            # Fallback to TOM for M enumeration
+            try:
+                m_data = qe.enumerate_m_expressions_tom(dmv_cap)
+                if m_data.get('success'):
+                    m_data.setdefault('notes', []).append('Used TOM fallback for M expressions (DMV unavailable).')
+            except Exception as _e:
+                m_data = {'success': False, 'error': str(_e)}
+        if not m_data.get('success'):
             sections['m_practices'] = m_data
         else:
             issues = []
@@ -210,7 +218,15 @@ def run_full_analysis(depth: str, include_bpa: bool, relationships_max: int, iss
         if qe and bpa:
             tmsl = qe.get_tmsl_definition()
             if tmsl.get('success'):
-                viols = bpa.analyze_model(tmsl['tmsl'])
+                # bpa.analyze_model accepts dict or JSON string; ensure we pass a model dict shape
+                tmsl_val = tmsl.get('tmsl')
+                model_input: Any = tmsl_val
+                if isinstance(tmsl_val, str):
+                    try:
+                        model_input = json.loads(tmsl_val)
+                    except Exception:
+                        model_input = tmsl_val
+                viols = bpa.analyze_model(model_input)
                 summary = bpa.get_violations_summary()
                 trimmed = []
                 for v in viols[:issues_max]:
@@ -226,7 +242,8 @@ def run_full_analysis(depth: str, include_bpa: bool, relationships_max: int, iss
                     })
                 sections['bpa'] = {'success': True, 'violations_count': len(viols), 'summary': summary, 'violations': trimmed}
             else:
-                sections['bpa'] = tmsl
+                # Pass through error but avoid noisy warnings by annotating note
+                sections['bpa'] = {**tmsl, 'notes': ['BPA skipped: unable to extract TMSL model']}
         else:
             sections['bpa'] = {'success': False, 'error': 'BPA analyzer unavailable'}
         timings['bpa_ms'] = round((time.time() - t0) * 1000, 2)

@@ -643,8 +643,41 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
         table = arguments["table"]
         cols = qe.execute_info_query("COLUMNS", table_name=table)
         measures = qe.execute_info_query("MEASURES", table_name=table, exclude_columns=['Expression'])
-        rels = qe.execute_info_query("RELATIONSHIPS", f'[FromTable] = "{table}" || [ToTable] = "{table}"')
-        result = {'success': True, 'table': table, 'columns': cols.get('rows', []), 'measures': measures.get('rows', []), 'relationships': rels.get('rows', [])}
+        # Fetch all relationships and filter client-side for robustness across engine versions
+        rels_all = qe.execute_info_query("RELATIONSHIPS")
+        rel_rows = rels_all.get('rows', []) if rels_all.get('success') else []
+        filtered_rels = []
+        if rel_rows:
+            # Prefer direct name columns if present
+            if any('FromTable' in r or 'ToTable' in r for r in rel_rows):
+                for r in rel_rows:
+                    ft = str(r.get('FromTable') or '')
+                    tt = str(r.get('ToTable') or '')
+                    if ft == str(table) or tt == str(table):
+                        filtered_rels.append(r)
+            else:
+                # Fallback: map IDs to names using INFO.TABLES()
+                tbls = qe.execute_info_query("TABLES")
+                id_to_name = {}
+                if tbls.get('success'):
+                    for t in tbls.get('rows', []):
+                        tid = t.get('ID') or t.get('TableID')
+                        nm = t.get('Name')
+                        if tid is not None and nm:
+                            id_to_name[str(tid)] = str(nm)
+                for r in rel_rows:
+                    ftid = r.get('FromTableID') or r.get('[FromTableID]')
+                    ttid = r.get('ToTableID') or r.get('[ToTableID]')
+                    ft = id_to_name.get(str(ftid)) if ftid is not None else None
+                    tt = id_to_name.get(str(ttid)) if ttid is not None else None
+                    if ft == str(table) or tt == str(table):
+                        # Optionally enrich with resolved names for convenience
+                        if ft and 'FromTable' not in r:
+                            r['FromTable'] = ft
+                        if tt and 'ToTable' not in r:
+                            r['ToTable'] = tt
+                        filtered_rels.append(r)
+        result = {'success': True, 'table': table, 'columns': cols.get('rows', []), 'measures': measures.get('rows', []), 'relationships': filtered_rels}
         def _slice(arr, size, token):
             try:
                 ps = int(size) if size is not None else None

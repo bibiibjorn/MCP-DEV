@@ -51,7 +51,7 @@ class BPAAnalyzer:
     Analyzes TMSL models against best practice rules
     """
     
-    def __init__(self, rules_file_path: str = None):
+    def __init__(self, rules_file_path: Optional[str] = None):
         """
         Initialize the BPA Analyzer
         
@@ -270,7 +270,7 @@ class BPAAnalyzer:
                 ann_name = ann_match.group(1)
                 result = self.get_annotation(context.get('obj', {}), ann_name)
                 self._eval_depth -= 1
-                return result
+                return result if result is not None else ""
 
             # Handle simple property == value
             prop_match = re.match(r'([A-Za-z0-9_]+)\s*(==|<>|!=)\s*("([^"]+)"|null|true|false|\d+)', expression)
@@ -408,6 +408,9 @@ class BPAAnalyzer:
 
     def analyze_model(self, tmsl_json: Union[str, Dict]) -> List[BPAViolation]:
         """Analyze model against BPA rules"""
+        # Reset violations at the start of each analysis run
+        self.violations = []
+
         if isinstance(tmsl_json, str):
             try:
                 tmsl_model = json.loads(tmsl_json)
@@ -417,7 +420,18 @@ class BPAAnalyzer:
         else:
             tmsl_model = tmsl_json
             
-        model = tmsl_model.get('create', {}).get('database', {}).get('model', {}) or tmsl_model.get('model', {})
+        # Resolve model from common shapes:
+        # - create.database.model
+        # - { model: {...} }
+        # - model object at root (has 'tables' etc.)
+        model = (
+            tmsl_model.get('create', {}).get('database', {}).get('model', {})
+            or tmsl_model.get('model', {})
+        )
+        if not model and isinstance(tmsl_model, dict) and (
+            'tables' in tmsl_model or 'measures' in tmsl_model or 'relationships' in tmsl_model
+        ):
+            model = tmsl_model
         
         if not model:
             logger.warning("No model found in TMSL structure")
@@ -438,8 +452,6 @@ class BPAAnalyzer:
                 details=", ".join(missing_ann[:5])  # Show first 5
             ))
 
-        self.violations = []
-        
         for rule in self.rules:
             try:
                 self._eval_depth = 0  # Reset depth counter for each rule
