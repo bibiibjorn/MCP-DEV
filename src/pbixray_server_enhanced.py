@@ -37,6 +37,7 @@ from core.performance_optimizer import PerformanceOptimizer
 from core.model_validator import ModelValidator
 
 from core.error_handler import ErrorHandler
+from core.agent_policy import AgentPolicy
 
 # Import configuration and connection state
 from core.config_manager import config
@@ -62,6 +63,7 @@ connection_manager = ConnectionManager()
 connection_state.set_connection_manager(connection_manager)
 
 app = Server("pbixray-v2.3")
+agent_policy = AgentPolicy(config)
 
 
 @app.list_tools()
@@ -69,6 +71,10 @@ async def list_tools() -> List[Tool]:
     tools = [
         Tool(name="get_server_info", description="Get server version and connection status", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="health_check", description="Comprehensive server health check", inputSchema={"type": "object", "properties": {}, "required": []}),
+        # Agent meta-tools (guardrailed orchestration)
+        Tool(name="ensure_connected", description="Ensure connection to a Power BI Desktop instance (detects and connects if needed)", inputSchema={"type": "object", "properties": {"preferred_index": {"type": "integer"}}, "required": []}),
+        Tool(name="safe_run_dax", description="Validate and safely execute a DAX query; optionally analyze performance", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "mode": {"type": "string", "enum": ["auto", "preview", "analyze"], "default": "auto"}, "runs": {"type": "integer"}, "max_rows": {"type": "integer"}}, "required": ["query"]}),
+        Tool(name="summarize_model", description="Lightweight model summary suitable for large models", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="detect_powerbi_desktop", description="Detect Power BI instances", inputSchema={"type": "object", "properties": {}, "required": []}),
         Tool(name="connect_to_powerbi", description="Connect to instance", inputSchema={"type": "object", "properties": {"model_index": {"type": "integer"}}, "required": ["model_index"]}),
         Tool(name="list_tables", description="List tables", inputSchema={"type": "object", "properties": {}, "required": []}),
@@ -181,6 +187,21 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 }
             }
             return [TextContent(type="text", text=json.dumps(health_info, indent=2))]
+        elif name == "ensure_connected":
+            result = agent_policy.ensure_connected(connection_manager, connection_state, arguments.get("preferred_index"))
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        elif name == "safe_run_dax":
+            result = agent_policy.safe_run_dax(
+                connection_state,
+                arguments.get("query", ""),
+                arguments.get("mode", "auto"),
+                arguments.get("runs"),
+                arguments.get("max_rows"),
+            )
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        elif name == "summarize_model":
+            result = agent_policy.summarize_model_safely(connection_state)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
         if name == "detect_powerbi_desktop":
             instances = connection_manager.detect_instances()
             result = {'success': True, 'total_instances': len(instances), 'instances': instances}
