@@ -1,0 +1,60 @@
+name: Publish Docs
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: 'pages'
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Build docs site
+        run: |
+          mkdir -p _site
+          cp -r docs/* _site/ || true
+          cat > _site/index.html << 'HTML'
+          <!doctype html>
+          <meta charset="utf-8"/>
+          <meta name="viewport" content="width=device-width, initial-scale=1"/>
+          <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown.min.css">
+          <article class="markdown-body" style="margin:40px">
+            <h1>MCP-PowerBi-Finvision Docs</h1>
+            <p>Welcome. Start with the production guide and quickstart below.</p>
+            <ul>
+              <li><a href="Guide.md">Guide.md</a> — production usage</li>
+              <li><a href="PBIXRAY_Quickstart.md">PBIXRAY_Quickstart.md</a> — quickstart (also available as PDF/TXT)</li>
+              <li><a href="PBIXRAY_Quickstart.pdf">PBIXRAY_Quickstart.pdf</a></li>
+              <li><a href="PBIXRAY_Quickstart.txt">PBIXRAY_Quickstart.txt</a></li>
+            </ul>
+          </article>
+          HTML
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

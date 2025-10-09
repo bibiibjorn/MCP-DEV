@@ -27,18 +27,7 @@ if parent_dir not in sys.path:
 
 from __version__ import __version__
 from core.connection_manager import ConnectionManager
-from core.query_executor import OptimizedQueryExecutor, COLUMN_TYPE_CALCULATED
-from core.performance_analyzer import EnhancedAMOTraceAnalyzer
-from core.dax_injector import DAXInjector
-from core.dependency_analyzer import DependencyAnalyzer
-from core.bulk_operations import BulkOperationsManager
-from core.calculation_group_manager import CalculationGroupManager
-from core.partition_manager import PartitionManager
-from core.rls_manager import RLSManager
-from core.model_exporter import ModelExporter
-from core.performance_optimizer import PerformanceOptimizer
-from core.model_validator import ModelValidator
-from core.model_narrative import generate_narrative
+from core.query_executor import COLUMN_TYPE_CALCULATED
 
 from core.error_handler import ErrorHandler
 from core.agent_policy import AgentPolicy
@@ -583,6 +572,15 @@ def _handle_connection_and_instances(name: str, arguments: Any) -> Optional[dict
                     result.setdefault('notes', []).append(msg)
                 except Exception:
                     pass
+            except Exception:
+                pass
+            # Add a short summary to help AI clients display guidance inline
+            try:
+                result.setdefault('summary', 'Connected to Power BI Desktop. Use list_tools to discover capabilities. Quickstart guide path returned for details.')
+                result.setdefault('hints', [
+                    'Try: get_model_summary, get_column_usage_heatmap, analyze_measure_dependencies',
+                    'Use describe_table to inspect schema; search_objects to find fields',
+                ])
             except Exception:
                 pass
         return result

@@ -55,6 +55,13 @@ You’re now ready to explore your model with Claude.
 	- Normal analysis (profile=balanced, depth=standard, include_bpa=true)
 	Use this when the user asks “analyze the model” and wants a choice.
 
+## Documentation and Guides
+
+- Full production guide: see `docs/Guide.md` (also published via GitHub Pages if enabled)
+- Quickstart: `docs/PBIXRAY_Quickstart.md` (auto-generated PDF/TXT on first connect)
+
+To publish docs automatically, this repo includes `.github/workflows/docs.yml` which deploys the `docs/` folder to GitHub Pages on every push to `main`.
+
 ## Performance tools and cache
 
  

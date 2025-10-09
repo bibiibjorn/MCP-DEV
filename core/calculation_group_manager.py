@@ -191,6 +191,27 @@ class CalculationGroupManager:
                 calc_group.CalculationItems.Add(item)
 
             table.CalculationGroup = calc_group
+            
+            # Some TOM versions require at least one partition on a Calculation Group table with Full DataView
+            try:
+                if hasattr(table, 'Partitions') and hasattr(Tabular, 'Partition'):
+                    part = Tabular.Partition()
+                    part.Name = f"{name}_Partition"
+                    # Set DataView if available (Full required for calc groups)
+                    try:
+                        # In newer TOM, DataViewType is an enum; older may have a different property
+                        if hasattr(part, 'DataView') and hasattr(Tabular, 'DataViewType'):
+                            part.DataView = Tabular.DataViewType.Full
+                    except Exception:
+                        pass
+                    try:
+                        table.Partitions.Add(part)
+                    except Exception:
+                        # Some builds use constructor with (name, source); continue if not needed
+                        pass
+            except Exception:
+                # Non-fatal; SaveChanges will validate
+                pass
             model.Tables.Add(table)
 
             # Save changes

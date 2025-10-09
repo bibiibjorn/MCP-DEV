@@ -18,6 +18,7 @@ class DependencyAnalyzer:
         """Initialize with query executor."""
         self.executor = query_executor
         self._dependency_cache = {}
+        self._columns_by_table_cache: Optional[Dict[str, Set[str]]] = None
 
     # -----------------------------
     # Internal helpers for measure graph/index
@@ -109,6 +110,14 @@ class DependencyAnalyzer:
         """Return direct column references per measure as a map measure_full_name -> {table[col]}"""
         measures = self._get_all_measures()
         direct: Dict[str, Set[str]] = {}
+        # Build catalogs to disambiguate bare or qualified tokens
+        by_table_measures: Dict[str, Set[str]] = {}
+        for m in measures:
+            mt = (m.get('Table') or '')
+            mn = m.get('Name')
+            if mn:
+                by_table_measures.setdefault(mt, set()).add(mn)
+        by_table_columns = self._get_columns_by_table()
         for m in measures:
             tbl = m.get('Table') or ''
             nm = m.get('Name')
@@ -116,11 +125,36 @@ class DependencyAnalyzer:
             if not key:
                 continue
             expr = m.get('Expression') or ''
-            refs = self._extract_dax_references(expr)
+            refs = self._extract_dax_references(expr, current_table=tbl, measures_by_table=by_table_measures, columns_by_table=by_table_columns)
             cols = set(refs.get('columns', []) or [])
             # Some expressions include table name without columns; ignore here for precision
             direct[key] = cols
         return direct
+
+    def _get_columns_by_table(self) -> Dict[str, Set[str]]:
+        """Build or return a catalog of column names per table for disambiguation."""
+        if isinstance(self._columns_by_table_cache, dict) and self._columns_by_table_cache:
+            return self._columns_by_table_cache
+        catalog: Dict[str, Set[str]] = {}
+        try:
+            cols_res = self.executor.execute_info_query("COLUMNS")
+            rows = cols_res.get('rows', []) if cols_res.get('success') else []
+            if not rows:
+                # TOM fallback
+                tom_cols = getattr(self.executor, 'enumerate_columns_tom', None)
+                if callable(tom_cols):
+                    tr = tom_cols()
+                    if isinstance(tr, dict) and tr.get('success'):
+                        rows = tr.get('rows', []) or []
+            for r in rows or []:
+                t = r.get('Table') or r.get('[Table]') or r.get('TABLE_NAME') or r.get('[TABLE_NAME]') or ''
+                n = r.get('Name') or r.get('[Name]') or r.get('COLUMN_NAME') or r.get('[COLUMN_NAME]') or ''
+                if t and n:
+                    catalog.setdefault(str(t), set()).add(str(n))
+        except Exception:
+            pass
+        self._columns_by_table_cache = catalog
+        return catalog
 
     def _get_measure_columns_index(self) -> Dict[str, Set[str]]:
         """Compute or return cached transitive columns used by each measure."""
@@ -156,8 +190,18 @@ class DependencyAnalyzer:
         self._dependency_cache[cache_key] = memo
         return memo
 
-    def _extract_dax_references(self, expression: str) -> Dict[str, List[str]]:
-        """Extract table, column, and measure references from DAX expression."""
+    def _extract_dax_references(
+        self,
+        expression: str,
+        current_table: Optional[str] = None,
+        measures_by_table: Optional[Dict[str, Set[str]]] = None,
+        columns_by_table: Optional[Dict[str, Set[str]]] = None,
+    ) -> Dict[str, List[str]]:
+        """Extract table, column, and measure references from DAX expression.
+
+        - Disambiguates qualified tokens 'Table'[Name] as measures vs columns based on catalogs
+        - Classifies bare [Name] as column if it exists in current_table's columns; else as measure if in measures
+        """
         if not expression:
             return {"tables": [], "columns": [], "measures": []}
 
@@ -169,20 +213,31 @@ class DependencyAnalyzer:
         columns = set()
         measures = set()
 
-        # Pattern: 'TableName'[ColumnName] or TableName[ColumnName]
-        column_refs = re.findall(r"(?:'([^']+)'|\b(\w+))\[([^\]]+)\]", clean_expr)
-        for match in column_refs:
-            table = match[0] or match[1]
-            column = match[2]
+        # Qualified tokens: 'Table'[Name] or Table[Name]
+        qual_tokens = re.findall(r"(?:'([^']+)'|\b(\w+))\[([^\]]+)\]", clean_expr)
+        for q in qual_tokens:
+            table = (q[0] or q[1]) or ''
+            name = q[2]
             tables.add(table)
-            columns.add(f"{table}[{column}]")
+            if measures_by_table and name in measures_by_table.get(table, set()):
+                measures.add(name)
+            elif columns_by_table and name in columns_by_table.get(table, set()):
+                columns.add(f"{table}[{name}]")
+            else:
+                # Default to column when unknown to not undercount column usage
+                columns.add(f"{table}[{name}]")
 
-        # Pattern: [MeasureName] (not preceded by table reference)
-        measure_refs = re.findall(r"(?<!['\w])\[([^\]]+)\]", clean_expr)
-        for measure in measure_refs:
-            # Exclude if it's part of a table reference
-            if not any(f"[{measure}]" in col for col in columns):
-                measures.add(measure)
+        # Bare tokens: [Name] not preceded by table identifier
+        bare_tokens = re.findall(r"(?<!['\w])\[([^\]]+)\]", clean_expr)
+        for name in bare_tokens:
+            # Prefer column in current table if known; else a measure if known
+            if current_table and columns_by_table and name in columns_by_table.get(current_table, set()):
+                columns.add(f"{current_table}[{name}]")
+            elif current_table and measures_by_table and name in measures_by_table.get(current_table, set()):
+                measures.add(name)
+            else:
+                # Unknown scope: assume it's a measure to avoid fabricating column refs
+                measures.add(name)
 
         # RELATED, RELATEDTABLE functions
         related_refs = re.findall(r"RELATED(?:TABLE)?\s*\(\s*(?:'([^']+)'|(\w+))\[([^\]]+)\]", clean_expr)
@@ -267,8 +322,19 @@ class DependencyAnalyzer:
             measure_data = measure_result['rows'][0]
             expression = measure_data.get('Expression', '') or measure_data.get('[Expression]', '')
 
-            # Extract direct dependencies
-            direct_deps = self._extract_dax_references(expression)
+            # Extract direct dependencies with disambiguation catalogs
+            by_table_measures: Dict[str, Set[str]] = {}
+            try:
+                all_meas = self._get_all_measures()
+                for mm in all_meas:
+                    mt = (mm.get('Table') or '')
+                    mn = mm.get('Name')
+                    if mn:
+                        by_table_measures.setdefault(mt, set()).add(mn)
+            except Exception:
+                pass
+            by_table_columns = self._get_columns_by_table()
+            direct_deps = self._extract_dax_references(expression, current_table=table, measures_by_table=by_table_measures, columns_by_table=by_table_columns)
 
             result = {
                 'success': True,
@@ -314,7 +380,7 @@ class DependencyAnalyzer:
             if not expr:
                 continue
 
-            # Check if this measure references the target measure
+            # Check if this measure references the target measure (bare or qualified)
             refs = self._extract_dax_references(expr)
             if measure_name in refs['measures']:
                 downstream.append({
@@ -414,14 +480,24 @@ class DependencyAnalyzer:
                     s = s[1:-1]
                 return s
 
-            # Analyze all measure expressions
+            # Analyze all measure expressions with catalogs
+            by_table_measures: Dict[str, Set[str]] = {}
+            for mm in measures:
+                mt = (mm.get('Table') or '')
+                mn = mm.get('Name')
+                if mn:
+                    by_table_measures.setdefault(mt, set()).add(mn)
+            by_table_columns = self._get_columns_by_table()
             for m in measures:
                 expr = m.get('Expression', '')
-                refs = self._extract_dax_references(expr)
+                current_tbl = m.get('Table') or ''
+                refs = self._extract_dax_references(expr, current_table=current_tbl, measures_by_table=by_table_measures, columns_by_table=by_table_columns)
 
                 referenced_measures.update(refs['measures'])
                 referenced_columns.update(refs['columns'])
                 referenced_tables.update(refs['tables'])
+
+            # Also count columns participating in relationships as used tables
 
             # Check relationships for table/column usage (resolve IDs when names absent)
             rels_result = self.executor.execute_info_query("RELATIONSHIPS")

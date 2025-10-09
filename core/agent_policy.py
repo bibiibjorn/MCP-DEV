@@ -694,12 +694,18 @@ class AgentPolicy:
                     return all_cols if isinstance(all_cols, dict) else {'success': False, 'error': 'enumerate_columns_tom failed'}
             rows = (all_cols.get('rows', []) or []) if isinstance(all_cols, dict) else []
             if table:
-                t_norm = str(table).strip()
-                norm = lambda s: str(s or '').strip()
+                def _norm(v: str | None) -> str:
+                    s = str(v or '').strip()
+                    if s.startswith('[') and s.endswith(']'):
+                        s = s[1:-1]
+                    if s.startswith("'") and s.endswith("'"):
+                        s = s[1:-1]
+                    return s
+                t_norm = _norm(str(table))
                 filtered = []
                 for r in rows:
                     rt = r.get('Table') or r.get('[Table]') or r.get('TABLE_NAME') or r.get('[TABLE_NAME]')
-                    if norm(rt).lower() == t_norm.lower():
+                    if _norm(rt).lower() == t_norm.lower():
                         filtered.append(r)
                 rows = filtered
             info = {'success': True, 'rows': rows, 'row_count': len(rows)}
