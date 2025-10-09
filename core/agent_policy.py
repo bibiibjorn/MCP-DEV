@@ -1116,6 +1116,14 @@ class AgentPolicy:
             notes: List[str] = []
             path: str
 
+            # Guard: XLSX can be slow on large exports; auto-switch to CSV for speed
+            try:
+                if fmt == 'xlsx' and len(result_rows) > 1000:
+                    notes.append(f"Result has {len(result_rows)} rows; switched to CSV for faster write")
+                    fmt = 'csv'
+            except Exception:
+                pass
+
             if fmt == 'txt':
                 path = os.path.join(out_dir, f"flat_schema_samples_{ts}.txt")
                 with open(path, "w", encoding="utf-8") as f:
