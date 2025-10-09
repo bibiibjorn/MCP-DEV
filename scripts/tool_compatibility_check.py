@@ -175,6 +175,7 @@ def main():
         ('list_measures', {}),
         ('list_columns', {'table': sample_table} if sample_table else {}),
         ('describe_table', {'table': sample_table} if sample_table else None),
+        ('export_compact_schema', {}),
         ('get_measure_details', {'table': meas_table, 'measure': sample_measure} if meas_table and sample_measure else None),
         ('search_string', {'search_text': 'SUM'}),
         ('list_calculated_columns', {}),

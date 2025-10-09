@@ -1118,6 +1118,8 @@ def _handle_dependency_and_bulk(name: str, arguments: Any) -> Optional[dict]:
         return model_exporter.export_tmsl(arguments.get('include_full_model', False)) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
     if name == "export_tmdl":
         return model_exporter.export_tmdl_structure() if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
+    if name == "export_compact_schema":
+        return model_exporter.export_compact_schema(arguments.get('include_hidden', True)) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
     if name == "generate_documentation":
         return model_exporter.generate_documentation(connection_state.query_executor) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
     if name == "get_model_summary":
@@ -1306,6 +1308,8 @@ async def list_tools() -> List[Tool]:
     # Output schemas and lineage export
     tools.append(Tool(name="export_relationship_graph", description="Export relationships as a graph (JSON or GraphML)", inputSchema={"type": "object", "properties": {"format": {"type": "string", "enum": ["json", "graphml"], "default": "json"}}, "required": []}))
     tools.append(Tool(name="apply_tmdl_patch", description="Apply safe TMDL patch operations (measures only)", inputSchema={"type": "object", "properties": {"updates": {"type": "array", "items": {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "expression": {"type": "string"}, "display_folder": {"type": "string"}, "description": {"type": "string"}, "format_string": {"type": "string"}}, "required": ["table", "measure"]}}, "dry_run": {"type": "boolean", "default": False}}, "required": ["updates"]}))
+    tools.append(Tool(name="export_compact_schema", description="Export compact model schema (no expressions) for reliable diffs",
+                      inputSchema={"type": "object", "properties": {"include_hidden": {"type": "boolean", "default": True}}, "required": []}))
     # Orchestrated comprehensive analysis
     tools.append(Tool(name="full_analysis", description="Run a comprehensive model analysis (summary, relationships, best practices, M scan, optional BPA)", inputSchema={"type": "object", "properties": {"include_bpa": {"type": "boolean", "default": True}, "depth": {"type": "string", "enum": ["light", "standard", "deep"], "default": "standard"}, "profile": {"type": "string", "enum": ["fast", "balanced", "deep"], "default": "balanced"}, "limits": {"type": "object", "properties": {"relationships_max": {"type": "integer", "default": 200}, "issues_max": {"type": "integer", "default": 200}}, "default": {}}}, "required": []}))
     # Proposal helper so the agent can offer options to the user

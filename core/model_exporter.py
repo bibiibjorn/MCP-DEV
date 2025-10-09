@@ -266,6 +266,105 @@ class ModelExporter:
             except:
                 pass
 
+    def export_compact_schema(self, include_hidden: bool = True) -> Dict[str, Any]:
+        """
+        Export a compact, expression-free schema for reliability comparisons and documentation.
+
+        Includes tables, columns (name, data type, hidden), measures (name, format, folder, hidden),
+        relationships (endpoints, active, direction, cardinality). Skips measure expressions and M expressions.
+        """
+        if not AMO_AVAILABLE:
+            return {
+                'success': False,
+                'error': 'AMO not available for compact schema export'
+            }
+
+        server = AMOServer()  # type: ignore[operator]
+        try:
+            server.Connect(self.connection.ConnectionString)
+
+            if server.Databases.Count == 0:
+                return {'success': False, 'error': 'No database found'}
+
+            db = server.Databases[0]
+            model = db.Model
+
+            compact = {
+                'model': {
+                    'name': model.Name if hasattr(model, 'Name') else db.Name,
+                    'compatibility_level': db.CompatibilityLevel,
+                },
+                'tables': [],
+                'relationships': []
+            }
+
+            for table in model.Tables:
+                if not include_hidden and getattr(table, 'IsHidden', False):
+                    continue
+                t = {
+                    'name': table.Name,
+                    'hidden': bool(getattr(table, 'IsHidden', False)),
+                    'columns': [],
+                    'measures': []
+                }
+                for col in table.Columns:
+                    if not include_hidden and getattr(col, 'IsHidden', False):
+                        continue
+                    t['columns'].append({
+                        'name': col.Name,
+                        'data_type': str(col.DataType),
+                        'hidden': bool(getattr(col, 'IsHidden', False)),
+                        'summarize_by': str(getattr(col, 'SummarizeBy', 'Default')) if hasattr(col, 'SummarizeBy') else None
+                    })
+                for meas in table.Measures:
+                    if not include_hidden and getattr(meas, 'IsHidden', False):
+                        continue
+                    t['measures'].append({
+                        'name': meas.Name,
+                        'format_string': getattr(meas, 'FormatString', None),
+                        'display_folder': getattr(meas, 'DisplayFolder', None),
+                        'hidden': bool(getattr(meas, 'IsHidden', False))
+                    })
+                compact['tables'].append(t)
+
+            for rel in model.Relationships:
+                compact['relationships'].append({
+                    'from': {
+                        'table': rel.FromTable.Name,
+                        'column': rel.FromColumn.Name
+                    },
+                    'to': {
+                        'table': rel.ToTable.Name,
+                        'column': rel.ToColumn.Name
+                    },
+                    'active': bool(getattr(rel, 'IsActive', True)),
+                    'direction': str(getattr(rel, 'CrossFilteringBehavior', 'Single')),
+                    'cardinality': f"{str(rel.FromCardinality)}:{str(rel.ToCardinality)}"
+                })
+
+            return {
+                'success': True,
+                'format': 'compact-schema',
+                'database_name': db.Name,
+                'export_timestamp': datetime.now().isoformat(),
+                'schema': compact,
+                'statistics': {
+                    'tables': len(compact['tables']),
+                    'relationships': len(compact['relationships']),
+                    'columns': sum(len(t['columns']) for t in compact['tables']),
+                    'measures': sum(len(t['measures']) for t in compact['tables'])
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"Compact schema export error: {e}")
+            return {'success': False, 'error': str(e)}
+        finally:
+            try:
+                server.Disconnect()
+            except:
+                pass
+
     def generate_documentation(self, query_executor) -> Dict[str, Any]:
         """Generate markdown documentation for the model."""
         try:

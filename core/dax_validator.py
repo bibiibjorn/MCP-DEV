@@ -27,6 +27,66 @@ class DaxValidator:
     ]
 
     @staticmethod
+    def _normalize_whitespace_preserving_strings(text: str) -> str:
+        """Collapse whitespace outside string literals while preserving inside."""
+        if text is None:
+            return ''
+        result: list[str] = []
+        in_string = False
+        string_delim = ''
+        last_ws = False
+        i = 0
+        while i < len(text):
+            c = text[i]
+            if not in_string and c in ('"', "'"):
+                # Enter string literal (double quotes for strings, single for identifiers)
+                in_string = True
+                string_delim = c
+                result.append(c)
+                last_ws = False
+                i += 1
+                continue
+            if in_string and c == string_delim:
+                # Handle doubled quotes for escaping
+                if i + 1 < len(text) and text[i + 1] == string_delim:
+                    result.append(c)
+                    result.append(text[i + 1])
+                    i += 2
+                    last_ws = False
+                    continue
+                in_string = False
+                string_delim = ''
+                result.append(c)
+                last_ws = False
+                i += 1
+                continue
+            if in_string:
+                result.append(c)
+                last_ws = False
+                i += 1
+                continue
+            # Outside strings
+            if c.isspace():
+                if not last_ws:
+                    result.append(' ')
+                    last_ws = True
+            else:
+                result.append(c)
+                last_ws = False
+            i += 1
+        return ''.join(result)
+
+    @staticmethod
+    def normalize_query(query: str) -> str:
+        """Normalize line endings and whitespace (outside strings)."""
+        if query is None:
+            return ''
+        # Standardize newlines
+        q = re.sub(r"\r\n?|\n", "\n", str(query))
+        q = DaxValidator._normalize_whitespace_preserving_strings(q)
+        return q.strip()
+
+    @staticmethod
     def validate_identifier(identifier: str) -> bool:
         """
         Validate DAX identifier is safe.
@@ -147,6 +207,45 @@ class DaxValidator:
         errors.extend(DaxValidator.check_balanced_delimiters(query, '(', ')', 'parentheses'))
         errors.extend(DaxValidator.check_balanced_delimiters(query, '[', ']', 'brackets'))
         errors.extend(DaxValidator.check_balanced_quotes(query))
+
+        return errors
+
+    @staticmethod
+    def validate_complete_dax_query(query: str) -> List[str]:
+        """Validate higher-level DAX query structure (DEFINE/EVALUATE ordering, single DEFINE, etc.)."""
+        errors: List[str] = []
+        if not query or not query.strip():
+            return ["Query cannot be empty"]
+
+        normalized = DaxValidator.normalize_query(query)
+
+        # Must contain EVALUATE for complete queries
+        if 'DEFINE' in normalized.upper():
+            if 'EVALUATE' not in normalized.upper():
+                errors.append("DAX query must contain at least one EVALUATE statement.")
+
+            define_pos = normalized.upper().find('DEFINE')
+            eval_pos = normalized.upper().find('EVALUATE')
+            if eval_pos != -1 and define_pos > eval_pos:
+                errors.append("DEFINE statement must come before any EVALUATE statement.")
+
+            define_matches = re.findall(r"\bDEFINE\b", normalized, flags=re.IGNORECASE)
+            if len(define_matches) > 1:
+                errors.append("Only one DEFINE block is allowed in a DAX query.")
+
+            # Ensure DEFINE contains at least one definition
+            m = re.search(r"\bDEFINE\b(.*?)(?=\bEVALUATE\b|$)", normalized, flags=re.IGNORECASE | re.DOTALL)
+            if m:
+                content = m.group(1).strip()
+                if not content:
+                    errors.append("DEFINE block must contain at least one definition (MEASURE, VAR, TABLE, or COLUMN).")
+                elif not re.search(r"^\s*(MEASURE|VAR|TABLE|COLUMN)\b", content, flags=re.IGNORECASE):
+                    errors.append("DEFINE block must contain at least one valid definition (MEASURE, VAR, TABLE, or COLUMN).")
+
+        # Also reuse delimiter/quotes checks on normalized string
+        errors.extend(DaxValidator.check_balanced_delimiters(normalized, '(', ')', 'parentheses'))
+        errors.extend(DaxValidator.check_balanced_delimiters(normalized, '[', ']', 'brackets'))
+        errors.extend(DaxValidator.check_balanced_quotes(normalized))
 
         return errors
 
@@ -276,6 +375,22 @@ class DaxValidator:
         if ('/' in expression or 'DIVIDE' in expr_upper) and 'FORMAT' not in expr_upper:
             recommendations.append("Consider using FORMAT function for better number presentation")
 
+        # Prefer DIVIDE over / for safe division
+        if '/' in expression and 'DIVIDE' not in expr_upper:
+            recommendations.append("Use DIVIDE(x, y) instead of x / y to avoid division-by-zero and BLANK handling issues")
+
+        # SUMMARIZE vs SUMMARIZECOLUMNS guidance
+        if re.search(r"\bSUMMARIZE\b", expression, re.IGNORECASE) and not re.search(r"\bSUMMARIZECOLUMNS\b", expression, re.IGNORECASE):
+            recommendations.append("Consider SUMMARIZECOLUMNS instead of SUMMARIZE for query patterns to avoid context transition surprises")
+
+        # Encourage variables for repeated expressions
+        if expression.count('SUM(') >= 2 and 'VAR ' not in expr_upper:
+            recommendations.append("Use VAR to store repeated expressions and reference them to reduce recomputation")
+
+        # Excessive iterator usage
+        if len(re.findall(r"\b(SUMX|AVERAGEX|COUNTX|MAXX|MINX)\b", expression, re.IGNORECASE)) > 2:
+            warnings.append("Multiple iterator functions detected - ensure they are necessary and consider pre-aggregations")
+
         return warnings, recommendations
 
     @staticmethod
@@ -304,6 +419,14 @@ class DaxValidator:
         # Prefer SUMMARIZECOLUMNS over SUMMARIZE in query context
         if re.search(r'\bSUMMARIZE\b', query, re.IGNORECASE) and not re.search(r'\bSUMMARIZECOLUMNS\b', query, re.IGNORECASE):
             suggestions.append("Consider SUMMARIZECOLUMNS instead of SUMMARIZE for queries to avoid context transition issues")
+
+        # Encourage use of KEEPFILTERS when stacking additional filters in CALCULATE
+        if re.search(r'\bCALCULATE\s*\(', query, re.IGNORECASE) and re.search(r'\bFILTER\s*\(', query, re.IGNORECASE) and 'KEEPFILTERS' not in query_upper:
+            suggestions.append("When adding filters in CALCULATE, consider KEEPFILTERS to preserve existing filter context")
+
+        # Warn about ALLSELECTED misuse
+        if 'ALLSELECTED' in query_upper and 'CALCULATE' not in query_upper:
+            suggestions.append("ALLSELECTED is typically used within CALCULATE; verify the intended filter context behavior")
 
         # DMV best practice: materialize before projection
         if re.search(r'\$SYSTEM\.', query, re.IGNORECASE) and re.search(r'\bSELECTCOLUMNS\b', query, re.IGNORECASE) and not re.search(r'\bTOPN\s*\(', query, re.IGNORECASE):

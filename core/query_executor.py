@@ -680,6 +680,18 @@ class OptimizedQueryExecutor:
 
             # Pre-execution syntax validation
             syntax_errors = DaxValidator.validate_query_syntax(query)
+            # Additional complete-query structural checks when DEFINE is present
+            try:
+                if isinstance(query, str) and 'DEFINE' in query.upper():
+                    struct_errors = DaxValidator.validate_complete_dax_query(query)
+                    # Merge and de-duplicate
+                    if struct_errors:
+                        for e in struct_errors:
+                            if e not in syntax_errors:
+                                syntax_errors.append(e)
+            except Exception:
+                # Non-fatal: continue with basic errors
+                pass
             if syntax_errors:
                 return {
                     'success': False,

@@ -542,6 +542,21 @@ class AgentPolicy:
         doc.setdefault('include_examples', include_examples)
         return doc
 
+    def export_compact_schema(self, connection_state, include_hidden: bool = True) -> Dict[str, Any]:
+        """Export expression-free schema (tables/columns/measures/relationships) via exporter.
+
+        Useful for quick, diff-friendly structure snapshots without large DAX expressions.
+        """
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+        exporter = connection_state.model_exporter
+        if not exporter:
+            return ErrorHandler.handle_manager_unavailable('model_exporter')
+        try:
+            return exporter.export_compact_schema(bool(include_hidden))
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
     def relationship_overview(self, connection_state) -> Dict[str, Any]:
         """Return relationships list plus optional cardinality checks.
 
@@ -1130,6 +1145,15 @@ class AgentPolicy:
             res = self.export_flat_schema_samples(connection_state, fmt, rows)
             return {"success": res.get("success", False), "actions": [{"action": "export_flat_schema_samples", "result": res}], "final": res}
 
+        # Compact/expression-free schema intent
+        if any(k in text for k in [
+            "compact schema", "expression-free schema", "schema only", "diff-friendly schema", "structure only"
+        ]):
+            inc_hidden = not ("visible only" in text or "hide hidden" in text)
+            cmp_res = self.export_compact_schema(connection_state, include_hidden=inc_hidden)
+            actions.append({"action": "export_compact_schema", "result": cmp_res})
+            return {"success": cmp_res.get("success", False), "actions": actions, "final": cmp_res}
+
         # Relationship-focused intents: return list and analysis directly
         if any(k in text for k in ["relationship", "relationships", "rels", "cardinality", "relations"]):
             rel = self.relationship_overview(connection_state)
@@ -1154,6 +1178,10 @@ class AgentPolicy:
             if any(k in text for k in ["document", "documentation", "docs"]):
                 doc = self.generate_docs_safe(connection_state)
                 actions.append({"action": "generate_docs_safe", "result": doc})
+                # If the user also signaled compact schema, attach it as a side artifact
+                if any(k in text for k in ["compact", "expression-free", "schema only", "diff-friendly"]):
+                    cmp_res = self.export_compact_schema(connection_state)
+                    actions.append({"action": "export_compact_schema", "result": cmp_res})
                 return {"success": doc.get("success", False), "actions": actions, "final": doc}
             return {"success": True, "actions": actions, "final": summary}
 
@@ -1231,6 +1259,17 @@ class AgentPolicy:
                 }
             }
         ]
+        # Offer a zero-risk, diff-friendly option
+        options.insert(0, {
+            'name': 'Compact schema export',
+            'id': 'compact',
+            'description': 'Export expression-free schema (tables/columns/measures/relationships) for documentation or diffs.',
+            'estimated_time': 'seconds',
+            'call': {
+                'tool': 'export_compact_schema',
+                'arguments': {'include_hidden': True}
+            }
+        })
         return {
             'success': True,
             'decision': 'propose_analysis',

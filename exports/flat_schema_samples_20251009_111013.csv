@@ -1,0 +1,811 @@
+sep=,
+Table Name,Column Name,Data Type Column,IsHidden,Sample Row 1 Value,Sample Row 2 Value,Sample Row 3 Value
+d_Company,Company Name,String,False,Vincent Sheppard,,
+d_Company,Company Code|Name,String,False,10000|Vincent Sheppard,,
+d_Company,Company Name|Code,String,False,Vincent Sheppard|10000,,
+d_Company,Index,Integer,False,1,,
+d_Company,Company Code,Integer,False,10000,,
+s_ReportLines,Line N°,Integer,False,68,67,66
+s_ReportLines,Reporting Line,String,False,[P2_NETS] Discounts,[P2_NETS] Other,[P2_NETS] Invoiced transport
+s_ReportLines,Report Full,String,False,07|MN. Managerial P&L,07|MN. Managerial P&L,07|MN. Managerial P&L
+s_ReportLines,Line Name,String,False,[P2_NETS] Discounts,[P2_NETS] Other,[P2_NETS] Invoiced transport
+s_ReportLines,Sign,String,False,Keep,Keep,Keep
+s_ReportLines,Number Format,String,False,Crcy,Crcy,Crcy
+s_ReportLines,Nominator element,String,False,[P2_NETS] Discounts,[P2_NETS] Other,[P2_NETS] Invoiced transport
+s_ReportLines,Denominator,String,False,Net Turnover,Net Turnover,Net Turnover
+s_ReportLines,Indent Repeat,Integer,False,0,0,0
+s_ReportLines,Line Name (Indent),String,False,[P2_NETS] Discounts,[P2_NETS] Other,[P2_NETS] Invoiced transport
+s_ReportLines,Line counter,Integer,False,0,0,0
+s_ReportLines,Level0_BackColor,String,False,#FFFFE5,#FFFFE5,#FFFFE5
+s_ReportLines,Level1_BackColor,String,False,#FFFFE5,#FFFFE5,#FFFFE5
+s_ReportLines,Level2_BackColor,String,False,#FFFFE5,#FFFFE5,#FFFFE5
+s_ReportLines,Level0_FontColor,String,False,#FFFFFF,#FFFFFF,#FFFFFF
+s_ReportLines,Level1_FontColor,String,False,#FFFFFF,#FFFFFF,#FFFFFF
+s_ReportLines,Level2_FontColor,String,False,#FFFFFF,#FFFFFF,#FFFFFF
+s_ReportLines,Sign2,String,False,N,N,N
+s_ReportLines,Report ID,String,False,1,1,1
+s_ReportLines,Report Type,String,False,P&L,P&L,P&L
+s_ReportLines,Report - Line ID,String,False,4,3,2
+d_Date,Date,DateTime,False,04/01/2023 00:00:00,03/01/2023 00:00:00,02/01/2023 00:00:00
+d_Date,YearSortnr,Integer,False,2023,2023,2023
+d_Date,MonthSortnr,Integer,False,1,1,1
+d_Date,DayofMonthnr,Integer,False,4,3,2
+d_Date,DateSortnr,Integer,False,20230104,20230103,20230102
+d_Date,Month (long-en),String,False,January,January,January
+d_Date,Month (mmm-en),String,False,JAN,JAN,JAN
+d_Date,YearMonthseqnr,Integer,False,24277,24277,24277
+d_Date,YearMonthSortNr,Integer,False,202301,202301,202301
+d_Date,Month Year (MMMYY),String,False,JAN23,JAN23,JAN23
+d_Date,Month Year (MMM YYYY),String,False,JAN 2023,JAN 2023,JAN 2023
+d_Date,QuarterSortnr,Integer,False,1,1,1
+d_Date,Quarter,String,False,Q1,Q1,Q1
+d_Date,YearQuarterSortnr,Integer,False,20231,20231,20231
+d_Date,QuarterYear,String,False,Q1 2023,Q1 2023,Q1 2023
+d_Date,Weekdaynr,Integer,False,3,2,1
+d_Date,WeekdayName (ddd-en),String,False,Wed,Tue,Mon
+d_Date,End of Month Flag,Integer,False,0,0,0
+d_Date,Days in Month,Integer,False,31,31,31
+d_Date,Week of Year,Integer,False,2,2,2
+d_Date,Week of Month,Integer,False,2,2,2
+d_Date,Start of Week,DateTime,False,02/01/2023 00:00:00,02/01/2023 00:00:00,02/01/2023 00:00:00
+d_Date,End of Week,DateTime,False,08/01/2023 00:00:00,08/01/2023 00:00:00,08/01/2023 00:00:00
+d_Date,Holiday,String,False,Dag van de Arbeid,Paasmaandag,Nieuwjaar
+d_Date,Working day (0/1),Integer,False,1,1,1
+d_Date,Month Initial,String,False,J,J,J
+d_GL Account,BS_PL Line,String,False,Stocks,Stocks,Stocks
+d_GL Account,GL Account Name,String,False,Raw materials Loom Indoor,Grondstoffen (Interim) Vestiging BASIS,Grondstoffen Vestiging BASIS
+d_GL Account,GL Account Code,String,False,300100,300010,300000
+d_GL Account,System,String,False,NAV,NAV,NAV
+d_GL Account,GL Account ID,String,False,NAV|300100,NAV|300010,NAV|300000
+d_GL Account,GL Account Full,String,False,300100|Raw materials Loom Indoor,300010|Grondstoffen (Interim) Vestiging BASIS,300000|Grondstoffen Vestiging BASIS
+d_GL Account,GL Domain,String,False,61..64/72/74,61..64/72/74,61..64/72/74
+d_GL Account,GL Factor,Integer,False,-1,-1,-1
+d_GL Account,Value Ledger Relevant,String,False,NO,NO,NO
+d_GL Account,Movement GL,String,False,9_CORRECTION,9_CORRECTION,9_CORRECTION
+d_GL Account,Cost price used,String,False,BEKP MAT,NAV_STAT,NAV_STAT
+d_GL Account,Default CC,String,False,BC|775,NAV|83,BC|775
+d_GL Account,Default Ctry,String,False,BC|910,NAV|281,BC|910
+d_GL Account,Aggregation detail,String,False,Full,Full,Full
+d_GL Account,Initial / Reversal,String,False,Reversal,Reversal,Reversal
+d_GL Account,Statutory / Secondary,String,False,STAT,STAT,STAT
+d_GL Account,GL Account Type,String,False,B,B,B
+z_Today,Today,DateTime,False,29/08/2025 00:00:00,,
+z_Today,Now,DateTime,False,29/08/2025 16:50:13,,
+z_Today,TodayPeriod,Integer,False,8,,
+z_Today,TodayYear,Integer,False,2025,,
+z_Today,TodayFlag,String,False,Yes,,
+s_Scale,Scale,Integer,False,1000000,1000,1
+s_Scale,Scale name,String,False,Millions,Thousands,None
+dyn_RowLevel_1,dyn_RowLevel_1,String,False,Statutory P&L line,Managerial P&L line,Company Name
+dyn_RowLevel_1,Use,String,False,BOTH,BOTH,BOTH
+dyn_RowLevel_1,Value5,String,False,-,-,-
+dyn_RowLevel_2,dyn_RowLevel_2,String,False,Statutory P&L line,Managerial P&L line,Company Name
+dyn_RowLevel_2,Use,String,False,BOTH,BOTH,BOTH
+dyn_RowLevel_2,Value5,String,False,-,-,-
+dyn_RowLevel_3,dyn_RowLevel_3,String,False,Statutory P&L line,Managerial P&L line,Company Name
+dyn_RowLevel_3,Use,String,False,BOTH,BOTH,BOTH
+dyn_RowLevel_3,Value5,String,False,-,-,-
+dfp_dyn_Column,dyn_Column,String,False,Statutory P&L line,Managerial P&L line,Company Name
+dfp_dyn_Column,Use,String,False,BOTH,BOTH,BOTH
+dfp_dyn_Column,Value5,String,False,-,-,-
+d_BS_PL_CF,Line,String,False,Accruals assets,ASSETS,-
+dyn_Filter_2,dyn_Filter_2,String,False,Statutory P&L line,Managerial P&L line,Company Name
+dyn_Filter_2,Value4,String,False,BOTH,BOTH,BOTH
+dyn_Filter_2,Scope,String,False,-,-,-
+dyn_Filter_1,dyn_Filter_1,String,False,Statutory P&L line,Managerial P&L line,Company Name
+dyn_Filter_1,Value4,String,False,BOTH,BOTH,BOTH
+dyn_Filter_1,Scope,String,False,-,-,-
+dyn_Filter_3,dyn_Filter_3,String,False,Statutory P&L line,Managerial P&L line,Company Name
+dyn_Filter_3,Value4,String,False,BOTH,BOTH,BOTH
+dyn_Filter_3,Scope,String,False,-,-,-
+dyn_Filter_4,dyn_Filter_4,String,False,Statutory P&L line,Managerial P&L line,Company Name
+dyn_Filter_4,Value4,String,False,BOTH,BOTH,BOTH
+dyn_Filter_4,Scope,String,False,-,-,-
+s_LevelSelection,Level,Integer,False,3,2,1
+SelectedLevels,Value,Integer,False,4,3,2
+SelectedLevels,Level,Integer,False,1,1,1
+SelectedLevels,SelectedLevels,Integer,False,0,0,0
+d_CostCenter,Cost Center Code,String,False,AC100,999YD,99
+d_CostCenter,Dimension Code,String,False,COSTCENTER,COSTCENTER,COSTCENTER
+d_CostCenter,Cost Center ID,String,False,BC|759,BC|758,BC|757
+d_CostCenter,Cost Center Name,String,False,to be invoiced to VSI,year end closing,closing account N/A
+d_CostCenter,System,String,False,BC,BC,BC
+d_CostCenter,Cost Center Full,String,False,AC100|to be invoiced to VSI,999YD|year end closing,99|closing account N/A
+d_CostCenter,CC DOMAIN,String,False,NON-OP,YEC,WOCC
+d_CostCenter,CC Typology,String,False,NON-OP ICY,YEC,EXCL
+d_CostCenter,CC PC,String,False,NON-OP,YEC,EXCL
+d_CostCenter,Source,String,False,XLS,XLS,XLS
+d_CostCenter,Work Center,String,False,-,-,-
+d_Country,Country Code,String,False,AI,AG,AE
+d_Country,Dimension Code,String,False,COUNTRY,COUNTRY,COUNTRY
+d_Country,Country ID,String,False,BC|796,BC|795,BC|794
+d_Country,Country Name,String,False,Anguilla,Antigua and Barbuda,United Arab Emirates
+d_Country,System,String,False,BC,BC,BC
+d_Country,Country Full,String,False,AI|Anguilla,AG|Antigua and Barbuda,AE|United Arab Emirates
+d_Country,CTRY Countryflag,String,False,Yes,Yes,Yes
+d_Country,CTRY Continent,String,False,NA,NA,AS
+d_Country,CTRY DOMAIN,String,False,COM,COM,COM
+d_Country,CTRY Typology,String,False,COM,COM,COM
+d_Country,CTRY PC,String,False,ROW,ROW,ROW
+d_Country,Source,String,False,XLS,XLS,XLS
+d_Period,Year Nr,Integer,False,2023,2023,2023
+d_Period,Month Nr,Integer,False,3,2,1
+d_Period,Year Month Nr,Integer,False,202303,202302,202301
+d_Period,Year Month Seqnr,Integer,False,24279,24278,24277
+d_Period,Month (MMM),String,False,MAR,FEB,JAN
+d_Period,Month Year (MMMYY),String,False,MAR 23,FEB 23,JAN 23
+d_Period,Quarter (QQ),String,False,Q1,Q1,Q1
+d_Period,Quarter Year (QQ YY),String,False,Q1 23,Q1 23,Q1 23
+d_Period,Semester (SS),String,False,S1,S1,S1
+d_Period,Semester Year (SS YY),String,False,S1 23,S1 23,S1 23
+d_Period,Quarter Nr,Integer,False,1,1,1
+d_Period,Semester Nr,Integer,False,1,1,1
+d_Period,Year Quarter Nr,Integer,False,20231,20231,20231
+d_Period,Year Semester Nr,Integer,False,20231,20231,20231
+d_Period,Fiscal Year Nr,Integer,False,2022,2022,2022
+d_Period,Fiscal Month Nr,Integer,False,9,8,7
+d_Period,Fiscal Quarter Nr,Integer,False,3,3,3
+d_Period,Fiscal Semester Nr,Integer,False,2,2,2
+d_Period,Fiscal Year Month Nr,Integer,False,202209,202208,202207
+d_Period,Fiscal Year Month Seqnr,Integer,False,24273,24272,24271
+d_Period,Fiscal Year Quarter Nr,Integer,False,20223,20223,20223
+d_Period,Fiscal Year Semester Nr,Integer,False,20222,20222,20222
+d_Period,Date EOM,DateTime,False,31/03/2023 00:00:00,28/02/2023 00:00:00,31/01/2023 00:00:00
+d_Period,End Date,String,False,31/03/2023,28/02/2023,31/01/2023
+d_Period,Start Date,String,False,01/03/2023,01/02/2023,01/01/2023
+d_Period,Year Quarter Seqnr,Integer,False,8093,8093,8093
+d_Period,Year Semester Seqnr,String,False,4047,4047,4047
+d_Period,Month Year (MMMYY) (inversed sort),String,False,MAR 23,FEB 23,JAN 23
+d_Period,Fiscal Year Quarter Seqnr,Integer,False,8091,8091,8091
+d_Period,PYYE YM Seqnr,String,False,24276,24276,24276
+d_Period,MonthInitialYear,String,False,M23,F23,J23
+s_Decimal2,Decimal,String,False,0.00,0.0,0
+s_Decimal2,Nr,Integer,False,2,1,0
+s_Decimalpct2,Decimal,String,False,0.00%,0.0%,0.%
+s_Decimalpct2,Format,String,False,0.00%,0.0%,0.%
+s_Decimalpct2,Nr,Integer,False,3,2,1
+s_Scale2,Scale,String,False,M,K,None
+s_Scale2,Nr,Integer,False,3,2,1
+s_Scale2,Display,String,False,Bn,Mn,K
+s_Format2,Line Format,String,False,Crcy,Crcy,Crcy
+s_Format2,Decimal Pct,Integer,False,1,1,1
+s_Format2,Scale,Integer,False,1,1,1
+s_Format2,Decimal,Integer,False,2,1,0
+s_Format2,Format,String,False,"#,##0.00","#,##0.0","#,##0."
+d_Profit Center,PC code,String,False,P2_FR,P2_DE,P2_BELUX
+d_Profit Center,PC Group,String,False,P2_FR,P2_DE,P2_BELUX
+d_Profit Center,P&L Domain,String,False,Sales,Sales,Sales
+d_Profit Center,PC Group Nr,Integer,False,3,2,1
+d_Profit Center,System,String,False,BC,BC,BC
+f_FINREP,System,String,False,BC,BC,BC
+f_FINREP,GL Account ID,String,False,BC|600000,BC|600000,BC|600000
+f_FINREP,Country ID,String,False,BC|910,BC|910,BC|910
+f_FINREP,Cost Center ID,String,False,BC|775,BC|775,BC|775
+f_FINREP,Posting Period Seqnr,Integer,False,24280,24280,24282
+f_FINREP,P&L Domain,String,False,Buying,Buying,Buying
+f_FINREP,PC code,String,False,P4_BUYING,P4_BUYING,P4_BUYING
+f_FINREP,#Company Code,Integer,False,10000,10000,10000
+f_FINREP,#AB Indicator ID,String,False,BUD,BUD,BUD
+f_FINREP,Document No,String,False,2404PIB201,2404PIB201,2406PIB335
+f_FINREP,Relation ID,String,False,BC|S0562,BC|S0562,BC|S0562
+f_FINREP,GL Typology,String,False,60PUR | Purchases,60PUR | Purchases,60PUR | Purchases
+f_FINREP,PC Typology,String,False,BUYING,BUYING,BUYING
+f_FINREP,Item,String,False,GC113M007S023,DC0740W011P020,DC003P086
+f_FINREP,Location Code,String,False,VSB,VSB,VSB
+f_FINREP,Posting Date,DateTime,False,01/04/2023 00:00:00,01/04/2023 00:00:00,01/06/2023 00:00:00
+f_FINREP,Scenario ID,String,False,BUD2023,BUD2023,BUD2023
+f_FINREP,Dim 1 key,String,False,PRJ002,PRJ002,PRJ004
+f_FINREP,Dim 2 key,String,False,DEP004,DEP004,DEP002
+f_FINREP,Dim 3 key,String,False,LOC001,LOC001,LOC004
+f_FINREP,Dim 4 key,String,False,EMP004,EMP004,EMP002
+f_FINREP,Dim 5 key,String,False,CUST001,CUST001,CUST005
+f_FINREP,Dim 6 key,String,False,PROD003,PROD003,PROD004
+f_FINREP,Document Currency,String,False,USD,USD,USD
+f_FINREP,Company Code  Currency,String,False,EUR,EUR,EUR
+f_FINREP,Cash Flow Amount,Double,False,-568.1984,-568.1984,-232.7184
+f_FINREP,CF Line,Unknown,False,,,
+f_FINREP,Amount (company code currency),Double,False,-568.1984,-568.1984,-232.7184
+f_FINREP,Amount (document currency),Double,False,-609.313236224,-609.313236224,-250.432924608
+f_FINREP,BS_PL Slot,String,False,Report Line 4,Report Line 3,Report Line 4
+f_FINREP,BS_PL Line,String,False,[P5_SCoS] Standard cost of sales (stat),[P5_SCoS] Standard cost of sales (stat),[P5_SCoS] Standard cost of sales (stat)
+s_Period,Year Nr,Integer,False,2023,2023,2023
+s_Period,Month Nr,Integer,False,3,2,1
+s_Period,End Date,DateTime,False,31/03/2023 00:00:00,28/02/2023 00:00:00,31/01/2023 00:00:00
+s_Period,Start Date,DateTime,False,01/03/2023 00:00:00,01/02/2023 00:00:00,01/01/2023 00:00:00
+s_Period,Quarter Nr,Integer,False,1,1,1
+s_Period,Semester Nr,Integer,False,1,1,1
+s_Period,Year Month Nr (inversed),Integer,False,-202303,-202302,-202301
+s_Period,Year Month Seqnr,Integer,False,24279,24278,24277
+s_Period,Year Quarter Nr,Integer,False,20231,20231,20231
+s_Period,Year Quarter Seqnr,Integer,False,8093,8093,8093
+s_Period,Year Semester Nr,Integer,False,20231,20231,20231
+s_Period,Year Semester Seqnr,Integer,False,4047,4047,4047
+s_Period,Month (MMM),String,False,MAR,FEB,JAN
+s_Period,Month Year (MMMYY),String,False,MAR 23,FEB 23,JAN 23
+s_Period,Month Year (MMMYY) (inversed sort),String,False,MAR 23,FEB 23,JAN 23
+s_Period,Quarter (QQ),String,False,Q1,Q1,Q1
+s_Period,Quarter Year (QQ YY),String,False,Q1 23,Q1 23,Q1 23
+s_Period,Semester (SS),String,False,S1,S1,S1
+s_Period,Semester Year (SS YY),String,False,S1 23,S1 23,S1 23
+s_Period,Year Month Nr,Integer,False,202303,202302,202301
+s_Period,Fiscal Year Nr,Integer,False,2022,2022,2022
+s_Period,Fiscal Month Nr,Integer,False,9,8,7
+s_Period,Fiscal Quarter Nr,Integer,False,3,3,3
+s_Period,Fiscal Semester Nr,Integer,False,2,2,2
+s_Period,Fiscal Year Month Nr,Integer,False,202209,202208,202207
+s_Period,Fiscal Year Month Seqnr,Integer,False,24273,24272,24271
+s_Period,Fiscal Year Quarter Nr,Integer,False,20223,20223,20223
+s_Period,Fiscal Year Semester Nr,Integer,False,20222,20222,20222
+s_Period,PYYE YM Seqnr,Integer,False,24276,24276,24276
+s_Period,Full Month,String,False,March,February,January
+s_Period,Month Initial,String,False,M,F,J
+dfp_Report_BS_PL_Levels 1,dfp_Report_BS_PL_Levels MAN,String,False,Level.4,Level.3,Level.2
+dfp_Report_BS_PL_Levels 1,Level,String,False,4,3,2
+d_System,System,String,False,BC,NAV,
+d_Relation,Country Region,String,False,BE,BE,BE
+d_Relation,Relation Name,String,False,COLRUYT FR. NV,ABRISO NV,BANK CARD COMPANY
+d_Relation,Relation Code,String,False,S0025,S0017,S0009
+d_Relation,Relation Type,String,False,0,0,0
+d_Relation,System,String,False,NAV,NAV,NAV
+d_Relation,Relation ID,String,False,NAV|S0025,NAV|S0017,NAV|S0009
+d_Relation,Relation Full,String,False,S0025|COLRUYT FR. NV,S0017|ABRISO NV,S0009|BANK CARD COMPANY
+d_Scenario,Version,String,False,ACTUAL,FLEX66,FLEX66
+d_Scenario,VersionShort,String,False,ACT,F66,F66
+d_Scenario,Year,Integer,False,2024,2025,2024
+d_Scenario,Version ID,String,False,ACT2024,F662025,F662024
+d_Scenario,VersionYear,String,False,ACTUAL 2024,FLEX66 2025,FLEX66 2024
+d_Scenario,Filter,String,False,Scenario,Scenario,Scenario
+d_Scenario,Exchange Rate Type,String,False,ACT01,F66,F66
+d_Scenario,Display Label,String,False,ACT 2024,F66 2025,F66 2024
+s_Scenario Comparable_Filter,Version,String,False,ACTUAL 2YA,ACTUAL PY,ACTUAL CY
+s_Scenario Comparable_Filter,VersionShort,String,False,ACT,ACT,ACT
+s_Scenario Comparable_Filter,Filter,String,False,Scenario,Scenario,Scenario
+s_Scenario Comparable_Filter,Logic,String,False,2YA,PY,CY
+s_Scenario Comparable_Filter,Exchange Rate Type,String,False,Y-2,Y-1,ACT01
+s_Scenario Comparable_Filter,Label Display,String,False,ACT 2YA,ACT PY,ACT CY
+s_Scenario Comparable_Filter,YearOffset,Integer,False,-2,-1,0
+s_Scenario Comparable_Filter,Display Name Long,String,False,Actuals 2 Years Ago ,Last Year's Actuals,This Year's Actuals
+s_Scenario Comparable_Filter,Display for concat title,String,False,Actuals 2 Years Ago ,Last Year's Actuals,This Year's Actuals
+c_Time Intelligence P&L,Name,String,False,YTD,QTD,MTD
+c_Time Intelligence_LxM & Other,Name,String,False,L3M,L12M,HTD
+s_Switch_Calendar_Fiscal,Selection,String,False,Calendar,Fiscal,
+s_TimeCalc,Selection,String,False,YTD,QTD,MTD
+s_TimeCalc,SortID,Integer,False,3,2,1
+s_TimeCalc2,Selection,String,False,YTD,QTD,MTD
+s_TimeCalc2,SortID,Integer,False,3,2,1
+s_TimeCalc3,Selection,String,False,YTD,QTD,MTD
+s_TimeCalc3,SortID,Integer,False,3,2,1
+d_Currency_From,From currency,String,False,RSD,RMB,CNY
+d_Currency_Report,Order,Integer,False,-1,-2,-3
+d_Currency_Report,To-currency,String,False,GBP,EUR,USD
+d_Currency_Rates,Exchange Rate,Double,False,1.0,1.0,1.0
+d_Currency_Rates,Valid from,DateTime,False,31/12/2025 00:00:00,31/12/2025 00:00:00,31/12/2025 00:00:00
+d_Currency_Rates,To-currency,String,False,LC,LC,LC
+d_Currency_Rates,From currency,String,False,UAH,RSD,ARS
+d_Currency_Rates,Exchange Rate Type,String,False,ACT01,ACT01,ACT01
+d_Currency_Rates,Currency sign,String,False,LC,LC,LC
+s_Scenario Comparable2_Filter,Version,String,False,ACTUAL 2YA,ACTUAL PY,ACTUAL CY
+s_Scenario Comparable2_Filter,VersionShort,String,False,ACT,ACT,ACT
+s_Scenario Comparable2_Filter,Filter,String,False,Scenario,Scenario,Scenario
+s_Scenario Comparable2_Filter,Logic,String,False,2YA,PY,CY
+s_Scenario Comparable2_Filter,Exchange Rate Type,String,False,Y-2,Y-1,ACT01
+s_Scenario Comparable2_Filter,Label Display,String,False,ACT 2YA,ACT PY,ACT CY
+s_Scenario Comparable2_Filter,YearOffset,Integer,False,-2,-1,0
+c_Monthly_vs_Cumulative,Name,String,False,Cumulative,Base,
+Other_InfoColumns,ID,Integer,False,486,482,481
+Other_InfoColumns,Name,String,False,Reporting Line,Company Name|Code,Company Code|Name
+Other_InfoColumns,Table,String,False,s_ReportLines,d_Company,d_Company
+Other_InfoColumns,DataType,String,False,Text,Text,Text
+Other_InfoColumns,DataCategory,String,False,Regular,Regular,Regular
+Other_InfoColumns,Description,String,False,,,
+Other_InfoColumns,IsHidden,Boolean,False,False,False,False
+Other_InfoColumns,IsUnique,Boolean,False,False,False,False
+Other_InfoColumns,IsKey,Boolean,False,False,False,False
+Other_InfoColumns,IsNullable,Boolean,False,True,True,True
+Other_InfoColumns,Alignment,String,False,Default,Default,Default
+Other_InfoColumns,SummarizeBy,String,False,None,None,None
+Other_InfoColumns,ColumnStorage,String,False,,,
+Other_InfoColumns,Type,String,False,Data,Data,Data
+Other_InfoColumns,SourceColumn,String,False,Reporting Line,Company Name|Code,Company Code|Name
+Other_InfoColumns,Expression,String,False,'f_FINREP'[Report Line 2],'f_FINREP'[Amount (company code currency)],"IF( SelectedLevels[Value] <= RELATED(s_LevelSelection[Level]) ,SelectedLevels[Value] , 0)"
+Other_InfoColumns,FormatString,String,False,Long Date,Long Date,Long Date
+Other_InfoColumns,IsAvailableInMDX,Boolean,False,True,True,True
+Other_InfoColumns,SortByColumn,String,False,Month Nr,Year Month Seqnr,MonthSortnr
+Other_InfoColumns,GroupingBehavior,String,False,GroupOnValue,GroupOnValue,GroupOnValue
+Other_InfoColumns,SourceProviderType,String,False,,,
+Other_InfoColumns,DisplayFolder,String,False,,,
+Other_InfoColumns,AlternateOf,String,False,,,
+Other_InfoColumns,LineageTag,String,False,d7438a86-5f58-4c3c-b40f-42c3a525e428,c498b5a8-6f9c-422c-9003-9b64086bef91,cc8a5e1a-3869-4f5d-9538-8d3b71b45c65
+Other_InfoMeasures,TableID,Integer,False,1322,1320,1319
+Other_InfoMeasures,TableName,String,False,BAL-AMT- Current Month,PL-AMT-TC1-Scenario,PL-AMT-TC0 Reported
+Other_InfoMeasures,Table,String,False,m_Measures,m_Measures,m_Measures
+Other_InfoMeasures,Desc,String,False,Returns the latest month (Perrigo Period logic) from the Dim_Date Filter table based on the current filter context.,Returns the latest year (Perrigo Period logic) from the Dim_Date Filter table based on the current filter context.,Returns the latest year and month (Perrigo Period logic) from the Dim_Date Filter table based on the current filter context.
+Other_InfoMeasures,Expression,String,False,"
+
+
+VAR vNominatorline = SELECTEDVALUE( s_ReportLines[Nominator element] )
+VAR vNominator_element =
+    CALCULATETABLE(
+        VALUES('s_Formulas Combined'[Formula Element] ),
+        's_Formulas Combined'[Formula Header] = vNominatorline
+    )
+VAR vDenominatorline = SELECTEDVALUE( s_ReportLines[Denominator] )
+VAR vDenominator_element =
+    CALCULATETABLE(
+        VALUES('s_Formulas Combined'[Formula Element] ),
+        's_Formulas Combined'[Formula Header] = vDenominatorline
+    )
+VAR vNominator = CALCULATE( [BAL-AMT- prep Current Month], TREATAS( vNominator_element, 'd_BS_PL_CF'[Line] ) )
+VAR vDenominator =
+    IF(
+        ISBLANK( vDenominatorline ),
+        1,
+        CALCULATE( [BAL-AMT- prep Current Month], TREATAS( vDenominator_element, 'd_BS_PL_CF'[Line] ) )
+    )
+VAR vResult = DIVIDE( vNominator, vDenominator )
+
+
+RETURN
+vResult
+
+","VAR datesel = SELECTEDVALUE( s_Switch_Calendar_Fiscal[Selection], ""Calendar"" )
+VAR timecalc = SELECTEDVALUE( s_TimeCalc[Selection] )
+
+-- Precompute once (both Calendar and Fiscal, cheap)
+VAR LastYM_C = MAX( s_Period[Year Month Seqnr] )
+VAR LastYM_F = MAX( s_Period[Fiscal Year Month Seqnr] )
+VAR LastQ_C  = MAX( s_Period[Year Quarter Nr] )
+VAR LastQ_F  = MAX( s_Period[Fiscal Year Quarter Nr] )
+VAR MaxY_C   = MAX( s_Period[Year Nr] )
+VAR MaxY_F   = MAX( s_Period[Fiscal Year Nr] )
+VAR MaxM_C   = MAX( s_Period[Month Nr] )
+VAR MaxM_F   = MAX( s_Period[Fiscal Month Nr] )
+
+RETURN
+SWITCH(
+    TRUE(),
+    
+    ------------------------------------------------
+    -- Calendar logic
+    datesel = ""Calendar"",
+        SWITCH(
+            TRUE(),
+            timecalc = ""MTD"", CALCULATE( [PL-AMT-TC0 Reported], d_Period[Year Month Seqnr] = LastYM_C ),
+            timecalc = ""QTD"", CALCULATE( [PL-AMT-TC0 Reported], d_Period[Year Month Seqnr] <= LastYM_C && d_Period[Year Quarter Nr] = LastQ_C ),
+            timecalc = ""YTD"", CALCULATE( [PL-AMT-TC0 Reported], d_Period[Year Nr] = MaxY_C && d_Period[Month Nr] <= MaxM_C ),
+            timecalc = ""YTG"", CALCULATE( [PL-AMT-TC0 Reported], d_Period[Year Month Seqnr] > LastYM_C && d_Period[Year Nr] = MaxY_C ),
+            timecalc = ""FY"",  CALCULATE( [PL-AMT-TC0 Reported], d_Period[Year Nr] = MaxY_C ),
+            timecalc = ""Q1"",  CALCULATE( [PL-AMT-TC0 Reported], d_Period[Year Nr] = MaxY_C && d_Period[Quarter Nr] = 1 ),
+            timecalc = ""Q2"",  CALCULATE( [PL-AMT-TC0 Reported], d_Period[Year Nr] = MaxY_C && d_Period[Quarter Nr] = 2 ),
+            timecalc = ""Q3"",  CALCULATE( [PL-AMT-TC0 Reported], d_Period[Year Nr] = MaxY_C && d_Period[Quarter Nr] = 3 ),
+            timecalc = ""Q4"",  CALCULATE( [PL-AMT-TC0 Reported], d_Period[Year Nr] = MaxY_C && d_Period[Quarter Nr] = 4 ),
+            BLANK()
+        ),
+
+    ------------------------------------------------
+    -- Fiscal logic
+    datesel = ""Fiscal"",
+        SWITCH(
+            TRUE(),
+            timecalc = ""MTD"", CALCULATE( [PL-AMT-TC0 Reported], d_Period[Fiscal Year Month Seqnr] = LastYM_F ),
+            timecalc = ""QTD"", CALCULATE( [PL-AMT-TC0 Reported], d_Period[Fiscal Year Month Seqnr] <= LastYM_F && d_Period[Fiscal Year Quarter Nr] = LastQ_F ),
+            timecalc = ""YTD"", CALCULATE( [PL-AMT-TC0 Reported], d_Period[Fiscal Year Nr] = MaxY_F && d_Period[Fiscal Month Nr] <= MaxM_F ),
+            timecalc = ""YTG"", CALCULATE( [PL-AMT-TC0 Reported], d_Period[Fiscal Year Month Seqnr] > LastYM_F && d_Period[Fiscal Year Nr] = MaxY_F ),
+            timecalc = ""FY"",  CALCULATE( [PL-AMT-TC0 Reported], d_Period[Fiscal Year Nr] = MaxY_F ),
+            timecalc = ""Q1"",  CALCULATE( [PL-AMT-TC0 Reported], d_Period[Fiscal Year Nr] = MaxY_F && d_Period[Fiscal Quarter Nr] = 1 ),
+            timecalc = ""Q2"",  CALCULATE( [PL-AMT-TC0 Reported], d_Period[Fiscal Year Nr] = MaxY_F && d_Period[Fiscal Quarter Nr] = 2 ),
+            timecalc = ""Q3"",  CALCULATE( [PL-AMT-TC0 Reported], d_Period[Fiscal Year Nr] = MaxY_F && d_Period[Fiscal Quarter Nr] = 3 ),
+            timecalc = ""Q4"",  CALCULATE( [PL-AMT-TC0 Reported], d_Period[Fiscal Year Nr] = MaxY_F && d_Period[Fiscal Quarter Nr] = 4 ),
+            BLANK()
+        ),
+
+    BLANK()
+)",[PL-AMT-BASE Scenario]
+Other_InfoMeasures,FormatString,String,False,"VAR vLineformat = SELECTEDVALUE(s_ReportLines[Number Format])
+VAR vScale =  SELECTEDVALUE(s_Scale2[Nr])
+VAR vDecimal =  SELECTEDVALUE(s_Decimal2[Nr])
+VAR vDecimalPct =  SELECTEDVALUE(s_Decimalpct2[Nr])
+VAR vResult = CALCULATE(SELECTEDVALUE(s_Format2[Format]),
+s_Format2[Line Format] = vLineformat,
+s_Format2[Scale] = vScale, 
+s_Format2[Decimal] = vDecimal,
+s_Format2[Decimal Pct] = vDecimalPct)
+RETURN
+vResult","VAR vLineformat = SELECTEDVALUE(s_ReportLines[Number Format])
+VAR vScale =  SELECTEDVALUE(s_Scale2[Nr])
+VAR vDecimal =  SELECTEDVALUE(s_Decimal2[Nr])
+VAR vDecimalPct =  SELECTEDVALUE(s_Decimalpct2[Nr])
+VAR vResult = CALCULATE(SELECTEDVALUE(s_Format2[Format]),
+s_Format2[Line Format] = vLineformat,
+s_Format2[Scale] = vScale, 
+s_Format2[Decimal] = vDecimal,
+s_Format2[Decimal Pct] = vDecimalPct)
+RETURN
+vResult","VAR vLineformat = SELECTEDVALUE(s_ReportLines[Number Format])
+VAR vScale =  SELECTEDVALUE(s_Scale2[Nr])
+VAR vDecimal =  SELECTEDVALUE(s_Decimal2[Nr])
+VAR vDecimalPct =  SELECTEDVALUE(s_Decimalpct2[Nr])
+VAR vResult = CALCULATE(SELECTEDVALUE(s_Format2[Format]),
+s_Format2[Line Format] = vLineformat,
+s_Format2[Scale] = vScale, 
+s_Format2[Decimal] = vDecimal,
+s_Format2[Decimal Pct] = vDecimalPct)
+RETURN
+vResult"
+Other_InfoMeasures,IsHidden,Boolean,False,False,False,False
+Other_InfoMeasures,State,String,False,Valid,Valid,Valid
+Other_InfoMeasures,KPIID,Integer,False,,,
+Other_InfoMeasures,IsSimpleMeasure,Boolean,False,False,False,False
+Other_InfoMeasures,DisplayFolder,String,False,Financial Model\1.3 Base measures Balance Sheet,Financial Model\1.2 Profit & Loss\1.2.2 s_time calc\TC1- Base Measures,Financial Model\1.2 Profit & Loss\1.2.1 P&L Base
+Other_InfoMeasures,DetailRowsDefinition,String,False,,,
+Other_InfoMeasures,DataCategory,String,False,,,
+Other_InfoMeasures,LineageTag,String,False,76f8e9b1-de24-4dde-a2eb-7d400b1398e3,8f65981c-03d2-4ea5-be1a-e1633aaec471,e75d7a32-453f-4797-9acd-1c9c768bf07f
+Other_InfoRelations,ID,Integer,False,429,431,343
+Other_InfoRelations,Name,String,False,380b48aa-6f84-052e-5f07-fdcfa45bafa8,7ad33f9f-ed81-72d3-ca0b-3597e731532d,a27f64ca-eaa3-49d2-aea3-0f67ba4d614f
+Other_InfoRelations,Relationship,String,False,'d_Country'[Country ID] *[<-]* 'r_RLS_Country'[Country ID],'d_CostCenter'[CC DOMAIN] *[<-]* 'r_RLS_Cost Center'[CC DOMAIN],'SelectedLevels'[Level] *[<-]1 's_LevelSelection'[Level]
+Other_InfoRelations,Model,String,False,d0097517-9c47-487c-854e-0e9fee5b2f50,d0097517-9c47-487c-854e-0e9fee5b2f50,d0097517-9c47-487c-854e-0e9fee5b2f50
+Other_InfoRelations,IsActive,Boolean,False,True,True,True
+Other_InfoRelations,CrossFilteringBehavior,String,False,OneDirection,OneDirection,OneDirection
+Other_InfoRelations,RelyOnReferentialIntegrity,Boolean,False,False,False,False
+Other_InfoRelations,FromTable,String,False,d_Country,d_CostCenter,SelectedLevels
+Other_InfoRelations,FromColumn,String,False,Country ID,CC DOMAIN,Level
+Other_InfoRelations,FromCardinality,String,False,Many,Many,Many
+Other_InfoRelations,ToTable,String,False,r_RLS_Country,r_RLS_Cost Center,s_LevelSelection
+Other_InfoRelations,ToColumn,String,False,Country ID,CC DOMAIN,Level
+Other_InfoRelations,ToCardinality,String,False,Many,Many,One
+Other_InfoRelations,State,String,False,,,
+Other_InfoRelations,SecurityFilteringBehavior,String,False,Single,Single,Single
+Other_InfoTables,ID,Integer,False,16,13,10
+Other_InfoTables,Name,String,False,d_Date,s_ReportLines,d_Company
+Other_InfoTables,Model,String,False,d0097517-9c47-487c-854e-0e9fee5b2f50,d0097517-9c47-487c-854e-0e9fee5b2f50,d0097517-9c47-487c-854e-0e9fee5b2f50
+Other_InfoTables,DataCategory,String,False,Time,Regular,Regular
+Other_InfoTables,Description,String,False,,,
+Other_InfoTables,IsHidden,Boolean,False,False,False,False
+Other_InfoTables,StorageMode,String,False,Import,Import,Import
+Other_InfoTables,TableStorage,String,False,,,
+Other_InfoTables,Expression,String,False,"{
+    (""Company Name"", NAMEOF('d_Company'[Company Name]), 1, ""BOTH"", ""-""),
+    (""Managerial P&L line"", NAMEOF('d_BS_PL_CF'[Line]), 2, ""BOTH"", ""-""),
+    (""Statutory P&L line"", NAMEOF('d_BS_PL_CF'[Line]), 3, ""BOTH"", ""-""),
+    (""Report line"", NAMEOF(s_ReportLines[Line Name (Indent)]), 4, ""BOTH"", ""-""),
+    (""GL Account"", NAMEOF('d_GL Account'[GL Account Full]), 6, ""BOTH"", ""-""),
+    (""Cost Center"", NAMEOF(d_CostCenter[Cost Center Full]), 8, ""BOTH"", ""-""),
+    (""Country"", NAMEOF(d_Country[Country Full]), 9, ""BOTH"", ""-""),
+    (""Profit Center"", NAMEOF('d_Profit Center'[PC code]), 10, ""BOTH"", ""-""),
+    (""Profit Center Group"", NAMEOF('d_Profit Center'[PC Group]), 11, ""BOTH"", ""-""),
+    (""Customer / Vendor"", NAMEOF(d_Relation[Relation Full]), 12, ""BOTH"", ""-""),
+    (""P&L Domain"", NAMEOF('d_Profit Center'[P&L Domain]), 13, ""BOTH"", ""-""),
+    (""Month"", NAMEOF(d_Period[Month (MMM)]), 14, ""BOTH"", ""-""),
+    (""Quarter"", NAMEOF(d_Period[Quarter (QQ)]), 15, ""BOTH"", ""-""),
+    (""Semester"", NAMEOF(d_Period[Semester (SS)]), 16, ""BOTH"", ""-""),
+    (""Month Year"", NAMEOF(d_Period[Month Year (MMMYY)]), 17, ""BOTH"", ""-""),
+    (""Quarter Year"", NAMEOF(d_Period[Quarter Year (QQ YY)]), 18, ""BOTH"", ""-""),
+    (""Semester Year"", NAMEOF(d_Period[Semester Year (SS YY)]), 19, ""BOTH"", ""-""),
+    (""Year"", NAMEOF(d_Period[Year Nr]), 20, ""BOTH"", ""-"")
+}","{
+    (""Company Name"", NAMEOF('d_Company'[Company Name]), 1, ""BOTH"", ""-""),
+    (""Managerial P&L line"", NAMEOF('d_BS_PL_CF'[Line]), 2, ""BOTH"", ""-""),
+    (""Statutory P&L line"", NAMEOF('d_BS_PL_CF'[Line]), 3, ""BOTH"", ""-""),
+    (""Report line"", NAMEOF(s_ReportLines[Line Name (Indent)]), 4, ""BOTH"", ""-""),
+    (""GL Account"", NAMEOF('d_GL Account'[GL Account Full]), 6, ""BOTH"", ""-""),
+    (""Cost Center"", NAMEOF(d_CostCenter[Cost Center Full]), 8, ""BOTH"", ""-""),
+    (""Country"", NAMEOF(d_Country[Country Full]), 9, ""BOTH"", ""-""),
+    (""Profit Center"", NAMEOF('d_Profit Center'[PC code]), 10, ""BOTH"", ""-""),
+    (""Profit Center Group"", NAMEOF('d_Profit Center'[PC Group]), 11, ""BOTH"", ""-""),
+    (""Customer / Vendor"", NAMEOF(d_Relation[Relation Full]), 12, ""BOTH"", ""-""),
+    (""P&L Domain"", NAMEOF('d_Profit Center'[P&L Domain]), 13, ""BOTH"", ""-""),
+    (""Month"", NAMEOF(d_Period[Month (MMM)]), 14, ""BOTH"", ""-""),
+    (""Quarter"", NAMEOF(d_Period[Quarter (QQ)]), 15, ""BOTH"", ""-""),
+    (""Semester"", NAMEOF(d_Period[Semester (SS)]), 16, ""BOTH"", ""-""),
+    (""Month Year"", NAMEOF(d_Period[Month Year (MMMYY)]), 17, ""BOTH"", ""-""),
+    (""Quarter Year"", NAMEOF(d_Period[Quarter Year (QQ YY)]), 18, ""BOTH"", ""-""),
+    (""Semester Year"", NAMEOF(d_Period[Semester Year (SS YY)]), 19, ""BOTH"", ""-""),
+    (""Year"", NAMEOF(d_Period[Year Nr]), 20, ""BOTH"", ""-"")
+}","{
+    (""Company Name"", NAMEOF('d_Company'[Company Name]), 1, ""BOTH"", ""-""),
+    (""Managerial P&L line"", NAMEOF('d_BS_PL_CF'[Line]), 2, ""BOTH"", ""-""),
+    (""Statutory P&L line"", NAMEOF('d_BS_PL_CF'[Line]), 3, ""BOTH"", ""-""),
+    (""Report line"", NAMEOF(s_ReportLines[Line Name (Indent)]), 4, ""BOTH"", ""-""),
+    (""GL Account"", NAMEOF('d_GL Account'[GL Account Full]), 6, ""BOTH"", ""-""),
+    (""Cost Center"", NAMEOF(d_CostCenter[Cost Center Full]), 8, ""BOTH"", ""-""),
+    (""Country"", NAMEOF(d_Country[Country Full]), 9, ""BOTH"", ""-""),
+    (""Profit Center"", NAMEOF('d_Profit Center'[PC code]), 10, ""BOTH"", ""-""),
+    (""Profit Center Group"", NAMEOF('d_Profit Center'[PC Group]), 11, ""BOTH"", ""-""),
+    (""Customer / Vendor"", NAMEOF(d_Relation[Relation Full]), 12, ""BOTH"", ""-""),
+    (""P&L Domain"", NAMEOF('d_Profit Center'[P&L Domain]), 13, ""BOTH"", ""-""),
+    (""Month"", NAMEOF(d_Period[Month (MMM)]), 14, ""BOTH"", ""-""),
+    (""Quarter"", NAMEOF(d_Period[Quarter (QQ)]), 15, ""BOTH"", ""-""),
+    (""Semester"", NAMEOF(d_Period[Semester (SS)]), 16, ""BOTH"", ""-""),
+    (""Month Year"", NAMEOF(d_Period[Month Year (MMMYY)]), 17, ""BOTH"", ""-""),
+    (""Quarter Year"", NAMEOF(d_Period[Quarter Year (QQ YY)]), 18, ""BOTH"", ""-""),
+    (""Semester Year"", NAMEOF(d_Period[Semester Year (SS YY)]), 19, ""BOTH"", ""-""),
+    (""Year"", NAMEOF(d_Period[Year Nr]), 20, ""BOTH"", ""-"")
+}"
+Other_InfoTables,ShowAsVariationOnly,Boolean,False,False,False,False
+Other_InfoTables,IsPrivate,Boolean,False,False,False,False
+Other_InfoTables,CalculationGroupPrecedence,Integer,False,5209,11,10
+Other_InfoTables,LineageTag,String,False,deefbbce-0ab1-4e9f-8248-e6f6d74d44dc,843a2a69-2286-444e-94a2-5ba061131e8b,1e2b62d6-2e74-4785-aff6-76475222a682
+s_PL_Components_Filter,Component,String,False,Comparable,Constant Currency,Reported
+s_PL_Components_Filter,Order,Integer,False,2,1,0
+sfp_Reported Amount,sfp_Reported Amount,String,False,ACTUAL 2023 Reported,ACTUAL 2024 Reported,ACTUAL 2025 Reported
+sfp_Reported Amount,P&L Component,String,False,Reported,Reported,Reported
+sfp_Reported Amount,Scenario,String,False,ACTUAL,ACTUAL,ACTUAL
+sfp_Reported Amount,Year,Integer,False,2023,2024,2025
+sfp_Constant Currency,sfp_Constant Currency,String,False,ACTUAL 2023 Constant Currency,ACTUAL 2024 Constant Currency,ACTUAL 2025 Constant Currency
+sfp_Constant Currency,P&L Component,String,False,Constant Currency,Constant Currency,Constant Currency
+sfp_Constant Currency,Scenario,String,False,ACTUAL,ACTUAL,ACTUAL
+sfp_Constant Currency,Year,Integer,False,2023,2024,2025
+sfp_Comparable Amount,sfp_Comparable Amount,String,False,ACTUAL 2023,ACTUAL 2024,ACTUAL 2025
+sfp_Comparable Amount,P&L Component,String,False,Comparable,Comparable,Comparable
+sfp_Comparable Amount,Scenario,String,False,ACTUAL CY,ACTUAL CY,ACTUAL CY
+sfp_Comparable Amount,Year,Integer,False,2023,2024,2025
+sfp_Variance+FX,sfp_Variance+FX,String,False,FX Impact,Δ%,Δ Reported
+sfp_Variance+FX,Currency Type,String,False,Reported,Reported,Reported
+sfp_Variance+FX,Value5,String,False,Variance,Variance,Blank Space
+sfp_Variance+FX,Component,String,False,Variance,Variance,Variance
+s_Report Currency_Version,Type,String,False,Comparable,Reported,Constant Currency
+s_Report Currency_Version,Order,Integer,False,3,2,1
+s_Report Currency_Version,Abbreviation,String,False,Comparable,Reported,CC
+d_DimensionMapping,Dimension Table,String,False,Dimension 1,Dimension 1,Dimension 1
+d_DimensionMapping,Dimension Name,String,False,Project,Project,Project
+d_DimensionMapping,Column ID,String,False,Column 3,Column 2,Column 1
+d_DimensionMapping,Report Name,String,False,Project Manager,Project Name,Project Code
+d_DimensionMapping,TableName,String,False,Dimension 1,Dimension 1,Dimension 1
+d_DimensionMapping,TableColumnReference,String,False,'Dimension 1'[Column 3],'Dimension 1'[Column 2],'Dimension 1'[Column 1]
+d_DimensionMapping,UniqueFieldID,String,False,Dimension 1 Column 3,Dimension 1 Column 2,Dimension 1 Column 1
+d_DimensionMapping,SlicerKey,Integer,False,3,2,1
+d_DimensionMapping,Group | Dimension,String,False,Project | Project Manager,Project | Project Name,Project | Project Code
+d_Dimension 1,Column 1,String,False,PRJ003,PRJ002,PRJ001
+d_Dimension 1,Column 2,String,False,Data Migration,Mobile App Dev,Website Redesign
+d_Dimension 1,Column 3,String,False,Carol White,Bob Johnson,Alice Smith
+d_Dimension 1,Column 4,String,False,2025-02-10,2025-03-01,2025-01-15
+d_Dimension 1,Column 5,String,False,2025-05-20,2025-09-15,2025-06-30
+d_Dimension 1,Column 6,String,False,"$30,000","$75,000","$50,000"
+d_Dimension 1,Column 7,String,False,Completed,Planning,In Progress
+d_Dimension 1,Column 8,String,False,Gamma Solutions,Beta Industries,Acme Corp
+d_Dimension 1,SlicerKey,String,False,1,1,1
+d_Dimension 2,Column 1,String,False,DEP003,DEP002,DEP001
+d_Dimension 2,Column 2,String,False,Sales,Engineering,Marketing
+d_Dimension 2,Column 3,String,False,CC103,CC102,CC101
+d_Dimension 2,Column 4,String,False,15,25,12
+d_Dimension 2,Column 5,String,False,Carol White,Bob Johnson,Alice Smith
+d_Dimension 2,Column 6,String,False,Asia,Europe,North America
+d_Dimension 2,Column 7,String,False,"$150,000","$500,000","$200,000"
+d_Dimension 2,Column 8,String,False,"$3,000,000","$2,500,000","$1,000,000"
+d_Dimension 2,SlicerKey,String,False,2,2,2
+d_Dimension 3,Column 1,String,False,LOC003,LOC002,LOC001
+d_Dimension 3,Column 2,String,False,Asia Branch,Tech Hub,Downtown HQ
+d_Dimension 3,Column 3,String,False,Singapore,London,New York
+d_Dimension 3,Column 4,String,False,Singapore,UK,USA
+d_Dimension 3,Column 5,String,False,"$15,000","$18,000","$25,000"
+d_Dimension 3,Column 6,String,False,"6,500","8,000","10,000"
+d_Dimension 3,Column 7,String,False,75%,90%,85%
+d_Dimension 3,Column 8,String,False,Office,Office,Office
+d_Dimension 3,SlicerKey,String,False,3,3,3
+d_Dimension 4,Column 1,String,False,EMP003,EMP002,EMP001
+d_Dimension 4,Column 2,String,False,Michael Chen,Jane Smith,John Doe
+d_Dimension 4,Column 3,String,False,Sales Representative,Software Engineer,Marketing Manager
+d_Dimension 4,Column 4,String,False,2022-09-01,2024-01-10,2023-06-15
+d_Dimension 4,Column 5,String,False,"$70,000","$95,000","$85,000"
+d_Dimension 4,Column 6,String,False,DEP003,DEP002,DEP001
+d_Dimension 4,Column 7,String,False,Part-Time,Full-Time,Full-Time
+d_Dimension 4,Column 8,String,False,Needs Improvement,Meets,Exceeds
+d_Dimension 4,SlicerKey,String,False,4,4,4
+d_Dimension 5,Column 1,String,False,CUST003,CUST002,CUST001
+d_Dimension 5,Column 2,String,False,Gamma Solutions,Beta Industries,Acme Corp
+d_Dimension 5,Column 3,String,False,Healthcare,Technology,Manufacturing
+d_Dimension 5,Column 4,String,False,Asia,Europe,North America
+d_Dimension 5,Column 5,String,False,"$50,000","$75,000","$100,000"
+d_Dimension 5,Column 6,String,False,Carol White,Bob Johnson,Alice Smith
+d_Dimension 5,Column 7,String,False,"$1,800,000","$3,200,000","$5,000,000"
+d_Dimension 5,Column 8,String,False,Inactive,Active,Active
+d_Dimension 5,SlicerKey,String,False,5,5,5
+d_Dimension 6,Column 1,String,False,PROD003,PROD002,PROD001
+d_Dimension 6,Column 2,String,False,LED Desk Lamp,Office Chair,Wireless Mouse
+d_Dimension 6,Column 3,String,False,Lighting,Furniture,Electronics
+d_Dimension 6,Column 4,String,False,$35.00,$120.00,$25.00
+d_Dimension 6,Column 5,String,False,$20.00,$80.00,$15.00
+d_Dimension 6,Column 6,String,False,BrightLite Ltd.,Comfort Co.,TechTrend Inc.
+d_Dimension 6,Column 7,String,False,75,40,150
+d_Dimension 6,Column 8,String,False,Discontinued,Active,Active
+d_Dimension 6,SlicerKey,String,False,6,6,6
+sfp_Filter_Dimensions (Customer Based),Parameter,String,False,Project Manager,Project Name,Project Code
+sfp_Filter_Dimensions (Customer Based),SlicerKey,Integer,False,3,2,1
+sfp_Filter_Dimensions (Customer Based),DisplayTable,String,False,Project,Project,Project
+sfp_Filter_Dimensions (Customer Based),Group | Dimension,String,False,Project | Project Manager,Project | Project Name,Project | Project Code
+s_Currency_Doc vs Company,Type,String,False,Company Code Currency,Document Currency,
+s_Currency_Doc vs Company,Order,Integer,False,2,1,
+s_Currency_Doc vs Company,Abbreviation,String,False,Comp. Curr,Doc. Curr.,
+s_Growth_Scenario,Growth Scenario,String,False,%YTD,FY,YTG
+s_Growth_Scenario,Explanation,String,False,"Taking our % performance YTD versus Budget or Prior Year, we show our remaining performance for YTG and FY, assuming this is how we track for the rest of the year.","Taking the Full Year amount for Budget or Prior Year, we show how much Actuals are needed year-to-go, to match our FY Budget or Prior Year Target","Taking the remaining year-to-go amounts for Budget or Prior Year and adding this to Actuals YTD, we show where we would land FY."
+s_Growth_Scenario,Sort,Integer,False,3,2,1
+sfp_Comparable Amount 2,sfp_Comparable Amount,String,False,ACTUAL 2023,ACTUAL 2024,ACTUAL 2025
+sfp_Comparable Amount 2,P&L Component,String,False,Comparable,Comparable,Comparable
+sfp_Comparable Amount 2,Scenario,String,False,ACTUAL CY,ACTUAL CY,ACTUAL CY
+sfp_Comparable Amount 2,Year,Integer,False,2023,2024,2025
+sfp_Constant Currency 2,sfp_Constant Currency,String,False,ACTUAL 2023 Constant Currency,ACTUAL 2024 Constant Currency,ACTUAL 2025 Constant Currency
+sfp_Constant Currency 2,P&L Component,String,False,Constant Currency,Constant Currency,Constant Currency
+sfp_Constant Currency 2,Scenario,String,False,ACTUAL,ACTUAL,ACTUAL
+sfp_Constant Currency 2,Year,Integer,False,2023,2024,2025
+sfp_TC1_Variance+FX,sfp_Variance+FX,String,False,FX Impact,Δ% GC,Δ GC
+sfp_TC1_Variance+FX,Currency Type,String,False,Reported,Reported,Reported
+sfp_TC1_Variance+FX,Value5,String,False,Variance,Variance,Blank Space
+sfp_TC1_Variance+FX,Component,String,False,Variance,Variance,Variance
+sfp_Comparable YTD,sfp_Comparable Amount,String,False,ACTUAL 2023,ACTUAL 2024,ACTUAL 2025
+sfp_Comparable YTD,P&L Component,String,False,Comparable,Comparable,Comparable
+sfp_Comparable YTD,Scenario,String,False,ACTUAL CY,ACTUAL CY,ACTUAL CY
+sfp_Comparable YTD,Year,Integer,False,2023,2024,2025
+sfp_Comparable FY,sfp_Comparable Amount,String,False,ACTUAL 2023,ACTUAL 2024,ACTUAL 2025
+sfp_Comparable FY,P&L Component,String,False,Comparable,Comparable,Comparable
+sfp_Comparable FY,Scenario,String,False,ACTUAL CY,ACTUAL CY,ACTUAL CY
+sfp_Comparable FY,Year,Integer,False,2023,2024,2025
+sfp_Comparable YTG,sfp_Comparable Amount,String,False,ACTUAL 2023,ACTUAL 2024,ACTUAL 2025
+sfp_Comparable YTG,P&L Component,String,False,Comparable,Comparable,Comparable
+sfp_Comparable YTG,Scenario,String,False,ACTUAL CY,ACTUAL CY,ACTUAL CY
+sfp_Comparable YTG,Year,Integer,False,2023,2024,2025
+d_Customer,CustomerID,String,False,C003,C002,C001
+d_Customer,CustomerName,String,False,Company3,Company2,Company1
+d_Customer,ContactName,String,False,Contact3,Contact2,Contact1
+d_Customer,Email,String,False,contact3@company3.com,contact2@company2.com,contact1@company1.com
+d_Customer,Phone,String,False,555-0003,555-0002,555-0001
+d_Customer,Address,String,False,"300 Street, Los Angeles, CA","200 Street, Miami, FL","100 Street, Chicago, IL"
+d_Customer,CustomerGroup,String,False,Wholesaler,Online,Wholesaler
+d_Customer,CreditLimit,Integer,False,359785,122026,393786
+f_Aging_Customer,CustomerID,String,False,C047,C060,C068
+f_Aging_Customer,CustomerName,String,False,Company47,Company60,Company68
+f_Aging_Customer,InvoiceNo,String,False,INV1076,INV1074,INV1072
+f_Aging_Customer,InvoiceDate,DateTime,False,10/04/2025 00:00:00,21/03/2025 00:00:00,01/05/2025 00:00:00
+f_Aging_Customer,DueDate,DateTime,False,13/05/2025 00:00:00,20/05/2025 00:00:00,08/06/2025 00:00:00
+f_Aging_Customer,InvoiceAmount,Double,False,32933.0,7212.96,23665.08
+f_Aging_Customer,31-60 Days,Double,False,1387.63,8301.53,8431.68
+f_Aging_Customer,61-90 Days,Double,False,4501.32,9839.58,6035.19
+f_Aging_Customer,>90 Days,Double,False,9024.61,1877.7,2273.31
+f_Aging_Customer,TotalOutstanding,Double,False,32933.0,7212.96,23665.08
+f_Aging_Customer,AmountPaid,Double,False,2999.32,1977.67,444.37
+f_Aging_Customer,Invoice Currency,String,False,GBP,GBP,GBP
+f_Aging_Customer,Current,Double,False,1255.06,3062.3,11741.73
+f_Aging_Customer,1-30 Days,Double,False,32933.0,7212.96,23665.08
+f_Aging_Customer,DaysOverdueColumn,Integer,False,148,141,122
+d_Page Access Overview,Page Name,String,False,Aging,Cash Flow,Profit & Loss
+d_Page Access Overview,Client ID,Integer,False,1,1,1
+d_Page Access Overview,Access,String,False,No,Yes,Yes
+d_Page Access Overview,Client Source System,String,False,Exact Online,Exact Online,Exact Online
+d_Page Access Overview,Source System Access,String,False,Yes,Yes,Yes
+c_AccessPageFilter,Name,String,False,Filter,,
+sfp_TC1_Reported Amount,sfp_Reported Amount,String,False,ACTUAL 2023 Reported,ACTUAL 2024 Reported,ACTUAL 2025 Reported
+sfp_TC1_Reported Amount,P&L Component,String,False,Reported,Reported,Reported
+sfp_TC1_Reported Amount,Scenario,String,False,ACTUAL,ACTUAL,ACTUAL
+sfp_TC1_Reported Amount,Year,Integer,False,2023,2024,2025
+sfp_TC1 Comparable,sfp_Comparable Amount,String,False,ACTUAL 2023,ACTUAL 2024,ACTUAL 2025
+sfp_TC1 Comparable,P&L Component,String,False,Comparable,Comparable,Comparable
+sfp_TC1 Comparable,Scenario,String,False,ACTUAL CY,ACTUAL CY,ACTUAL CY
+sfp_TC1 Comparable,Year,Integer,False,2023,2024,2025
+sfp_Variance+FX 2,sfp_Variance+FX,String,False,FX Impact,Δ% GC,Δ GC
+sfp_Variance+FX 2,Currency Type,String,False,Reported,Reported,Reported
+sfp_Variance+FX 2,Value5,String,False,Variance,Variance,Blank Space
+sfp_Variance+FX 2,Component,String,False,Variance,Variance,Variance
+sfp_TC2_Variance+FX,sfp_Variance+FX,String,False,FX Impact,Δ% GC,Δ GC
+sfp_TC2_Variance+FX,Currency Type,String,False,Reported,Reported,Reported
+sfp_TC2_Variance+FX,Value5,String,False,Variance,Variance,Blank Space
+sfp_TC2_Variance+FX,Component,String,False,Variance,Variance,Variance
+sfp_TC2_Reported Amount,sfp_Reported Amount,String,False,ACTUAL 2023 Reported,ACTUAL 2024 Reported,ACTUAL 2025 Reported
+sfp_TC2_Reported Amount,P&L Component,String,False,Reported,Reported,Reported
+sfp_TC2_Reported Amount,Scenario,String,False,ACTUAL,ACTUAL,ACTUAL
+sfp_TC2_Reported Amount,Year,Integer,False,2023,2024,2025
+sfp_TC2 Comparable,sfp_Comparable Amount,String,False,ACTUAL 2023,ACTUAL 2024,ACTUAL 2025
+sfp_TC2 Comparable,P&L Component,String,False,Comparable,Comparable,Comparable
+sfp_TC2 Comparable,Scenario,String,False,ACTUAL CY,ACTUAL CY,ACTUAL CY
+sfp_TC2 Comparable,Year,Integer,False,2023,2024,2025
+sfp_TC3 Comparable,sfp_Comparable Amount,String,False,ACTUAL 2023,ACTUAL 2024,ACTUAL 2025
+sfp_TC3 Comparable,P&L Component,String,False,Comparable,Comparable,Comparable
+sfp_TC3 Comparable,Scenario,String,False,ACTUAL CY,ACTUAL CY,ACTUAL CY
+sfp_TC3 Comparable,Year,Integer,False,2023,2024,2025
+sfp_TC3_Reported Amount,sfp_Reported Amount,String,False,ACTUAL 2023 Reported,ACTUAL 2024 Reported,ACTUAL 2025 Reported
+sfp_TC3_Reported Amount,P&L Component,String,False,Reported,Reported,Reported
+sfp_TC3_Reported Amount,Scenario,String,False,ACTUAL,ACTUAL,ACTUAL
+sfp_TC3_Reported Amount,Year,Integer,False,2023,2024,2025
+sfp_TC3_Variance+FX,sfp_Variance+FX,String,False,FX Impact,Δ% GC,Δ GC
+sfp_TC3_Variance+FX,Currency Type,String,False,Reported,Reported,Reported
+sfp_TC3_Variance+FX,Value5,String,False,Variance,Variance,Blank Space
+sfp_TC3_Variance+FX,Component,String,False,Variance,Variance,Variance
+c_Time Intelligence BS,Name,String,False,Prior Year,Prior Month,Current Month
+s_Scenario BS_Comparable,Comparable,String,False,End of Prior Year,Prior Year,Prior Month
+sfp_BS_Reported,Parameter,String,False,Amount OCT 25,Amount NOV 25,Amount DEC 25
+sfp_BS_Reported,Value4,Integer,False,24310,24311,24312
+sfp_BS_Comparable,Parameter,String,False,Amount DEC 24,Amount DEC 24,Amount NOV 25
+sfp_BS_Comparable,Value4,Integer,False,24312,24312,24312
+sfp_BS_Comparable,Value5,String,False,End of Prior Year,Prior Year,Prior Month
+d_Vendor,VendorID,String,False,V003,V002,V001
+d_Vendor,VendorName,String,False,Vendor 3,Vendor 2,Vendor 1
+d_Vendor,ContactName,String,False,Contact 3,Contact 2,Contact 1
+d_Vendor,Email,String,False,contact3@vendor3.com,contact2@vendor2.com,contact1@vendor1.com
+d_Vendor,Phone,String,False,555-1003,555-1002,555-1001
+d_Vendor,Address,String,False,"300 Vendor Rd, Chicago, IL","200 Vendor Rd, Houston, TX","100 Vendor Rd, Atlanta, GA"
+d_Vendor,VendorGroup,String,False,Services,Services,Raw Materials
+f_Aging_Vendor,VendorID,String,False,V088,V067,V078
+f_Aging_Vendor,VendorName,String,False,Vendor 88,Vendor 67,Vendor 78
+f_Aging_Vendor,BillNo,String,False,BILL0898,BILL0894,BILL0886
+f_Aging_Vendor,BillDate,DateTime,False,07/04/2025 00:00:00,24/04/2025 00:00:00,31/03/2025 00:00:00
+f_Aging_Vendor,DueDate,DateTime,False,31/05/2025 00:00:00,09/06/2025 00:00:00,26/05/2025 00:00:00
+f_Aging_Vendor,BillAmount,Double,False,22874.68,47055.43,18184.81
+f_Aging_Vendor,AmountPaid,Double,False,0.0,0.0,0.0
+f_Aging_Vendor,Current,Double,False,0.0,0.0,0.0
+f_Aging_Vendor,1-30 Days,Double,False,22874.68,47055.43,18184.81
+f_Aging_Vendor,31-60 Days,Integer,False,0,0,0
+f_Aging_Vendor,61-90 Days,Integer,False,0,0,0
+f_Aging_Vendor,>90 Days,Integer,False,0,0,0
+f_Aging_Vendor,TotalOutstanding,Double,False,22874.68,47055.43,18184.81
+f_Aging_Vendor,Invoice Currency,String,False,USD,USD,USD
+s_Formulas Cash Flow,Formula Header,String,False,Turnover,Untaxed reserves,"VAT, taxes to be recovered"
+s_Formulas Cash Flow,Formula Element,String,False,Turnover,Untaxed reserves,"VAT, taxes to be recovered"
+s_Formulas Cash Flow,Level.1,String,False,Turnover,Untaxed reserves,"VAT, taxes to be recovered"
+s_Formulas Cash Flow,Level.2,String,False,Trade debts (>1year),Untaxed reserves,"VAT, taxes to be recovered"
+s_Formulas Cash Flow,Level.3,String,False,Trade debts (>1year),Untaxed reserves,"VAT, taxes to be recovered"
+s_Formulas Cash Flow,Level.4,String,False,Trade debts (>1year),Untaxed reserves,"VAT, taxes to be recovered"
+s_Formulas Cash Flow,Level.5,String,False,Trade debts (<1year),Trade debts (>1year),"VAT, taxes to be recovered"
+s_Formulas Cash Flow,Level.6,String,False,Remuneration and social security payables,Stocks,Taxes payable
+s_Formulas Cash Flow,Level.7,String,False,Remuneration and social security payables,Stocks,Taxes payable
+s_Formulas Cash Flow,Level.8,String,False,,,
+s_Formulas Cash Flow,Level.9,String,False,,,
+s_Formulas Cash Flow,Operator,String,False,+,+,+
+r_RLS_Country,User,String,False,Jacob.test@finvision.be,Jacob.test@finvision.be,Jacob.test@finvision.be
+r_RLS_Country,Country ID,String,False,BC|790,BC|789,BC|1014
+r_RLS_User RLS Role,User,String,False,margot.natus@finvision.be,elisa.vollrath@finvision.be,sam.verfaillie@finvision.be
+r_RLS_User RLS Role,Role,String,False,Access to all - DEMO,Access to all - DEMO,All entities
+r_RLS_User RLS Role,Restricted,Boolean,False,False,False,True
+r_RLS_User App Role,User,String,False,margot.natus@finvision.be,lode.bruyneel@finvision.be,elisa.vollrath@finvision.be
+r_RLS_User App Role,Role,String,False,admin,admin,editor
+r_RLS_User App Role,Restricted,Boolean,False,False,False,True
+r_RLS_Profit Center,User,String,False,Jacob.test@finvision.be,Jacob.test@finvision.be,Jacob.test@finvision.be
+r_RLS_Profit Center,PC Group,String,False,P2_FR,P2_DE,P2_BELUX
+r_RLS_Cost Center,User,String,False,Jacob.test@finvision.be,Jacob.test@finvision.be,
+r_RLS_Cost Center,CC DOMAIN,String,False,PRODUCTION_PURCH,WOCC,
+d_Waterfall,Dim_Scenario Key,String,False,F662024,BUD2024,ACT2024
+d_Waterfall,Dim_Comparable Key,String,False,ACTUAL 4YA,ACTUAL 4YA,ACTUAL 4YA
+d_Waterfall,CalculationVersion,String,False,Comparable,Comparable,Comparable
+d_Waterfall,BaseYear,Integer,False,2024,2024,2024
+d_Waterfall,Sort,Integer,False,4,4,4
+d_Waterfall,Version Display Value,String,False,Actual 2020,Actual 2020,Actual 2020
+s_Formulas Combined,Formula Header,String,False,Contribution available excluding capital,Uncalled capital,Issued capital
+s_Formulas Combined,Formula Element,String,False,Contribution available excluding capital,Uncalled capital,Issued capital
+s_Formulas Combined,Level.1,String,False,Contribution available excluding capital,Uncalled capital,Issued capital
+s_Formulas Combined,Level.2,String,False,ASSETS,-,n/a
+s_Formulas Combined,Level.3,String,False,Contribution excluding capital,Capital,Revaluation surpluses
+s_Formulas Combined,Level.4,String,False,Contribution available excluding capital,Uncalled capital,Issued capital
+s_Formulas Combined,Level.5,String,False,Major repairs and maintenance,Taxation BS,Pensions and similar obligations
+s_Formulas Combined,Level.6,String,False,Taxes & result,Financial result,Exceptional items
+s_Formulas Combined,Level.7,String,False,Statutory PPV,Total production cost,Statutory sales margin
+s_Formulas Combined,Level.8,String,False,Statutory std margin,Statutory std margin,Statutory std margin
+s_Formulas Combined,Level.9,String,False,Net Turnover,Net Turnover,Net Turnover
+s_Formulas Combined,Level.10,String,False,Transport inv. to customers,Sales discounts & other,Turnover
+s_Formulas Combined,RowNumberLevel.1,Integer,False,11,10,9
+s_Formulas Combined,RowNumberLevel.2,Integer,False,378,377,374
+s_Formulas Combined,RowNumberLevel.3,Integer,False,372,373,374
+s_Formulas Combined,RowNumberLevel.4,Integer,False,369,372,373
+s_Formulas Combined,RowNumberLevel.5,Integer,False,95,94,93
+s_Formulas Combined,RowNumberLevel.6,Integer,False,95,94,93
+s_Formulas Combined,RowNumberLevel.7,Integer,False,284,284,284
+s_Formulas Combined,RowNumberLevel.8,Integer,False,265,265,265
+s_Formulas Combined,RowNumberLevel.9,Integer,False,263,263,263
+s_Formulas Combined,RowNumberLevel.10,Integer,False,262,261,260
+s_Formulas Combined,Multiplicator,Double,False,1.0,1.0,1.0
+s_Formulas Combined,Operator,String,False,+,+,+
+TestTopBottom,TestTopBottom,String,False,Cost Center Code,PC code,
+TopBottom_Ranking Category,Category,String,False,Others,Bottom,Top
+TopBottom_Ranking Category,Sort,Integer,False,2,3,1
+TopBottom Parameter,TopBottom Parameter,Integer,False,3,2,1
+s_TopOtherBottom Group,Group,String,False,Others,Bottom X,Top X
+DimensionSelector,Dimension,String,False,Country,ProfitCenter,CostCenter
+TestDimensionsTopBottomx,TestDimensionsTopBottomx,String,False,PC code,Country Full,Cost Center Full
+TestDimensionsTopBottomx,Value4,String,False,ProfitCenter,Country,CostCenter
+sfp_Filter_Dimensions (base),sfp_Filter_Dimensions (base),String,False,Country Full,Cost Center Full,Company Code|Name
+dfp_Filter_Dimensions (Customer based),Parameter,String,False,Project Manager,Project Name,Project Code
+dfp_Filter_Dimensions (Customer based),SlicerKey,Integer,False,3,2,1
+dfp_Filter_Dimensions (Customer based),DisplayTable,String,False,Project,Project,Project
+dfp_Filter_Dimensions (Customer based),Group | Dimension,String,False,Project | Project Manager,Project | Project Name,Project | Project Code
+dfp_Filter_Dimensions (base),sfp_Filter_Dimensions (base),String,False,Country Full,Cost Center Full,Company Code|Name
+dfp_Filter_Dimensions 2 (base),sfp_Filter_Dimensions (base),String,False,Country Full,Cost Center Full,Company Code|Name
+dfp_Filter_Dimensions 2 (base),Display Name,String,False,Country Full,Cost Center Full,Company Code|Name
+dfp_Period,dfp_Period,String,False,Year Nr,Quarter Year (QQ YY),Month Year (MMMYY)
+dfp_Period,Period,String,False,Year,Quarter & Year,Month & Year
+sfp_Filter_Dimensions (base) 2,Parameter,String,False,Country Full,Cost Center Full,Company Code|Name

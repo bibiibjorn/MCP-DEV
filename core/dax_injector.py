@@ -107,10 +107,14 @@ class DAXInjector:
                 "error_type": "amo_unavailable"
             }
 
-        if not table_name or not measure_name:
+        # Basic identifier validation similar to Tabular MCP approach
+        def _valid_identifier(s: Optional[str]) -> bool:
+            return bool(s) and len(str(s).strip()) > 0 and len(str(s)) <= 128 and '\0' not in str(s)
+
+        if not _valid_identifier(table_name) or not _valid_identifier(measure_name):
             return {
                 "success": False,
-                "error": "Table name and measure name are required",
+                "error": "Table and measure names must be non-empty and <=128 chars",
                 "error_type": "invalid_parameters"
             }
 
@@ -120,22 +124,31 @@ class DAXInjector:
             # Connect to server
             server.Connect(self.connection.ConnectionString)
 
-            # Get database name
-            db_query = "SELECT [CATALOG_NAME] FROM $SYSTEM.DBSCHEMA_CATALOGS"
-            cmd = AdomdCommand(db_query, self.connection)
-            reader = cmd.ExecuteReader()
-
+            # Get database name via DMV, with fallback to first database on server
             db_name = None
-            if reader.Read():
-                db_name = str(reader.GetValue(0))
-            reader.Close()
+            try:
+                db_query = "SELECT [CATALOG_NAME] FROM $SYSTEM.DBSCHEMA_CATALOGS"
+                cmd = AdomdCommand(db_query, self.connection)
+                reader = cmd.ExecuteReader()
+                if reader.Read():
+                    db_name = str(reader.GetValue(0))
+                reader.Close()
+            except Exception:
+                db_name = None
 
             if not db_name:
-                return {
-                    "success": False,
-                    "error": "Could not determine database name",
-                    "error_type": "database_error"
-                }
+                try:
+                    # Fallback to first database exposed by AMO (typical for Desktop)
+                    if server.Databases.Count > 0:
+                        db_name = server.Databases[0].Name
+                except Exception:
+                    pass
+                if not db_name:
+                    return {
+                        "success": False,
+                        "error": "Could not determine database name",
+                        "error_type": "database_error"
+                    }
 
             # Get database and model
             db = server.Databases.GetByName(db_name)
@@ -271,26 +284,44 @@ class DAXInjector:
                 "error_type": "amo_unavailable"
             }
 
+        # Validate identifiers early
+        def _valid_identifier(s: Optional[str]) -> bool:
+            return bool(s) and len(str(s).strip()) > 0 and len(str(s)) <= 128 and '\0' not in str(s)
+        if not _valid_identifier(table_name) or not _valid_identifier(measure_name):
+            return {
+                "success": False,
+                "error": "Table and measure names must be non-empty and <=128 chars",
+                "error_type": "invalid_parameters"
+            }
+
         server = AMOServer()
 
         try:
             server.Connect(self.connection.ConnectionString)
 
-            # Get database name
-            db_query = "SELECT [CATALOG_NAME] FROM $SYSTEM.DBSCHEMA_CATALOGS"
-            cmd = AdomdCommand(db_query, self.connection)
-            reader = cmd.ExecuteReader()
-
+            # Get database name with same DMV+fallback strategy
             db_name = None
-            if reader.Read():
-                db_name = str(reader.GetValue(0))
-            reader.Close()
+            try:
+                db_query = "SELECT [CATALOG_NAME] FROM $SYSTEM.DBSCHEMA_CATALOGS"
+                cmd = AdomdCommand(db_query, self.connection)
+                reader = cmd.ExecuteReader()
+                if reader.Read():
+                    db_name = str(reader.GetValue(0))
+                reader.Close()
+            except Exception:
+                db_name = None
 
             if not db_name:
-                return {
-                    "success": False,
-                    "error": "Could not determine database name"
-                }
+                try:
+                    if server.Databases.Count > 0:
+                        db_name = server.Databases[0].Name
+                except Exception:
+                    pass
+                if not db_name:
+                    return {
+                        "success": False,
+                        "error": "Could not determine database name"
+                    }
 
             # Get database and model
             db = server.Databases.GetByName(db_name)
