@@ -56,11 +56,19 @@ class EnhancedAMOTraceAnalyzer:
         MDX/DAX and the server returns a protocol/parse error. This method
         ensures proper XMLA execution and applies a conservative timeout.
         """
-        from Microsoft.AnalysisServices.AdomdClient import AdomdCommand, AdomdCommandType
+        from Microsoft.AnalysisServices.AdomdClient import AdomdCommand
         cmd = AdomdCommand(xmla, executor.connection)
         try:
             # Ensure ADOMD understands this is XMLA, not DAX/MDX text
-            cmd.CommandType = AdomdCommandType.Xmla  # type: ignore[attr-defined]
+            try:
+                from Microsoft.AnalysisServices.AdomdClient import AdomdCommandType  # type: ignore
+                cmd.CommandType = AdomdCommandType.Xmla  # type: ignore[attr-defined]
+            except Exception:
+                # Fallback: some bindings expose CommandType as int where 4 == Xmla
+                try:
+                    cmd.CommandType = 4  # type: ignore[attr-defined]
+                except Exception:
+                    pass
         except Exception:
             # Older clients may not expose the enum; best-effort fallback
             pass

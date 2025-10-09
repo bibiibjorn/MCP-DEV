@@ -28,6 +28,12 @@ class DependencyAnalyzer:
             res = self.executor.execute_info_query("MEASURES")
             if res.get('success'):
                 return res.get('rows', [])
+            # Fallback to TOM when DMV blocked
+            tom = getattr(self.executor, 'enumerate_measures_tom', None)
+            if tom:
+                tr = tom()
+                if tr.get('success'):
+                    return tr.get('rows', [])
         except Exception:
             pass
         return []
@@ -224,6 +230,13 @@ class DependencyAnalyzer:
             # Some Desktop builds regress on table-scoped DMV filters; fallback to client-side filter
             if not (measure_result.get('success') and measure_result.get('rows')):
                 all_measures = self.executor.execute_info_query("MEASURES")
+                if not all_measures.get('success'):
+                    # TOM fallback
+                    tom_meas = getattr(self.executor, 'enumerate_measures_tom', None)
+                    if tom_meas:
+                        tr = tom_meas()
+                        if tr.get('success'):
+                            all_measures = tr
                 if all_measures.get('success'):
                     def _norm(s: str | None) -> str:
                         if not s:
@@ -238,8 +251,8 @@ class DependencyAnalyzer:
                     m_norm = _norm(measure)
                     rows = []
                     for r in all_measures.get('rows', []) or []:
-                        rt = _norm(r.get('Table') or r.get('TableName') or r.get('TABLE_NAME'))
-                        rn = _norm(r.get('Name') or r.get('MEASURE_NAME'))
+                        rt = _norm(r.get('Table') or r.get('TableName') or r.get('TABLE_NAME') or r.get('[TABLE_NAME]'))
+                        rn = _norm(r.get('Name') or r.get('MEASURE_NAME') or r.get('[MEASURE_NAME]') or r.get('[Name]'))
                         if rt == t_norm and rn == m_norm:
                             rows.append(r)
                     if rows:
@@ -252,7 +265,7 @@ class DependencyAnalyzer:
                     }
 
             measure_data = measure_result['rows'][0]
-            expression = measure_data.get('Expression', '')
+            expression = measure_data.get('Expression', '') or measure_data.get('[Expression]', '')
 
             # Extract direct dependencies
             direct_deps = self._extract_dax_references(expression)
@@ -332,14 +345,27 @@ class DependencyAnalyzer:
             # Get all measures
             measures_result = self.executor.execute_info_query("MEASURES")
             if not measures_result.get('success'):
-                return {'success': False, 'error': 'Failed to get measures'}
+                # Try TOM fallback
+                tom_meas = getattr(self.executor, 'enumerate_measures_tom', None)
+                if tom_meas:
+                    tr = tom_meas()
+                    if tr.get('success'):
+                        measures_result = tr
+                if not measures_result.get('success'):
+                    return {'success': False, 'error': 'Failed to get measures'}
 
             measures = measures_result['rows']
 
             # Get all columns
             columns_result = self.executor.execute_info_query("COLUMNS")
             if not columns_result.get('success'):
-                return {'success': False, 'error': 'Failed to get columns'}
+                tom_cols = getattr(self.executor, 'enumerate_columns_tom', None)
+                if tom_cols:
+                    tr = tom_cols()
+                    if tr.get('success'):
+                        columns_result = tr
+                if not columns_result.get('success'):
+                    return {'success': False, 'error': 'Failed to get columns'}
 
             columns = columns_result['rows']
 
@@ -378,6 +404,15 @@ class DependencyAnalyzer:
                         }
             except Exception:
                 pass
+
+            # Normalize helper
+            def _norm_name(v: Any) -> str:
+                s = str(v or '')
+                if s.startswith('[') and s.endswith(']'):
+                    s = s[1:-1]
+                if s.startswith('"') and s.endswith('"'):
+                    s = s[1:-1]
+                return s
 
             # Analyze all measure expressions
             for m in measures:
@@ -428,31 +463,54 @@ class DependencyAnalyzer:
                         referenced_columns.add(f"{ft}[{fc}]")
                     if tt and tc:
                         referenced_columns.add(f"{tt}[{tc}]")
+            else:
+                # Try TOM fallback
+                tom_rels = getattr(self.executor, 'list_relationships_tom', None)
+                if tom_rels:
+                    rr = tom_rels()
+                    if rr.get('success'):
+                        for rel in rr['rows']:
+                            ft = rel.get('FromTable')
+                            tt = rel.get('ToTable')
+                            fc = rel.get('FromColumn')
+                            tc = rel.get('ToColumn')
+                            if ft:
+                                referenced_tables.add(str(ft))
+                            if tt:
+                                referenced_tables.add(str(tt))
+                            if ft and fc:
+                                referenced_columns.add(f"{ft}[{fc}]")
+                            if tt and tc:
+                                referenced_columns.add(f"{tt}[{tc}]")
 
             # Find unused objects
             unused_measures = []
             for m in measures:
-                if m.get('Name') not in referenced_measures:
+                mname = _norm_name(m.get('Name') or m.get('[Name]') or m.get('MEASURE_NAME') or m.get('[MEASURE_NAME]'))
+                if mname not in referenced_measures:
                     # Skip if it's hidden (likely internal)
-                    if not m.get('IsHidden'):
+                    hidden = bool(m.get('IsHidden')) if 'IsHidden' in m else False
+                    if not hidden:
                         unused_measures.append({
-                            'name': m.get('Name'),
-                            'table': m.get('Table')
+                            'name': mname,
+                            'table': _norm_name(m.get('Table') or m.get('[Table]') or m.get('TableName') or m.get('[TableName]'))
                         })
 
             unused_columns = []
             for c in columns:
                 # Coalesce to safe strings; attempt to resolve table via ID map
-                tbl = c.get('Table') or c.get('[Table]')
+                tbl = _norm_name(c.get('Table') or c.get('[Table]') or c.get('TABLE_NAME') or c.get('[TABLE_NAME]'))
                 if not tbl:
                     tid = c.get('TableID') or c.get('ID') or c.get('[TableID]') or c.get('[ID]')
                     if tid is not None and str(tid) in tables_by_id:
                         tbl = tables_by_id[str(tid)]
-                name = c.get('Name') or c.get('[Name]') or ''
+                name = _norm_name(c.get('Name') or c.get('[Name]') or c.get('COLUMN_NAME') or c.get('[COLUMN_NAME]') or '')
                 col_ref = f"{tbl}[{name}]" if tbl else f"[${name}]"
                 if col_ref not in referenced_columns:
                     # Skip hidden and key columns
-                    if not c.get('IsHidden') and not c.get('IsKey'):
+                    hidden = bool(c.get('IsHidden')) if 'IsHidden' in c else False
+                    is_key = bool(c.get('IsKey')) if 'IsKey' in c else False
+                    if not hidden and not is_key:
                         unused_columns.append({
                             'name': name,
                             'table': tbl,
@@ -461,11 +519,12 @@ class DependencyAnalyzer:
 
             unused_tables = []
             for t in tables:
-                tname = t.get('Name') or t.get('[Name]')
+                tname = _norm_name(t.get('Name') or t.get('[Name]') or t.get('TABLE_NAME') or t.get('[TABLE_NAME]'))
                 if tname not in referenced_tables:
                     # Check if table has any non-calculated columns (data table)
-                    table_cols = [col for col in columns if (col.get('Table') or col.get('[Table]')) == tname]
-                    if table_cols and not t.get('IsHidden'):
+                    table_cols = [col for col in columns if _norm_name(col.get('Table') or col.get('[Table]') or col.get('TABLE_NAME') or col.get('[TABLE_NAME]')) == tname]
+                    hidden = bool(t.get('IsHidden')) if 'IsHidden' in t else False
+                    if table_cols and not hidden:
                         unused_tables.append({
                             'name': tname
                         })
@@ -489,7 +548,18 @@ class DependencyAnalyzer:
     def analyze_column_usage(self, table: str, column: str) -> Dict[str, Any]:
         """Analyze where a column is used in the model."""
         try:
-            col_ref = f"{table}[{column}]"
+            # Normalize identifiers for robust matching across DMV/TOM variants
+            def _norm(s: Optional[str]) -> str:
+                x = str(s or '')
+                if x.startswith('[') and x.endswith(']'):
+                    x = x[1:-1]
+                if x.startswith("'") and x.endswith("'"):
+                    x = x[1:-1]
+                return x
+
+            t_norm = _norm(table)
+            c_norm = _norm(column)
+            col_ref = f"{t_norm}[{c_norm}]"
 
             usage = {
                 'success': True,
@@ -503,7 +573,7 @@ class DependencyAnalyzer:
             # Check measures (transitively)
             idx = self._get_measure_columns_index()
             for me_key, cols in idx.items():
-                if col_ref in cols:
+                if col_ref in cols or f"{t_norm}[{c_norm}]" in cols:
                     # me_key format: Table[Measure]
                     try:
                         t, rest = me_key.split('[', 1)
@@ -524,13 +594,34 @@ class DependencyAnalyzer:
             rels_result = self.executor.execute_info_query("RELATIONSHIPS")
             if rels_result.get('success'):
                 for rel in rels_result['rows']:
-                    if ((rel.get('FromTable') == table and rel.get('FromColumn') == column) or
-                        (rel.get('ToTable') == table and rel.get('ToColumn') == column)):
+                    # Accept several key variants and compare using normalized strings
+                    ft = rel.get('FromTable') or rel.get('[FromTable]')
+                    fc = rel.get('FromColumn') or rel.get('[FromColumn]')
+                    tt = rel.get('ToTable') or rel.get('[ToTable]')
+                    tc = rel.get('ToColumn') or rel.get('[ToColumn]')
+                    if ((str(ft or '').strip().lower() == t_norm.lower() and str(fc or '').strip().lower() == c_norm.lower()) or
+                        (str(tt or '').strip().lower() == t_norm.lower() and str(tc or '').strip().lower() == c_norm.lower())):
                         usage['used_in_relationships'].append({
-                            'from': f"{rel.get('FromTable')}[{rel.get('FromColumn')}]",
-                            'to': f"{rel.get('ToTable')}[{rel.get('ToColumn')}]",
+                            'from': f"{ft}[{fc}]",
+                            'to': f"{tt}[{tc}]",
                             'active': rel.get('IsActive')
                         })
+            else:
+                # TOM fallback
+                tom_rels = getattr(self.executor, 'list_relationships_tom', None)
+                if tom_rels:
+                    rr = tom_rels()
+                    if rr.get('success'):
+                        for rel in rr['rows']:
+                            ft = rel.get('FromTable'); fc = rel.get('FromColumn')
+                            tt = rel.get('ToTable'); tc = rel.get('ToColumn')
+                            if ((str(ft or '').strip().lower() == t_norm.lower() and str(fc or '').strip().lower() == c_norm.lower()) or
+                                (str(tt or '').strip().lower() == t_norm.lower() and str(tc or '').strip().lower() == c_norm.lower())):
+                                usage['used_in_relationships'].append({
+                                    'from': f"{ft}[{fc}]",
+                                    'to': f"{tt}[{tc}]",
+                                    'active': rel.get('IsActive')
+                                })
 
             usage['summary'] = {
                 'used_in_measures_count': len(usage['used_in_measures']),

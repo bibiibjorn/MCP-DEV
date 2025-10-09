@@ -17,6 +17,7 @@ from typing import Any, List, Optional
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
+from datetime import datetime
 
 # Add parent directory to path
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -561,9 +562,101 @@ def _handle_connection_and_instances(name: str, arguments: Any) -> Optional[dict
             connection_state.initialize_managers()
             result['managers_initialized'] = connection_state._managers_initialized
             result['performance_analysis'] = 'Available' if connection_state.performance_analyzer else 'Limited'
+            # Provide Quickstart guide path for first-time users
+            try:
+                parent = os.path.dirname(script_dir)
+                guides_dir = os.path.join(parent, 'docs')
+                os.makedirs(guides_dir, exist_ok=True)
+                pdf_path = os.path.join(guides_dir, 'PBIXRAY_Quickstart.pdf')
+                if not os.path.exists(pdf_path):
+                    _write_quickstart_assets(guides_dir)
+                # If still not present, fall back to .txt
+                result['quickstart_guide'] = pdf_path if os.path.exists(pdf_path) else os.path.join(guides_dir, 'PBIXRAY_Quickstart.txt')
+                # Also include an excerpt so clients can show something inline
+                try:
+                    excerpt = _generate_quickstart_markdown().splitlines()[:16]
+                    result['quickstart_excerpt'] = "\n".join(excerpt)
+                    result['open_hint'] = "Open the quickstart_guide path locally to view the full PDF."
+                except Exception:
+                    pass
+            except Exception:
+                pass
         return result
 
     return None
+
+
+def _write_quickstart_assets(guides_dir: str) -> None:
+    """Create Quickstart content in docs/ as PDF (or .txt fallback)."""
+    md = _generate_quickstart_markdown()
+    md_path = os.path.join(guides_dir, 'PBIXRAY_Quickstart.md')
+    try:
+        with open(md_path, 'w', encoding='utf-8') as f:
+            f.write(md)
+    except Exception:
+        pass
+    pdf_path = os.path.join(guides_dir, 'PBIXRAY_Quickstart.pdf')
+    try:
+        from reportlab.lib.pagesizes import letter  # type: ignore
+        from reportlab.pdfgen import canvas  # type: ignore
+        c = canvas.Canvas(pdf_path, pagesize=letter)
+        width, height = letter
+        y = height - 40
+        for line in md.splitlines():
+            if not line.strip():
+                y -= 10
+                continue
+            # Basic heading emphasis
+            text = line
+            if line.startswith('#'):
+                text = line.lstrip('# ').strip()
+            c.drawString(40, y, text[:110])
+            y -= 14
+            if y < 60:
+                c.showPage()
+                y = height - 40
+        c.save()
+    except Exception:
+        # Fallback to .txt
+        txt = os.path.join(guides_dir, 'PBIXRAY_Quickstart.txt')
+        with open(txt, 'w', encoding='utf-8') as f:
+            f.write(md)
+
+
+def _generate_quickstart_markdown() -> str:
+    now = datetime.now().strftime('%Y-%m-%d')
+    lines = [
+        f"# PBIXRAY Quickstart Guide ({now})",
+        "",
+        "PBIXRAY is a Model Context Protocol (MCP) server for Power BI Desktop. It lets tools/agents inspect and analyze your open model safely.",
+        "",
+        "What you can do:",
+        "- Connect to an open Power BI Desktop model",
+        "- List tables/columns/measures and preview data",
+        "- Search objects and inspect data sources and M expressions",
+        "- Run Best Practice Analyzer (BPA) on the model",
+        "- Analyze relationships, column cardinality, VertiPaq stats",
+        "- Generate documentation and export TMSL/TMDL",
+        "- Validate RLS coverage and DAX syntax",
+        "",
+        "Popular tools (friendly names):",
+        "- connection: detect powerbi desktop | connection: connect to powerbi",
+        "- list: tables | list: columns | list: measures | describe: table | preview: table",
+        "- search: objects | search: text in measures | get: data sources | get: m expressions",
+        "- analysis: best practices (BPA) | analysis: relationship/cardinality | analysis: storage compression",
+        "- usage: find unused objects | usage: column heatmap",
+        "- export: compact schema | export: tmsl | export: tmdl | docs: generate",
+        "",
+        "Tips:",
+        "- Large results are paged; use page_size + next_token",
+        "- Some Desktop builds hide DMVs; PBIXRAY falls back to TOM or client-side filtering",
+        "- Use list_tools to see all tool names and schemas",
+        "",
+        "Troubleshooting:",
+        "- Use get_recent_logs and get_server_info",
+        "- Ensure ADOMD/AMO DLLs exist in lib/dotnet for advanced features",
+    ]
+    return "\n".join(lines)
 
 
 def _handle_agent_tools(name: str, arguments: Any) -> Optional[dict]:
@@ -1205,9 +1298,35 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
                 return ErrorHandler.handle_manager_unavailable('bpa_analyzer')
             tmsl_result = qe.get_tmsl_definition()
             if tmsl_result.get('success'):
-                # Prefer fast mode with config-based limits to keep latency down
-                bpa_cfg = config.get('bpa', {})
-                if hasattr(bpa_analyzer, 'analyze_model_fast'):
+                # Prefer fast/balanced modes by default; allow caller override
+                mode = (arguments.get('mode') or 'fast').lower()
+                req_cats = arguments.get('categories')
+                # Start from default config then apply overrides
+                bpa_cfg = dict(config.get('bpa', {}) or {})
+                if isinstance(req_cats, list) and req_cats:
+                    bpa_cfg['include_categories'] = req_cats
+                # Apply mode presets
+                if mode == 'fast':
+                    # keep defaults
+                    pass
+                elif mode == 'balanced':
+                    bpa_cfg['max_seconds'] = max(30, int(bpa_cfg.get('max_seconds', 20)))
+                    bpa_cfg['per_rule_max_ms'] = max(250, int(bpa_cfg.get('per_rule_max_ms', 150)))
+                elif mode == 'deep':
+                    # remove most limits, run longer in fast engine
+                    bpa_cfg.pop('max_rules', None)
+                    bpa_cfg.pop('max_tables', None)
+                    bpa_cfg['max_seconds'] = 90
+                    bpa_cfg['per_rule_max_ms'] = 500
+                    # widen per-scope caps
+                    bpa_cfg['max_columns_per_rule'] = 10_000
+                    bpa_cfg['max_measures_per_rule'] = 10_000
+                    bpa_cfg['max_relationships_per_rule'] = 10_000
+                # Caller can hard override seconds
+                if isinstance(arguments.get('max_seconds'), (int, float)):
+                    bpa_cfg['max_seconds'] = float(arguments.get('max_seconds'))
+                # Execute
+                if hasattr(bpa_analyzer, 'analyze_model_fast') and mode in ('fast','balanced','deep'):
                     violations = bpa_analyzer.analyze_model_fast(tmsl_result['tmsl'], bpa_cfg)
                 else:
                     violations = bpa_analyzer.analyze_model(tmsl_result['tmsl'])
@@ -1215,6 +1334,17 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
                 result = {'success': True, 'violations_count': len(violations), 'summary': summary, 'violations': [{'rule_id': v.rule_id, 'rule_name': v.rule_name, 'category': v.category, 'severity': getattr(v.severity, 'name', str(v.severity)), 'object_type': v.object_type, 'object_name': v.object_name, 'table_name': v.table_name, 'description': v.description} for v in violations]}
                 if isinstance(bpa_cfg, dict) and bpa_cfg:
                     result.setdefault('notes', []).append('BPA fast mode with configured filters applied')
+                # Surface run-time notes from analyzer (timeouts, truncation, per-rule slow warnings)
+                if hasattr(bpa_analyzer, 'get_run_notes'):
+                    notes = bpa_analyzer.get_run_notes()
+                    if notes:
+                        result.setdefault('notes', []).extend(notes)
+                # Clarify the common confusion around date table rule naming heuristics
+                result.setdefault('notes', []).append(
+                    'Note: The BPA "Date/calendar tables should be marked as a date table" rule pattern-matches table names and checks DataCategory/IsKey. '
+                    'If you recently marked a table as a date table in Desktop and still see warnings, refresh TMSL export or ignore name-based matches.'
+                )
+                result['mode'] = mode
                 return result
             return tmsl_result
         except Exception as _e:
@@ -1612,7 +1742,20 @@ async def list_tools() -> List[Tool]:
     # Analysis
     add("analysis: m query practices", "analyze_m_practices", "Scan M expressions for common issues", {"type": "object", "properties": {}, "required": []})
     if BPA_AVAILABLE:
-        add("analysis: best practices (BPA)", "analyze_model_bpa", "Run Best Practice Analyzer (rules-based)", {"type": "object", "properties": {}, "required": []})
+        add(
+            "analysis: best practices (BPA)",
+            "analyze_model_bpa",
+            "Run Best Practice Analyzer (rules-based)",
+            {
+                "type": "object",
+                "properties": {
+                    "mode": {"type": "string", "enum": ["fast", "balanced", "deep"], "default": "fast"},
+                    "categories": {"type": "array", "items": {"type": "string"}},
+                    "max_seconds": {"type": "number"}
+                },
+                "required": []
+            }
+        )
     add("analysis: performance (batch)", "analyze_queries_batch", "Analyze performance for multiple DAX queries (AMO trace)", {"type": "object", "properties": {"queries": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer", "default": 3}, "clear_cache": {"type": "boolean", "default": True}, "include_event_counts": {"type": "boolean", "default": False}}, "required": ["queries"]})
     add("analysis: relationship cardinality", "analyze_relationship_cardinality", "Analyze relationship cardinality and recommendations", {"type": "object", "properties": {}, "required": []})
     add("analysis: column cardinality", "analyze_column_cardinality", "Analyze column cardinality for a table", {"type": "object", "properties": {"table": {"type": "string"}}, "required": []})
@@ -1718,8 +1861,50 @@ async def main():
     logger.info("=" * 80)
     logger.info("Tools available")
 
+    # Provide rich initialization instructions so clients show helpful guidance on connect
+    def _initial_instructions() -> str:
+        try:
+            parent = os.path.dirname(script_dir)
+            guides_dir = os.path.join(parent, 'docs')
+            os.makedirs(guides_dir, exist_ok=True)
+            pdf_path = os.path.join(guides_dir, 'PBIXRAY_Quickstart.pdf')
+            if not os.path.exists(pdf_path):
+                _write_quickstart_assets(guides_dir)
+            # Build a concise intro that many MCP clients render on startup
+            lines = [
+                f"PBIXRAY v{__version__} — Power BI Desktop MCP server.",
+                "",
+                "What you can do:",
+                "- Connect to your open Power BI Desktop instance",
+                "- Inspect tables/columns/measures and preview data",
+                "- Search objects and view data sources and M expressions",
+                "- Run Best Practice Analyzer (BPA) and relationship analysis",
+                "- Export compact schema, TMSL/TMDL, and documentation",
+                "",
+                "Quick start:",
+                "1) Run tool: connection: detect powerbi desktop",
+                "2) Then: connection: connect to powerbi (usually model_index=0)",
+                "3) Try: list: tables | describe: table | preview: table",
+                "",
+                f"Full guide: {pdf_path if os.path.exists(pdf_path) else os.path.join(guides_dir, 'PBIXRAY_Quickstart.txt')}"
+            ]
+            return "\n".join(lines)
+        except Exception:
+            # Last-resort short instructions
+            return (
+                f"PBIXRAY v{__version__}. Start by running 'connection: detect powerbi desktop' and then 'connection: connect to powerbi'. "
+                "Use list_tools to see available operations."
+            )
+
+    init_opts = app.create_initialization_options()
+    try:
+        # Inject instructions text expected by MCP clients
+        setattr(init_opts, "instructions", _initial_instructions())
+    except Exception:
+        pass
+
     async with stdio_server() as (read_stream, write_stream):
-        await app.run(read_stream, write_stream, app.create_initialization_options())
+        await app.run(read_stream, write_stream, init_opts)
 
 
 if __name__ == "__main__":

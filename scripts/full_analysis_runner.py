@@ -250,6 +250,10 @@ def run_full_analysis(depth: str, include_bpa: bool, relationships_max: int, iss
                 # Attach note about any configured limits
                 if isinstance(bpa_cfg, dict) and bpa_cfg:
                     sections['bpa'].setdefault('notes', []).append('BPA fast mode with configured filters applied')
+                if hasattr(bpa, 'get_run_notes'):
+                    notes = bpa.get_run_notes()
+                    if notes:
+                        sections['bpa'].setdefault('notes', []).extend(notes)
             else:
                 # Pass through error but avoid noisy warnings by annotating note
                 sections['bpa'] = {**tmsl, 'notes': ['BPA skipped: unable to extract TMSL model']}

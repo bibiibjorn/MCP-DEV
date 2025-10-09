@@ -8,41 +8,7 @@ from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# Try to load AMO
-AMO_AVAILABLE = False
-AMOServer = None
-CalculationGroup = None
-CalculationItem = None
-
-try:
-    import clr
-    import os
-
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    parent_dir = os.path.dirname(script_dir)
-    dll_folder = os.path.join(parent_dir, "lib", "dotnet")
-
-    core_dll = os.path.join(dll_folder, "Microsoft.AnalysisServices.Core.dll")
-    tabular_dll = os.path.join(dll_folder, "Microsoft.AnalysisServices.Tabular.dll")
-
-    if os.path.exists(core_dll):
-        clr.AddReference(core_dll)
-    if os.path.exists(tabular_dll):
-        clr.AddReference(tabular_dll)
-
-    from Microsoft.AnalysisServices.Tabular import (
-        Server as AMOServer,
-        CalculationGroup,
-        CalculationItem,
-        Table,
-        Column,
-        DataType
-    )
-    AMO_AVAILABLE = True
-    logger.info("AMO available for calculation groups")
-
-except Exception as e:
-    logger.warning(f"AMO not available: {e}")
+AMO_AVAILABLE = True  # Determined lazily per-connection
 
 
 class CalculationGroupManager:
@@ -52,22 +18,44 @@ class CalculationGroupManager:
         """Initialize with ADOMD connection."""
         self.connection = connection
 
+    def _connect_amo_server_db(self):
+        """Open a TOM Server using the ADOMD connection string and return (server, db, TabularModule) or (None, None, None)."""
+        try:
+            import clr  # type: ignore
+            import os as _os
+            script_dir = _os.path.dirname(_os.path.abspath(__file__))
+            parent_dir = _os.path.dirname(script_dir)
+            dll_folder = _os.path.join(parent_dir, "lib", "dotnet")
+            core_dll = _os.path.join(dll_folder, "Microsoft.AnalysisServices.Core.dll")
+            tabular_dll = _os.path.join(dll_folder, "Microsoft.AnalysisServices.Tabular.dll")
+            if _os.path.exists(core_dll):
+                clr.AddReference(core_dll)  # type: ignore[attr-defined]
+            if _os.path.exists(tabular_dll):
+                clr.AddReference(tabular_dll)  # type: ignore[attr-defined]
+            import Microsoft.AnalysisServices.Tabular as Tabular  # type: ignore
+            server = Tabular.Server()
+            conn_str = getattr(self.connection, 'ConnectionString', None)
+            if not conn_str:
+                return None, None, None
+            server.Connect(conn_str)
+            db = server.Databases[0] if server.Databases.Count > 0 else None
+            if not db:
+                try:
+                    server.Disconnect()
+                except Exception:
+                    pass
+                return None, None, None
+            return server, db, Tabular
+        except Exception as _e:
+            logger.warning(f"AMO not available for calc groups: {_e}")
+            return None, None, None
+
     def list_calculation_groups(self) -> Dict[str, Any]:
         """List all calculation groups and their items."""
-        if not AMO_AVAILABLE:
-            return {
-                'success': False,
-                'error': 'AMO not available for calculation groups'
-            }
-
-        server = AMOServer()
+        server, db, Tabular = self._connect_amo_server_db()
+        if not server or not db or not Tabular:
+            return {'success': False, 'error': 'AMO not available for calculation groups'}
         try:
-            server.Connect(self.connection.ConnectionString)
-
-            if server.Databases.Count == 0:
-                return {'success': False, 'error': 'No database found'}
-
-            db = server.Databases[0]
             model = db.Model
 
             calc_groups = []
@@ -128,11 +116,9 @@ class CalculationGroupManager:
         Returns:
             Result dictionary
         """
-        if not AMO_AVAILABLE:
-            return {
-                'success': False,
-                'error': 'AMO not available for calculation groups'
-            }
+        server, db, Tabular = self._connect_amo_server_db()
+        if not server or not db or not Tabular:
+            return {'success': False, 'error': 'AMO not available for calculation groups'}
 
         if not items:
             return {
@@ -140,14 +126,7 @@ class CalculationGroupManager:
                 'error': 'At least one calculation item is required'
             }
 
-        server = AMOServer()
         try:
-            server.Connect(self.connection.ConnectionString)
-
-            if server.Databases.Count == 0:
-                return {'success': False, 'error': 'No database found'}
-
-            db = server.Databases[0]
             model = db.Model
 
             # Check if table already exists
@@ -159,27 +138,45 @@ class CalculationGroupManager:
                 }
 
             # Create table for calculation group
-            table = Table()
+            table = Tabular.Table()
             table.Name = name
+            # Some TOM versions require explicitly marking the table as CalculationGroup
+            try:
+                if hasattr(Tabular, 'TableType') and hasattr(table, 'TableType'):
+                    table.TableType = Tabular.TableType.CalculationGroup
+            except Exception:
+                pass
 
             # Create calculation group
-            calc_group = CalculationGroup()
+            calc_group = Tabular.CalculationGroup()
             if description:
                 calc_group.Description = description
             if hasattr(calc_group, 'Precedence'):
                 calc_group.Precedence = precedence
 
-            # Create the column for calculation group
-            column = Column()
-            column.Name = name
-            column.DataType = DataType.String
-            column.SourceColumn = name
-
-            calc_group.Columns.Add(column)
+            # Create the mandatory calculation group column (string).
+            # Important: it belongs to the table.Columns collection, not calc_group.Columns.
+            try:
+                cg_col = Tabular.CalculationGroupColumn()
+                cg_col.Name = name
+                # Add to the table's Columns collection for TOM >= 19.x
+                table.Columns.Add(cg_col)
+            except Exception:
+                # Older TOM fallback: use a generic Column as string
+                try:
+                    col = Tabular.Column()
+                    col.Name = name
+                    try:
+                        col.DataType = Tabular.DataType.String
+                    except Exception:
+                        pass
+                    table.Columns.Add(col)
+                except Exception as inner_e:
+                    return {'success': False, 'error': 'Failed to create calculation group column', 'details': str(inner_e)}
 
             # Add calculation items
             for idx, item_data in enumerate(items):
-                item = CalculationItem()
+                item = Tabular.CalculationItem()
                 item.Name = item_data.get('name')
                 item.Expression = item_data.get('expression')
 
@@ -228,26 +225,14 @@ class CalculationGroupManager:
 
     def delete_calculation_group(self, name: str) -> Dict[str, Any]:
         """Delete a calculation group."""
-        if not AMO_AVAILABLE:
-            return {
-                'success': False,
-                'error': 'AMO not available'
-            }
-
-        server = AMOServer()
+        server, db, Tabular = self._connect_amo_server_db()
+        if not server or not db or not Tabular:
+            return {'success': False, 'error': 'AMO not available'}
         try:
-            server.Connect(self.connection.ConnectionString)
-
-            if server.Databases.Count == 0:
-                return {'success': False, 'error': 'No database found'}
-
-            db = server.Databases[0]
             model = db.Model
 
             # Find table with calculation group
-            table = next((t for t in model.Tables
-                         if t.Name == name and hasattr(t, 'CalculationGroup')
-                         and t.CalculationGroup is not None), None)
+            table = next((t for t in model.Tables if t.Name == name and hasattr(t, 'CalculationGroup') and t.CalculationGroup is not None), None)
 
             if not table:
                 return {

@@ -5,6 +5,7 @@ Analyzes TMSL models against a comprehensive set of best practice rules
 
 import json
 import re
+import time
 from typing import Dict, List, Any, Optional, Union
 from dataclasses import dataclass
 from enum import IntEnum
@@ -62,6 +63,10 @@ class BPAAnalyzer:
         self.violations: List[BPAViolation] = []
         self._eval_depth = 0  # Track recursion depth
         self._max_depth = 50  # Prevent stack overflow
+        self._regex_cache: Dict[str, re.Pattern] = {}
+        self._run_notes: List[str] = []
+        # Fast-mode limits injected by analyze_model_fast
+        self._fast_cfg: Dict[str, Any] = {}
         
         if rules_file_path:
             self.load_rules(rules_file_path)
@@ -109,31 +114,254 @@ class BPAAnalyzer:
             logger.error(f"Validation failed: {str(e)}")
             return False
 
+    def get_run_notes(self) -> List[str]:
+        """Return notes from the most recent run (timeouts, filters applied, etc.)."""
+        return list(self._run_notes)
+
+    def _compile_regex(self, pattern: str, flags: int = 0) -> re.Pattern:
+        """Return a compiled regex from cache for faster repeated matches."""
+        key = f"{pattern}__{flags}"
+        cached = self._regex_cache.get(key)
+        if cached is not None:
+            return cached
+        try:
+            compiled = re.compile(pattern, flags)
+        except re.error:
+            # Fallback to a pattern that never matches to avoid runtime errors
+            compiled = re.compile(r"a\b\B")
+        self._regex_cache[key] = compiled
+        return compiled
+
+    def _build_model_index(self, model: Dict[str, Any]) -> Dict[str, Any]:
+        """Precompute commonly accessed collections to avoid O(N) rebuilds per lookup."""
+        tables = model.get('tables', []) or []
+        all_columns: List[Dict[str, Any]] = []
+        all_measures: List[Dict[str, Any]] = []
+        all_calc_items: List[Dict[str, Any]] = []
+        tables_by_name: Dict[str, Dict[str, Any]] = {}
+        for t in tables:
+            try:
+                tname = t.get('name')
+                if isinstance(tname, str):
+                    tables_by_name[tname] = t
+                cols = t.get('columns', []) or []
+                if cols:
+                    all_columns.extend(cols)
+                meas = t.get('measures', []) or []
+                if meas:
+                    all_measures.extend(meas)
+                cg = t.get('calculationGroup') or {}
+                if isinstance(cg, dict):
+                    items = cg.get('calculationItems', []) or []
+                    if items:
+                        all_calc_items.extend(items)
+            except Exception:
+                continue
+        return {
+            'all_columns': all_columns,
+            'all_measures': all_measures,
+            'all_calc_items': all_calc_items,
+            'tables_by_name': tables_by_name,
+            'relationships': model.get('relationships', []) or [],
+            'tables': tables,
+        }
+
     def evaluate_expression(self, expression: str, context: Dict) -> Union[bool, int, float, str]:
-        """Recursive evaluator for rule expressions with depth protection"""
+        """Recursive evaluator for rule expressions with depth protection
+
+        Notes:
+        - Handle specific function patterns (RegEx.IsMatch, string.IsNullOrWhiteSpace, Convert.ToInt64, etc.)
+          BEFORE applying generic parentheses reduction so we don't split or recurse into regex pattern strings.
+        - Support dotted property access (e.g., Table.IsHidden) and case-insensitive key lookup.
+        """
         # Depth check to prevent stack overflow
         self._eval_depth += 1
         if self._eval_depth > self._max_depth:
             self._eval_depth -= 1
             logger.warning(f"Max evaluation depth reached for expression: {expression[:50]}")
             return False
-        
+
         try:
             # Safety checks
             if not expression or not isinstance(expression, str):
+                self._eval_depth -= 1
                 return False
-            
+
             expression = re.sub(r'\s+', ' ', expression).strip()
 
-            # Handle parentheses first (recursive)
+            # Short-circuit: DAX-style column reference 'Table'[Column] or Table[Column]
+            dax_col = re.match(r"^'?([^']+?)'?\[([^\]]+)\]$", expression)
+            if dax_col:
+                tbl = dax_col.group(1)
+                col = dax_col.group(2)
+                idx = context.get('index') or {}
+                tmap = idx.get('tables_by_name') or {}
+                t = tmap.get(tbl) or tmap.get(str(tbl).strip())
+                if isinstance(t, dict):
+                    for c in t.get('columns', []) or []:
+                        if str(c.get('name')) == col:
+                            # Return the column name for regex/name checks
+                            self._eval_depth -= 1
+                            return str(c.get('name'))
+                # Fallback to returning the literal reference string
+                self._eval_depth -= 1
+                return expression
+
+            # IMPORTANT: Handle certain function patterns first to avoid corrupting
+            # their arguments with the generic parentheses reducer.
+
+            # Handle RegEx.IsMatch(field, "pattern") optionally with third arg
+            regex_match = re.match(r'RegEx\.IsMatch\(([^,]+),\s*"([^"]+)"(,.*)?\)', expression)
+            if regex_match:
+                field = regex_match.group(1).strip()
+                pattern = regex_match.group(2)
+                value = self.evaluate_expression(field, context)
+                flags = re.IGNORECASE if '(?i)' in pattern else 0
+                pattern = pattern.replace('(?i)', '')
+                compiled = self._compile_regex(pattern, flags)
+                result = bool(compiled.search(str(value) if value is not None else ''))
+                self._eval_depth -= 1
+                return result
+
+            # Handle Collection.AnyFalse / Collection.AnyTrue
+            anyfalse_match = re.match(r'([A-Za-z0-9_.]+)\.AnyFalse$', expression)
+            if anyfalse_match:
+                collection_path = anyfalse_match.group(1)
+                collection = self._get_by_path(context, collection_path)
+                result = False
+                if isinstance(collection, list):
+                    # Interpret truthiness of items
+                    for item in collection:
+                        if isinstance(item, dict):
+                            # If item has 'value' or 'used' keys, use them; else use truthiness
+                            v = item.get('value') if 'value' in item else (item.get('used') if 'used' in item else item)
+                            if not bool(v):
+                                result = True
+                                break
+                        else:
+                            if not bool(item):
+                                result = True
+                                break
+                elif isinstance(collection, dict):
+                    # Any dict value false
+                    result = any(not bool(v) for v in collection.values())
+                self._eval_depth -= 1
+                return result
+
+            anytrue_match = re.match(r'([A-Za-z0-9_.]+)\.AnyTrue$', expression)
+            if anytrue_match:
+                collection_path = anytrue_match.group(1)
+                collection = self._get_by_path(context, collection_path)
+                result = False
+                if isinstance(collection, list):
+                    for item in collection:
+                        if isinstance(item, dict):
+                            v = item.get('value') if 'value' in item else (item.get('used') if 'used' in item else item)
+                            if bool(v):
+                                result = True
+                                break
+                        else:
+                            if bool(item):
+                                result = True
+                                break
+                elif isinstance(collection, dict):
+                    result = any(bool(v) for v in collection.values())
+                self._eval_depth -= 1
+                return result
+
+            # Handle string.IsNullOrWhitespace(field)
+            null_match = re.match(r'string\.IsNullOrWhite?[Ss]pace\((.+)\)', expression)
+            if null_match:
+                field = null_match.group(1)
+                value = self.evaluate_expression(field, context)
+                result = not str(value).strip() if value is not None else True
+                self._eval_depth -= 1
+                return result
+
+            # Handle Name.ToUpper().Contains("str")
+            contains_match = re.match(r'Name\.ToUpper\(\)\.Contains\("([^"]+)"\)', expression)
+            if contains_match:
+                substring = contains_match.group(1)
+                name = context.get('obj', {}).get('name', '')
+                result = substring.upper() in str(name).upper()
+                self._eval_depth -= 1
+                return result
+
+            # Handle Convert.ToInt64(expr) op value
+            convert_match = re.match(r'Convert\.ToInt64\((.+)\)\s*([><]=?|==|!=)\s*(\d+)', expression)
+            if convert_match:
+                inner = convert_match.group(1)
+                operator = convert_match.group(2)
+                value = int(convert_match.group(3))
+                inner_val = self.evaluate_expression(inner, context)
+                try:
+                    int_val = int(inner_val) if inner_val is not None else 0
+                except (ValueError, TypeError):
+                    int_val = 0
+                if operator == '>':
+                    result = int_val > value
+                elif operator == '<':
+                    result = int_val < value
+                elif operator == '>=':
+                    result = int_val >= value
+                elif operator == '<=':
+                    result = int_val <= value
+                elif operator == '==':
+                    result = int_val == value
+                elif operator == '!=':
+                    result = int_val != value
+                else:
+                    result = False
+                self._eval_depth -= 1
+                return result
+
+            # Handle GetAnnotation("name")
+            ann_match = re.match(r'GetAnnotation\("([^"]+)"\)', expression)
+            if ann_match:
+                ann_name = ann_match.group(1)
+                result = self.get_annotation(context.get('obj', {}), ann_name)
+                self._eval_depth -= 1
+                return result if result is not None else ""
+
+            # Now reduce simple parenthesis outside of the handled patterns above
             paren_count = 0
             while paren_count < 10:  # Limit iterations
-                match = re.search(r'\(([^()]*)\)', expression)
-                if not match:
+                # Find innermost parentheses that are NOT inside double-quoted strings
+                s = expression
+                i = 0
+                match_span = None
+                in_str = False
+                while i < len(s):
+                    ch = s[i]
+                    if ch == '"':
+                        in_str = not in_str
+                        i += 1
+                        continue
+                    if not in_str and ch == '(':
+                        # find matching ')'
+                        depth = 1
+                        j = i + 1
+                        in_str2 = False
+                        while j < len(s):
+                            ch2 = s[j]
+                            if ch2 == '"':
+                                in_str2 = not in_str2
+                            elif not in_str2:
+                                if ch2 == '(':
+                                    depth += 1
+                                elif ch2 == ')':
+                                    depth -= 1
+                                    if depth == 0:
+                                        match_span = (i, j)
+                                        break
+                            j += 1
+                        break
+                    i += 1
+                if not match_span:
                     break
-                inner = match.group(1)
+                inner = expression[match_span[0] + 1: match_span[1]]
                 inner_result = self.evaluate_expression(inner, context)
-                expression = expression.replace(match.group(0), str(inner_result), 1)
+                expression = expression[:match_span[0]] + str(inner_result) + expression[match_span[1] + 1:]
                 paren_count += 1
 
             # Handle logical OR
@@ -200,80 +428,8 @@ class BPAAnalyzer:
                 self._eval_depth -= 1
                 return len(filtered)
 
-            # Handle RegEx.IsMatch(field, pattern)
-            regex_match = re.match(r'RegEx\.IsMatch\(([^,]+),\s*"([^"]+)"(,.*)?\)', expression)
-            if regex_match:
-                field = regex_match.group(1).strip()
-                pattern = regex_match.group(2)
-                value = self.evaluate_expression(field, context)
-                flags = re.IGNORECASE if '(?i)' in pattern else 0
-                pattern = pattern.replace('(?i)', '')
-                try:
-                    result = bool(re.search(pattern, str(value) if value else '', flags))
-                    self._eval_depth -= 1
-                    return result
-                except re.error as e:
-                    logger.warning(f"Regex error: {e} in pattern: {pattern}")
-                    self._eval_depth -= 1
-                    return False
-
-            # Handle string.IsNullOrWhitespace(field)
-            null_match = re.match(r'string\.IsNullOrWhite?[Ss]pace\((.+)\)', expression)
-            if null_match:
-                field = null_match.group(1)
-                value = self.evaluate_expression(field, context)
-                result = not str(value).strip() if value is not None else True
-                self._eval_depth -= 1
-                return result
-
-            # Handle Name.ToUpper().Contains("str")
-            contains_match = re.match(r'Name\.ToUpper\(\)\.Contains\("([^"]+)"\)', expression)
-            if contains_match:
-                substring = contains_match.group(1)
-                name = context.get('obj', {}).get('name', '')
-                result = substring.upper() in str(name).upper()
-                self._eval_depth -= 1
-                return result
-
-            # Handle Convert.ToInt64(expr) op value
-            convert_match = re.match(r'Convert\.ToInt64\((.+)\)\s*([><]=?|==|!=)\s*(\d+)', expression)
-            if convert_match:
-                inner = convert_match.group(1)
-                operator = convert_match.group(2)
-                value = int(convert_match.group(3))
-                inner_val = self.evaluate_expression(inner, context)
-                try:
-                    int_val = int(inner_val) if inner_val else 0
-                except (ValueError, TypeError):
-                    int_val = 0
-                
-                if operator == '>':
-                    result = int_val > value
-                elif operator == '<':
-                    result = int_val < value
-                elif operator == '>=':
-                    result = int_val >= value
-                elif operator == '<=':
-                    result = int_val <= value
-                elif operator == '==':
-                    result = int_val == value
-                elif operator == '!=':
-                    result = int_val != value
-                else:
-                    result = False
-                self._eval_depth -= 1
-                return result
-
-            # Handle GetAnnotation("name")
-            ann_match = re.match(r'GetAnnotation\("([^"]+)"\)', expression)
-            if ann_match:
-                ann_name = ann_match.group(1)
-                result = self.get_annotation(context.get('obj', {}), ann_name)
-                self._eval_depth -= 1
-                return result if result is not None else ""
-
-            # Handle simple property == value
-            prop_match = re.match(r'([A-Za-z0-9_]+)\s*(==|<>|!=)\s*("([^"]+)"|null|true|false|\d+)', expression)
+            # Handle simple property == value (support dotted left side)
+            prop_match = re.match(r'([A-Za-z0-9_.]+)\s*(==|<>|!=)\s*("([^"]+)"|null|true|false|\d+)$', expression)
             if prop_match:
                 prop = prop_match.group(1)
                 operator = prop_match.group(2)
@@ -286,12 +442,27 @@ class BPAAnalyzer:
                     value = None
                 else:
                     value = value_str
-                    
+
                 prop_value = self.evaluate_expression(prop, context)
                 if operator in ['<>', '!=']:
                     result = prop_value != value
                 else:
                     result = prop_value == value
+                self._eval_depth -= 1
+                return result
+
+            # Handle property-to-property comparison (e.g., Name == current.Name)
+            prop_prop_match = re.match(r'([A-Za-z0-9_.]+)\s*(==|!=)\s*([A-Za-z0-9_.]+)$', expression)
+            if prop_prop_match:
+                left = prop_prop_match.group(1)
+                operator = prop_prop_match.group(2)
+                right = prop_prop_match.group(3)
+                lv = self.evaluate_expression(left, context)
+                rv = self.evaluate_expression(right, context)
+                if operator == '==':
+                    result = lv == rv
+                else:
+                    result = lv != rv
                 self._eval_depth -= 1
                 return result
 
@@ -322,8 +493,8 @@ class BPAAnalyzer:
                 self._eval_depth -= 1
                 return result
 
-            # Handle property access
-            if re.match(r'^[A-Za-z0-9_]+$', expression):
+            # Handle property access (support dotted paths)
+            if re.match(r'^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$', expression):
                 result = self._get_by_path(context, expression)
                 self._eval_depth -= 1
                 return result
@@ -332,52 +503,72 @@ class BPAAnalyzer:
             logger.debug(f"Unhandled expression: {expression[:100]}")
             self._eval_depth -= 1
             return False
-            
+
         except Exception as e:
             logger.warning(f"Expression evaluation error: {e} for: {expression[:100]}")
             self._eval_depth -= 1
             return False
 
     def _get_by_path(self, context: Dict, path: str) -> Any:
-        """Get value by dot path"""
+        """Get value by dot path.
+
+        Important: include the first segment when resolving properties like
+        DataCategory (previously skipped), to avoid returning the whole object
+        instead of the property's value. This ensures expressions such as
+        `DataCategory == "Time"` evaluate correctly.
+        """
         if not path:
             return None
-            
+
         parts = path.split('.')
-        
-        # Start with appropriate root
-        if parts[0] == 'Model':
+
+        # Determine root object and starting index
+        first = parts[0]
+        if first == 'Model':
             current = context.get('model', {})
+            idx = 1
+        elif first in ('current', 'it', 'obj', 'table', 'model'):
+            current = context.get(first, context.get(first.lower(), {}))
+            idx = 1
         else:
-            current = context.get(parts[0].lower(), context.get('table', context.get('obj', {})))
-        
-        # Navigate path
-        for part in parts[1:]:
+            # Default to the current object context
+            current = context.get('current', context.get('obj', context.get('table', {})))
+            idx = 0  # include the first segment as a property lookup
+
+        # Navigate path from idx (including first property when idx == 0)
+        for i in range(idx, len(parts)):
+            part = parts[i]
+            index = context.get('index') or {}
             if part == 'AllColumns':
-                all_columns = []
-                for t in context.get('model', {}).get('tables', []):
-                    all_columns.extend(t.get('columns', []))
-                current = all_columns
-            elif part == 'AllMeasures':
-                all_measures = []
-                for t in context.get('model', {}).get('tables', []):
-                    all_measures.extend(t.get('measures', []))
-                current = all_measures
-            elif part == 'AllCalculationItems':
-                all_items = []
-                for t in context.get('model', {}).get('tables', []):
-                    if t.get('calculationGroup'):
-                        all_items.extend(t['calculationGroup'].get('calculationItems', []))
-                current = all_items
-            elif part == 'RowLevelSecurity':
+                current = index.get('all_columns') or []
+                continue
+            if part == 'AllMeasures':
+                current = index.get('all_measures') or []
+                continue
+            if part == 'AllCalculationItems':
+                current = index.get('all_calc_items') or []
+                continue
+            if part == 'RowLevelSecurity':
                 current = context.get('table', {}).get('roles', [])
-            else:
-                if isinstance(current, dict):
-                    current = current.get(part, current.get(part.lower(), None))
+                continue
+
+            if isinstance(current, dict):
+                # Case-insensitive key access, try common Name vs name
+                if part in current:
+                    current = current.get(part)
+                elif part.lower() in current:
+                    current = current.get(part.lower())
                 else:
-                    current = None
-                    
-        return current if current is not None else []
+                    # Try typical TitleCase to camelCase mapping
+                    lowered = part[:1].lower() + part[1:]
+                    current = current.get(lowered, None)
+            else:
+                current = None
+
+            if current is None:
+                break
+
+        return current
 
     def get_annotation(self, obj: Dict, name: str) -> Optional[str]:
         """Get annotation value from object"""
@@ -410,6 +601,7 @@ class BPAAnalyzer:
         """Analyze model against BPA rules"""
         # Reset violations at the start of each analysis run
         self.violations = []
+        self._run_notes = []
 
         if isinstance(tmsl_json, str):
             try:
@@ -437,7 +629,8 @@ class BPAAnalyzer:
             logger.warning("No model found in TMSL structure")
             return []
         
-        # Check for missing annotations
+        # Build index and check for missing annotations
+        index = self._build_model_index(model)
         missing_ann = self.check_required_annotations(model)
         if missing_ann:
             logger.warning(f"Missing annotations detected: {len(missing_ann)} items")
@@ -452,10 +645,16 @@ class BPAAnalyzer:
                 details=", ".join(missing_ann[:5])  # Show first 5
             ))
 
+        start_time = time.perf_counter()
+        # Generous default budget for full analyze
+        max_seconds = 60.0
         for rule in self.rules:
             try:
                 self._eval_depth = 0  # Reset depth counter for each rule
-                self._analyze_rule(rule, model)
+                self._analyze_rule(rule, model, index)
+                if (time.perf_counter() - start_time) > max_seconds:
+                    self._run_notes.append(f"BPA analyze_model timed out after {int(max_seconds)}s; results may be partial")
+                    break
             except Exception as e:
                 logger.error(f"Rule {rule.id} evaluation failed: {str(e)}")
                 # Don't add error violations for failed rules - just skip them
@@ -524,10 +723,35 @@ class BPAAnalyzer:
 
         # Evaluate filtered/limited rule set
         self.violations = []
+        self._run_notes = []
+        # Capture config for use inside per-scope checks
+        self._fast_cfg = dict(cfg or {})
+        index = self._build_model_index(model)
+        # Time budgets
+        try:
+            max_seconds = float(cfg.get('max_seconds', 20))
+        except Exception:
+            max_seconds = 20.0
+        try:
+            per_rule_max_ms = float(cfg.get('per_rule_max_ms', 150))
+        except Exception:
+            per_rule_max_ms = 150.0
+        start_time = time.perf_counter()
+        evaluated_rules = 0
         for rule in rules:
             try:
                 self._eval_depth = 0
-                self._analyze_rule(rule, model)
+                rule_start = time.perf_counter()
+                self._analyze_rule(rule, model, index)
+                evaluated_rules += 1
+                # Check per rule budget
+                elapsed_ms = (time.perf_counter() - rule_start) * 1000.0
+                if elapsed_ms > per_rule_max_ms:
+                    self._run_notes.append(f"Rule {rule.id} exceeded {int(per_rule_max_ms)}ms ({int(elapsed_ms)}ms)")
+                # Check global budget
+                if (time.perf_counter() - start_time) > max_seconds:
+                    self._run_notes.append(f"BPA fast mode budget reached after {evaluated_rules} rules and {int(max_seconds)}s; results truncated")
+                    break
             except Exception:
                 pass
         return self.violations
@@ -546,32 +770,32 @@ class BPAAnalyzer:
             summary["by_category"][category] = summary["by_category"].get(category, 0) + 1
         return summary
 
-    def _analyze_rule(self, rule: BPARule, model: Dict) -> None:
+    def _analyze_rule(self, rule: BPARule, model: Dict, index: Optional[Dict[str, Any]] = None) -> None:
         """Analyze a single rule against the model"""
         if "Table" in rule.scope or "CalculatedTable" in rule.scope:
-            self._check_table_rule(rule, model)
+            self._check_table_rule(rule, model, index)
         if any(s in rule.scope for s in ["DataColumn", "CalculatedColumn", "CalculatedTableColumn"]):
-            self._check_column_rule(rule, model, rule.scope)
+            self._check_column_rule(rule, model, rule.scope, index)
         if "Measure" in rule.scope:
-            self._check_measure_rule(rule, model)
+            self._check_measure_rule(rule, model, index)
         if "Model" in rule.scope:
-            self._check_model_rule(rule, model)
+            self._check_model_rule(rule, model, index)
         if "Hierarchy" in rule.scope:
-            self._check_hierarchy_rule(rule, model)
+            self._check_hierarchy_rule(rule, model, index)
         if "CalculationGroup" in rule.scope:
-            self._check_calculation_group_rule(rule, model)
+            self._check_calculation_group_rule(rule, model, index)
         if "Relationship" in rule.scope:
-            self._check_relationship_rule(rule, model)
+            self._check_relationship_rule(rule, model, index)
         if "Partition" in rule.scope:
-            self._check_partition_rule(rule, model)
+            self._check_partition_rule(rule, model, index)
 
-    def _check_table_rule(self, rule: BPARule, model: Dict) -> None:
+    def _check_table_rule(self, rule: BPARule, model: Dict, index: Optional[Dict[str, Any]] = None) -> None:
         """Check rule against tables"""
         tables = model.get('tables', [])
         for table in tables:
             is_calc = table.get('partitions', [{}])[0].get('source', {}).get('type') == 'calculated'
             if ("Table" in rule.scope and not is_calc) or ("CalculatedTable" in rule.scope and is_calc):
-                context = {'obj': table, 'table': table, 'model': model, 'current': table, 'outerIt': table}
+                context = {'obj': table, 'table': table, 'model': model, 'index': index, 'current': table, 'outerIt': table}
                 try:
                     if self.evaluate_expression(rule.expression, context):
                         self.violations.append(BPAViolation(
@@ -586,15 +810,29 @@ class BPAAnalyzer:
                 except Exception as e:
                     logger.debug(f"Error checking table rule {rule.id}: {e}")
 
-    def _check_column_rule(self, rule: BPARule, model: Dict, scope: List[str]) -> None:
+    def _check_column_rule(self, rule: BPARule, model: Dict, scope: List[str], index: Optional[Dict[str, Any]] = None) -> None:
         """Check rule against columns"""
         tables = model.get('tables', [])
+        # Apply fast-mode limits if present
+        max_items = None
+        per_rule_ms = None
+        if self._fast_cfg:
+            try:
+                max_items = int(self._fast_cfg.get('max_columns_per_rule') or self._fast_cfg.get('max_items_per_rule') or 0)
+            except Exception:
+                max_items = None
+            try:
+                per_rule_ms = float(self._fast_cfg.get('per_rule_max_ms') or 0)
+            except Exception:
+                per_rule_ms = None
+        evaluated = 0
+        rule_start = time.perf_counter()
         for table in tables:
             columns = table.get('columns', [])
             for column in columns:
                 column_type = column.get('type', 'DataColumn')
                 if column_type in scope or 'DataColumn' in scope:
-                    context = {'obj': column, 'table': table, 'model': model, 'current': column, 'outerIt': column}
+                    context = {'obj': column, 'table': table, 'model': model, 'index': index, 'current': column, 'outerIt': column}
                     try:
                         if self.evaluate_expression(rule.expression, context):
                             self.violations.append(BPAViolation(
@@ -610,14 +848,35 @@ class BPAAnalyzer:
                             ))
                     except Exception as e:
                         logger.debug(f"Error checking column rule {rule.id}: {e}")
+                    evaluated += 1
+                    # Enforce fast-mode iteration/time budgets
+                    if max_items and evaluated >= max_items:
+                        self._run_notes.append(f"Rule {rule.id} truncated after {evaluated} column evaluations")
+                        return
+                    if per_rule_ms and ((time.perf_counter() - rule_start) * 1000.0) > per_rule_ms:
+                        self._run_notes.append(f"Rule {rule.id} truncated due to per-rule time budget ({int(per_rule_ms)}ms)")
+                        return
 
-    def _check_measure_rule(self, rule: BPARule, model: Dict) -> None:
+    def _check_measure_rule(self, rule: BPARule, model: Dict, index: Optional[Dict[str, Any]] = None) -> None:
         """Check rule against measures"""
         tables = model.get('tables', [])
+        max_items = None
+        per_rule_ms = None
+        if self._fast_cfg:
+            try:
+                max_items = int(self._fast_cfg.get('max_measures_per_rule') or self._fast_cfg.get('max_items_per_rule') or 0)
+            except Exception:
+                max_items = None
+            try:
+                per_rule_ms = float(self._fast_cfg.get('per_rule_max_ms') or 0)
+            except Exception:
+                per_rule_ms = None
+        evaluated = 0
+        rule_start = time.perf_counter()
         for table in tables:
             measures = table.get('measures', [])
             for measure in measures:
-                context = {'obj': measure, 'table': table, 'model': model, 'current': measure, 'outerIt': measure}
+                context = {'obj': measure, 'table': table, 'model': model, 'index': index, 'current': measure, 'outerIt': measure}
                 try:
                     if self.evaluate_expression(rule.expression, context):
                         self.violations.append(BPAViolation(
@@ -633,10 +892,17 @@ class BPAAnalyzer:
                         ))
                 except Exception as e:
                     logger.debug(f"Error checking measure rule {rule.id}: {e}")
+                evaluated += 1
+                if max_items and evaluated >= max_items:
+                    self._run_notes.append(f"Rule {rule.id} truncated after {evaluated} measure evaluations")
+                    return
+                if per_rule_ms and ((time.perf_counter() - rule_start) * 1000.0) > per_rule_ms:
+                    self._run_notes.append(f"Rule {rule.id} truncated due to per-rule time budget ({int(per_rule_ms)}ms)")
+                    return
 
-    def _check_model_rule(self, rule: BPARule, model: Dict) -> None:
+    def _check_model_rule(self, rule: BPARule, model: Dict, index: Optional[Dict[str, Any]] = None) -> None:
         """Check rule against model"""
-        context = {'obj': model, 'model': model, 'current': model, 'outerIt': model}
+        context = {'obj': model, 'model': model, 'index': index, 'current': model, 'outerIt': model}
         try:
             if self.evaluate_expression(rule.expression, context):
                 self.violations.append(BPAViolation(
@@ -651,13 +917,13 @@ class BPAAnalyzer:
         except Exception as e:
             logger.debug(f"Error checking model rule {rule.id}: {e}")
 
-    def _check_hierarchy_rule(self, rule: BPARule, model: Dict) -> None:
+    def _check_hierarchy_rule(self, rule: BPARule, model: Dict, index: Optional[Dict[str, Any]] = None) -> None:
         """Check rule against hierarchies"""
         tables = model.get('tables', [])
         for table in tables:
             hierarchies = table.get('hierarchies', [])
             for hierarchy in hierarchies:
-                context = {'obj': hierarchy, 'table': table, 'model': model, 'current': hierarchy, 'outerIt': hierarchy}
+                context = {'obj': hierarchy, 'table': table, 'model': model, 'index': index, 'current': hierarchy, 'outerIt': hierarchy}
                 try:
                     if self.evaluate_expression(rule.expression, context):
                         self.violations.append(BPAViolation(
@@ -673,13 +939,13 @@ class BPAAnalyzer:
                 except Exception as e:
                     logger.debug(f"Error checking hierarchy rule {rule.id}: {e}")
 
-    def _check_calculation_group_rule(self, rule: BPARule, model: Dict) -> None:
+    def _check_calculation_group_rule(self, rule: BPARule, model: Dict, index: Optional[Dict[str, Any]] = None) -> None:
         """Check rule against calculation groups"""
         tables = model.get('tables', [])
         for table in tables:
             calc_group = table.get('calculationGroup', {})
             if calc_group:
-                context = {'obj': calc_group, 'table': table, 'model': model, 'current': calc_group, 'outerIt': calc_group}
+                context = {'obj': calc_group, 'table': table, 'model': model, 'index': index, 'current': calc_group, 'outerIt': calc_group}
                 try:
                     if self.evaluate_expression(rule.expression, context):
                         self.violations.append(BPAViolation(
@@ -695,11 +961,24 @@ class BPAAnalyzer:
                 except Exception as e:
                     logger.debug(f"Error checking calc group rule {rule.id}: {e}")
 
-    def _check_relationship_rule(self, rule: BPARule, model: Dict) -> None:
+    def _check_relationship_rule(self, rule: BPARule, model: Dict, index: Optional[Dict[str, Any]] = None) -> None:
         """Check rule against relationships"""
         relationships = model.get('relationships', [])
+        max_items = None
+        per_rule_ms = None
+        if self._fast_cfg:
+            try:
+                max_items = int(self._fast_cfg.get('max_relationships_per_rule') or self._fast_cfg.get('max_items_per_rule') or 0)
+            except Exception:
+                max_items = None
+            try:
+                per_rule_ms = float(self._fast_cfg.get('per_rule_max_ms') or 0)
+            except Exception:
+                per_rule_ms = None
+        evaluated = 0
+        rule_start = time.perf_counter()
         for relationship in relationships:
-            context = {'obj': relationship, 'model': model, 'current': relationship, 'outerIt': relationship}
+            context = {'obj': relationship, 'model': model, 'index': index, 'current': relationship, 'outerIt': relationship}
             try:
                 if self.evaluate_expression(rule.expression, context):
                     self.violations.append(BPAViolation(
@@ -713,14 +992,21 @@ class BPAAnalyzer:
                     ))
             except Exception as e:
                 logger.debug(f"Error checking relationship rule {rule.id}: {e}")
+            evaluated += 1
+            if max_items and evaluated >= max_items:
+                self._run_notes.append(f"Rule {rule.id} truncated after {evaluated} relationship evaluations")
+                return
+            if per_rule_ms and ((time.perf_counter() - rule_start) * 1000.0) > per_rule_ms:
+                self._run_notes.append(f"Rule {rule.id} truncated due to per-rule time budget ({int(per_rule_ms)}ms)")
+                return
 
-    def _check_partition_rule(self, rule: BPARule, model: Dict) -> None:
+    def _check_partition_rule(self, rule: BPARule, model: Dict, index: Optional[Dict[str, Any]] = None) -> None:
         """Check rule against partitions"""
         tables = model.get('tables', [])
         for table in tables:
             partitions = table.get('partitions', [])
             for partition in partitions:
-                context = {'obj': partition, 'table': table, 'model': model, 'current': partition, 'outerIt': partition}
+                context = {'obj': partition, 'table': table, 'model': model, 'index': index, 'current': partition, 'outerIt': partition}
                 try:
                     if self.evaluate_expression(rule.expression, context):
                         self.violations.append(BPAViolation(

@@ -677,14 +677,39 @@ class AgentPolicy:
             return ErrorHandler.handle_manager_unavailable('dependency_analyzer')
         if not executor:
             return ErrorHandler.handle_manager_unavailable('query_executor')
+        # Fetch columns; when table filter returns empty on some Desktop builds,
+        # fallback to all columns and filter client-side using normalized names.
         info = executor.execute_info_query('COLUMNS', table_name=table)
-        if not info.get('success'):
-            return info
-        cols = info.get('rows', [])[:limit]
+        if not (info.get('success') and (info.get('rows') or [])):
+            # DMV fallback to all columns
+            all_cols: Dict[str, Any] = executor.execute_info_query('COLUMNS')  # type: ignore[assignment]
+            if not (isinstance(all_cols, dict) and all_cols.get('success')):
+                # TOM fallback
+                tom_cols = getattr(executor, 'enumerate_columns_tom', None)
+                if callable(tom_cols):
+                    _tc = tom_cols()
+                    all_cols = _tc if isinstance(_tc, dict) else {'success': False, 'rows': []}
+                if not all_cols.get('success'):
+                    # Always return a dict shape
+                    return all_cols if isinstance(all_cols, dict) else {'success': False, 'error': 'enumerate_columns_tom failed'}
+            rows = (all_cols.get('rows', []) or []) if isinstance(all_cols, dict) else []
+            if table:
+                t_norm = str(table).strip()
+                norm = lambda s: str(s or '').strip()
+                filtered = []
+                for r in rows:
+                    rt = r.get('Table') or r.get('[Table]') or r.get('TABLE_NAME') or r.get('[TABLE_NAME]')
+                    if norm(rt).lower() == t_norm.lower():
+                        filtered.append(r)
+                rows = filtered
+            info = {'success': True, 'rows': rows, 'row_count': len(rows)}
+        # Enforce limit defensively
+        cols = (info.get('rows', []) or [])[: max(0, int(limit or 0)) or len(info.get('rows', []) or [])]
         results: List[Dict[str, Any]] = []
         for c in cols:
-            t = table or c.get('Table') or ''
-            name = c.get('Name')
+            # Coalesce table/column names from possible variants
+            t = table or c.get('Table') or c.get('[Table]') or c.get('TABLE_NAME') or c.get('[TABLE_NAME]') or ''
+            name = c.get('Name') or c.get('[Name]') or c.get('COLUMN_NAME') or c.get('[COLUMN_NAME]') or ''
             if not name:
                 continue
             usage = dep.analyze_column_usage(t, name)

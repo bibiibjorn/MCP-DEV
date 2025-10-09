@@ -218,6 +218,94 @@ class OptimizedQueryExecutor:
             except Exception:
                 pass
 
+    def enumerate_measures_tom(self) -> Dict[str, Any]:
+        """Enumerate measures via TOM with Name, Table, Expression."""
+        server, db = self._connect_amo_server_db()
+        if not server or not db:
+            return {'success': False, 'error': 'AMO/TOM unavailable', 'error_type': 'amo_not_available'}
+        try:
+            rows: List[Dict[str, Any]] = []
+            model = db.Model
+            if hasattr(model, 'Tables'):
+                for tbl in model.Tables:
+                    try:
+                        if hasattr(tbl, 'Measures'):
+                            for m in tbl.Measures:
+                                rows.append({
+                                    'Name': getattr(m, 'Name', ''),
+                                    'Table': getattr(tbl, 'Name', ''),
+                                    'Expression': getattr(m, 'Expression', '')
+                                })
+                    except Exception:
+                        pass
+            return {'success': True, 'rows': rows, 'row_count': len(rows), 'method': 'TOM'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+        finally:
+            try:
+                server.Disconnect()
+            except Exception:
+                pass
+
+    def enumerate_columns_tom(self) -> Dict[str, Any]:
+        """Enumerate columns via TOM with Name, Table, Type, IsHidden, IsKey."""
+        server, db = self._connect_amo_server_db()
+        if not server or not db:
+            return {'success': False, 'error': 'AMO/TOM unavailable', 'error_type': 'amo_not_available'}
+        try:
+            rows: List[Dict[str, Any]] = []
+            model = db.Model
+            if hasattr(model, 'Tables'):
+                for tbl in model.Tables:
+                    try:
+                        for col in getattr(tbl, 'Columns', []):
+                            rows.append({
+                                'Name': getattr(col, 'Name', ''),
+                                'Table': getattr(tbl, 'Name', ''),
+                                'Type': str(getattr(col, 'Type', '')),
+                                'IsHidden': bool(getattr(col, 'IsHidden', False)),
+                                'IsKey': bool(getattr(col, 'IsKey', False))
+                            })
+                    except Exception:
+                        pass
+            return {'success': True, 'rows': rows, 'row_count': len(rows), 'method': 'TOM'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+        finally:
+            try:
+                server.Disconnect()
+            except Exception:
+                pass
+
+    def list_relationships_tom(self) -> Dict[str, Any]:
+        """Enumerate relationships via TOM with From/To table/column and IsActive."""
+        server, db = self._connect_amo_server_db()
+        if not server or not db:
+            return {'success': False, 'error': 'AMO/TOM unavailable', 'error_type': 'amo_not_available'}
+        try:
+            rows: List[Dict[str, Any]] = []
+            model = db.Model
+            if hasattr(model, 'Relationships'):
+                for rel in model.Relationships:
+                    try:
+                        rows.append({
+                            'FromTable': getattr(getattr(rel, 'FromTable', None), 'Name', None),
+                            'FromColumn': getattr(getattr(rel, 'FromColumn', None), 'Name', None),
+                            'ToTable': getattr(getattr(rel, 'ToTable', None), 'Name', None),
+                            'ToColumn': getattr(getattr(rel, 'ToColumn', None), 'Name', None),
+                            'IsActive': bool(getattr(rel, 'IsActive', False))
+                        })
+                    except Exception:
+                        pass
+            return {'success': True, 'rows': rows, 'row_count': len(rows), 'method': 'TOM'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+        finally:
+            try:
+                server.Disconnect()
+            except Exception:
+                pass
+
     def list_data_sources_tom(self, limit: int | None = None) -> Dict[str, Any]:
         """List data sources via TOM for Desktop compatibility."""
         server, db = self._connect_amo_server_db()
@@ -245,6 +333,52 @@ class OptimizedQueryExecutor:
                     except Exception:
                         # Continue on per-datasource read errors
                         pass
+            # Also crawl partitions to infer data sources when DataSources is sparse
+            try:
+                if hasattr(model, 'Tables'):
+                    for tbl in model.Tables:
+                        for part in getattr(tbl, 'Partitions', []):
+                            try:
+                                ds = getattr(part, 'DataSource', None)
+                                if ds:
+                                    ds_type = type(ds).__name__
+                                    entry = {
+                                        'DataSourceID': getattr(ds, 'Name', None) or getattr(ds, 'ID', None),
+                                        'Name': getattr(ds, 'Name', None) or 'DataSource',
+                                        'Type': ds_type,
+                                        'FromPartition': getattr(part, 'Name', None),
+                                        'Table': getattr(tbl, 'Name', None)
+                                    }
+                                    # Dedup by DataSourceID + Name
+                                    if not any((r.get('DataSourceID') == entry['DataSourceID'] and r.get('Name') == entry['Name']) for r in rows):
+                                        rows.append(entry)
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+            # As a last resort, scan model.Expressions for M that declare sources
+            try:
+                exprs = getattr(model, 'Expressions', None)
+                if exprs is not None:
+                    for exp in exprs:
+                        try:
+                            name = getattr(exp, 'Name', None) or 'Expression'
+                            kind = str(getattr(exp, 'Kind', 'M'))
+                            if isinstance(kind, str) and '.' in kind:
+                                kind = kind.split('.')[-1]
+                            if kind.upper() == 'M':
+                                entry = {
+                                    'DataSourceID': name,
+                                    'Name': name,
+                                    'Description': 'From Expressions collection',
+                                    'Type': 'Expression'
+                                }
+                                if not any((x.get('DataSourceID') == entry['DataSourceID'] and x.get('Type') == entry['Type']) for x in rows):
+                                    rows.append(entry)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
             return {'success': True, 'rows': rows, 'row_count': len(rows), 'method': 'TOM'}
         except Exception as e:
             return {'success': False, 'error': str(e)}
@@ -317,8 +451,9 @@ class OptimizedQueryExecutor:
             id_by_name: Dict[str, Any] = {}
             name_by_id: Dict[Any, str] = {}
             for row in result.get('rows', []):
-                name = row.get('Name')
-                tid = row.get('ID') if 'ID' in row else row.get('TableID')
+                # Accept bracketed key variants from some Desktop builds
+                name = row.get('Name') or row.get('[Name]') or row.get('TABLE_NAME') or row.get('[TABLE_NAME]')
+                tid = (row.get('ID') if 'ID' in row else None) or row.get('TableID') or row.get('[ID]') or row.get('[TableID]')
                 if name is not None and tid is not None:
                     id_by_name[name] = tid
                     name_by_id[tid] = name
@@ -508,29 +643,43 @@ class OptimizedQueryExecutor:
                 else:
                     filter_expr = table_filter
 
+            # Prefer plain INFO.* for broad compatibility; optionally attempt selective projection
+            inner = f"INFO.{function_name}()"
+            query = f"EVALUATE {inner}"
+            if filter_expr:
+                query = f"EVALUATE FILTER({inner}, {filter_expr})"
+            # If caller asked to exclude heavy columns (e.g., Expression), try a projected SELECTCOLUMNS,
+            # but fall back to plain INFO.* if projection fails on this Desktop build.
             if exclude_columns:
                 cols = self._get_info_columns(function_name)
-                selected = [f'"{col}", [{col}]' for col in cols if col not in exclude_columns]
-                query = f"EVALUATE SELECTCOLUMNS(INFO.{function_name}(), {', '.join(selected)})"
+                try:
+                    selected = [f'"{col}", [{col}]' for col in cols if col not in exclude_columns]
+                    inner_proj = f"SELECTCOLUMNS({inner}, {', '.join(selected)})"
+                    query_proj = f"EVALUATE FILTER({inner_proj}, {filter_expr})" if filter_expr else f"EVALUATE {inner_proj}"
+                    res_proj = self.validate_and_execute_dax(query_proj, 0)
+                    if res_proj.get('success'):
+                        result = res_proj
+                    else:
+                        # Fallback to plain query
+                        result = self.validate_and_execute_dax(query, 0)
+                except Exception:
+                    result = self.validate_and_execute_dax(query, 0)
             else:
-                query = f"EVALUATE INFO.{function_name}()"
+                result = self.validate_and_execute_dax(query, 0)
+            # After here, 'result' holds execution
 
-            if filter_expr:
-                query = f"EVALUATE FILTER(INFO.{function_name}(), {filter_expr})"
-
-            result = self.validate_and_execute_dax(query, 0)
-
-            # Convert TableID to Table for better usability
-            if result.get('success') and function_name in ['MEASURES', 'COLUMNS']:
-                rows = result.get('rows', [])
+            # Normalize keys and convert TableID to Table for better usability
+            if result.get('success'):
+                rows = result.get('rows', []) or []
                 for row in rows:
-                    if 'TableID' in row and 'Table' not in row:
-                        name = self._get_table_name_from_id(row.get('TableID'))
-                        if name:
-                            row['Table'] = name
-                        else:
-                            # Fallback to string form of TableID
-                            row['Table'] = str(row.get('TableID'))
+                    # Normalize bracketed aliases if any
+                    for k in list(row.keys()):
+                        if k.startswith('[') and k.endswith(']'):
+                            row[k[1:-1]] = row.pop(k)
+                    if function_name in ['MEASURES', 'COLUMNS']:
+                        if 'Table' not in row and 'TableID' in row:
+                            name = self._get_table_name_from_id(row.get('TableID'))
+                            row['Table'] = name or (str(row.get('TableID')) if row.get('TableID') is not None else '')
 
             return result
         except Exception as e:
@@ -644,7 +793,8 @@ class OptimizedQueryExecutor:
                             row['Table'] = name or str(row.get('TableID'))
                     results_list.extend(r['rows'])
 
-            return {'success': True, 'results': results_list, 'count': len(results_list)}
+            # Return in a shape compatible with server pagination helpers
+            return {'success': True, 'rows': results_list, 'results': results_list, 'row_count': len(results_list), 'count': len(results_list)}
         except Exception as e:
             logger.error(f"Error searching objects: {e}")
             return {'success': False, 'error': str(e)}

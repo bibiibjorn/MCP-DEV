@@ -159,7 +159,21 @@ class RLSManager:
             if not tables_result.get('success'):
                 return tables_result
 
-            tables = [t.get('Name') for t in tables_result['rows']]
+            # Prefer visible, uniquely named tables to avoid skewed coverage
+            all_tables = tables_result.get('rows', [])
+            tables: List[str] = []
+            seen: set[str] = set()
+            for t in all_tables:
+                name = t.get('Name') or t.get('[Name]')
+                if not name:
+                    continue
+                hidden_val = t.get('IsHidden') or t.get('[IsHidden]')
+                is_hidden = bool(str(hidden_val).strip().lower() == 'true') if hidden_val is not None else bool(hidden_val)
+                if is_hidden:
+                    continue
+                if name not in seen:
+                    seen.add(str(name))
+                    tables.append(str(name))
 
             # Get roles
             roles_result = self.list_roles()
@@ -181,8 +195,8 @@ class RLSManager:
                 'total_tables': len(tables),
                 'tables_with_rls': len(tables_with_rls),
                 'tables_without_rls': len(tables_without_rls),
-                'uncovered_tables': tables_without_rls[:20],  # First 20
-                'coverage_percentage': round((len(tables_with_rls) / len(tables) * 100), 1) if tables else 0,
+                'uncovered_tables': sorted(list(tables_without_rls))[:20],  # First 20 unique, sorted for stability
+                'coverage_percentage': round((len(tables_with_rls) / len(tables) * 100.0), 1) if tables else 0.0,
                 'recommendation': 'Review tables without RLS to ensure they do not contain sensitive data'
             }
 
