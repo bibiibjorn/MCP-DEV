@@ -1,10 +1,10 @@
-# Install PBIXRay Server to Claude Desktop
+# Install MCP-PowerBi-Finvision Server to Claude Desktop
 $projectRoot = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 $pythonExe = Join-Path $projectRoot "venv\Scripts\python.exe"
 $serverScript = Join-Path $projectRoot "src\pbixray_server_enhanced.py"
 $configPath = "$env:APPDATA\Claude\claude_desktop_config.json"
 
-Write-Host "Installing PBIXRay Server to Claude Desktop..." -ForegroundColor Cyan
+Write-Host "Installing MCP-PowerBi-Finvision Server to Claude Desktop..." -ForegroundColor Cyan
 Write-Host ""
 
 # Verify files exist
@@ -51,8 +51,8 @@ if (-not $config.mcpServers) {
     $config | Add-Member -MemberType NoteProperty -Name "mcpServers" -Value @{} -Force
 }
 
-# Add or update the PBIXRAY-V2 server
-$config.mcpServers."PBIXRAY-V2" = @{
+# Add or update the MCP-PowerBi-Finvision server
+$config.mcpServers."MCP-PowerBi-Finvision" = @{
     command = $pythonExe
     args = @($serverScript)
 }

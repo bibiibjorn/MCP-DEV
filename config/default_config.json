@@ -1,6 +1,6 @@
 {
   "server": {
-    "name": "pbixray-v2.3",
+  "name": "MCP-PowerBi-Finvision",
     "log_level": "INFO",
     "timeout_seconds": 60
   },

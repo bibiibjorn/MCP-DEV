@@ -162,15 +162,15 @@ class CalculationGroupManager:
                 # Add to the table's Columns collection for TOM >= 19.x
                 table.Columns.Add(cg_col)
             except Exception:
-                # Older TOM fallback: use a generic Column as string
+                # Older TOM fallback: use a concrete DataColumn (not abstract Column) as string
                 try:
-                    col = Tabular.Column()
-                    col.Name = name
+                    data_col = Tabular.DataColumn()
+                    data_col.Name = name
                     try:
-                        col.DataType = Tabular.DataType.String
+                        data_col.DataType = Tabular.DataType.String
                     except Exception:
                         pass
-                    table.Columns.Add(col)
+                    table.Columns.Add(data_col)
                 except Exception as inner_e:
                     return {'success': False, 'error': 'Failed to create calculation group column', 'details': str(inner_e)}
 

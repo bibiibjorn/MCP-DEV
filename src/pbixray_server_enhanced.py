@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PBIXRay MCP Server v2.3 - Professional Edition
+MCP-PowerBi-Finvision Server v2.3 - Professional Edition
 Uses modular core services with enhanced DAX execution and error handling.
 """
 
@@ -59,14 +59,14 @@ try:
     BPA_AVAILABLE = True
     BPA_STATUS["available"] = True
 except ImportError as e:
-    logging.getLogger("pbixray_v2.3").warning(f"BPA not available: {e}")
+    logging.getLogger("mcp_powerbi_finvision").warning(f"BPA not available: {e}")
     BPA_STATUS["reason"] = str(e)
 except Exception as e:
-    logging.getLogger("pbixray_v2.3").warning(f"Unexpected error loading BPA: {e}")
+    logging.getLogger("mcp_powerbi_finvision").warning(f"Unexpected error loading BPA: {e}")
     BPA_STATUS["reason"] = str(e)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("pbixray_v2.3")
+logger = logging.getLogger("mcp_powerbi_finvision")
 
 # Configure file-based logging so get_recent_logs can read from a stable file
 try:
@@ -94,7 +94,7 @@ _telemetry = deque(maxlen=_TELEMETRY_MAX)
 connection_manager = ConnectionManager()
 connection_state.set_connection_manager(connection_manager)
 
-app = Server("pbixray-v2.3")
+app = Server("MCP-PowerBi-Finvision")
 agent_policy = AgentPolicy(config)
 
 
@@ -577,6 +577,10 @@ def _handle_connection_and_instances(name: str, arguments: Any) -> Optional[dict
                     excerpt = _generate_quickstart_markdown().splitlines()[:16]
                     result['quickstart_excerpt'] = "\n".join(excerpt)
                     result['open_hint'] = "Open the quickstart_guide path locally to view the full PDF."
+                    # Add an explicit top-level message/notes so clients like Claude show it
+                    msg = f"Connected successfully. Quickstart guide available at: {result['quickstart_guide']}"
+                    result.setdefault('message', msg)
+                    result.setdefault('notes', []).append(msg)
                 except Exception:
                     pass
             except Exception:
@@ -626,9 +630,9 @@ def _write_quickstart_assets(guides_dir: str) -> None:
 def _generate_quickstart_markdown() -> str:
     now = datetime.now().strftime('%Y-%m-%d')
     lines = [
-        f"# PBIXRAY Quickstart Guide ({now})",
+        f"# MCP-PowerBi-Finvision Quickstart Guide ({now})",
         "",
-        "PBIXRAY is a Model Context Protocol (MCP) server for Power BI Desktop. It lets tools/agents inspect and analyze your open model safely.",
+        "MCP-PowerBi-Finvision is a Model Context Protocol (MCP) server for Power BI Desktop. It lets tools/agents inspect and analyze your open model safely.",
         "",
         "What you can do:",
         "- Connect to an open Power BI Desktop model",
@@ -649,7 +653,7 @@ def _generate_quickstart_markdown() -> str:
         "",
         "Tips:",
         "- Large results are paged; use page_size + next_token",
-        "- Some Desktop builds hide DMVs; PBIXRAY falls back to TOM or client-side filtering",
+        "- Some Desktop builds hide DMVs; the server falls back to TOM or client-side filtering",
         "- Use list_tools to see all tool names and schemas",
         "",
         "Troubleshooting:",
@@ -1857,7 +1861,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
 
 async def main():
     logger.info("=" * 80)
-    logger.info(f"PBIXRay MCP Server v{__version__} - Complete Edition")
+    logger.info(f"MCP-PowerBi-Finvision Server v{__version__} - Complete Edition")
     logger.info("=" * 80)
     logger.info("Tools available")
 
@@ -1872,7 +1876,7 @@ async def main():
                 _write_quickstart_assets(guides_dir)
             # Build a concise intro that many MCP clients render on startup
             lines = [
-                f"PBIXRAY v{__version__} — Power BI Desktop MCP server.",
+                f"MCP-PowerBi-Finvision v{__version__} — Power BI Desktop MCP server.",
                 "",
                 "What you can do:",
                 "- Connect to your open Power BI Desktop instance",
@@ -1892,7 +1896,7 @@ async def main():
         except Exception:
             # Last-resort short instructions
             return (
-                f"PBIXRAY v{__version__}. Start by running 'connection: detect powerbi desktop' and then 'connection: connect to powerbi'. "
+                f"MCP-PowerBi-Finvision v{__version__}. Start by running 'connection: detect powerbi desktop' and then 'connection: connect to powerbi'. "
                 "Use list_tools to see available operations."
             )
 

@@ -44,7 +44,7 @@ if (-not $PythonPath) {
 }
 
 # Build MCP server entry
-$displayName = 'PBIXRay MCP Server'
+$displayName = 'MCP-PowerBi-Finvision'
 $envVars = @{}
 
 $json = [ordered]@{
@@ -56,7 +56,7 @@ $json = [ordered]@{
 
 # Output instructions
 Write-Host "" -ForegroundColor Cyan
-Write-Host "PBIXRay MCP Server – ChatGPT MCP Configuration" -ForegroundColor Cyan
+Write-Host "MCP-PowerBi-Finvision – ChatGPT MCP Configuration" -ForegroundColor Cyan
 Write-Host "------------------------------------------------" -ForegroundColor Cyan
 Write-Host "1) Open ChatGPT > Settings > Tools > Developer > Add a Model Context Protocol (MCP) server" -ForegroundColor Gray
 Write-Host "2) Use the following JSON for the server configuration:" -ForegroundColor Gray
@@ -73,7 +73,7 @@ if ($CopyToClipboard) {
     }
 }
 
-Write-Host "3) Save, then in ChatGPT start using the 'PBIXRay MCP Server' tool." -ForegroundColor Gray
+Write-Host "3) Save, then in ChatGPT start using the 'MCP-PowerBi-Finvision' tool." -ForegroundColor Gray
 Write-Host "If Python packages are missing, install them via:" -ForegroundColor Gray
 Write-Host "   pip install -r requirements.txt" -ForegroundColor DarkGray
 Write-Host "(Run that from the repo root: $RootDir)" -ForegroundColor DarkGray

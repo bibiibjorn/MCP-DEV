@@ -1,4 +1,4 @@
-# PBIXRay MCP Server (v2.3)
+# MCP-PowerBi-Finvision Server (v2.3)
 
 Powerful local MCP server that lets Claude analyze your Power BI Desktop models: explore schema, inspect DAX and M, run performance analysis (SE/FE), export model metadata, and more — all via natural language.
 

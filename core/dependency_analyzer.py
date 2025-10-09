@@ -570,7 +570,7 @@ class DependencyAnalyzer:
                 'used_in_relationships': []
             }
 
-            # Check measures (transitively)
+            # Check measures (transitively) using computed index
             idx = self._get_measure_columns_index()
             for me_key, cols in idx.items():
                 if col_ref in cols or f"{t_norm}[{c_norm}]" in cols:
@@ -581,6 +581,18 @@ class DependencyAnalyzer:
                     except Exception:
                         t, mname = '', me_key
                     usage['used_in_measures'].append({'measure': mname, 'table': t})
+
+            # Fallback: direct regex search in measure expressions for environments where
+            # INFO.MEASURES()/TOM normalization mismatches lead to empty transitive results
+            if not usage['used_in_measures']:
+                measures = self._get_all_measures()
+                # Pattern that tolerates quotes around table name and escapes brackets
+                import re as _re
+                pattern = _re.compile(r"(?:'" + _re.escape(t_norm) + r"'|" + _re.escape(t_norm) + r")\[" + _re.escape(c_norm) + r"\]", _re.IGNORECASE)
+                for m in measures:
+                    expr = str(m.get('Expression') or '')
+                    if pattern.search(expr):
+                        usage['used_in_measures'].append({'measure': m.get('Name', ''), 'table': m.get('Table', '')})
 
             # Check calculated columns
             calc_cols_query = f'EVALUATE FILTER(INFO.COLUMNS(), [Type] = {COLUMN_TYPE_CALCULATED})'

@@ -1,6 +1,6 @@
-# PBIXRAY Quickstart Guide (2025-10-09)
+# MCP-PowerBi-Finvision Quickstart Guide (2025-10-09)
 
-PBIXRAY is a Model Context Protocol (MCP) server for Power BI Desktop. It lets tools/agents inspect and analyze your open model safely.
+MCP-PowerBi-Finvision is a Model Context Protocol (MCP) server for Power BI Desktop. It lets tools/agents inspect and analyze your open model safely.
 
 What you can do:
 - Connect to an open Power BI Desktop model
@@ -21,7 +21,7 @@ Popular tools (friendly names):
 
 Tips:
 - Large results are paged; use page_size + next_token
-- Some Desktop builds hide DMVs; PBIXRAY falls back to TOM or client-side filtering
+- Some Desktop builds hide DMVs; the server falls back to TOM or client-side filtering
 - Use list_tools to see all tool names and schemas
 
 Troubleshooting:
