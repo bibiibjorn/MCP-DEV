@@ -1,14 +1,21 @@
 {
   "server": {
-  "name": "MCP-PowerBi-Finvision",
+    "name": "MCP-PowerBi-Finvision",
     "log_level": "INFO",
-    "timeout_seconds": 60
+    "timeout_seconds": 60,
+    "tool_names_mode": "friendly"
   },
   "performance": {
     "cache_ttl_seconds": 300,
+    "cache_max_entries": 1000,
+    "cache_max_size_mb": 100,
+    "cache_eviction_policy": "lru",
     "max_query_timeout": 60,
     "default_top_n": 1000,
-    "enable_trace_logging": false
+    "enable_trace_logging": false,
+    "trace_mode": "full",
+    "trace_init_retries": 2,
+    "trace_init_backoff_ms": 150
   },
   "detection": {
     "cache_instances_seconds": 60,
@@ -41,5 +48,44 @@
     "max_columns_per_rule": 1000,
     "max_measures_per_rule": 1000,
     "max_relationships_per_rule": 1000
+  },
+  "rate_limiting": {
+    "enabled": true,
+    "profile": "balanced",
+    "global_calls_per_second": 10,
+    "global_burst": 20,
+    "tool_limits": {
+      "run_dax": 5,
+      "analyze_model_bpa": 1,
+      "full_analysis": 0.5,
+      "analyze_queries_batch": 2
+    },
+    "tool_bursts": {
+      "run_dax": 10,
+      "analyze_model_bpa": 3,
+      "full_analysis": 2,
+      "analyze_queries_batch": 5
+    }
+  },
+  "security": {
+    "enable_input_validation": true,
+    "strict_m_validation": false,
+    "max_export_path_length": 260,
+    "allowed_export_extensions": [".json", ".csv", ".txt", ".xlsx", ".xml", ".graphml", ".yaml", ".yml"]
+  },
+  "tool_timeouts": {
+    "list_tables": 5,
+    "list_columns": 5,
+    "list_measures": 5,
+    "list_relationships": 10,
+    "describe_table": 10,
+    "preview_table_data": 15,
+    "run_dax": 60,
+    "analyze_model_bpa": 180,
+    "full_analysis": 300,
+    "analyze_queries_batch": 180,
+    "export_tmsl": 30,
+    "export_tmdl": 60,
+    "generate_documentation": 60
   }
 }

@@ -56,11 +56,6 @@ if not col:
 
 print('Sample table/column:', tab, col)
 
-heat = call('get_column_usage_heatmap', {'table': tab, 'limit': 25})
-print('heatmap count:', heat.get('count'))
-if isinstance(heat, dict):
-    print('heatmap first:', (heat.get('results') or [])[:2])
-
 au = call('analyze_column_usage', {'table': tab, 'column': col})
 print('usage summary:', au.get('summary'))
 

@@ -26,27 +26,71 @@ class DependencyAnalyzer:
     def _get_all_measures(self) -> List[Dict[str, Any]]:
         """Return all measures with (Table, Name, Expression). Cached implicitly by caller indexes."""
         try:
+            # FIX: Use execute_info_query() which handles TableID->Table conversion automatically
             res = self.executor.execute_info_query("MEASURES")
             if res.get('success'):
-                return res.get('rows', [])
+                rows = res.get('rows', [])
+                # Ensure all rows have Table field (should be set by execute_info_query)
+                for row in rows:
+                    if 'Table' not in row:
+                        row['Table'] = ''
+                return rows
             # Fallback to TOM when DMV blocked
             tom = getattr(self.executor, 'enumerate_measures_tom', None)
             if tom:
                 tr = tom()
                 if tr.get('success'):
                     return tr.get('rows', [])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"_get_all_measures fallback: {e}")
+            # Last resort: try TOM
+            tom = getattr(self.executor, 'enumerate_measures_tom', None)
+            if tom:
+                tr = tom()
+                if tr.get('success'):
+                    return tr.get('rows', [])
         return []
+
+    def _normalize_identifier(self, val: Any) -> str:
+        """Normalize identifiers by stripping brackets, quotes, and whitespace."""
+        try:
+            s = str(val or "").strip()
+            # Remove wrapping brackets
+            if s.startswith("[") and s.endswith("]"):
+                s = s[1:-1]
+            # Remove wrapping quotes
+            if s.startswith("'") and s.endswith("'"):
+                s = s[1:-1]
+            if s.startswith('"') and s.endswith('"'):
+                s = s[1:-1]
+            return s.strip()
+        except Exception:
+            return ""
+
+    def _extract_table_name(self, row: dict) -> str:
+        """Extract table name from a DMV row, trying multiple field name variants."""
+        for key in ['Table', 'TABLE_NAME', 'TableName', 'table', '[Table]', 'TABLE', '[TABLE_NAME]']:
+            if key in row and row[key] not in (None, ""):
+                return self._normalize_identifier(row[key])
+        return ""
+
+    def _extract_measure_name(self, row: dict) -> str:
+        """Extract measure name from a DMV row, trying multiple field name variants."""
+        for key in ['Name', 'MEASURE_NAME', 'MeasureName', '[Name]', '[MEASURE_NAME]']:
+            if key in row and row[key] not in (None, ""):
+                return self._normalize_identifier(row[key])
+        return ""
 
     def _measure_full_name(self, table: Optional[str], name: Optional[str]) -> Optional[str]:
         if not name:
             return None
-        t = (table or '').strip()
-        n = (name or '').strip()
+        t = self._normalize_identifier(table or '')
+        n = self._normalize_identifier(name or '')
         if not n:
             return None
-        return f"{t}[{n}]" if t else n
+        # Always return Table[Measure] format for consistent parsing
+        # Use empty string as table when unknown (will be resolved during build)
+        return f"{t}[{n}]"
 
     def _build_measure_dependency_index(self) -> Dict[str, Set[str]]:
         """Build a graph mapping measure full name -> referenced measure full names.
@@ -61,8 +105,8 @@ class DependencyAnalyzer:
         by_table: Dict[str, Set[str]] = {}
         all_full: Set[str] = set()
         for m in measures:
-            tbl = m.get('Table') or ''
-            nm = m.get('Name')
+            tbl = self._extract_table_name(m)
+            nm = self._extract_measure_name(m)
             if nm:
                 by_table.setdefault(tbl, set()).add(nm)
                 fn = self._measure_full_name(tbl, nm)
@@ -71,20 +115,29 @@ class DependencyAnalyzer:
 
         dep_index: Dict[str, Set[str]] = {}
         for m in measures:
-            if not m.get('Name'):
+            nm = self._extract_measure_name(m)
+            if not nm:
                 continue
-            key = self._measure_full_name(m.get('Table') or '', m.get('Name'))
+            key = self._measure_full_name(self._extract_table_name(m), nm)
             if key is None:
                 continue
             dep_index[key] = set()
+        
         # Regexes
         bare_measure = re.compile(r"(?<!['\w])\[([^\]]+)\]")
         qualified = re.compile(r"(?:'([^']+)'|\b(\w+))\[([^\]]+)\]")
 
         for m in measures:
-            tbl = m.get('Table') or ''
-            nm = m.get('Name')
-            expr = m.get('Expression') or ''
+            tbl = self._extract_table_name(m)
+            nm = self._extract_measure_name(m)
+            # Try multiple expression field names
+            expr = None
+            for key in ['Expression', '[Expression]', 'EXPRESSION']:
+                if key in m:
+                    expr = m.get(key)
+                    break
+            if not expr:
+                expr = ""
             me_key = self._measure_full_name(tbl, nm)
             if not me_key:
                 continue
@@ -113,21 +166,27 @@ class DependencyAnalyzer:
         # Build catalogs to disambiguate bare or qualified tokens
         by_table_measures: Dict[str, Set[str]] = {}
         for m in measures:
-            mt = (m.get('Table') or '')
-            mn = m.get('Name')
+            mt = self._extract_table_name(m)
+            mn = self._extract_measure_name(m)
             if mn:
                 by_table_measures.setdefault(mt, set()).add(mn)
         by_table_columns = self._get_columns_by_table()
         for m in measures:
-            tbl = m.get('Table') or ''
-            nm = m.get('Name')
+            tbl = self._extract_table_name(m)
+            nm = self._extract_measure_name(m)
             key = self._measure_full_name(tbl, nm)
             if not key:
                 continue
-            expr = m.get('Expression') or ''
+            # Try multiple expression field names
+            expr = None
+            for field in ['Expression', '[Expression]', 'EXPRESSION']:
+                if field in m:
+                    expr = m.get(field)
+                    break
+            if not expr:
+                expr = ""
             refs = self._extract_dax_references(expr, current_table=tbl, measures_by_table=by_table_measures, columns_by_table=by_table_columns)
             cols = set(refs.get('columns', []) or [])
-            # Some expressions include table name without columns; ignore here for precision
             direct[key] = cols
         return direct
 
@@ -147,10 +206,20 @@ class DependencyAnalyzer:
                     if isinstance(tr, dict) and tr.get('success'):
                         rows = tr.get('rows', []) or []
             for r in rows or []:
-                t = r.get('Table') or r.get('[Table]') or r.get('TABLE_NAME') or r.get('[TABLE_NAME]') or ''
-                n = r.get('Name') or r.get('[Name]') or r.get('COLUMN_NAME') or r.get('[COLUMN_NAME]') or ''
+                # Try multiple table field variants
+                t = None
+                for tkey in ['Table', '[Table]', 'TABLE_NAME', '[TABLE_NAME]', 'TableName']:
+                    if tkey in r and r[tkey]:
+                        t = self._normalize_identifier(r[tkey])
+                        break
+                # Try multiple column field variants
+                n = None
+                for ckey in ['Name', '[Name]', 'COLUMN_NAME', '[COLUMN_NAME]', 'ColumnName']:
+                    if ckey in r and r[ckey]:
+                        n = self._normalize_identifier(r[ckey])
+                        break
                 if t and n:
-                    catalog.setdefault(str(t), set()).add(str(n))
+                    catalog.setdefault(t, set()).add(n)
         except Exception:
             pass
         self._columns_by_table_cache = catalog
@@ -216,9 +285,10 @@ class DependencyAnalyzer:
         # Qualified tokens: 'Table'[Name] or Table[Name]
         qual_tokens = re.findall(r"(?:'([^']+)'|\b(\w+))\[([^\]]+)\]", clean_expr)
         for q in qual_tokens:
-            table = (q[0] or q[1]) or ''
-            name = q[2]
-            tables.add(table)
+            table = self._normalize_identifier(q[0] or q[1] or '')
+            name = self._normalize_identifier(q[2])
+            if table:
+                tables.add(table)
             if measures_by_table and name in measures_by_table.get(table, set()):
                 measures.add(name)
             elif columns_by_table and name in columns_by_table.get(table, set()):
@@ -230,6 +300,7 @@ class DependencyAnalyzer:
         # Bare tokens: [Name] not preceded by table identifier
         bare_tokens = re.findall(r"(?<!['\w])\[([^\]]+)\]", clean_expr)
         for name in bare_tokens:
+            name = self._normalize_identifier(name)
             # Prefer column in current table if known; else a measure if known
             if current_table and columns_by_table and name in columns_by_table.get(current_table, set()):
                 columns.add(f"{current_table}[{name}]")
@@ -242,10 +313,12 @@ class DependencyAnalyzer:
         # RELATED, RELATEDTABLE functions
         related_refs = re.findall(r"RELATED(?:TABLE)?\s*\(\s*(?:'([^']+)'|(\w+))\[([^\]]+)\]", clean_expr)
         for match in related_refs:
-            table = match[0] or match[1]
-            column = match[2]
-            tables.add(table)
-            columns.add(f"{table}[{column}]")
+            table = self._normalize_identifier(match[0] or match[1])
+            column = self._normalize_identifier(match[2])
+            if table:
+                tables.add(table)
+            if table and column:
+                columns.add(f"{table}[{column}]")
 
         return {
             "tables": sorted(list(tables)),
@@ -293,21 +366,12 @@ class DependencyAnalyzer:
                         if tr.get('success'):
                             all_measures = tr
                 if all_measures.get('success'):
-                    def _norm(s: str | None) -> str:
-                        if not s:
-                            return ""
-                        s = str(s)
-                        if s.startswith('[') and s.endswith(']'):
-                            s = s[1:-1]
-                        if s.startswith('"') and s.endswith('"'):
-                            s = s[1:-1]
-                        return s
-                    t_norm = _norm(table)
-                    m_norm = _norm(measure)
+                    t_norm = self._normalize_identifier(table)
+                    m_norm = self._normalize_identifier(measure)
                     rows = []
                     for r in all_measures.get('rows', []) or []:
-                        rt = _norm(r.get('Table') or r.get('TableName') or r.get('TABLE_NAME') or r.get('[TABLE_NAME]'))
-                        rn = _norm(r.get('Name') or r.get('MEASURE_NAME') or r.get('[MEASURE_NAME]') or r.get('[Name]'))
+                        rt = self._extract_table_name(r)
+                        rn = self._extract_measure_name(r)
                         if rt == t_norm and rn == m_norm:
                             rows.append(r)
                     if rows:
@@ -320,15 +384,21 @@ class DependencyAnalyzer:
                     }
 
             measure_data = measure_result['rows'][0]
-            expression = measure_data.get('Expression', '') or measure_data.get('[Expression]', '')
+            expression = None
+            for key in ['Expression', '[Expression]', 'EXPRESSION']:
+                if key in measure_data:
+                    expression = measure_data.get(key, '') or ''
+                    break
+            if expression is None:
+                expression = ''
 
             # Extract direct dependencies with disambiguation catalogs
             by_table_measures: Dict[str, Set[str]] = {}
             try:
                 all_meas = self._get_all_measures()
                 for mm in all_meas:
-                    mt = (mm.get('Table') or '')
-                    mn = mm.get('Name')
+                    mt = self._extract_table_name(mm)
+                    mn = self._extract_measure_name(mm)
                     if mn:
                         by_table_measures.setdefault(mt, set()).add(mn)
             except Exception:
@@ -376,7 +446,11 @@ class DependencyAnalyzer:
         downstream = []
 
         for m in all_measures:
-            expr = m.get('Expression', '')
+            expr = None
+            for key in ['Expression', '[Expression]', 'EXPRESSION']:
+                if key in m:
+                    expr = m.get(key, '') or ''
+                    break
             if not expr:
                 continue
 
@@ -384,8 +458,8 @@ class DependencyAnalyzer:
             refs = self._extract_dax_references(expr)
             if measure_name in refs['measures']:
                 downstream.append({
-                    'measure': m.get('Name'),
-                    'table': m.get('Table'),
+                    'measure': self._extract_measure_name(m),
+                    'table': self._extract_table_name(m),
                     'expression': expr[:200]  # Truncate for readability
                 })
 
@@ -447,94 +521,61 @@ class DependencyAnalyzer:
             referenced_columns = set()
             referenced_tables = set()
 
-            # Helper maps to resolve IDs -> names when Desktop returns only ID fields
-            tables_by_id = {}
-            try:
-                for t in tables:
-                    tid = t.get('ID') or t.get('TableID') or t.get('[ID]') or t.get('[TableID]')
-                    nm = t.get('Name') or t.get('[Name]')
-                    if tid is not None and nm:
-                        tables_by_id[str(tid)] = str(nm)
-            except Exception:
-                pass
-            columns_by_id = {}
-            try:
-                for c in columns:
-                    cid = c.get('ID') or c.get('ColumnID') or c.get('[ID]') or c.get('[ColumnID]')
-                    table_name = c.get('Table') or c.get('[Table]')
-                    name = c.get('Name') or c.get('[Name]')
-                    if cid is not None:
-                        columns_by_id[str(cid)] = {
-                            'table': str(table_name) if table_name else None,
-                            'name': str(name) if name else None,
-                        }
-            except Exception:
-                pass
-
-            # Normalize helper
-            def _norm_name(v: Any) -> str:
-                s = str(v or '')
-                if s.startswith('[') and s.endswith(']'):
-                    s = s[1:-1]
-                if s.startswith('"') and s.endswith('"'):
-                    s = s[1:-1]
-                return s
-
             # Analyze all measure expressions with catalogs
             by_table_measures: Dict[str, Set[str]] = {}
             for mm in measures:
-                mt = (mm.get('Table') or '')
-                mn = mm.get('Name')
+                mt = self._extract_table_name(mm)
+                mn = self._extract_measure_name(mm)
                 if mn:
                     by_table_measures.setdefault(mt, set()).add(mn)
             by_table_columns = self._get_columns_by_table()
+            
             for m in measures:
-                expr = m.get('Expression', '')
-                current_tbl = m.get('Table') or ''
+                expr = None
+                for key in ['Expression', '[Expression]', 'EXPRESSION']:
+                    if key in m:
+                        expr = m.get(key, '') or ''
+                        break
+                if not expr:
+                    expr = ''
+                current_tbl = self._extract_table_name(m)
                 refs = self._extract_dax_references(expr, current_table=current_tbl, measures_by_table=by_table_measures, columns_by_table=by_table_columns)
 
                 referenced_measures.update(refs['measures'])
                 referenced_columns.update(refs['columns'])
                 referenced_tables.update(refs['tables'])
 
-            # Also count columns participating in relationships as used tables
-
-            # Check relationships for table/column usage (resolve IDs when names absent)
+            # Check relationships for table/column usage
             rels_result = self.executor.execute_info_query("RELATIONSHIPS")
             if rels_result.get('success'):
                 for rel in rels_result['rows']:
-                    ft = rel.get('FromTable') or rel.get('[FromTable]')
-                    tt = rel.get('ToTable') or rel.get('[ToTable]')
-                    fc = rel.get('FromColumn') or rel.get('[FromColumn]')
-                    tc = rel.get('ToColumn') or rel.get('[ToColumn]')
-                    # Resolve via IDs if names missing
-                    if not ft:
-                        ftid = rel.get('FromTableID') or rel.get('[FromTableID]')
-                        if ftid is not None and str(ftid) in tables_by_id:
-                            ft = tables_by_id[str(ftid)]
-                    if not tt:
-                        ttid = rel.get('ToTableID') or rel.get('[ToTableID]')
-                        if ttid is not None and str(ttid) in tables_by_id:
-                            tt = tables_by_id[str(ttid)]
-                    if not fc:
-                        fcid = rel.get('FromColumnID') or rel.get('[FromColumnID]')
-                        if fcid is not None and str(fcid) in columns_by_id:
-                            fc = columns_by_id[str(fcid)].get('name')
-                        # also try to pick table for this column if table still empty
-                        if not ft and fcid is not None and str(fcid) in columns_by_id:
-                            ft = columns_by_id[str(fcid)].get('table')
-                    if not tc:
-                        tcid = rel.get('ToColumnID') or rel.get('[ToColumnID]')
-                        if tcid is not None and str(tcid) in columns_by_id:
-                            tc = columns_by_id[str(tcid)].get('name')
-                        if not tt and tcid is not None and str(tcid) in columns_by_id:
-                            tt = columns_by_id[str(tcid)].get('table')
-
+                    # Try to extract from/to table and column names with normalization
+                    ft = None
+                    for key in ['FromTable', '[FromTable]']:
+                        if key in rel and rel[key]:
+                            ft = self._normalize_identifier(rel[key])
+                            break
+                    tt = None
+                    for key in ['ToTable', '[ToTable]']:
+                        if key in rel and rel[key]:
+                            tt = self._normalize_identifier(rel[key])
+                            break
+                    fc = None
+                    for key in ['FromColumn', '[FromColumn]']:
+                        if key in rel and rel[key]:
+                            fc = self._normalize_identifier(rel[key])
+                            break
+                    tc = None
+                    for key in ['ToColumn', '[ToColumn]']:
+                        if key in rel and rel[key]:
+                            tc = self._normalize_identifier(rel[key])
+                            break
+                    
                     # Only add when we have at least the table names
                     if ft:
-                        referenced_tables.add(str(ft))
+                        referenced_tables.add(ft)
                     if tt:
-                        referenced_tables.add(str(tt))
+                        referenced_tables.add(tt)
                     if ft and fc:
                         referenced_columns.add(f"{ft}[{fc}]")
                     if tt and tc:
@@ -546,14 +587,14 @@ class DependencyAnalyzer:
                     rr = tom_rels()
                     if rr.get('success'):
                         for rel in rr['rows']:
-                            ft = rel.get('FromTable')
-                            tt = rel.get('ToTable')
-                            fc = rel.get('FromColumn')
-                            tc = rel.get('ToColumn')
+                            ft = self._normalize_identifier(rel.get('FromTable', ''))
+                            tt = self._normalize_identifier(rel.get('ToTable', ''))
+                            fc = self._normalize_identifier(rel.get('FromColumn', ''))
+                            tc = self._normalize_identifier(rel.get('ToColumn', ''))
                             if ft:
-                                referenced_tables.add(str(ft))
+                                referenced_tables.add(ft)
                             if tt:
-                                referenced_tables.add(str(tt))
+                                referenced_tables.add(tt)
                             if ft and fc:
                                 referenced_columns.add(f"{ft}[{fc}]")
                             if tt and tc:
@@ -562,43 +603,43 @@ class DependencyAnalyzer:
             # Find unused objects
             unused_measures = []
             for m in measures:
-                mname = _norm_name(m.get('Name') or m.get('[Name]') or m.get('MEASURE_NAME') or m.get('[MEASURE_NAME]'))
+                mname = self._extract_measure_name(m)
                 if mname not in referenced_measures:
                     # Skip if it's hidden (likely internal)
                     hidden = bool(m.get('IsHidden')) if 'IsHidden' in m else False
                     if not hidden:
                         unused_measures.append({
                             'name': mname,
-                            'table': _norm_name(m.get('Table') or m.get('[Table]') or m.get('TableName') or m.get('[TableName]'))
+                            'table': self._extract_table_name(m)
                         })
 
             unused_columns = []
             for c in columns:
-                # Coalesce to safe strings; attempt to resolve table via ID map
-                tbl = _norm_name(c.get('Table') or c.get('[Table]') or c.get('TABLE_NAME') or c.get('[TABLE_NAME]'))
-                if not tbl:
-                    tid = c.get('TableID') or c.get('ID') or c.get('[TableID]') or c.get('[ID]')
-                    if tid is not None and str(tid) in tables_by_id:
-                        tbl = tables_by_id[str(tid)]
-                name = _norm_name(c.get('Name') or c.get('[Name]') or c.get('COLUMN_NAME') or c.get('[COLUMN_NAME]') or '')
-                col_ref = f"{tbl}[{name}]" if tbl else f"[${name}]"
+                tbl = self._extract_table_name(c)
+                name = None
+                for key in ['Name', '[Name]', 'COLUMN_NAME', '[COLUMN_NAME]']:
+                    if key in c and c[key]:
+                        name = self._normalize_identifier(c[key])
+                        break
+                
+                col_ref = f"{tbl}[{name}]" if tbl and name else f"[${name}]"
                 if col_ref not in referenced_columns:
                     # Skip hidden and key columns
                     hidden = bool(c.get('IsHidden')) if 'IsHidden' in c else False
                     is_key = bool(c.get('IsKey')) if 'IsKey' in c else False
                     if not hidden and not is_key:
                         unused_columns.append({
-                            'name': name,
-                            'table': tbl,
+                            'name': name if name else '',
+                            'table': tbl if tbl else '',
                             'type': c.get('Type')
                         })
 
             unused_tables = []
             for t in tables:
-                tname = _norm_name(t.get('Name') or t.get('[Name]') or t.get('TABLE_NAME') or t.get('[TABLE_NAME]'))
+                tname = self._extract_table_name(t)
                 if tname not in referenced_tables:
                     # Check if table has any non-calculated columns (data table)
-                    table_cols = [col for col in columns if _norm_name(col.get('Table') or col.get('[Table]') or col.get('TABLE_NAME') or col.get('[TABLE_NAME]')) == tname]
+                    table_cols = [col for col in columns if self._extract_table_name(col) == tname]
                     hidden = bool(t.get('IsHidden')) if 'IsHidden' in t else False
                     if table_cols and not hidden:
                         unused_tables.append({
@@ -624,17 +665,8 @@ class DependencyAnalyzer:
     def analyze_column_usage(self, table: str, column: str) -> Dict[str, Any]:
         """Analyze where a column is used in the model."""
         try:
-            # Normalize identifiers for robust matching across DMV/TOM variants
-            def _norm(s: Optional[str]) -> str:
-                x = str(s or '')
-                if x.startswith('[') and x.endswith(']'):
-                    x = x[1:-1]
-                if x.startswith("'") and x.endswith("'"):
-                    x = x[1:-1]
-                return x
-
-            t_norm = _norm(table)
-            c_norm = _norm(column)
+            t_norm = self._normalize_identifier(table)
+            c_norm = self._normalize_identifier(column)
             col_ref = f"{t_norm}[{c_norm}]"
 
             usage = {
@@ -650,13 +682,19 @@ class DependencyAnalyzer:
             idx = self._get_measure_columns_index()
             for me_key, cols in idx.items():
                 if col_ref in cols or f"{t_norm}[{c_norm}]" in cols:
-                    # me_key format: Table[Measure]
+                    # me_key format: Table[Measure] - extract both parts
                     try:
-                        t, rest = me_key.split('[', 1)
-                        mname = rest[:-1]
+                        if '[' in me_key and me_key.endswith(']'):
+                            # Split on last [ to handle edge cases
+                            bracket_pos = me_key.rfind('[')
+                            table_part = me_key[:bracket_pos] if bracket_pos > 0 else ''
+                            measure_part = me_key[bracket_pos+1:-1] if bracket_pos >= 0 else me_key
+                        else:
+                            table_part = ''
+                            measure_part = me_key
+                        usage['used_in_measures'].append({'measure': measure_part, 'table': table_part})
                     except Exception:
-                        t, mname = '', me_key
-                    usage['used_in_measures'].append({'measure': mname, 'table': t})
+                        usage['used_in_measures'].append({'measure': me_key, 'table': ''})
 
             # Fallback: direct regex search in measure expressions for environments where
             # INFO.MEASURES()/TOM normalization mismatches lead to empty transitive results
@@ -666,9 +704,18 @@ class DependencyAnalyzer:
                 import re as _re
                 pattern = _re.compile(r"(?:'" + _re.escape(t_norm) + r"'|" + _re.escape(t_norm) + r")\[" + _re.escape(c_norm) + r"\]", _re.IGNORECASE)
                 for m in measures:
-                    expr = str(m.get('Expression') or '')
+                    expr = None
+                    for key in ['Expression', '[Expression]', 'EXPRESSION']:
+                        if key in m:
+                            expr = str(m.get(key, '') or '')
+                            break
+                    if not expr:
+                        expr = ''
                     if pattern.search(expr):
-                        usage['used_in_measures'].append({'measure': m.get('Name', ''), 'table': m.get('Table', '')})
+                        usage['used_in_measures'].append({
+                            'measure': self._extract_measure_name(m),
+                            'table': self._extract_table_name(m)
+                        })
 
             # Check calculated columns
             calc_cols_query = f'EVALUATE FILTER(INFO.COLUMNS(), [Type] = {COLUMN_TYPE_CALCULATED})'
@@ -683,12 +730,29 @@ class DependencyAnalyzer:
             if rels_result.get('success'):
                 for rel in rels_result['rows']:
                     # Accept several key variants and compare using normalized strings
-                    ft = rel.get('FromTable') or rel.get('[FromTable]')
-                    fc = rel.get('FromColumn') or rel.get('[FromColumn]')
-                    tt = rel.get('ToTable') or rel.get('[ToTable]')
-                    tc = rel.get('ToColumn') or rel.get('[ToColumn]')
-                    if ((str(ft or '').strip().lower() == t_norm.lower() and str(fc or '').strip().lower() == c_norm.lower()) or
-                        (str(tt or '').strip().lower() == t_norm.lower() and str(tc or '').strip().lower() == c_norm.lower())):
+                    ft = None
+                    for key in ['FromTable', '[FromTable]']:
+                        if key in rel and rel[key]:
+                            ft = self._normalize_identifier(rel[key])
+                            break
+                    fc = None
+                    for key in ['FromColumn', '[FromColumn]']:
+                        if key in rel and rel[key]:
+                            fc = self._normalize_identifier(rel[key])
+                            break
+                    tt = None
+                    for key in ['ToTable', '[ToTable]']:
+                        if key in rel and rel[key]:
+                            tt = self._normalize_identifier(rel[key])
+                            break
+                    tc = None
+                    for key in ['ToColumn', '[ToColumn]']:
+                        if key in rel and rel[key]:
+                            tc = self._normalize_identifier(rel[key])
+                            break
+                    
+                    if ((ft and ft.lower() == t_norm.lower() and fc and fc.lower() == c_norm.lower()) or
+                        (tt and tt.lower() == t_norm.lower() and tc and tc.lower() == c_norm.lower())):
                         usage['used_in_relationships'].append({
                             'from': f"{ft}[{fc}]",
                             'to': f"{tt}[{tc}]",
@@ -701,10 +765,12 @@ class DependencyAnalyzer:
                     rr = tom_rels()
                     if rr.get('success'):
                         for rel in rr['rows']:
-                            ft = rel.get('FromTable'); fc = rel.get('FromColumn')
-                            tt = rel.get('ToTable'); tc = rel.get('ToColumn')
-                            if ((str(ft or '').strip().lower() == t_norm.lower() and str(fc or '').strip().lower() == c_norm.lower()) or
-                                (str(tt or '').strip().lower() == t_norm.lower() and str(tc or '').strip().lower() == c_norm.lower())):
+                            ft = self._normalize_identifier(rel.get('FromTable', ''))
+                            fc = self._normalize_identifier(rel.get('FromColumn', ''))
+                            tt = self._normalize_identifier(rel.get('ToTable', ''))
+                            tc = self._normalize_identifier(rel.get('ToColumn', ''))
+                            if ((ft and ft.lower() == t_norm.lower() and fc and fc.lower() == c_norm.lower()) or
+                                (tt and tt.lower() == t_norm.lower() and tc and tc.lower() == c_norm.lower())):
                                 usage['used_in_relationships'].append({
                                     'from': f"{ft}[{fc}]",
                                     'to': f"{tt}[{tc}]",

@@ -80,7 +80,10 @@ class ConfigManager:
                 "cache_ttl_seconds": 300,
                 "max_query_timeout": 60,
                 "default_top_n": 1000,
-                "enable_trace_logging": False
+                "enable_trace_logging": False,
+                "trace_mode": "full",
+                "trace_init_retries": 2,
+                "trace_init_backoff_ms": 150
             },
             "detection": {
                 "cache_instances_seconds": 60,

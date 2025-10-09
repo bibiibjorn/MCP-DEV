@@ -11,6 +11,7 @@ import logging
 import uuid
 import xml.etree.ElementTree as ET
 from typing import Dict, Any, List, Optional
+from core.config_manager import config
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,13 @@ class EnhancedAMOTraceAnalyzer:
         self._cache_clear_wait = 0.08    # wait after cache clear
         self._event_poll_interval = 0.03 # interval when polling ring_buffer
         self._max_event_flush_wait = 0.25 # maximum time to wait for events
+        # Behavior controls via config
+        self._trace_mode = str(config.get('performance.trace_mode', 'full') or 'full').lower()  # off|basic|full
+        self._trace_init_retries = int(config.get('performance.trace_init_retries', 2) or 2)
+        self._trace_init_backoff_ms = int(config.get('performance.trace_init_backoff_ms', 150) or 150)
+        # Once we hit a known XMLA incompatibility, suppress noisy errors and downgrade
+        self._suppress_trace_errors = False
+        self._suppression_logged = False
 
     # Back-compat: older code calls connect_amo() and checks amo_server
     def connect_amo(self) -> bool:
@@ -105,7 +113,7 @@ class EnhancedAMOTraceAnalyzer:
 
     def _create_xe_session(self, executor, name: str) -> None:
         # Create a ring_buffer xEvent session capturing FE/SE events with actions
-        xmla = f"""
+                xmla = f"""
 <Execute xmlns=\"urn:schemas-microsoft-com:xml-analysis\"
          xmlns:ddl300_300=\"http://schemas.microsoft.com/analysisservices/2011/engine/300/300\">
   <Command>
@@ -148,7 +156,28 @@ class EnhancedAMOTraceAnalyzer:
   </Command>
 </Execute>
 """
-        self._exec_xmla(executor, xmla)
+                # Retry/backoff on known transient or compatibility errors
+                last_err: Optional[Exception] = None
+                attempts = max(1, int(self._trace_init_retries) + 1)
+                for i in range(attempts):
+                        try:
+                                self._exec_xmla(executor, xmla)
+                                return
+                        except Exception as e:
+                                last_err = e
+                                # Known desktop mismatch symptom: Execute element cannot appear under Envelope/Body/Execute/Command
+                                err_msg = str(e)
+                                if 'Execute element' in err_msg and 'Envelope/Body/Execute/Command' in err_msg:
+                                        # No point in retrying too many times; break and allow caller to downgrade
+                                        break
+                                # Backoff before next attempt
+                                if i < attempts - 1:
+                                        time.sleep((self._trace_init_backoff_ms * (i + 1)) / 1000.0)
+                                else:
+                                        break
+                # Bubble up the last error to allow graceful downgrade by caller
+                if last_err:
+                        raise last_err
 
     def _drop_xe_session(self, executor, name: str) -> None:
         xmla = f"""
@@ -311,10 +340,26 @@ class EnhancedAMOTraceAnalyzer:
         try:
             self._exec_xmla(executor, xmla_clear)
         except Exception as e:
-            logger.warning(f"Cache clear failed: {e}")
+            # On engines where XMLA payload mismatches, cache clear will also fail; keep it quiet
+            if self._suppress_trace_errors or self._trace_mode in ('off', 'basic'):
+                logger.debug(f"Cache clear suppressed/failed: {e}")
+            else:
+                logger.warning(f"Cache clear failed: {e}")
 
     # ---- public API ----
     def analyze_query(self, executor, query: str, runs: int = 3, clear_cache: bool = True, include_event_counts: bool = False) -> Dict[str, Any]:
+        # Respect configured trace mode and any previous suppression
+        mode = self._trace_mode
+        if mode in ('off', 'basic') or self._suppress_trace_errors:
+            res = self._fallback_analysis(executor, query, runs, clear_cache)
+            # Add a quiet note for transparency
+            try:
+                res.setdefault('notes', []).append(
+                    'Performance trace mode is %s; using basic timing only' % ('suppressed' if self._suppress_trace_errors else mode)
+                )
+            except Exception:
+                pass
+            return res
         results: List[Dict[str, Any]] = []
         total_runs = max(1, int(runs or 1))
         for i in range(total_runs):
@@ -369,8 +414,39 @@ class EnhancedAMOTraceAnalyzer:
                     run_out['se_percent'] = round((se_ms / total) * 100, 1)
                 results.append(run_out)
             except Exception as e:
-                logger.error(f"xEvents run {run_no} failed: {e}")
-                results.append({'run': run_no, 'success': False, 'error': str(e)})
+                # On xEvent init or fetch issues, downgrade this run to basic timing quietly
+                msg = str(e)
+                is_payload_mismatch = ('Execute element' in msg and 'Envelope/Body/Execute/Command' in msg)
+                if is_payload_mismatch and not self._suppression_logged:
+                    logger.info('xEvents unavailable on this engine/build (XMLA payload mismatch). Downgrading to basic timing.')
+                    self._suppression_logged = True
+                # If repeated failures, suppress further xEvent attempts for the life of this analyzer
+                if is_payload_mismatch:
+                    self._suppress_trace_errors = True
+                # Do a basic timing run for this iteration
+                try:
+                    if clear_cache and i == 0:
+                        self._clear_cache(executor)
+                        time.sleep(self._cache_clear_wait)
+                except Exception:
+                    pass
+                t0b = time.time()
+                basic_res = executor.validate_and_execute_dax(query, 0)
+                wall_ms_b = (time.time() - t0b) * 1000.0
+                run_out_b = {
+                    'run': run_no,
+                    'success': basic_res.get('success', False),
+                    'execution_time_ms': round(wall_ms_b, 2),
+                    'formula_engine_ms': None,
+                    'storage_engine_ms': None,
+                    'storage_engine_queries': 0,
+                    'storage_engine_cache_matches': 0,
+                    'row_count': basic_res.get('row_count', 0),
+                    'metrics_available': False,
+                    'cache_state': 'cold' if (clear_cache and i == 0) else 'warm',
+                    'note': 'xEvents unavailable; basic timing used'
+                }
+                results.append(run_out_b)
             finally:
                 # Drop session regardless of outcome
                 try:
@@ -407,7 +483,8 @@ class EnhancedAMOTraceAnalyzer:
         # Retained for API compatibility (not used now that xEvents is default)
         results: List[Dict[str, Any]] = []
         for i in range(max(1, int(runs or 1))):
-            if clear_cache:
+            # Avoid XMLA ClearCache in basic/off or suppression modes to reduce log noise
+            if clear_cache and self._trace_mode == 'full' and not self._suppress_trace_errors:
                 try:
                     self._clear_cache(executor)
                     time.sleep(0.1)

@@ -1,126 +1,153 @@
-# MCP-PowerBi-Finvision Server (v2.3)
+# MCP-PowerBi-Finvision Server (v2.4)
 
-Powerful local MCP server that lets Claude analyze your Power BI Desktop models: explore schema, inspect DAX and M, run performance analysis (SE/FE), export model metadata, and more — all via natural language.
+Analyze your Power BI Desktop model locally with an MCP server. Browse schema, inspect DAX and M, run SE/FE performance checks, export docs, and more — just by asking your AI client.
 
-• Status: Production-ready  • Platform: Windows 10/11  • Last updated: 2025-10-08
+• Status: Production-ready with security hardening  • OS: Windows 10/11  • Last updated: 2025-10-09
 
-## What’s inside
+## Who is this for?
 
-- Auto-detect and connect to running Power BI Desktop instances
-- Explore tables, columns, measures, relationships, and M expressions
-- Run DAX queries and analyze performance with SE/FE breakdown
-- VertiPaq stats, cardinality/encoding checks, and optimization helpers
-- Dependencies, unused objects, calculation groups, partitions, RLS, validation
+- Power BI analysts who want instant, safe model introspection from Claude or ChatGPT
+- Engineers who need fast diagnostics, exports, and best-practices checks
+
+## Features at a glance
+
+- Auto-detect and connect to Power BI Desktop
+- List tables/columns/measures, preview data, inspect relationships and M
+- Validate DAX, scan VertiPaq stats, analyze cardinality/encoding
+- Detect unused objects, analyze dependencies and RLS coverage
+- Export compact schema, TMSL/TMDL, relationship graph, docs
+- **NEW v2.4:** Input validation, rate limiting, enhanced error context
+
+## Security & Performance (v2.4)
+
+- ✅ **Input sanitization** - Prevents DAX/M injection attacks
+- ✅ **Rate limiting** - Protects Desktop from query overload (10 req/sec default)
+- ✅ **Path validation** - Prevents directory traversal in exports
+- ✅ **Cache management** - Bounded memory (100MB/1000 entries)
+- ✅ **Enhanced errors** - Desktop version context & known issue detection
+- ✅ **Tool timeouts** - Per-tool execution limits
 
 ## Requirements
 
-- Windows 10/11 (64-bit)
+- Windows 10/11 (64‑bit)
+- Power BI Desktop (latest recommended)
 - .NET Framework 4.7.2+
-- Power BI Desktop (current recommended)
-- Claude Desktop
+- An MCP-capable client: Claude Desktop or ChatGPT Desktop (with MCP)
 
-## Quick start
+## Quick start (Windows)
 
-1) Extract the folder to a path you control (recommended: `C:\Tools\pbixray-mcp-server`).
-2) Open Power BI Desktop with a .pbix file loaded and wait a few seconds.
-3) Configure Claude Desktop (or ChatGPT):
-	- In PowerShell from the project folder: `./scripts/install_to_claude.ps1`
-	- Fully restart Claude Desktop afterwards.
-	- For ChatGPT desktop with MCP: `./scripts/install_to_chatgpt.ps1` then restart the ChatGPT app.
-4) Optional sanity check: `./scripts/test_connection.ps1`.
-5) Ask Claude:
-	- “Detect my Power BI Desktop instances” → then “Connect to instance 0”
-	- “What tables are in this model?”
+1) Place this folder somewhere stable, e.g. `C:\Tools\pbixray-mcp-server`.
+2) **Install .NET assemblies** (for full features):
+   ```powershell
+   cd lib/dotnet
+   ./install.ps1
+   ```
+3) Open Power BI Desktop with a .pbix loaded and wait ~10 seconds.
+4) Connect your AI client:
+   - Claude Desktop: run `./scripts/install_to_claude.ps1`, then fully restart Claude.
+   - ChatGPT Desktop: run `./scripts/install_to_chatgpt.ps1`, then restart ChatGPT.
+   - Prefer no scripts? See "Manual install (Claude)" in INSTALL.md.
+5) Optional check: run `./scripts/test_connection.ps1`.
+6) In your AI client, try: "Detect Power BI Desktop instances" → "Connect to instance 0" → "List tables".
 
-You’re now ready to explore your model with Claude.
+You're ready to explore your model.
 
-## Common tasks
+## Common things to ask
 
-- List tools and health check: run `./scripts/test_connection.ps1`
-- Performance: “Analyze this DAX query …” and review SE vs FE time
-- Model export: “Export TMSL/TMDL” or “Generate documentation”
-- Discovery: “Search for measures containing ‘CALCULATE’”
+- "Search for measures containing CALCULATE"
+- "Analyze this DAX and break down SE vs FE"
+- "Export a compact schema" or "Generate documentation"
+- "Show me rate limit stats" (NEW)
+- "Check cache performance" (NEW)
 
-### Full analysis: normal vs fast
+### Full analysis: fast vs normal
 
-- full_analysis: Runs a comprehensive model analysis with sections for summary, relationships, best practices, M scan, and optionally BPA.
-	- Parameters:
-		- profile: "fast" | "balanced" | "deep" (default: balanced)
-		- depth: "light" | "standard" | "deep" (default: standard)
-		- include_bpa: boolean (default: true; ignored when profile=fast)
-	- Fast profile returns only summary + relationships for a very quick overview.
+- full_analysis: summary, relationships, best practices, M scan, optional BPA
+  - profile: fast | balanced | deep (default: balanced)
+  - depth: light | standard | deep (default: standard)
+  - include_bpa: true/false (ignored when profile=fast)
 
-- propose_analysis: Returns a small decision card offering:
-	- Fast summary (profile=fast, depth=light, include_bpa=false)
-	- Normal analysis (profile=balanced, depth=standard, include_bpa=true)
-	Use this when the user asks “analyze the model” and wants a choice.
+- propose_analysis: returns a small menu with fast vs normal options when a user asks to "analyze the model".
 
-## Documentation and Guides
+## Install and manage
 
-- Full production guide: see `docs/Guide.md` (also published via GitHub Pages if enabled)
-- Quickstart: `docs/PBIXRAY_Quickstart.md` (auto-generated PDF/TXT on first connect)
+- Full install/update/uninstall steps: see INSTALL.md
+  - Scripted install (Claude/ChatGPT)
+  - Manual Claude install by editing a JSON file (no scripts)
+- Script catalog and recommendations: see docs/Scripts.md
 
-To publish docs automatically, this repo includes `.github/workflows/docs.yml` which deploys the `docs/` folder to GitHub Pages on every push to `main`.
+## Docs and links
 
-## Performance tools and cache
+- Production Guide: `docs/Guide.md`
+- Quickstart (friendly): `docs/PBIXRAY_Quickstart.md` (PDF/TXT variants included)
+- Scripts catalog: `docs/Scripts.md`
+- .NET Assembly Guide: `lib/dotnet/VERSIONS.md`
 
- 
-- decide_and_run: Give a goal plus an optional query or list of candidates; it will connect, decide whether to analyze or preview, or benchmark candidates when provided.
-- Cache bypass: safe_run_dax and run_dax_query accept a bypass_cache flag to force a fresh execution and ignore the TTL LRU cache when needed.
+If you use GitHub Pages, `.github/workflows/docs.yml` publishes `docs/` on push to `main`.
 
-Tip: For DMV queries using $SYSTEM.* with SELECTCOLUMNS, wrap the source in TOPN(...) first to materialize before projection.
+## Tips, diagnostics, and safety
 
-### Diagnostics & helpers
+- Results are paged (page_size + next_token) for large outputs
+- Use `get_recent_logs`, `summarize_logs`, and `get_server_info` for quick diagnostics
+- **NEW:** Use `get_rate_limit_stats` and `get_cache_stats` for performance monitoring
+- To force a fresh DAX run, set `bypass_cache: true` on run_dax
+- For DMV queries with $SYSTEM.*, wrap sources in TOPN(...) before SELECTCOLUMNS to materialize
 
-- Log summary: `summarize_logs` reports counts of ERROR/WARNING/INFO and shows recent entries.
-- Query history: `get_query_history` (and `clear_query_history`) exposes a rolling, lightweight history of executed queries for quick recall and debugging.
-- Command timeout: `set_command_timeout(seconds: int)` lets you raise/lower the ADOMD command timeout per session when exploring heavy queries.
-- Cache stats: `get_cache_stats` returns size, ttl, hits/misses, and whether the LRU TTL cache is enabled.
-- Context memory: `set_context({ ... })` and `get_context(keys?: string[])` maintain lightweight session memory (e.g., default table/measure).
-- Safety limits: `set_safety_limits({ max_rows_per_call })` clamps high-row requests; enforced in `run_dax_query` and `preview_table_data`.
- 
-- Performance baselines: `set_perf_baseline(name, query, runs?)`, `get_perf_baseline(name)`, `list_perf_baselines()`, `compare_perf_to_baseline(name, query?, runs?)`.
-- Auto router: `auto_route` chooses preview vs performance analysis based on priority and context.
-- M analysis: `analyze_m_practices` scans `$SYSTEM.TMSCHEMA_EXPRESSIONS` for common M issues (heuristics).
-- Instance switching: `switch_instance(mode: next|prev|index, index?)` cycles between detected Power BI Desktop instances.
+Privacy & security
 
-Tip: To bypass cache on an individual query, pass `bypass_cache: true` in `run_dax_query` or use performance analysis tools.
+- Everything runs locally over stdio; no ports exposed
+- Connections use Desktop's embedded SSAS over localhost
+- Input validation prevents injection attacks
+- Rate limiting protects Desktop from overload
+- Logs live in `logs/pbixray.log`
 
-## Install, update, uninstall
+## Error envelope shape (for integrators)
 
-- Installation steps, update notes, and cleanup are documented in INSTALL.md
-	- Claude config: `./scripts/install_to_claude.ps1`
-	- ChatGPT MCP config: `./scripts/install_to_chatgpt.ps1`
+- Not connected → `{ success: false, error_type: "not_connected", ... }`
+- Manager unavailable → `{ success: false, error_type: "manager_unavailable", required_manager: "<n>" }`
+- Unknown tool → `{ success: false, error_type: "unknown_tool", tool_name: "..." }`
+- Unexpected error → `{ success: false, error_type: "unexpected_error", tool_name: "..." }`
+- **NEW:** Rate limited → `{ success: false, error_type: "rate_limited", retry_after_seconds: X }`
+- **NEW:** Validation error → `{ success: false, error_type: "validation_error", field: "..." }`
 
-If you use ChatGPT desktop with MCP, run the installer script to generate the JSON you can paste under Settings > Tools > Developer.
+Successful responses include minimal connection metadata when available, like `{ port: "<desktop-port>" }`.
 
-## Notes on privacy & security
+## Configuration
 
-- All analysis is local. The MCP server communicates with the client over stdio (no TCP port is opened).
-- Connections to Power BI Desktop use the local loopback (localhost/127.0.0.1) to the model's embedded Analysis Services. Nothing is exposed to the network by default.
-- Logs are written to `logs/pbixray.log` for diagnostics (also accessible via the `get_recent_logs` tool).
-- Claude conversations may be stored by Anthropic; avoid pasting sensitive data.
+Edit `config/default_config.json` or create `config/local_config.json` for overrides.
 
-Developer note: IDEs may show warnings for clr imports (pythonnet) until runtime. On Windows with the included lib/dotnet DLLs, these resolve when the server runs.
-
-### Standard error envelopes
-
-All tools return consistent envelopes to simplify client handling:
-
-- Not connected:
-	- { "success": false, "error_type": "not_connected", "error": "Not connected to Power BI Desktop", "suggestions": ["detect_powerbi_desktop", "connect_to_powerbi"] }
-- Manager unavailable (feature not initialized):
-	- { "success": false, "error_type": "manager_unavailable", "error": "<manager> not available", "required_manager": "<manager>" }
-- Unknown tool:
-	- { "success": false, "error_type": "unknown_tool", "tool_name": "<name>" }
-- Unexpected error:
-	- { "success": false, "error_type": "unexpected_error", "tool_name": "<name>", "error": "<message>" }
-
-On success, responses include minimal connection metadata when available: { "port": "<desktop-port>" }.
+New v2.4 settings:
+- `rate_limiting.enabled` - Enable rate limiting (default: true)
+- `rate_limiting.profile` - conservative | balanced | aggressive | development
+- `security.enable_input_validation` - Validate inputs (default: true)
+- `security.strict_m_validation` - Strict M expression validation (default: false)
 
 ## Support
 
-- If something doesn’t work: ensure Power BI Desktop has a model open, rerun detection, and reconnect. Check `logs/` if needed.
-- For team distribution: use `./scripts/package_for_distribution.ps1` to create a zip you can share.
+- Ensure a .pbix is open, then detect → connect → run tools
+- Verify .NET assemblies: `python scripts/verify_dotnet_assemblies.py`
+- See INSTALL.md for troubleshooting and uninstall
+
+## Changelog (v2.4)
+
+### Added
+- Input validation to prevent injection attacks
+- Rate limiting (token bucket, per-tool limits)
+- Enhanced error handler with Desktop version detection
+- Cache manager with size limits and eviction metrics
+- Tool-specific timeout configuration
+- .NET assembly auto-installer and verifier
+- Monitoring tools: get_rate_limit_stats, get_cache_stats, get_error_stats
+
+### Security
+- DAX/M expression validation
+- Path traversal prevention
+- Identifier sanitization
+- Configurable rate limits
+
+### Performance
+- Bounded cache (100MB, 1000 entries, LRU eviction)
+- Per-tool timeouts
+- Cache hit rate tracking
 
 — Happy analyzing!

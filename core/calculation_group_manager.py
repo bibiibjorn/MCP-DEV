@@ -140,7 +140,8 @@ class CalculationGroupManager:
             # Create table for calculation group
             table = Tabular.Table()
             table.Name = name
-            # Some TOM versions require explicitly marking the table as CalculationGroup
+            
+            # Mark table as CalculationGroup type if supported
             try:
                 if hasattr(Tabular, 'TableType') and hasattr(table, 'TableType'):
                     table.TableType = Tabular.TableType.CalculationGroup
@@ -154,15 +155,14 @@ class CalculationGroupManager:
             if hasattr(calc_group, 'Precedence'):
                 calc_group.Precedence = precedence
 
-            # Create the mandatory calculation group column (string).
-            # Important: it belongs to the table.Columns collection, not calc_group.Columns.
+            # Create the mandatory calculation group column (string type)
+            # Must be added to table.Columns, not calc_group.Columns
             try:
                 cg_col = Tabular.CalculationGroupColumn()
                 cg_col.Name = name
-                # Add to the table's Columns collection for TOM >= 19.x
                 table.Columns.Add(cg_col)
             except Exception:
-                # Older TOM fallback: use a concrete DataColumn (not abstract Column) as string
+                # Older TOM fallback: use DataColumn with String type
                 try:
                     data_col = Tabular.DataColumn()
                     data_col.Name = name
@@ -172,7 +172,11 @@ class CalculationGroupManager:
                         pass
                     table.Columns.Add(data_col)
                 except Exception as inner_e:
-                    return {'success': False, 'error': 'Failed to create calculation group column', 'details': str(inner_e)}
+                    return {
+                        'success': False,
+                        'error': 'Failed to create calculation group column',
+                        'details': str(inner_e)
+                    }
 
             # Add calculation items
             for idx, item_data in enumerate(items):
@@ -192,32 +196,65 @@ class CalculationGroupManager:
 
             table.CalculationGroup = calc_group
             
-            # Some TOM versions require at least one partition on a Calculation Group table with Full DataView
+            # CRITICAL: TOM requires calculation group tables to have a partition with CalculationGroup source
+            # This partition must exist before SaveChanges() validation
             try:
-                if hasattr(table, 'Partitions') and hasattr(Tabular, 'Partition'):
-                    part = Tabular.Partition()
-                    part.Name = f"{name}_Partition"
-                    # Set DataView if available (Full required for calc groups)
+                part = Tabular.Partition()
+                part.Name = f"{name}_Partition"
+                
+                # Calculation groups require a CalculationGroupSource (not M or Query source)
+                try:
+                    cg_source = Tabular.CalculationGroupSource()
+                    part.Source = cg_source
+                    logger.info(f"Created CalculationGroupSource partition for '{name}'")
+                except Exception as cg_error:
+                    # Fallback for older TOM: try creating without explicit source type
+                    logger.warning(f"CalculationGroupSource not available: {cg_error}")
+                    # Some TOM versions auto-create partition source for calc groups
+                    pass
+                
+                # Set DataView to Full if available (required for some TOM versions)
+                if hasattr(part, 'DataView'):
                     try:
-                        # In newer TOM, DataViewType is an enum; older may have a different property
-                        if hasattr(part, 'DataView') and hasattr(Tabular, 'DataViewType'):
+                        if hasattr(Tabular, 'DataViewType'):
                             part.DataView = Tabular.DataViewType.Full
-                    except Exception:
-                        pass
-                    try:
-                        table.Partitions.Add(part)
-                    except Exception:
-                        # Some builds use constructor with (name, source); continue if not needed
-                        pass
-            except Exception:
-                # Non-fatal; SaveChanges will validate
-                pass
+                        else:
+                            part.DataView = 0  # numeric: 0 = Full
+                    except Exception as dv_error:
+                        logger.debug(f"DataView setting failed: {dv_error}")
+                
+                # Add the partition to the table BEFORE adding table to model
+                table.Partitions.Add(part)
+                logger.info(f"Added CalculationGroup partition to table '{name}'")
+                
+            except Exception as part_error:
+                logger.warning(f"Failed to create partition for calculation group: {part_error}")
+                # Continue - SaveChanges will provide specific error if partition is critical
+            
+            # Add table to model
             model.Tables.Add(table)
 
-            # Save changes
-            model.SaveChanges()
-
-            logger.info(f"Created calculation group '{name}' with {len(items)} items")
+            # Save changes - this will validate the complete structure
+            try:
+                model.SaveChanges()
+                logger.info(f"Created calculation group '{name}' with {len(items)} items")
+            except Exception as save_error:
+                # Provide helpful error message about common issues
+                error_msg = str(save_error)
+                suggestions = [
+                    'Verify calculation item expressions are valid DAX',
+                    'Ensure calculation group name is unique',
+                    'Check that model compatibility level supports calculation groups (1470+)'
+                ]
+                
+                if 'partition' in error_msg.lower() or 'dataview' in error_msg.lower():
+                    suggestions.insert(0, 'Partition validation failed - this TOM version may have specific DataView requirements')
+                
+                return {
+                    'success': False,
+                    'error': error_msg,
+                    'suggestions': suggestions
+                }
 
             return {
                 'success': True,
@@ -235,7 +272,8 @@ class CalculationGroupManager:
                 'suggestions': [
                     'Verify calculation item expressions are valid DAX',
                     'Ensure calculation group name is unique',
-                    'Check that model compatibility level supports calculation groups (1470+)'
+                    'Check that model compatibility level supports calculation groups (1470+)',
+                    'Verify TOM libraries are up to date'
                 ]
             }
         finally:

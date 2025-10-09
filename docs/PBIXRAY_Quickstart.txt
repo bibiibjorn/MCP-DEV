@@ -16,7 +16,7 @@ Popular tools (friendly names):
 - list: tables | list: columns | list: measures | describe: table | preview: table
 - search: objects | search: text in measures | get: data sources | get: m expressions
 - analysis: best practices (BPA) | analysis: relationship/cardinality | analysis: storage compression
-- usage: find unused objects | usage: column heatmap
+- usage: find unused objects
 - export: compact schema | export: tmsl | export: tmdl | docs: generate
 
 Tips:

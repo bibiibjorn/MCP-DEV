@@ -1,5 +1,10 @@
 {
   "server": {
     "tool_names_mode": "canonical"
+  },
+  "performance": {
+    "trace_mode": "basic",
+    "trace_init_retries": 1,
+    "trace_init_backoff_ms": 200
   }
 }

@@ -208,7 +208,7 @@ def main():
         ('get_column_value_distribution', {'table': col_table, 'column': sample_column, 'top_n': 10} if col_table and sample_column else None),
         ('validate_best_practices', {}),
         ('get_measure_impact', {'table': meas_table, 'measure': sample_measure, 'depth': 2} if meas_table and sample_measure else None),
-        ('get_column_usage_heatmap', {'table': col_table, 'limit': 50} if col_table else None),
+    # heatmap removed: was ('get_column_usage_heatmap', {'table': col_table, 'limit': 50})
         ('format_dax', {'expression': 'SUM ( [Amount] )'}),
         ('export_model_overview', {'format': 'json', 'include_counts': True}),
         ('analyze_m_practices', {}),

@@ -446,22 +446,26 @@ class OptimizedQueryExecutor:
             result = self.validate_and_execute_dax("EVALUATE INFO.TABLES()", 0)
             if not result.get('success'):
                 logger.error(f"Failed to load table mappings: {result.get('error')}")
-                self._table_id_by_name, self._table_name_by_id = {}, {}
+                # FIX: Set to None instead of {} to allow retry on next call
+                self._table_id_by_name, self._table_name_by_id = None, None
                 return
             id_by_name: Dict[str, Any] = {}
             name_by_id: Dict[Any, str] = {}
             for row in result.get('rows', []):
-                # Accept bracketed key variants from some Desktop builds
-                name = row.get('Name') or row.get('[Name]') or row.get('TABLE_NAME') or row.get('[TABLE_NAME]')
-                tid = (row.get('ID') if 'ID' in row else None) or row.get('TableID') or row.get('[ID]') or row.get('[TableID]')
+                # FIX: Check bracketed keys FIRST since Power BI Desktop returns [ID] and [Name]
+                name = row.get('[Name]') or row.get('Name') or row.get('[TABLE_NAME]') or row.get('TABLE_NAME')
+                # FIX: Check [ID] first - critical bug fix for bracketed column names
+                tid = row.get('[ID]') or row.get('ID') or row.get('[TableID]') or row.get('TableID')
                 if name is not None and tid is not None:
                     id_by_name[name] = tid
                     name_by_id[tid] = name
             self._table_id_by_name = id_by_name
             self._table_name_by_id = name_by_id
+            logger.info(f"Table mappings loaded: {len(id_by_name)} tables")
         except Exception as e:
             logger.error(f"Error building table mappings: {e}")
-            self._table_id_by_name, self._table_name_by_id = {}, {}
+            # FIX: Set to None instead of {} to allow retry on next call
+            self._table_id_by_name, self._table_name_by_id = None, None
 
     def _cache_get(self, key: Tuple[str, int]) -> Optional[Dict[str, Any]]:
         """Get cached item if not expired; maintains LRU order."""

@@ -104,10 +104,20 @@ class ConnectionState:
                 if self.connection_manager and self.connection_manager.connection_string:
                     self.performance_analyzer = EnhancedAMOTraceAnalyzer(self.connection_manager.connection_string)
                     amo_connected = self.performance_analyzer.connect_amo()
-                    if amo_connected:
-                        logger.info("✓ Performance analyzer initialized with AMO SessionTrace")
+                    # Respect configured trace mode for clearer logs
+                    try:
+                        mode = str(config.get('performance.trace_mode', 'full') or 'full').lower()
+                    except Exception:
+                        mode = 'full'
+                    if mode == 'off':
+                        logger.info("✓ Performance analyzer initialized (trace_mode=off; basic timing only)")
+                    elif mode == 'basic':
+                        logger.info("✓ Performance analyzer initialized (trace_mode=basic; basic timing preferred)")
                     else:
-                        logger.warning("✗ AMO not available - performance analysis limited")
+                        if amo_connected:
+                            logger.info("✓ Performance analyzer initialized (xEvents enabled)")
+                        else:
+                            logger.warning("✗ AMO not available - performance analysis will use basic timing")
                 else:
                     logger.warning("Cannot initialize performance analyzer: no connection string")
             

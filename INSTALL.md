@@ -1,98 +1,134 @@
-# INSTALL.md — PBIXRay MCP Server (Windows)
+# INSTALL.md — MCP-PowerBi-Finvision (Windows)
 
-This guide gets you set up quickly on Windows with PowerShell. For enterprise/team rollout, you can adapt these steps to Intune/SCCM/DSC.
+This guide gets you from zero to running in minutes, with both scripted and manual setup options. No admin rights required.
 
 ## Prerequisites
 
 - Windows 10/11 (64-bit)
-- .NET Framework 4.7.2+ (typically preinstalled)
 - Power BI Desktop (current recommended)
-- Claude Desktop
-- ~200 MB disk space
+- .NET Framework 4.7.2+ (usually preinstalled)
+- Claude Desktop or ChatGPT Desktop (with MCP support)
+- ~200 MB free disk space
 
-Optional: Admin rights are NOT required; install to a user-writable path.
+Tip: Install to a user-writable path. Avoid spaces/special characters in the path.
 
 ## 1) Get the files
 
-- Obtain the packaged folder (or clone/extract) and place it somewhere stable. Recommended path:
-  - `C:\Tools\pbixray-mcp-server`
+- Extract/clone the folder to a stable location, e.g. `C:\Tools\pbixray-mcp-server`
 
-Avoid paths with spaces or special characters.
+## 2) Optional: quick environment check
 
-## 2) Verify basics (optional but recommended)
-
-Open Windows PowerShell and run from the project folder:
+In Windows PowerShell from the project folder:
 
 ```powershell
-cd "C:\Tools\pbixray-mcp-server"
-./scripts/test_connection.ps1
+cd "C:\Tools\pbixray-mcp-server"; ./scripts/test_connection.ps1
 ```
 
-This lists available tools and validates the local environment.
+This validates Python + runtime bits and prints next steps.
 
-## 3) Configure Claude Desktop (or ChatGPT)
+## 3) Configure the MCP client
 
-From the project folder, run:
+Choose one path below.
+
+### Option A — Scripted install for Claude (recommended)
+
+From the project folder:
 
 ```powershell
 ./scripts/install_to_claude.ps1
 ```
 
-Then fully restart Claude Desktop (quit the app from the tray/Task Manager and reopen). The script adds an entry to your Claude Desktop config pointing to:
+Then fully restart Claude Desktop (quit from the tray/Task Manager and reopen).
 
-- Command: `venv\Scripts\python.exe`
-- Args: `src\pbixray_server_enhanced.py`
+What the script does:
 
-For ChatGPT desktop (with MCP support), run:
+- Writes `%APPDATA%\Claude\claude_desktop_config.json`
+- Adds an MCP server named `MCP-PowerBi-Finvision`
+- Command: `venv\\Scripts\\python.exe`
+- Args: `src\\pbixray_server_enhanced.py`
+
+### Option B — Manual install for Claude (no scripts)
+
+1. Close Claude Desktop completely
+1. Open the config file in a text editor:
+   `%APPDATA%\Claude\claude_desktop_config.json`
+   - If the file doesn’t exist, create it with:
+     `{ "mcpServers": {} }`
+1. Add the MCP server entry under `mcpServers` (adjust paths to your install dir):
+
+```json
+{
+  "mcpServers": {
+    "MCP-PowerBi-Finvision": {
+      "command": "C:\\Tools\\pbixray-mcp-server\\venv\\Scripts\\python.exe",
+      "args": [
+        "C:\\Tools\\pbixray-mcp-server\\src\\pbixray_server_enhanced.py"
+      ]
+    }
+  }
+}
+```
+
+1. Save the file and restart Claude Desktop
+
+Notes
+
+- If you installed elsewhere, update both paths accordingly
+- If `venv\\Scripts\\python.exe` doesn’t exist yet, start Claude anyway; it will prompt you to install requirements, or run: `venv\\Scripts\\pip.exe install -r requirements.txt`
+
+### Option C — ChatGPT Desktop (with MCP)
+
+From the project folder:
 
 ```powershell
 ./scripts/install_to_chatgpt.ps1
 ```
 
-Then restart the ChatGPT app.
+Follow the on-screen instructions to paste the generated JSON into ChatGPT → Settings → Tools → Developer. Then restart ChatGPT.
 
 ## 4) Connect and test
 
-1. Open Power BI Desktop and load a .pbix file
-2. Wait 10–15 seconds for the model to finish loading
-3. In Claude, say: “Detect my Power BI Desktop instances”
-4. Then: “Connect to instance 0”
-5. Ask: “What tables are in this model?”
+1) Open Power BI Desktop and load a .pbix file
+2) Wait ~10–15 seconds for the model to finish loading
+3) In your AI client, say: “Detect my Power BI Desktop instances”
+4) Then: “Connect to instance 0”
+5) Ask: “What tables are in this model?”
 
-If the server responds with your model’s tables, you’re good to go.
+If you see your tables, you’re set.
 
 ## Updating
 
-- Safe update: back up your current folder, then replace with the new package.
-- If you change the install path, rerun `./scripts/install_to_claude.ps1` so Claude points to the new location.
-- To refresh Python packages (if needed):
+- Back up your current folder, then replace with the new package
+- If you changed the install path, rerun the installer or update the JSON (manual Claude)
+- To refresh Python packages:
 
 ```powershell
 ./venv/Scripts/pip.exe install --upgrade -r requirements.txt
 ```
 
-## Uninstalling / Cleanup
+## Uninstalling / cleanup
 
-1. Close Claude Desktop completely
-2. Remove the Claude Desktop MCP entry (or rerun `install_to_claude.ps1 -Remove` if supported)
-3. Delete the `pbixray-mcp-server` folder
+1) Close the MCP client (Claude/ChatGPT)
+2) Remove the MCP entry
+   - Claude: edit `%APPDATA%\Claude\claude_desktop_config.json` and delete `MCP-PowerBi-Finvision`
+   - ChatGPT: delete the tool under Settings → Tools → Developer
+3) Delete the `pbixray-mcp-server` folder
 
-Optionally remove logs under `logs/`.
+Optional: remove logs under `logs/`.
 
-## Troubleshooting quick tips
+## Troubleshooting
 
-- “No instances detected”: ensure Power BI Desktop is open with a .pbix file and wait a few seconds
-- “Not connected”: detect → connect → then run queries
-- Claude doesn’t see the server: rerun `install_to_claude.ps1`, verify `%APPDATA%\Claude\claude_desktop_config.json`, and restart Claude
-- Slow queries: use `TOPN()` to limit rows; check SE vs FE via performance analysis
+- “No instances detected” → Ensure a .pbix is open; wait ~10 seconds
+- “Not connected” → Detect → Connect → Then run tools
+- Claude doesn’t see the server → Re-run the installer or use manual JSON; restart Claude; verify `%APPDATA%\Claude\claude_desktop_config.json`
+- Slow queries → Use `TOPN()` to limit DMV outputs; use performance tools to see SE vs FE time
 
 ## Team distribution (optional)
 
 Create a ready-to-share zip:
 
 ```powershell
-cd "C:\Tools\pbixray-mcp-server"
-./scripts/package_for_distribution.ps1
+cd "C:\Tools\pbixray-mcp-server"; ./scripts/package_for_distribution.ps1
 ```
 
-Share the resulting archive with users and point them to this INSTALL.md.
+Share the archive and link users to this INSTALL.md.
