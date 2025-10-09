@@ -117,13 +117,15 @@ class PerformanceOptimizer:
                 # Query to check for duplicates in "one" side
                 if 'One' in configured_card:
                     # Check to-side (should be unique)
-                    check_query = f"""
-                    EVALUATE
-                    ROW(
-                        "TotalRows", COUNTROWS('{to_table}'),
-                        "UniqueValues", DISTINCTCOUNT('{to_table}'[{to_col}])
+                    # Quote identifiers defensively for tables/columns that contain special chars
+                    def _qt(s: str) -> str:
+                        return "'" + str(s).replace("'", "''") + "'"
+                    def _qc(c: str) -> str:
+                        return "[" + str(c).replace("]", "]]" ) + "]"
+                    check_query = (
+                        "EVALUATE\nROW(\"TotalRows\", COUNTROWS(" + _qt(to_table) + "), "
+                        "\"UniqueValues\", DISTINCTCOUNT(" + _qt(to_table) + _qc(to_col) + "))"
                     )
-                    """
 
                     result = self.executor.validate_and_execute_dax(check_query)
                     if result.get('success') and result.get('rows'):
@@ -206,17 +208,37 @@ class PerformanceOptimizer:
 
             # Get columns
             cols_result = self.executor.execute_info_query("COLUMNS", table_name=table)
-
+            # Desktop variants occasionally fail on table-scoped DMV; fallback to all-cols and filter
             if not cols_result.get('success'):
-                return {'success': False, 'error': 'Failed to get columns'}
+                all_cols = self.executor.execute_info_query("COLUMNS")
+                if all_cols.get('success'):
+                    def _norm(s: Optional[str]) -> str:
+                        if not s:
+                            return ""
+                        s = str(s)
+                        if s.startswith('[') and s.endswith(']'):
+                            s = s[1:-1]
+                        if s.startswith('"') and s.endswith('"'):
+                            s = s[1:-1]
+                        return s
+                    t_norm = _norm(table)
+                    rows = []
+                    for r in all_cols.get('rows', []) or []:
+                        rt = _norm(r.get('Table') or r.get('TableName') or r.get('TABLE_NAME'))
+                        if rt == t_norm:
+                            rows.append(r)
+                    cols_result = {'success': True, 'rows': rows, 'row_count': len(rows)}
+                else:
+                    return {'success': False, 'error': 'Failed to get columns'}
 
             columns = cols_result['rows']
             analysis = []
 
             # Analyze up to 20 columns to avoid long execution
             for col in columns[:20]:
-                col_table = _get_any(col, ['Table', 'TableName'])
-                col_name = _get_any(col, ['Name'])
+                col_table = _get_any(col, ['Table', 'TableName', 'TABLE_NAME'])
+                # Prefer explicit/inferred names when standard Name is absent
+                col_name = _get_any(col, ['Name', 'ExplicitName', 'InferredName', 'COLUMN_NAME'])
                 if not col_table:
                     tid = _get_any(col, ['TableID'])
                     try:
@@ -229,18 +251,27 @@ class PerformanceOptimizer:
                 data_type = col.get('DataType', 'Unknown')
 
                 # Skip hidden columns
-                if col.get('IsHidden'):
+                hidden_val = col.get('IsHidden') or col.get('[IsHidden]') or col.get('HIDDEN') or col.get('[HIDDEN]')
+                if isinstance(hidden_val, str):
+                    hidden = hidden_val.strip().lower() == 'true'
+                else:
+                    hidden = bool(hidden_val)
+                if hidden:
                     continue
 
                 # Query cardinality
-                card_query = f"""
-                EVALUATE
-                ROW(
-                    "RowCount", COUNTROWS('{col_table}'),
-                    "DistinctCount", DISTINCTCOUNT('{col_table}'[{col_name}]),
-                    "NullCount", COUNTBLANK('{col_table}'[{col_name}])
+                # Defensive quoting for identifiers
+                def _qt(s: str) -> str:
+                    return "'" + str(s).replace("'", "''") + "'"
+                def _qc(c: str) -> str:
+                    return "[" + str(c).replace("]", "]]" ) + "]"
+                card_query = (
+                    "EVALUATE\nROW("
+                    "\"RowCount\", COUNTROWS(" + _qt(col_table) + "), "
+                    "\"DistinctCount\", DISTINCTCOUNT(" + _qt(col_table) + _qc(col_name) + "), "
+                    "\"NullCount\", COUNTBLANK(" + _qt(col_table) + _qc(col_name) + ")"
+                    ")"
                 )
-                """
 
                 result = self.executor.validate_and_execute_dax(card_query)
                 if result.get('success') and result.get('rows'):
@@ -323,24 +354,72 @@ class PerformanceOptimizer:
                 except Exception:
                     return default
 
-            # Query VertiPaq storage info
-            query = f"""
-            EVALUATE
-            FILTER(
-                INFO.STORAGETABLECOLUMNS(),
-                [TABLE_ID] = "{table}"
-            )
-            """
-
-            result = self.executor.validate_and_execute_dax(query)
-            if not result.get('success'):
+            # Query full VertiPaq storage info and filter client-side for maximum compatibility
+            all_vp = self.executor.validate_and_execute_dax("EVALUATE INFO.STORAGETABLECOLUMNS()")
+            if not all_vp.get('success'):
                 return {'success': False, 'error': 'Failed to query VertiPaq stats'}
 
-            rows = result.get('rows', [])
+            target = str(table)
+            def _row_matches(r: Dict[str, Any]) -> bool:
+                keys = (
+                    'TABLE_FULL_NAME', 'TABLE_ID', 'TABLE_NAME', 'Table', 'TABLE', 'Name'
+                )
+                for k in keys:
+                    if k in r and r[k] is not None:
+                        sv = str(r[k])
+                        if sv == target or target in sv:
+                            return True
+                return False
+
+            rows = [r for r in (all_vp.get('rows') or []) if isinstance(r, dict) and _row_matches(r)]
             if not rows:
+                # Fallback: compute lightweight per-column metrics without true dictionary sizes
+                # This provides actionable guidance even when VertiPaq DMV isn't available
+                cols_result = self.executor.execute_info_query("COLUMNS", table_name=table)
+                if not cols_result.get('success'):
+                    # last-chance: all columns then filter by table name
+                    all_cols = self.executor.execute_info_query("COLUMNS")
+                    if all_cols.get('success'):
+                        trows = [r for r in all_cols.get('rows', []) if str(r.get('Table') or r.get('TableName')) == str(table)]
+                        cols_result = {'success': True, 'rows': trows}
+                analysis = []
+                total_cardinality = 0
+                if cols_result.get('success'):
+                    for col in (cols_result.get('rows') or [])[:20]:
+                        col_table = str(col.get('Table') or table)
+                        col_name = str(col.get('Name'))
+                        # Skip hidden columns to avoid noise
+                        if col.get('IsHidden'):
+                            continue
+                        # Quoted identifiers
+                        qt = "'" + col_table.replace("'", "''") + "'"
+                        qc = "[" + col_name.replace("]", "]]" ) + "]"
+                        q = (
+                            "EVALUATE ROW(\"DistinctCount\", DISTINCTCOUNT(" + qt + qc + "), "
+                            "\"NullCount\", COUNTBLANK(" + qt + qc + "))"
+                        )
+                        r = self.executor.validate_and_execute_dax(q)
+                        if r.get('success') and r.get('rows'):
+                            distinct = _to_int(r['rows'][0].get('DistinctCount', 0))
+                            nulls = _to_int(r['rows'][0].get('NullCount', 0))
+                            total_cardinality += distinct
+                            analysis.append({
+                                'column': col_name,
+                                'cardinality': distinct,
+                                'null_count': nulls,
+                                'dictionary_size_bytes': None,
+                                'dictionary_size_mb': None,
+                                'severity': 'info',
+                                'recommendation': 'VertiPaq DMV unavailable; estimated via DISTINCTCOUNT/COUNTBLANK.'
+                            })
                 return {
-                    'success': False,
-                    'error': f"No VertiPaq data found for table '{table}'"
+                    'success': True,
+                    'table': table,
+                    'columns_analyzed': len(analysis),
+                    'total_size_mb': None,
+                    'total_cardinality': total_cardinality,
+                    'analysis': analysis,
+                    'notes': ['VertiPaq DMV returned no rows; used fallback estimation']
                 }
 
             analysis = []
@@ -348,9 +427,9 @@ class PerformanceOptimizer:
             total_cardinality = 0
 
             for row in rows:
-                column = row.get('COLUMN_ID', 'Unknown')
-                data_size = _to_int(row.get('DICTIONARY_SIZE', 0))
-                cardinality = _to_int(row.get('DICTIONARY_COUNT', 0))
+                column = row.get('COLUMN_ID') or row.get('COLUMN_NAME') or row.get('Column') or 'Unknown'
+                data_size = _to_int(row.get('DICTIONARY_SIZE') or row.get('DICTIONARY_SIZE_BYTES') or row.get('DictionarySize') or 0)
+                cardinality = _to_int(row.get('DICTIONARY_COUNT') or row.get('Cardinality') or 0)
 
                 total_size += data_size
                 total_cardinality += cardinality

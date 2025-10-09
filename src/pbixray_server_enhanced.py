@@ -172,6 +172,40 @@ def _dax_quote_column(name: str) -> str:
 
 
 # ----------------------------
+# Row normalization helpers (cross-version DMV/TOM field variance)
+# ----------------------------
+def _norm_identifier(val: Any) -> str:
+    try:
+        s = str(val or "")
+        # Remove wrapping brackets/quotes often present in DMVs
+        if s.startswith("[") and s.endswith("]"):
+            s = s[1:-1]
+        if s.startswith('"') and s.endswith('"'):
+            s = s[1:-1]
+        return s
+    except Exception:
+        return ""
+
+
+def _row_table_name(row: dict) -> str:
+    for k in ("Table", "TABLE_NAME", "TableName", "table", "[Table]", "TABLE"):
+        if k in row and row[k] not in (None, ""):
+            return _norm_identifier(row[k])
+    # Some DMV variants embed table in a compound name; last resort attempt
+    if 'FromTable' in row or 'ToTable' in row:
+        # Not a column/measure row, ignore
+        pass
+    return ""
+
+
+def _row_measure_name(row: dict) -> str:
+    for k in ("Name", "MEASURE_NAME", "[Name]"):
+        if k in row and row[k] not in (None, ""):
+            return _norm_identifier(row[k])
+    return ""
+
+
+# ----------------------------
 # Standardized notes helpers
 # ----------------------------
 def _add_note(result: Any, note: str) -> Any:
@@ -707,6 +741,34 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
     if name == "list_measures":
         table = arguments.get("table")
         result = qe.execute_info_query("MEASURES", table_name=table, exclude_columns=['Expression'])
+        # Fallback for Desktop variants where table filter yields empty
+        if table and ((result.get('success') and len(result.get('rows') or []) == 0) or not result.get('success')):
+            all_meas = qe.execute_info_query("MEASURES", exclude_columns=['Expression'])
+            if all_meas.get('success'):
+                # Build table id -> name map
+                id_to_name = {}
+                try:
+                    tbls = qe.execute_info_query("TABLES")
+                    if tbls.get('success'):
+                        for t in tbls.get('rows', []):
+                            tid = t.get('ID') or t.get('TableID') or t.get('[ID]') or t.get('[TableID]')
+                            nm = t.get('Name') or t.get('[Name]')
+                            if tid is not None and nm:
+                                id_to_name[str(tid)] = _norm_identifier(nm)
+                except Exception:
+                    pass
+                t_norm = _norm_identifier(table)
+                rows = []
+                for r in all_meas.get('rows', []):
+                    rt = _row_table_name(r)
+                    if not rt:
+                        tid = r.get('TableID') or r.get('[TableID]')
+                        if tid is not None and str(tid) in id_to_name:
+                            rt = id_to_name[str(tid)]
+                    if rt == t_norm:
+                        rows.append(r)
+                result = {'success': True, 'rows': rows, 'row_count': len(rows)}
+                _note_client_filter_columns(result, str(table))
         return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
     if name == "describe_table":
         table = arguments["table"]
@@ -717,14 +779,56 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
         try:
             if (cols.get('success') and len(cols.get('rows') or []) == 0) or not cols.get('success'):
                 all_cols = qe.execute_info_query("COLUMNS")
+                # Build table id -> name map if names are missing
+                id_to_name = {}
+                try:
+                    tbls = qe.execute_info_query("TABLES")
+                    if tbls.get('success'):
+                        for t in tbls.get('rows', []):
+                            tid = t.get('ID') or t.get('TableID') or t.get('[ID]') or t.get('[TableID]')
+                            nm = t.get('Name') or t.get('[Name]')
+                            if tid is not None and nm:
+                                id_to_name[str(tid)] = _norm_identifier(nm)
+                except Exception:
+                    pass
                 if all_cols.get('success'):
-                    c_rows = [r for r in (all_cols.get('rows') or []) if str(r.get('Table') or '') == str(table)]
+                    t_norm = _norm_identifier(table)
+                    c_rows = []
+                    for r in (all_cols.get('rows') or []):
+                        rt = _row_table_name(r)
+                        if not rt:
+                            tid = r.get('TableID') or r.get('[TableID]')
+                            if tid is not None and str(tid) in id_to_name:
+                                rt = id_to_name[str(tid)]
+                        if rt == t_norm:
+                            c_rows.append(r)
                     cols = {'success': True, 'rows': c_rows, 'row_count': len(c_rows)}
                     _note_client_filter_columns(cols, str(table))
             if (measures.get('success') and len(measures.get('rows') or []) == 0) or not measures.get('success'):
                 all_meas = qe.execute_info_query("MEASURES", exclude_columns=['Expression'])
+                # Build table id -> name map if needed
+                id_to_name = {}
+                try:
+                    tbls = qe.execute_info_query("TABLES")
+                    if tbls.get('success'):
+                        for t in tbls.get('rows', []):
+                            tid = t.get('ID') or t.get('TableID') or t.get('[ID]') or t.get('[TableID]')
+                            nm = t.get('Name') or t.get('[Name]')
+                            if tid is not None and nm:
+                                id_to_name[str(tid)] = _norm_identifier(nm)
+                except Exception:
+                    pass
                 if all_meas.get('success'):
-                    m_rows = [r for r in (all_meas.get('rows') or []) if str(r.get('Table') or '') == str(table)]
+                    t_norm = _norm_identifier(table)
+                    m_rows = []
+                    for r in (all_meas.get('rows') or []):
+                        rt = _row_table_name(r)
+                        if not rt:
+                            tid = r.get('TableID') or r.get('[TableID]')
+                            if tid is not None and str(tid) in id_to_name:
+                                rt = id_to_name[str(tid)]
+                        if rt == t_norm:
+                            m_rows.append(r)
                     measures = {'success': True, 'rows': m_rows, 'row_count': len(m_rows)}
                     _note_client_filter_columns(measures, str(table))
         except Exception:
@@ -794,7 +898,22 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
             result['relationships_next_token'] = r_next
         return result
     if name == "get_measure_details":
-        return qe.execute_info_query("MEASURES", filter_expr=f'[Name] = "{arguments["measure"]}"', table_name=arguments["table"])
+        # Attempt table-scoped measure fetch first
+        primary = qe.execute_info_query(
+            "MEASURES",
+            filter_expr=f'[Name] = "{arguments["measure"]}"',
+            table_name=arguments["table"]
+        )
+        if primary.get('success') and primary.get('rows'):
+            return primary
+        # Fallback: fetch all measures and filter by table and name using robust keys
+        all_meas = qe.execute_info_query("MEASURES")
+        if all_meas.get('success'):
+            t_norm = _norm_identifier(arguments.get("table"))
+            m_norm = _norm_identifier(arguments.get("measure"))
+            rows = [r for r in (all_meas.get('rows') or []) if _row_table_name(r) == t_norm and _row_measure_name(r) == m_norm]
+            return {'success': True, 'rows': rows, 'row_count': len(rows)}
+        return primary
     if name == "search_string":
         result = qe.search_measures_dax(arguments['search_text'], arguments.get('search_in_expression', True), arguments.get('search_in_name', True))
         return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
@@ -956,7 +1075,28 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
         if table and ((result.get('success') and len(result.get('rows') or []) == 0) or not result.get('success')):
             all_cols = qe.execute_info_query("COLUMNS")
             if all_cols.get('success'):
-                rows = [r for r in all_cols.get('rows', []) if str(r.get('Table') or '') == str(table)]
+                # Build table id -> name map
+                id_to_name = {}
+                try:
+                    tbls = qe.execute_info_query("TABLES")
+                    if tbls.get('success'):
+                        for t in tbls.get('rows', []):
+                            tid = t.get('ID') or t.get('TableID') or t.get('[ID]') or t.get('[TableID]')
+                            nm = t.get('Name') or t.get('[Name]')
+                            if tid is not None and nm:
+                                id_to_name[str(tid)] = _norm_identifier(nm)
+                except Exception:
+                    pass
+                t_norm = _norm_identifier(table)
+                rows = []
+                for r in all_cols.get('rows', []):
+                    rt = _row_table_name(r)
+                    if not rt:
+                        tid = r.get('TableID') or r.get('[TableID]')
+                        if tid is not None and str(tid) in id_to_name:
+                            rt = id_to_name[str(tid)]
+                    if rt == t_norm:
+                        rows.append(r)
                 result = {'success': True, 'rows': rows, 'row_count': len(rows)}
                 _note_client_filter_columns(result, str(table))
         return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
@@ -1003,9 +1143,14 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
                         return True
                 return False
             filtered = [r for r in dsp.get('rows', []) if isinstance(r, dict) and match_row(r)]
-            res = {'success': True, 'rows': filtered, 'row_count': len(filtered)}
-            _note_client_filter_vertipaq(res, str(table))
-            return res
+            if filtered:
+                res = {'success': True, 'rows': filtered, 'row_count': len(filtered)}
+                _note_client_filter_vertipaq(res, str(table))
+                return res
+            # If filter produced no rows, fall back to returning full dataset to keep tool useful
+            dsp = dict(dsp)
+            dsp.setdefault('notes', []).append('Table filter produced no VertiPaq rows; returning full dataset for client-side filtering')
+            return dsp
         return dsp
     if name == "analyze_query_performance":
         if not performance_analyzer:
@@ -1048,22 +1193,32 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
     if name == "analyze_m_practices":
         return _scan_m_practices(qe, dmv_cap)
     if name == "analyze_model_bpa":
-        if not BPA_AVAILABLE or not bpa_analyzer:
-            return ErrorHandler.handle_manager_unavailable('bpa_analyzer')
-        tmsl_result = qe.get_tmsl_definition()
-        if tmsl_result.get('success'):
-            # Prefer fast mode with config-based limits to keep latency down
-            bpa_cfg = config.get('bpa', {})
-            if hasattr(bpa_analyzer, 'analyze_model_fast'):
-                violations = bpa_analyzer.analyze_model_fast(tmsl_result['tmsl'], bpa_cfg)
-            else:
-                violations = bpa_analyzer.analyze_model(tmsl_result['tmsl'])
-            summary = bpa_analyzer.get_violations_summary()
-            result = {'success': True, 'violations_count': len(violations), 'summary': summary, 'violations': [{'rule_id': v.rule_id, 'rule_name': v.rule_name, 'category': v.category, 'severity': getattr(v.severity, 'name', str(v.severity)), 'object_type': v.object_type, 'object_name': v.object_name, 'table_name': v.table_name, 'description': v.description} for v in violations]}
-            if isinstance(bpa_cfg, dict) and bpa_cfg:
-                result.setdefault('notes', []).append('BPA fast mode with configured filters applied')
-            return result
-        return tmsl_result
+        try:
+            # Lazy-init BPA if feature enabled but analyzer missing
+            if (not bpa_analyzer) and hasattr(connection_state, '_initialize_bpa') and getattr(config, 'is_feature_enabled', lambda x: True)('enable_bpa'):
+                try:
+                    connection_state._initialize_bpa(False)  # best-effort
+                    bpa_analyzer = connection_state.bpa_analyzer
+                except Exception:
+                    pass
+            if not BPA_AVAILABLE or not bpa_analyzer:
+                return ErrorHandler.handle_manager_unavailable('bpa_analyzer')
+            tmsl_result = qe.get_tmsl_definition()
+            if tmsl_result.get('success'):
+                # Prefer fast mode with config-based limits to keep latency down
+                bpa_cfg = config.get('bpa', {})
+                if hasattr(bpa_analyzer, 'analyze_model_fast'):
+                    violations = bpa_analyzer.analyze_model_fast(tmsl_result['tmsl'], bpa_cfg)
+                else:
+                    violations = bpa_analyzer.analyze_model(tmsl_result['tmsl'])
+                summary = bpa_analyzer.get_violations_summary()
+                result = {'success': True, 'violations_count': len(violations), 'summary': summary, 'violations': [{'rule_id': v.rule_id, 'rule_name': v.rule_name, 'category': v.category, 'severity': getattr(v.severity, 'name', str(v.severity)), 'object_type': v.object_type, 'object_name': v.object_name, 'table_name': v.table_name, 'description': v.description} for v in violations]}
+                if isinstance(bpa_cfg, dict) and bpa_cfg:
+                    result.setdefault('notes', []).append('BPA fast mode with configured filters applied')
+                return result
+            return tmsl_result
+        except Exception as _e:
+            return {'success': False, 'error': str(_e), 'error_type': 'bpa_error'}
     if name == "export_relationship_graph":
         return _export_relationship_graph(qe, arguments.get('format', 'json'))
     if name == "full_analysis":
@@ -1087,7 +1242,22 @@ def _handle_dependency_and_bulk(name: str, arguments: Any) -> Optional[dict]:
     partition_manager = connection_state.partition_manager
     rls_manager = connection_state.rls_manager
     dax_injector = connection_state.dax_injector
+    # Ensure model_exporter is available even if managers weren't fully initialized
     model_exporter = connection_state.model_exporter
+    if model_exporter is None:
+        try:
+            # Best-effort lazy init without disrupting other managers
+            conn = connection_manager.get_connection()
+            if conn is not None:
+                try:
+                    from core.model_exporter import ModelExporter  # local import to avoid circulars
+                    connection_state.model_exporter = ModelExporter(conn)
+                    model_exporter = connection_state.model_exporter
+                    logger.info("✓ Lazily initialized model_exporter")
+                except Exception as _e:
+                    logger.warning(f"Failed lazy init of model_exporter: {_e}")
+        except Exception:
+            pass
 
     if name == "analyze_measure_dependencies":
         return dependency_analyzer.analyze_measure_dependencies(

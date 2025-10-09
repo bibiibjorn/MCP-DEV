@@ -221,11 +221,35 @@ class DependencyAnalyzer:
                 table_name=table
             )
 
-            if not measure_result.get('success') or not measure_result.get('rows'):
-                return {
-                    'success': False,
-                    'error': f"Measure '{measure}' not found in table '{table}'"
-                }
+            # Some Desktop builds regress on table-scoped DMV filters; fallback to client-side filter
+            if not (measure_result.get('success') and measure_result.get('rows')):
+                all_measures = self.executor.execute_info_query("MEASURES")
+                if all_measures.get('success'):
+                    def _norm(s: str | None) -> str:
+                        if not s:
+                            return ""
+                        s = str(s)
+                        if s.startswith('[') and s.endswith(']'):
+                            s = s[1:-1]
+                        if s.startswith('"') and s.endswith('"'):
+                            s = s[1:-1]
+                        return s
+                    t_norm = _norm(table)
+                    m_norm = _norm(measure)
+                    rows = []
+                    for r in all_measures.get('rows', []) or []:
+                        rt = _norm(r.get('Table') or r.get('TableName') or r.get('TABLE_NAME'))
+                        rn = _norm(r.get('Name') or r.get('MEASURE_NAME'))
+                        if rt == t_norm and rn == m_norm:
+                            rows.append(r)
+                    if rows:
+                        measure_result = {'success': True, 'rows': rows, 'row_count': len(rows)}
+                # If still no rows, return not-found error
+                if not (measure_result.get('success') and measure_result.get('rows')):
+                    return {
+                        'success': False,
+                        'error': f"Measure '{measure}' not found in table '{table}'"
+                    }
 
             measure_data = measure_result['rows'][0]
             expression = measure_data.get('Expression', '')
