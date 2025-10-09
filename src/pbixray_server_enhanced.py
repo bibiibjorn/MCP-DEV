@@ -1176,7 +1176,80 @@ def _handle_dependency_and_bulk(name: str, arguments: Any) -> Optional[dict]:
     return None
 
 
+# Friendly alias map: expose user-friendly names while keeping canonical names working
+FRIENDLY_TOOL_ALIASES = {
+    # Connection & basics
+    "Find Power BI Desktop": "detect_powerbi_desktop",
+    "Connect to Power BI": "connect_to_powerbi",
+    "Run DAX (safe)": "run_dax",
+    # Explore & inspect
+    "Inspect: List tables": "list_tables",
+    "Inspect: List columns": "list_columns",
+    "Inspect: List measures": "list_measures",
+    "Inspect: Calculated columns": "list_calculated_columns",
+    "Inspect: Describe table": "describe_table",
+    "Inspect: Preview table": "preview_table_data",
+    "Search: Text in measures": "search_string",
+    "Search: Objects": "search_objects",
+    "Inspect: Measure details": "get_measure_details",
+    "Inspect: Data sources": "get_data_sources",
+    "Inspect: M expressions": "get_m_expressions",
+    # Profiling & data
+    "Profile: Columns": "profile_columns",
+    "Profile: Value distribution": "get_column_value_distribution",
+    "Column summary": "get_column_summary",
+    "VertiPaq stats": "get_vertipaq_stats",
+    # Dependencies & impact
+    "Dependencies: Measure": "analyze_measure_dependencies",
+    "Impact: Measure": "get_measure_impact",
+    "Usage: Column heatmap": "get_column_usage_heatmap",
+    "Dependencies: Column usage": "analyze_column_usage",
+    "Find unused objects": "find_unused_objects",
+    # Model management
+    "Measure: Upsert": "upsert_measure",
+    "Measure: Delete": "delete_measure",
+    "Measures: Bulk create": "bulk_create_measures",
+    "Measures: Bulk delete": "bulk_delete_measures",
+    "Calc groups: List": "list_calculation_groups",
+    "Calc group: Create": "create_calculation_group",
+    "Calc group: Delete": "delete_calculation_group",
+    "Partitions: List": "list_partitions",
+    # Security
+    "Security: List roles": "list_roles",
+    "Security: Validate RLS": "validate_rls_coverage",
+    # Validation & governance
+    "Validate: DAX": "validate_dax_query",
+    "Validate: Model integrity": "validate_model_integrity",
+    "Best practices (BPA)": "analyze_model_bpa",
+    "Best practices: M queries": "analyze_m_practices",
+    # Performance
+    "Performance: Analyze queries": "analyze_queries_batch",
+    "Performance: Relationship cardinality": "analyze_relationship_cardinality",
+    "Performance: Column cardinality": "analyze_column_cardinality",
+    "Performance: Storage compression": "analyze_storage_compression",
+    # Docs & export
+    "Export: Columns with samples": "export_columns_with_samples",
+    "Export: Compact schema": "export_compact_schema",
+    "Export: Relationships graph": "export_relationship_graph",
+    "Export: TMSL": "export_tmsl",
+    "Export: TMDL": "export_tmdl",
+    "Docs: Generate": "generate_documentation",
+    "Docs: Overview": "export_model_overview",
+    "Model: Summary": "get_model_summary",
+    "Compare: Models": "compare_models",
+    "Schema: Relationships": "relationships",
+    "Schema: Export (paged)": "export_model_schema",
+    # Orchestration
+    "Analyze: Full model": "full_analysis",
+    "Analyze: Propose plan": "propose_analysis",
+}
+
 def _dispatch_tool(name: str, arguments: Any) -> dict:
+    # Normalize friendly aliases to canonical tool names
+    try:
+        name = FRIENDLY_TOOL_ALIASES.get(name, name)
+    except Exception:
+        pass
     # 1) Logs/health/server info
     res = _handle_logs_and_health(name, arguments)
     if res is not None:
@@ -1211,140 +1284,116 @@ def _dispatch_tool(name: str, arguments: Any) -> dict:
 
 @app.list_tools()
 async def list_tools() -> List[Tool]:
-    # Public, simplified tool surface
-    tools = [
-        # Combined DAX runner (preview/analyze)
-    Tool(name="run_dax", description="Run a DAX query (preview/analyze) with safe limits", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "mode": {"type": "string", "enum": ["auto", "preview", "analyze"], "default": "auto"}, "runs": {"type": "integer"}, "top_n": {"type": "integer"}, "verbose": {"type": "boolean", "default": False}, "include_event_counts": {"type": "boolean", "default": False}}, "required": ["query"]}),
-        Tool(name="summarize_model", description="Lightweight model summary suitable for large models", inputSchema={"type": "object", "properties": {}, "required": []}),
-    Tool(name="document_model", description="Generate documentation or overview for the model", inputSchema={"type": "object", "properties": {"format": {"type": "string", "enum": ["markdown", "html", "json"], "default": "markdown"}, "include_examples": {"type": "boolean", "default": False}}, "required": []}),
-    # plan_query intentionally hidden from public tool list (still callable internally)
-    # optimize_variants: intentionally hidden from public tool list (used internally by agent_policy)
-        Tool(name="relationships", description="List relationships with optional cardinality analysis", inputSchema={"type": "object", "properties": {}, "required": []}),
-        # Instance discovery and connect remain available
-        Tool(name="detect_powerbi_desktop", description="Detect Power BI instances", inputSchema={"type": "object", "properties": {}, "required": []}),
-        Tool(name="connect_to_powerbi", description="Connect to instance", inputSchema={"type": "object", "properties": {"model_index": {"type": "integer"}}, "required": ["model_index"]}),
-        # Core metadata utilities
-        Tool(name="list_tables", description="List tables", inputSchema={"type": "object", "properties": {"page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
-        Tool(name="list_measures", description="List measures", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
-    Tool(name="describe_table", description="Describe table", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "columns_page_size": {"type": "integer"}, "columns_next_token": {"type": "string"}, "measures_page_size": {"type": "integer"}, "measures_next_token": {"type": "string"}, "relationships_page_size": {"type": "integer"}, "relationships_next_token": {"type": "string"}}, "required": ["table"]}),
-        Tool(name="get_measure_details", description="Measure details", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}}, "required": ["table", "measure"]}),
-        Tool(name="search_string", description="Search measures", inputSchema={"type": "object", "properties": {"search_text": {"type": "string"}, "search_in_expression": {"type": "boolean", "default": True}, "search_in_name": {"type": "boolean", "default": True}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": ["search_text"]}),
-        Tool(name="list_calculated_columns", description="List calc columns", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
-        Tool(name="search_objects", description="Search objects", inputSchema={"type": "object", "properties": {"pattern": {"type": "string", "default": "*"}, "types": {"type": "array", "items": {"type": "string"}, "default": ["tables", "columns", "measures"]}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
-        Tool(name="get_data_sources", description="Data sources", inputSchema={"type": "object", "properties": {"page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
-        Tool(name="get_m_expressions", description="M expressions", inputSchema={"type": "object", "properties": {"page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
-        Tool(name="preview_table_data", description="Preview table", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "top_n": {"type": "integer", "default": 10}}, "required": ["table"]}),
-        Tool(
-            name="export_model_schema",
-            description="Export model schema (compact overview by default; use 'section' to page through full data)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "section": {"type": "string", "enum": ["tables", "columns", "measures", "relationships"]},
-                    "page_size": {"type": "integer"},
-                    "next_token": {"type": "string"},
-                    "preview_size": {"type": "integer", "description": "Rows per section in compact preview (default 30)"},
-                    "include": {"type": "array", "items": {"type": "string"}, "description": "Subset of sections to include in compact preview"}
-                },
-                "required": []
-            }
-    ),
-    Tool(name="upsert_measure", description="Create/update measure", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "expression": {"type": "string"}, "display_folder": {"type": "string"}, "description": {"type": "string"}, "format_string": {"type": "string"}}, "required": ["table", "measure", "expression"]}),
-        Tool(name="delete_measure", description="Delete a measure", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}} , "required": ["table", "measure"]}),
-    Tool(name="list_columns", description="List columns", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
-        Tool(name="get_column_values", description="Column values", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}, "limit": {"type": "integer", "default": 100}}, "required": ["table", "column"]}),
-        Tool(name="get_column_summary", description="Column stats", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}}, "required": ["table", "column"]}),
-        Tool(name="get_vertipaq_stats", description="VertiPaq stats", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
-        Tool(name="validate_dax_query", description="Validate DAX syntax and analyze complexity", inputSchema={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}),
+    """Expose a curated, user-friendly tool list.
 
-        # Dependency Analysis
-        Tool(name="analyze_measure_dependencies", description="Analyze measure dependencies", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "depth": {"type": "integer", "default": 3}}, "required": ["table", "measure"]}),
-        Tool(name="find_unused_objects", description="Find unused objects", inputSchema={"type": "object", "properties": {}, "required": []}),
-        Tool(name="analyze_column_usage", description="Analyze column usage", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}}, "required": ["table", "column"]}),
+    The underlying canonical tool names remain supported via alias mapping,
+    but we present clearer names here to streamline the end-user experience.
+    """
+    tools: List[Tool] = []
 
-        # Bulk Operations
-        Tool(name="bulk_create_measures", description="Create multiple measures", inputSchema={"type": "object", "properties": {"measures": {"type": "array", "items": {"type": "object"}}}, "required": ["measures"]}),
-        Tool(name="bulk_delete_measures", description="Delete multiple measures", inputSchema={"type": "object", "properties": {"measures": {"type": "array", "items": {"type": "object"}}}, "required": ["measures"]}),
+    def T(friendly_name: str, description: str, input_schema: dict) -> Tool:
+        # Create a Tool with a friendly name; calls are normalized by alias map
+        return Tool(name=friendly_name, description=description, inputSchema=input_schema)
 
-        # Calculation Groups
-        Tool(name="list_calculation_groups", description="List calculation groups", inputSchema={"type": "object", "properties": {}, "required": []}),
-        Tool(name="create_calculation_group", description="Create calculation group", inputSchema={"type": "object", "properties": {"name": {"type": "string"}, "items": {"type": "array", "items": {"type": "object"}}, "description": {"type": "string"}, "precedence": {"type": "integer", "default": 0}}, "required": ["name", "items"]}),
-        Tool(name="delete_calculation_group", description="Delete calculation group", inputSchema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}),
+    # Connection & basics
+    tools += [
+        T("Find Power BI Desktop", "Detect local Power BI Desktop instances", {"type": "object", "properties": {}, "required": []}),
+        T("Connect to Power BI", "Connect to a detected Power BI Desktop instance", {"type": "object", "properties": {"model_index": {"type": "integer"}}, "required": ["model_index"]}),
+        T("Run DAX (safe)", "Run a DAX query with safe limits (auto preview/analyze)", {"type": "object", "properties": {"query": {"type": "string"}, "mode": {"type": "string", "enum": ["auto", "preview", "analyze"], "default": "auto"}, "runs": {"type": "integer"}, "top_n": {"type": "integer"}, "verbose": {"type": "boolean", "default": False}, "include_event_counts": {"type": "boolean", "default": False}}, "required": ["query"]}),
+    ]
 
-        # Partition Management
-    Tool(name="list_partitions", description="List table partitions", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
+    # Explore & inspect
+    tools += [
+        T("Inspect: List tables", "List tables with pagination", {"type": "object", "properties": {"page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
+        T("Inspect: List columns", "List columns (optionally by table)", {"type": "object", "properties": {"table": {"type": "string"}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
+        T("Inspect: Calculated columns", "List calculated columns", {"type": "object", "properties": {"table": {"type": "string"}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
+        T("Inspect: List measures", "List measures", {"type": "object", "properties": {"table": {"type": "string"}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
+        T("Inspect: Measure details", "Get details for a specific measure", {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}}, "required": ["table", "measure"]}),
+        T("Inspect: Describe table", "Describe a table (columns, measures, relationships)", {"type": "object", "properties": {"table": {"type": "string"}, "columns_page_size": {"type": "integer"}, "columns_next_token": {"type": "string"}, "measures_page_size": {"type": "integer"}, "measures_next_token": {"type": "string"}, "relationships_page_size": {"type": "integer"}, "relationships_next_token": {"type": "string"}}, "required": ["table"]}),
+        T("Inspect: Preview table", "Preview sample rows from a table", {"type": "object", "properties": {"table": {"type": "string"}, "top_n": {"type": "integer", "default": 10}}, "required": ["table"]}),
+        T("Search: Text in measures", "Search in measure names/expressions", {"type": "object", "properties": {"search_text": {"type": "string"}, "search_in_expression": {"type": "boolean", "default": True}, "search_in_name": {"type": "boolean", "default": True}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": ["search_text"]}),
+        T("Search: Objects", "Search across tables, columns, measures", {"type": "object", "properties": {"pattern": {"type": "string", "default": "*"}, "types": {"type": "array", "items": {"type": "string"}, "default": ["tables", "columns", "measures"]}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
+        T("Schema: Relationships", "List relationships with optional cardinality analysis", {"type": "object", "properties": {}, "required": []}),
+        T("Inspect: Data sources", "List Power Query data sources", {"type": "object", "properties": {"page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
+        T("Inspect: M expressions", "List M expressions for queries", {"type": "object", "properties": {"page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []}),
+    ]
 
-        # RLS Management
-    Tool(name="list_roles", description="List security roles", inputSchema={"type": "object", "properties": {}, "required": []}),
-        Tool(name="validate_rls_coverage", description="Validate RLS coverage", inputSchema={"type": "object", "properties": {}, "required": []}),
+    # Profiling & data
+    tools += [
+        T("Profile: Columns", "Profile columns (min, max, distinct, nulls)", {"type": "object", "properties": {"table": {"type": "string"}, "columns": {"type": "array", "items": {"type": "string"}}}, "required": ["table"]}),
+        T("Profile: Value distribution", "Top values distribution for a column", {"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}, "top_n": {"type": "integer", "default": 50}}, "required": ["table", "column"]}),
+        T("Column summary", "Summary stats for a column", {"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}}, "required": ["table", "column"]}),
+        T("VertiPaq stats", "VertiPaq statistics (table-level)", {"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
+    ]
 
-        # Model Export
-        Tool(name="export_tmsl", description="Export TMSL (summary by default)", inputSchema={"type": "object", "properties": {"include_full_model": {"type": "boolean", "default": False}}, "required": []}),
-        Tool(name="export_tmdl", description="Export TMDL", inputSchema={"type": "object", "properties": {}, "required": []}),
-        Tool(name="generate_documentation", description="Generate docs", inputSchema={"type": "object", "properties": {}, "required": []}),
-        Tool(name="get_model_summary", description="Get lightweight model summary", inputSchema={"type": "object", "properties": {}, "required": []}),
-        Tool(name="compare_models", description="Compare models", inputSchema={"type": "object", "properties": {"reference_tmsl": {"type": "object"}}, "required": ["reference_tmsl"]}),
+    # Dependencies & impact
+    tools += [
+        T("Dependencies: Measure", "Analyze measure dependencies", {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "depth": {"type": "integer", "default": 3}}, "required": ["table", "measure"]}),
+        T("Impact: Measure", "Forward/backward impact for a measure", {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "depth": {"type": "integer", "default": 3}}, "required": ["table", "measure"]}),
+        T("Usage: Column heatmap", "Column usage heat map across measures", {"type": "object", "properties": {"table": {"type": "string"}, "limit": {"type": "integer", "default": 100}}, "required": []}),
+        T("Dependencies: Column usage", "Analyze how a column is used", {"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}}, "required": ["table", "column"]}),
+        T("Find unused objects", "Find unused tables/columns/measures", {"type": "object", "properties": {}, "required": []}),
+    ]
 
-    # Performance Optimization
-    Tool(name="analyze_relationship_cardinality", description="Analyze relationship cardinality", inputSchema={"type": "object", "properties": {}, "required": []}),
-        Tool(name="analyze_column_cardinality", description="Analyze column cardinality", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
-        Tool(name="analyze_storage_compression", description="Analyze storage/compression efficiency for a table", inputSchema={"type": "object", "properties": {"table": {"type": "string"}}, "required": ["table"]}),
+    # Model management
+    tools += [
+        T("Measure: Upsert", "Create or update a measure", {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "expression": {"type": "string"}, "display_folder": {"type": "string"}, "description": {"type": "string"}, "format_string": {"type": "string"}}, "required": ["table", "measure", "expression"]}),
+        T("Measure: Delete", "Delete a measure", {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}}, "required": ["table", "measure"]}),
+        T("Measures: Bulk create", "Create multiple measures", {"type": "object", "properties": {"measures": {"type": "array", "items": {"type": "object"}}}, "required": ["measures"]}),
+        T("Measures: Bulk delete", "Delete multiple measures", {"type": "object", "properties": {"measures": {"type": "array", "items": {"type": "object"}}}, "required": ["measures"]}),
+        T("Calc groups: List", "List calculation groups", {"type": "object", "properties": {}, "required": []}),
+        T("Calc group: Create", "Create a calculation group", {"type": "object", "properties": {"name": {"type": "string"}, "items": {"type": "array", "items": {"type": "object"}}, "description": {"type": "string"}, "precedence": {"type": "integer", "default": 0}}, "required": ["name", "items"]}),
+        T("Calc group: Delete", "Delete a calculation group", {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}),
+        T("Partitions: List", "List partitions for a table", {"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
+    ]
 
-        # Model Validation
-    Tool(name="validate_model_integrity", description="Validate model integrity", inputSchema={"type": "object", "properties": {}, "required": []}),
+    # Security
+    tools += [
+        T("Security: List roles", "List RLS roles", {"type": "object", "properties": {}, "required": []}),
+        T("Security: Validate RLS", "Validate RLS coverage", {"type": "object", "properties": {}, "required": []}),
+    ]
 
-        # Diagnostics and maintenance (trimmed; hide cache/safety/agent internals)
-    # warm_query_cache: intentionally hidden from public tool list (internal utility)
-    Tool(name="analyze_queries_batch", description="Analyze performance for multiple DAX queries", inputSchema={"type": "object", "properties": {"queries": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer", "default": 3}, "clear_cache": {"type": "boolean", "default": True}, "include_event_counts": {"type": "boolean", "default": False}}, "required": ["queries"]}),
-    Tool(name="profile_columns", description="Profile columns (min, max, distinct, nulls)", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "columns": {"type": "array", "items": {"type": "string"}}}, "required": ["table"]}),
-    Tool(name="get_column_value_distribution", description="Top values distribution for a column", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}, "top_n": {"type": "integer", "default": 50}}, "required": ["table", "column"]}),
-        Tool(name="validate_best_practices", description="Composite validator for modeling best practices", inputSchema={"type": "object", "properties": {}, "required": []}),
-    # Hidden agent orchestration variants are removed from public list (document_model covers docs)
-        Tool(name="get_measure_impact", description="Forward/backward impact for a measure", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "depth": {"type": "integer", "default": 3}}, "required": ["table", "measure"]}),
-        Tool(name="get_column_usage_heatmap", description="Column usage heat map across measures", inputSchema={"type": "object", "properties": {"table": {"type": "string"}, "limit": {"type": "integer", "default": 100}}, "required": []}),
-        Tool(name="format_dax", description="Lightweight DAX formatter (whitespace)", inputSchema={"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"]}),
-    Tool(name="export_model_overview", description="Export a compact model overview (json/yaml)", inputSchema={"type": "object", "properties": {"format": {"type": "string", "enum": ["json", "yaml"], "default": "json"}, "include_counts": {"type": "boolean", "default": True}}, "required": []}),
-        # Introspection & tuning
+    # Validation & governance
+    tools += [
+        T("Validate: DAX", "Validate DAX syntax and analyze complexity", {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}),
+        T("Validate: Model integrity", "Validate model integrity", {"type": "object", "properties": {}, "required": []}),
+        T("Best practices: M queries", "Scan M expressions for common issues", {"type": "object", "properties": {}, "required": []}),
     ]
     if BPA_AVAILABLE:
-        tools.append(Tool(name="analyze_model_bpa", description="Run BPA", inputSchema={"type": "object", "properties": {}, "required": []}))
-    # M best practices
-    tools.append(Tool(name="analyze_m_practices", description="Scan M expressions for common issues", inputSchema={"type": "object", "properties": {}, "required": []}))
-    # Output schemas and lineage export
-    tools.append(Tool(name="export_relationship_graph", description="Export relationships as a graph (JSON or GraphML)", inputSchema={"type": "object", "properties": {"format": {"type": "string", "enum": ["json", "graphml"], "default": "json"}}, "required": []}))
-    tools.append(Tool(name="apply_tmdl_patch", description="Apply safe TMDL patch operations (measures only)", inputSchema={"type": "object", "properties": {"updates": {"type": "array", "items": {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "expression": {"type": "string"}, "display_folder": {"type": "string"}, "description": {"type": "string"}, "format_string": {"type": "string"}}, "required": ["table", "measure"]}}, "dry_run": {"type": "boolean", "default": False}}, "required": ["updates"]}))
-    tools.append(Tool(
-        name="export_compact_schema",
-        description="Export compact model schema (no expressions) for reliable diffs; supports JSON or XLSX and optional output directory",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "include_hidden": {"type": "boolean", "default": True},
-                "format": {"type": "string", "enum": ["json", "xlsx"], "default": "json"},
-                "output_dir": {"type": "string", "description": "Directory to write XLSX (or other files) to; defaults to exports/"}
-            },
-            "required": []
-        }
-    ))
-    # Orchestrated comprehensive analysis
-    tools.append(Tool(name="full_analysis", description="Run a comprehensive model analysis (summary, relationships, best practices, M scan, optional BPA)", inputSchema={"type": "object", "properties": {"include_bpa": {"type": "boolean", "default": True}, "depth": {"type": "string", "enum": ["light", "standard", "deep"], "default": "standard"}, "profile": {"type": "string", "enum": ["fast", "balanced", "deep"], "default": "balanced"}, "limits": {"type": "object", "properties": {"relationships_max": {"type": "integer", "default": 200}, "issues_max": {"type": "integer", "default": 200}}, "default": {}}}, "required": []}))
-    # Proposal helper so the agent can offer options to the user
-    tools.append(Tool(name="propose_analysis", description="Propose normal vs fast analysis options depending on need", inputSchema={"type": "object", "properties": {"goal": {"type": "string"}}, "required": []}))
-    # Export flat schema with sample values per column
-    tools.append(Tool(
-        name="export_columns_with_samples",
-        description="Export flat list of all tables and columns with top sample values (txt/csv/xlsx). Supports extras like Description, IsHidden, IsNullable, IsKey, SummarizeBy. Optional output directory.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "format": {"type": "string", "enum": ["csv", "txt", "xlsx"], "default": "csv"},
-                "rows": {"type": "integer", "default": 3},
-                "extras": {"type": "array", "items": {"type": "string"}, "default": []},
-                "output_dir": {"type": "string", "description": "Directory to write export files; defaults to exports/"}
-            },
-            "required": []
-        }
-    ))
+        tools += [T("Best practices (BPA)", "Run Best Practice Analyzer (rules-based)", {"type": "object", "properties": {}, "required": []})]
+
+    # Docs & export
+    tools += [
+        T("Export: Columns with samples", "Export flat list of columns with sample values (csv/txt/xlsx)", {"type": "object", "properties": {"format": {"type": "string", "enum": ["csv", "txt", "xlsx"], "default": "csv"}, "rows": {"type": "integer", "default": 3}, "extras": {"type": "array", "items": {"type": "string"}, "default": []}, "output_dir": {"type": "string", "description": "Directory to write export files; defaults to exports/"}}, "required": []}),
+        T("Export: Compact schema", "Export compact model schema for diffs (json/xlsx)", {"type": "object", "properties": {"include_hidden": {"type": "boolean", "default": True}, "format": {"type": "string", "enum": ["json", "xlsx"], "default": "json"}, "output_dir": {"type": "string", "description": "Directory to write XLSX (or other files) to; defaults to exports/"}}, "required": []}),
+        T("Export: Relationships graph", "Export relationships graph (json/graphml)", {"type": "object", "properties": {"format": {"type": "string", "enum": ["json", "graphml"], "default": "json"}}, "required": []}),
+        T("Export: TMSL", "Export TMSL (summary by default)", {"type": "object", "properties": {"include_full_model": {"type": "boolean", "default": False}}, "required": []}),
+        T("Export: TMDL", "Export TMDL model structure", {"type": "object", "properties": {}, "required": []}),
+        T("Docs: Generate", "Generate human-readable documentation", {"type": "object", "properties": {}, "required": []}),
+        T("Docs: Overview", "Export compact model overview (json/yaml)", {"type": "object", "properties": {"format": {"type": "string", "enum": ["json", "yaml"], "default": "json"}, "include_counts": {"type": "boolean", "default": True}}, "required": []}),
+        T("Model: Summary", "Lightweight model summary suitable for large models", {"type": "object", "properties": {}, "required": []}),
+        T("Compare: Models", "Compare current model with a reference TMSL", {"type": "object", "properties": {"reference_tmsl": {"type": "object"}}, "required": ["reference_tmsl"]}),
+    ]
+
+    # Performance
+    tools += [
+        T("Performance: Analyze queries", "Analyze performance for multiple DAX queries (AMO trace)", {"type": "object", "properties": {"queries": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer", "default": 3}, "clear_cache": {"type": "boolean", "default": True}, "include_event_counts": {"type": "boolean", "default": False}}, "required": ["queries"]}),
+        T("Performance: Relationship cardinality", "Analyze relationship cardinality and recommendations", {"type": "object", "properties": {}, "required": []}),
+        T("Performance: Column cardinality", "Analyze column cardinality for a table", {"type": "object", "properties": {"table": {"type": "string"}}, "required": []}),
+        T("Performance: Storage compression", "Analyze storage/compression efficiency for a table", {"type": "object", "properties": {"table": {"type": "string"}}, "required": ["table"]}),
+    ]
+
+    # Orchestration
+    tools += [
+        T("Analyze: Full model", "Comprehensive model analysis (summary, relationships, best practices, M scan, optional BPA)", {"type": "object", "properties": {"include_bpa": {"type": "boolean", "default": True}, "depth": {"type": "string", "enum": ["light", "standard", "deep"], "default": "standard"}, "profile": {"type": "string", "enum": ["fast", "balanced", "deep"], "default": "balanced"}, "limits": {"type": "object", "properties": {"relationships_max": {"type": "integer", "default": 200}, "issues_max": {"type": "integer", "default": 200}}, "default": {}}}, "required": []}),
+        T("Analyze: Propose plan", "Propose normal vs fast analysis options depending on goal", {"type": "object", "properties": {"goal": {"type": "string"}}, "required": []}),
+    ]
+
+    # Additional utilities not front-and-center but useful
+    tools += [
+        T("Schema: Export (paged)", "Export model schema by section with pagination", {"type": "object", "properties": {"section": {"type": "string", "enum": ["tables", "columns", "measures", "relationships"]}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}, "preview_size": {"type": "integer", "description": "Rows per section in compact preview (default 30)"}, "include": {"type": "array", "items": {"type": "string"}, "description": "Subset of sections to include in compact preview"}}, "required": []}),
+    ]
+
     return tools
 
 
