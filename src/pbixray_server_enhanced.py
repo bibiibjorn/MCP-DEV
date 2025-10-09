@@ -30,6 +30,11 @@ from core.connection_manager import ConnectionManager
 from core.query_executor import COLUMN_TYPE_CALCULATED
 
 from core.error_handler import ErrorHandler
+from core.tool_timeouts import ToolTimeoutManager
+from core.cache_manager import EnhancedCacheManager
+from core.input_validator import InputValidator
+from core.rate_limiter import RateLimiter
+
 from core.agent_policy import AgentPolicy
 
 # Import configuration and connection state
@@ -81,10 +86,21 @@ _telemetry = deque(maxlen=_TELEMETRY_MAX)
 
 # Initialize connection manager
 connection_manager = ConnectionManager()
+# Initialize enhanced managers
+timeout_manager = ToolTimeoutManager(config.get('tool_timeouts', {}))
+enhanced_cache = EnhancedCacheManager(config)
+rate_limiter = RateLimiter(config.get('rate_limiting', {}))
+
+
 connection_state.set_connection_manager(connection_manager)
 
 app = Server("MCP-PowerBi-Finvision")
-agent_policy = AgentPolicy(config)
+agent_policy = AgentPolicy(
+    config,
+    timeout_manager=timeout_manager,
+    cache_manager=enhanced_cache,
+    rate_limiter=rate_limiter
+)
 
 
 # ----------------------------
@@ -1837,6 +1853,35 @@ async def list_tools() -> List[Tool]:
 async def call_tool(name: str, arguments: Any) -> List[TextContent]:
     try:
         _t0 = time.time()
+                # Input validation
+        if 'table' in arguments:
+            is_valid, error = InputValidator.validate_table_name(arguments['table'])
+            if not is_valid:
+                return [TextContent(type="text", text=json.dumps({
+                    'success': False, 
+                    'error': error,
+                    'error_type': 'invalid_input'
+                }, indent=2))]
+        
+        if 'query' in arguments:
+            is_valid, error = InputValidator.validate_dax_query(arguments['query'])
+            if not is_valid:
+                return [TextContent(type="text", text=json.dumps({
+                    'success': False,
+                    'error': error,
+                    'error_type': 'invalid_input'
+                }, indent=2))]
+        
+        # Rate limiting
+        if rate_limiter and not rate_limiter.allow_request(name):
+            return [TextContent(type="text", text=json.dumps({
+                'success': False,
+                'error': 'Rate limit exceeded',
+                'error_type': 'rate_limit',
+                'retry_after': rate_limiter.get_retry_after(name)
+            }, indent=2))]
+        
+
         result = _dispatch_tool(name, arguments)
         _dur = round((time.time() - _t0) * 1000, 2)
         try:

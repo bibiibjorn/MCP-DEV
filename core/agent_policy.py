@@ -15,8 +15,11 @@ from core.error_handler import ErrorHandler
 
 
 class AgentPolicy:
-    def __init__(self, config):
+    def __init__(self, config, timeout_manager=None, cache_manager=None, rate_limiter=None):
         self.config = config
+        self.timeout_manager = timeout_manager
+        self.cache_manager = cache_manager
+        self.rate_limiter = rate_limiter
 
     # ---- helpers ----
     def _get_preview_limit(self, max_rows: Optional[int]) -> int:
