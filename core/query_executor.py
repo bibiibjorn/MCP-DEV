@@ -697,7 +697,7 @@ class OptimizedQueryExecutor:
                 if self._is_table_expression(query):
                     query = f"EVALUATE TOPN({top_n}, {query})" if top_n > 0 else f"EVALUATE {query}"
                 else:
-                    query = f'EVALUATE ROW("Value", {query})'
+                    query = f'eVALUATE ROW("Value", {query})'
 
             # Cache lookup based on normalized final query and top_n
             cache_key = (query, int(top_n or 0))
@@ -987,3 +987,60 @@ class OptimizedQueryExecutor:
         except Exception as e:
             logger.error(f"Error getting TMSL: {e}")
             return {'success': False, 'error': str(e)}
+
+    def get_column_datatypes_tom(self) -> Dict[str, Any]:
+        """Return a nested map of {table: {column: dataType}} using AMO/TOM when available.
+
+        Falls back to {'success': False} if AMO/TOM is not available.
+        """
+        if not AMO_AVAILABLE:
+            return {'success': False, 'error': 'AMO/TOM not available'}
+        server, db = self._connect_amo_server_db()
+        if not server or not db:
+            return {'success': False, 'error': 'Could not connect to AMO server or database'}
+        try:
+            type_map: Dict[str, Dict[str, str]] = {}
+            model = db.Model
+            if hasattr(model, 'Tables'):
+                for tbl in model.Tables:
+                    tname = getattr(tbl, 'Name', None)
+                    if not tname:
+                        continue
+                    per_table: Dict[str, str] = {}
+                    try:
+                        for col in tbl.Columns:
+                            cname = getattr(col, 'Name', None)
+                            if not cname:
+                                continue
+                            # DataType is an enum; stringify and normalize
+                            raw_dt = getattr(col, 'DataType', None)
+                            dt_str = str(raw_dt) if raw_dt is not None else 'Unknown'
+                            # Some enums stringify like 'DataType.Int64' — take last token
+                            if isinstance(dt_str, str) and '.' in dt_str:
+                                dt_str = dt_str.split('.')[-1]
+                            # Normalize a few common aliases
+                            alias_map = {
+                                'Int64': 'Integer',
+                                'WholeNumber': 'Integer',
+                                'String': 'String',
+                                'DateTime': 'DateTime',
+                                'Boolean': 'Boolean',
+                                'Decimal': 'Decimal',
+                                'Double': 'Double',
+                                'Currency': 'Currency',
+                                'Binary': 'Binary',
+                                'Unknown': 'Unknown'
+                            }
+                            per_table[cname] = alias_map.get(dt_str, dt_str)
+                    except Exception:
+                        pass
+                    if per_table:
+                        type_map[tname] = per_table
+            return {'success': True, 'map': type_map}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+        finally:
+            try:
+                server.Disconnect()
+            except Exception:
+                pass

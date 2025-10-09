@@ -660,6 +660,16 @@ def _handle_agent_tools(name: str, arguments: Any) -> Optional[dict]:
         if not ensured.get('success'):
             return ensured
         return agent_policy.export_model_overview(connection_state, arguments.get('format', 'json'), arguments.get('include_counts', True))
+    if name == "export_columns_with_samples":
+        ensured = agent_policy.ensure_connected(connection_manager, connection_state, None)
+        if not ensured.get('success'):
+            return ensured
+        return agent_policy.export_flat_schema_samples(
+            connection_state,
+            arguments.get('format', 'csv'),
+            arguments.get('rows', 3),
+            arguments.get('extras', []),
+        )
     if name == "auto_route":
         return agent_policy.auto_analyze_or_preview(connection_manager, connection_state, arguments.get('query', ''), arguments.get('runs'), arguments.get('max_rows'), arguments.get('priority', 'depth'))
     return None
@@ -1300,6 +1310,20 @@ async def list_tools() -> List[Tool]:
     tools.append(Tool(name="full_analysis", description="Run a comprehensive model analysis (summary, relationships, best practices, M scan, optional BPA)", inputSchema={"type": "object", "properties": {"include_bpa": {"type": "boolean", "default": True}, "depth": {"type": "string", "enum": ["light", "standard", "deep"], "default": "standard"}, "profile": {"type": "string", "enum": ["fast", "balanced", "deep"], "default": "balanced"}, "limits": {"type": "object", "properties": {"relationships_max": {"type": "integer", "default": 200}, "issues_max": {"type": "integer", "default": 200}}, "default": {}}}, "required": []}))
     # Proposal helper so the agent can offer options to the user
     tools.append(Tool(name="propose_analysis", description="Propose normal vs fast analysis options depending on need", inputSchema={"type": "object", "properties": {"goal": {"type": "string"}}, "required": []}))
+    # Export flat schema with sample values per column
+    tools.append(Tool(
+        name="export_columns_with_samples",
+        description="Export flat list of all tables and columns with top sample values (txt/csv/xlsx). Supports extras like Description, IsHidden, IsNullable, IsKey, SummarizeBy.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "format": {"type": "string", "enum": ["csv", "txt", "xlsx"], "default": "csv"},
+                "rows": {"type": "integer", "default": 3},
+                "extras": {"type": "array", "items": {"type": "string"}, "default": []}
+            },
+            "required": []
+        }
+    ))
     return tools
 
 
