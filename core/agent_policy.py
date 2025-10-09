@@ -557,6 +557,72 @@ class AgentPolicy:
         except Exception as e:
             return {'success': False, 'error': str(e)}
 
+    def export_compact_schema_xlsx(self, connection_state, include_hidden: bool = True, output_dir: Optional[str] = None) -> Dict[str, Any]:
+        """Export compact schema to an Excel workbook with separate sheets for tables, columns, measures, relationships."""
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+        exporter = connection_state.model_exporter
+        if not exporter:
+            return ErrorHandler.handle_manager_unavailable('model_exporter')
+        try:
+            data = exporter.export_compact_schema(bool(include_hidden))
+            if not data.get('success'):
+                return data
+            schema = (data or {}).get('schema') or {}
+            # Prepare output directory
+            root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if output_dir and isinstance(output_dir, str) and output_dir.strip():
+                out_dir = output_dir.strip()
+            else:
+                out_dir = os.path.join(root_dir, 'exports')
+            try:
+                os.makedirs(out_dir, exist_ok=True)
+            except Exception:
+                out_dir = os.path.join(root_dir, 'exports')
+                os.makedirs(out_dir, exist_ok=True)
+            # Build workbook
+            try:
+                from openpyxl import Workbook  # type: ignore
+            except Exception as e:
+                return {'success': False, 'error': f'openpyxl not available: {e}'}
+            wb = Workbook()
+            ws_tables = getattr(wb, 'active', None)
+            if ws_tables is None:
+                raise RuntimeError('openpyxl workbook has no active worksheet')
+            try:
+                ws_tables.title = 'Tables'
+            except Exception:
+                pass
+            ws_columns = wb.create_sheet('Columns')
+            ws_measures = wb.create_sheet('Measures')
+            ws_relationships = wb.create_sheet('Relationships')
+            # Tables sheet
+            ws_tables.append(['Table', 'Hidden'])
+            for t in schema.get('tables', []) or []:
+                ws_tables.append([t.get('name'), t.get('hidden')])
+            # Columns sheet
+            ws_columns.append(['Table', 'Column', 'Data Type', 'Hidden', 'Summarize By'])
+            for t in schema.get('tables', []) or []:
+                for c in t.get('columns', []) or []:
+                    ws_columns.append([t.get('name'), c.get('name'), c.get('data_type'), c.get('hidden'), c.get('summarize_by')])
+            # Measures sheet
+            ws_measures.append(['Table', 'Measure', 'Format String', 'Display Folder', 'Hidden'])
+            for t in schema.get('tables', []) or []:
+                for m in t.get('measures', []) or []:
+                    ws_measures.append([t.get('name'), m.get('name'), m.get('format_string'), m.get('display_folder'), m.get('hidden')])
+            # Relationships sheet
+            ws_relationships.append(['From Table', 'From Column', 'To Table', 'To Column', 'Active', 'Direction', 'Cardinality'])
+            for r in schema.get('relationships', []) or []:
+                f = r.get('from') or {}
+                to = r.get('to') or {}
+                ws_relationships.append([f.get('table'), f.get('column'), to.get('table'), to.get('column'), r.get('active'), r.get('direction'), r.get('cardinality')])
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            path = os.path.join(out_dir, f"compact_schema_{ts}.xlsx")
+            wb.save(path)
+            return {'success': True, 'format': 'xlsx', 'file': path, 'statistics': data.get('statistics'), 'database_name': data.get('database_name')}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
     def relationship_overview(self, connection_state) -> Dict[str, Any]:
         """Return relationships list plus optional cardinality checks.
 
@@ -695,7 +761,7 @@ class AgentPolicy:
             return summary
         return {'success': True, 'format': format, 'overview': summary}
 
-    def export_flat_schema_samples(self, connection_state, format: str = 'csv', rows: int = 3, extras: Optional[List[str]] = None) -> Dict[str, Any]:
+    def export_flat_schema_samples(self, connection_state, format: str = 'csv', rows: int = 3, extras: Optional[List[str]] = None, output_dir: Optional[str] = None) -> Dict[str, Any]:
         """
         Export a flat list of all tables and columns with up to N sample values per column.
 
@@ -1018,10 +1084,18 @@ class AgentPolicy:
                     core_row.extend([values[0], values[1], values[2]])
                     result_rows.append(core_row)
 
-            # 4) Write to file (exports/)
+            # 4) Write to file (user-selected folder or exports/)
             root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            out_dir = os.path.join(root_dir, "exports")
-            os.makedirs(out_dir, exist_ok=True)
+            if output_dir and isinstance(output_dir, str) and output_dir.strip():
+                out_dir = output_dir.strip()
+            else:
+                out_dir = os.path.join(root_dir, "exports")
+            try:
+                os.makedirs(out_dir, exist_ok=True)
+            except Exception:
+                # Fallback to default exports folder if user path invalid
+                out_dir = os.path.join(root_dir, "exports")
+                os.makedirs(out_dir, exist_ok=True)
 
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             fmt = (format or 'csv').strip().lower()

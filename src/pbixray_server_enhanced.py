@@ -669,6 +669,7 @@ def _handle_agent_tools(name: str, arguments: Any) -> Optional[dict]:
             arguments.get('format', 'csv'),
             arguments.get('rows', 3),
             arguments.get('extras', []),
+            arguments.get('output_dir'),
         )
     if name == "auto_route":
         return agent_policy.auto_analyze_or_preview(connection_manager, connection_state, arguments.get('query', ''), arguments.get('runs'), arguments.get('max_rows'), arguments.get('priority', 'depth'))
@@ -1119,7 +1120,11 @@ def _handle_dependency_and_bulk(name: str, arguments: Any) -> Optional[dict]:
     if name == "export_tmdl":
         return model_exporter.export_tmdl_structure() if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
     if name == "export_compact_schema":
-        return model_exporter.export_compact_schema(arguments.get('include_hidden', True)) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
+        fmt = (arguments.get('format') or 'json').lower()
+        include_hidden = arguments.get('include_hidden', True)
+        if fmt == 'xlsx':
+            return agent_policy.export_compact_schema_xlsx(connection_state, include_hidden, arguments.get('output_dir'))
+        return model_exporter.export_compact_schema(include_hidden) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
     if name == "generate_documentation":
         return model_exporter.generate_documentation(connection_state.query_executor) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
     if name == "get_model_summary":
@@ -1308,8 +1313,19 @@ async def list_tools() -> List[Tool]:
     # Output schemas and lineage export
     tools.append(Tool(name="export_relationship_graph", description="Export relationships as a graph (JSON or GraphML)", inputSchema={"type": "object", "properties": {"format": {"type": "string", "enum": ["json", "graphml"], "default": "json"}}, "required": []}))
     tools.append(Tool(name="apply_tmdl_patch", description="Apply safe TMDL patch operations (measures only)", inputSchema={"type": "object", "properties": {"updates": {"type": "array", "items": {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "expression": {"type": "string"}, "display_folder": {"type": "string"}, "description": {"type": "string"}, "format_string": {"type": "string"}}, "required": ["table", "measure"]}}, "dry_run": {"type": "boolean", "default": False}}, "required": ["updates"]}))
-    tools.append(Tool(name="export_compact_schema", description="Export compact model schema (no expressions) for reliable diffs",
-                      inputSchema={"type": "object", "properties": {"include_hidden": {"type": "boolean", "default": True}}, "required": []}))
+    tools.append(Tool(
+        name="export_compact_schema",
+        description="Export compact model schema (no expressions) for reliable diffs; supports JSON or XLSX and optional output directory",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "include_hidden": {"type": "boolean", "default": True},
+                "format": {"type": "string", "enum": ["json", "xlsx"], "default": "json"},
+                "output_dir": {"type": "string", "description": "Directory to write XLSX (or other files) to; defaults to exports/"}
+            },
+            "required": []
+        }
+    ))
     # Orchestrated comprehensive analysis
     tools.append(Tool(name="full_analysis", description="Run a comprehensive model analysis (summary, relationships, best practices, M scan, optional BPA)", inputSchema={"type": "object", "properties": {"include_bpa": {"type": "boolean", "default": True}, "depth": {"type": "string", "enum": ["light", "standard", "deep"], "default": "standard"}, "profile": {"type": "string", "enum": ["fast", "balanced", "deep"], "default": "balanced"}, "limits": {"type": "object", "properties": {"relationships_max": {"type": "integer", "default": 200}, "issues_max": {"type": "integer", "default": 200}}, "default": {}}}, "required": []}))
     # Proposal helper so the agent can offer options to the user
@@ -1317,13 +1333,14 @@ async def list_tools() -> List[Tool]:
     # Export flat schema with sample values per column
     tools.append(Tool(
         name="export_columns_with_samples",
-        description="Export flat list of all tables and columns with top sample values (txt/csv/xlsx). Supports extras like Description, IsHidden, IsNullable, IsKey, SummarizeBy.",
+        description="Export flat list of all tables and columns with top sample values (txt/csv/xlsx). Supports extras like Description, IsHidden, IsNullable, IsKey, SummarizeBy. Optional output directory.",
         inputSchema={
             "type": "object",
             "properties": {
                 "format": {"type": "string", "enum": ["csv", "txt", "xlsx"], "default": "csv"},
                 "rows": {"type": "integer", "default": 3},
-                "extras": {"type": "array", "items": {"type": "string"}, "default": []}
+                "extras": {"type": "array", "items": {"type": "string"}, "default": []},
+                "output_dir": {"type": "string", "description": "Directory to write export files; defaults to exports/"}
             },
             "required": []
         }
