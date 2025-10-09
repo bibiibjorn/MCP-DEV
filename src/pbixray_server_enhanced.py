@@ -10,6 +10,7 @@ import logging
 import sys
 import os
 import time
+import re
 from collections import deque
 from typing import Any, List, Optional
 
@@ -1449,16 +1450,71 @@ async def list_tools() -> List[Tool]:
     add("analysis: full model", "full_analysis", "Comprehensive model analysis (summary, relationships, best practices, M scan, optional BPA)", {"type": "object", "properties": {"include_bpa": {"type": "boolean", "default": True}, "depth": {"type": "string", "enum": ["light", "standard", "deep"], "default": "standard"}, "profile": {"type": "string", "enum": ["fast", "balanced", "deep"], "default": "balanced"}, "limits": {"type": "object", "properties": {"relationships_max": {"type": "integer", "default": 200}, "issues_max": {"type": "integer", "default": 200}}, "default": {}}}, "required": []})
     add("analysis: propose plan", "propose_analysis", "Propose normal vs fast analysis options depending on goal", {"type": "object", "properties": {"goal": {"type": "string"}}, "required": []})
 
+    # Helper: sanitize tool identifier to match ^[a-zA-Z0-9_-]{1,64}$ while preserving readability
+    def _sanitize_tool_identifier(name: str) -> str:
+        try:
+            # Replace disallowed chars with '-'
+            s = re.sub(r"[^a-zA-Z0-9_-]+", "-", name)
+            # Collapse repeats and trim
+            s = re.sub(r"-+", "-", s).strip("-")
+            # Ensure not empty
+            if not s:
+                s = "tool"
+            # Truncate to 64 chars
+            if len(s) > 64:
+                s = s[:64]
+            return s
+        except Exception:
+            return (name or "tool")[:64]
+
     # Sort and emit Tool objects per configured naming mode
     mode = str(config.get('server.tool_names_mode', 'friendly') or 'friendly').lower()
+    used_ids: set[str] = set()
+
+    def _unique_id(base: str) -> str:
+        """Ensure unique identifier within this listing, appending -2, -3, ... as needed."""
+        ident = base
+        counter = 2
+        while ident in used_ids:
+            suffix = f"-{counter}"
+            # Keep within 64 char limit
+            trimmed = base[: max(1, 64 - len(suffix))]
+            ident = trimmed.rstrip('-') + suffix
+            counter += 1
+        used_ids.add(ident)
+        return ident
+
     if mode == 'canonical':
         # Sort by canonical to keep stable order
         entries.sort(key=lambda x: x[1])
-        tools: List[Tool] = [Tool(name=canon, description=desc, inputSchema=schema) for (_friendly, canon, desc, schema) in entries]
+        tools_list: List[Tool] = []
+        for (_friendly, canon, desc, schema) in entries:
+            safe = _unique_id(_sanitize_tool_identifier(canon))
+            # Accept both safe id and the original as aliases for call_tool
+            try:
+                FRIENDLY_TOOL_ALIASES.setdefault(safe, canon)
+            except Exception:
+                pass
+            schema_with_title = dict(schema)
+            schema_with_title.setdefault('title', canon)
+            tools_list.append(Tool(name=safe, description=desc, inputSchema=schema_with_title))
+        tools = tools_list
     else:
         # Default: friendly names sorted alphabetically
         entries.sort(key=lambda x: x[0])
-        tools = [Tool(name=friendly, description=desc, inputSchema=schema) for (friendly, _canon, desc, schema) in entries]
+        tools_list: List[Tool] = []
+        for (friendly, canon, desc, schema) in entries:
+            safe = _unique_id(_sanitize_tool_identifier(friendly))
+            # Map both the friendly text and the sanitized id to the canonical handler
+            try:
+                FRIENDLY_TOOL_ALIASES.setdefault(safe, canon)
+            except Exception:
+                pass
+            schema_with_title = dict(schema)
+            # Preserve the exact friendly name for clients that surface JSON Schema titles
+            schema_with_title.setdefault('title', friendly)
+            tools_list.append(Tool(name=safe, description=desc, inputSchema=schema_with_title))
+        tools = tools_list
     return tools
 
 
