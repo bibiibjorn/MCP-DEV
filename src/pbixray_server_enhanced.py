@@ -12,7 +12,7 @@ import os
 import time
 import re
 from collections import deque
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Callable, Dict
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -28,6 +28,7 @@ if parent_dir not in sys.path:
 from __version__ import __version__
 from core.connection_manager import ConnectionManager
 from core.query_executor import COLUMN_TYPE_CALCULATED
+from core.constants import QueryLimits
 
 from core.error_handler import ErrorHandler
 from core.tool_timeouts import ToolTimeoutManager
@@ -81,7 +82,7 @@ except Exception as _e:
 start_time = time.time()
 
 # Rolling call telemetry (in-memory)
-_TELEMETRY_MAX = 200
+_TELEMETRY_MAX = getattr(QueryLimits, 'TELEMETRY_BUFFER_SIZE', 200)
 _telemetry = deque(maxlen=_TELEMETRY_MAX)
 
 # Initialize connection manager
@@ -868,106 +869,23 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
     if not qe:
         return ErrorHandler.handle_manager_unavailable('query_executor')
 
-    dmv_cap = int(config.get('query.max_rows_preview', config.get('query', {}).get('max_rows_preview', 1000)))
+    try:
+        dmv_cap = int(config.get('query.max_rows_preview', config.get('query', {}).get('max_rows_preview', QueryLimits.DMV_DEFAULT_CAP)))
+    except Exception:
+        dmv_cap = getattr(QueryLimits, 'DMV_DEFAULT_CAP', 1000)
 
     if name == "list_tables":
         result = qe.execute_info_query("TABLES")
         return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
     if name == "list_measures":
         table = arguments.get("table")
-        result = qe.execute_info_query("MEASURES", table_name=table, exclude_columns=['Expression'])
-        # Fallback for Desktop variants where table filter yields empty
-        if table and ((result.get('success') and len(result.get('rows') or []) == 0) or not result.get('success')):
-            all_meas = qe.execute_info_query("MEASURES", exclude_columns=['Expression'])
-            if all_meas.get('success'):
-                # Build table id -> name map
-                id_to_name = {}
-                try:
-                    tbls = qe.execute_info_query("TABLES")
-                    if tbls.get('success'):
-                        for t in tbls.get('rows', []):
-                            tid = t.get('ID') or t.get('TableID') or t.get('[ID]') or t.get('[TableID]')
-                            nm = t.get('Name') or t.get('[Name]')
-                            if tid is not None and nm:
-                                id_to_name[str(tid)] = _norm_identifier(nm)
-                except Exception:
-                    pass
-                t_norm = _norm_identifier(table)
-                rows = []
-                for r in all_meas.get('rows', []):
-                    rt = _row_table_name(r)
-                    if not rt:
-                        tid = r.get('TableID') or r.get('[TableID]')
-                        if tid is not None and str(tid) in id_to_name:
-                            rt = id_to_name[str(tid)]
-                    if rt == t_norm:
-                        rows.append(r)
-                result = {'success': True, 'rows': rows, 'row_count': len(rows)}
-                _note_client_filter_columns(result, str(table))
+        result = qe.execute_info_query_with_fallback("MEASURES", table_name=table, exclude_columns=['Expression'])
         return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
     if name == "describe_table":
         table = arguments["table"]
-        # Primary attempt: table-scoped DMVs
-        cols = qe.execute_info_query("COLUMNS", table_name=table)
-        measures = qe.execute_info_query("MEASURES", table_name=table, exclude_columns=['Expression'])
-        # Fallback: some Desktop builds regress on table filters; fetch all and filter client-side
-        try:
-            if (cols.get('success') and len(cols.get('rows') or []) == 0) or not cols.get('success'):
-                all_cols = qe.execute_info_query("COLUMNS")
-                # Build table id -> name map if names are missing
-                id_to_name = {}
-                try:
-                    tbls = qe.execute_info_query("TABLES")
-                    if tbls.get('success'):
-                        for t in tbls.get('rows', []):
-                            tid = t.get('ID') or t.get('TableID') or t.get('[ID]') or t.get('[TableID]')
-                            nm = t.get('Name') or t.get('[Name]')
-                            if tid is not None and nm:
-                                id_to_name[str(tid)] = _norm_identifier(nm)
-                except Exception:
-                    pass
-                if all_cols.get('success'):
-                    t_norm = _norm_identifier(table)
-                    c_rows = []
-                    for r in (all_cols.get('rows') or []):
-                        rt = _row_table_name(r)
-                        if not rt:
-                            tid = r.get('TableID') or r.get('[TableID]')
-                            if tid is not None and str(tid) in id_to_name:
-                                rt = id_to_name[str(tid)]
-                        if rt == t_norm:
-                            c_rows.append(r)
-                    cols = {'success': True, 'rows': c_rows, 'row_count': len(c_rows)}
-                    _note_client_filter_columns(cols, str(table))
-            if (measures.get('success') and len(measures.get('rows') or []) == 0) or not measures.get('success'):
-                all_meas = qe.execute_info_query("MEASURES", exclude_columns=['Expression'])
-                # Build table id -> name map if needed
-                id_to_name = {}
-                try:
-                    tbls = qe.execute_info_query("TABLES")
-                    if tbls.get('success'):
-                        for t in tbls.get('rows', []):
-                            tid = t.get('ID') or t.get('TableID') or t.get('[ID]') or t.get('[TableID]')
-                            nm = t.get('Name') or t.get('[Name]')
-                            if tid is not None and nm:
-                                id_to_name[str(tid)] = _norm_identifier(nm)
-                except Exception:
-                    pass
-                if all_meas.get('success'):
-                    t_norm = _norm_identifier(table)
-                    m_rows = []
-                    for r in (all_meas.get('rows') or []):
-                        rt = _row_table_name(r)
-                        if not rt:
-                            tid = r.get('TableID') or r.get('[TableID]')
-                            if tid is not None and str(tid) in id_to_name:
-                                rt = id_to_name[str(tid)]
-                        if rt == t_norm:
-                            m_rows.append(r)
-                    measures = {'success': True, 'rows': m_rows, 'row_count': len(m_rows)}
-                    _note_client_filter_columns(measures, str(table))
-        except Exception:
-            pass
+        # Use unified fallback to reduce duplication and improve cross-version robustness
+        cols = qe.execute_info_query_with_fallback("COLUMNS", table_name=table)
+        measures = qe.execute_info_query_with_fallback("MEASURES", table_name=table, exclude_columns=['Expression'])
         # Fetch all relationships and filter client-side for robustness across engine versions
         rels_all = qe.execute_info_query("RELATIONSHIPS")
         rel_rows = rels_all.get('rows', []) if rels_all.get('success') else []
@@ -986,8 +904,9 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
                 id_to_name = {}
                 if tbls.get('success'):
                     for t in tbls.get('rows', []):
-                        tid = t.get('ID') or t.get('TableID')
-                        nm = t.get('Name')
+                        # Prefer bracketed keys first for Desktop builds that return [ID]
+                        tid = t.get('[ID]') or t.get('ID') or t.get('[TableID]') or t.get('TableID')
+                        nm = t.get('Name') or t.get('[Name]')
                         if tid is not None and nm:
                             id_to_name[str(tid)] = str(nm)
                 for r in rel_rows:
@@ -1033,22 +952,7 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
             result['relationships_next_token'] = r_next
         return result
     if name == "get_measure_details":
-        # Attempt table-scoped measure fetch first
-        primary = qe.execute_info_query(
-            "MEASURES",
-            filter_expr=f'[Name] = "{arguments["measure"]}"',
-            table_name=arguments["table"]
-        )
-        if primary.get('success') and primary.get('rows'):
-            return primary
-        # Fallback: fetch all measures and filter by table and name using robust keys
-        all_meas = qe.execute_info_query("MEASURES")
-        if all_meas.get('success'):
-            t_norm = _norm_identifier(arguments.get("table"))
-            m_norm = _norm_identifier(arguments.get("measure"))
-            rows = [r for r in (all_meas.get('rows') or []) if _row_table_name(r) == t_norm and _row_measure_name(r) == m_norm]
-            return {'success': True, 'rows': rows, 'row_count': len(rows)}
-        return primary
+        return qe.get_measure_details_with_fallback(arguments["table"], arguments["measure"])
     if name == "search_string":
         result = qe.search_measures_dax(arguments['search_text'], arguments.get('search_in_expression', True), arguments.get('search_in_name', True))
         return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
@@ -1204,36 +1108,7 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
         return result
     if name == "list_columns":
         table = arguments.get("table")
-        result = qe.execute_info_query("COLUMNS", table_name=table)
-        # Fallback: if table-specific lookup fails OR returns empty while table requested,
-        # fetch all columns and filter client-side (cross-version robustness)
-        if table and ((result.get('success') and len(result.get('rows') or []) == 0) or not result.get('success')):
-            all_cols = qe.execute_info_query("COLUMNS")
-            if all_cols.get('success'):
-                # Build table id -> name map
-                id_to_name = {}
-                try:
-                    tbls = qe.execute_info_query("TABLES")
-                    if tbls.get('success'):
-                        for t in tbls.get('rows', []):
-                            tid = t.get('ID') or t.get('TableID') or t.get('[ID]') or t.get('[TableID]')
-                            nm = t.get('Name') or t.get('[Name]')
-                            if tid is not None and nm:
-                                id_to_name[str(tid)] = _norm_identifier(nm)
-                except Exception:
-                    pass
-                t_norm = _norm_identifier(table)
-                rows = []
-                for r in all_cols.get('rows', []):
-                    rt = _row_table_name(r)
-                    if not rt:
-                        tid = r.get('TableID') or r.get('[TableID]')
-                        if tid is not None and str(tid) in id_to_name:
-                            rt = id_to_name[str(tid)]
-                    if rt == t_norm:
-                        rows.append(r)
-                result = {'success': True, 'rows': rows, 'row_count': len(rows)}
-                _note_client_filter_columns(result, str(table))
+        result = qe.execute_info_query_with_fallback("COLUMNS", table_name=table)
         return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
     if name == "get_column_values":
         t = _dax_quote_table(arguments['table'])
@@ -1407,6 +1282,122 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
     return None
 
 
+# ----------------------------
+# Register a few common handlers via registry
+# ----------------------------
+def _h_list_tables(args: Any) -> dict:
+    if not connection_state.is_connected():
+        return ErrorHandler.handle_not_connected()
+    qe = connection_state.query_executor
+    if not qe:
+        return ErrorHandler.handle_manager_unavailable('query_executor')
+    result = qe.execute_info_query("TABLES")
+    return _paginate(result, args.get('page_size'), args.get('next_token'), ['rows'])
+
+
+def _h_list_columns(args: Any) -> dict:
+    if not connection_state.is_connected():
+        return ErrorHandler.handle_not_connected()
+    qe = connection_state.query_executor
+    if not qe:
+        return ErrorHandler.handle_manager_unavailable('query_executor')
+    table = args.get('table')
+    res = qe.execute_info_query_with_fallback("COLUMNS", table_name=table)
+    return _paginate(res, args.get('page_size'), args.get('next_token'), ['rows'])
+
+
+def _h_list_measures(args: Any) -> dict:
+    if not connection_state.is_connected():
+        return ErrorHandler.handle_not_connected()
+    qe = connection_state.query_executor
+    if not qe:
+        return ErrorHandler.handle_manager_unavailable('query_executor')
+    table = args.get('table')
+    res = qe.execute_info_query_with_fallback("MEASURES", table_name=table, exclude_columns=['Expression'])
+    return _paginate(res, args.get('page_size'), args.get('next_token'), ['rows'])
+
+
+def _h_describe_table(args: Any) -> dict:
+    if not connection_state.is_connected():
+        return ErrorHandler.handle_not_connected()
+    qe = connection_state.query_executor
+    if not qe:
+        return ErrorHandler.handle_manager_unavailable('query_executor')
+    table = args.get('table')
+    cols = qe.execute_info_query_with_fallback("COLUMNS", table_name=table)
+    measures = qe.execute_info_query_with_fallback("MEASURES", table_name=table, exclude_columns=['Expression'])
+    rels_all = qe.execute_info_query("RELATIONSHIPS")
+    rel_rows = rels_all.get('rows', []) if rels_all.get('success') else []
+    filtered_rels = []
+    if rel_rows:
+        if any('FromTable' in r or 'ToTable' in r for r in rel_rows):
+            for r in rel_rows:
+                ft = str(r.get('FromTable') or '')
+                tt = str(r.get('ToTable') or '')
+                if ft == str(table) or tt == str(table):
+                    filtered_rels.append(r)
+        else:
+            tbls = qe.execute_info_query("TABLES")
+            id_to_name = {}
+            if tbls.get('success'):
+                for t in tbls.get('rows', []):
+                    tid = t.get('ID') or t.get('TableID')
+                    nm = t.get('Name')
+                    if tid is not None and nm:
+                        id_to_name[str(tid)] = str(nm)
+            for r in rel_rows:
+                ftid = r.get('FromTableID') or r.get('[FromTableID]')
+                ttid = r.get('ToTableID') or r.get('[ToTableID]')
+                ft = id_to_name.get(str(ftid)) if ftid is not None else None
+                tt = id_to_name.get(str(ttid)) if ttid is not None else None
+                if ft == str(table) or tt == str(table):
+                    if ft and 'FromTable' not in r:
+                        r['FromTable'] = ft
+                    if tt and 'ToTable' not in r:
+                        r['ToTable'] = tt
+                    filtered_rels.append(r)
+    result = {'success': True, 'table': table, 'columns': cols.get('rows', []), 'measures': measures.get('rows', []), 'relationships': filtered_rels}
+    # paginate per-section
+    def _slice(arr, size, token):
+        try:
+            ps = int(size) if size is not None else None
+        except Exception:
+            ps = None
+        start = 0
+        if token:
+            try:
+                start = max(0, int(token))
+            except Exception:
+                start = 0
+        if not ps or ps <= 0 or not isinstance(arr, list):
+            return arr, None
+        end = start + ps
+        nxt = str(end) if end < len(arr) else None
+        return arr[start:end], nxt
+    c, c_next = _slice(result['columns'], args.get('columns_page_size'), args.get('columns_next_token'))
+    m, m_next = _slice(result['measures'], args.get('measures_page_size'), args.get('measures_next_token'))
+    r, r_next = _slice(result['relationships'], args.get('relationships_page_size'), args.get('relationships_next_token'))
+    result['columns'] = c
+    result['measures'] = m
+    result['relationships'] = r
+    if c_next:
+        result['columns_next_token'] = c_next
+    if m_next:
+        result['measures_next_token'] = m_next
+    if r_next:
+        result['relationships_next_token'] = r_next
+    return result
+
+
+# Register
+__DEFERRED_REGISTRATION__ = [
+    ('list_tables', _h_list_tables),
+    ('list_columns', _h_list_columns),
+    ('list_measures', _h_list_measures),
+    ('describe_table', _h_describe_table),
+]
+
+
 def _handle_dependency_and_bulk(name: str, arguments: Any) -> Optional[dict]:
     dependency_analyzer = connection_state.dependency_analyzer
     bulk_operations = connection_state.bulk_operations
@@ -1418,18 +1409,9 @@ def _handle_dependency_and_bulk(name: str, arguments: Any) -> Optional[dict]:
     model_exporter = connection_state.model_exporter
     if model_exporter is None:
         try:
-            # Best-effort lazy init without disrupting other managers
-            conn = connection_manager.get_connection()
-            if conn is not None:
-                try:
-                    from core.model_exporter import ModelExporter  # local import to avoid circulars
-                    connection_state.model_exporter = ModelExporter(conn)
-                    model_exporter = connection_state.model_exporter
-                    logger.info("✓ Lazily initialized model_exporter")
-                except Exception as _e:
-                    logger.warning(f"Failed lazy init of model_exporter: {_e}")
-        except Exception:
-            pass
+            model_exporter = connection_state._ensure_model_exporter()
+        except Exception as _e:
+            logger.warning(f"Failed lazy init of model_exporter: {_e}")
 
     if name == "analyze_measure_dependencies":
         return dependency_analyzer.analyze_measure_dependencies(
@@ -1664,6 +1646,30 @@ FRIENDLY_TOOL_ALIASES = {
     "anlysis: full model": "full_analysis",
 }
 
+# Lightweight handler registry (progressive migration)
+Handler = Callable[[Any], dict]
+_HANDLERS: Dict[str, Handler] = {}
+
+def register_handler(tool_name: str, func: Handler) -> None:
+    try:
+        _HANDLERS[tool_name] = func
+    except Exception:
+        pass
+
+# Perform deferred registrations if any were defined earlier in the module
+try:
+    for tn, fn in list(globals().get('__DEFERRED_REGISTRATION__', []) or []):
+        try:
+            register_handler(tn, fn)
+        except Exception:
+            pass
+    # Clear to avoid duplicates on reload
+    if '__DEFERRED_REGISTRATION__' in globals():
+        globals()['__DEFERRED_REGISTRATION__'] = []
+except Exception:
+    pass
+
+
 def _dispatch_tool(name: str, arguments: Any) -> dict:
     # Normalize friendly aliases to canonical tool names
     try:
@@ -1693,11 +1699,18 @@ def _dispatch_tool(name: str, arguments: Any) -> dict:
     res = _handle_agent_tools(name, arguments)
     if res is not None:
         return _attach_port_if_connected(res)
-    # 6) Connected metadata & query tools
+    # 6) Registered handlers (progressive routing)
+    handler = _HANDLERS.get(name)
+    if handler is not None:
+        try:
+            return _attach_port_if_connected(handler(arguments))
+        except Exception as e:
+            return ErrorHandler.handle_unexpected_error(name, e)
+    # 7) Connected metadata & query tools
     res = _handle_connected_metadata_and_queries(name, arguments)
     if res is not None:
         return _attach_port_if_connected(res)
-    # 7) Dependency, bulk ops, calc groups, partitions, RLS, model export
+    # 8) Dependency, bulk ops, calc groups, partitions, RLS, model export
     res = _handle_dependency_and_bulk(name, arguments)
     if res is not None:
         return _attach_port_if_connected(res)

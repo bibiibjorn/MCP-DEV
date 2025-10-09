@@ -39,15 +39,17 @@
     "enable_calculation_groups": true
   },
   "bpa": {
-    "max_rules": 120,
-    "severity_at_least": "WARNING",
-    "include_categories": ["Error Prevention", "Modeling", "Performance"],
-    "max_tables": 60,
-    "max_seconds": 20,
-    "per_rule_max_ms": 150,
-    "max_columns_per_rule": 1000,
-    "max_measures_per_rule": 1000,
-    "max_relationships_per_rule": 1000
+     "max_rules": 120,
+     "severity_at_least": "WARNING",
+     "include_categories": ["Error Prevention", "Modeling", "Performance"],
+     "max_tables": 60,
+     "max_seconds": 60,
+     "per_rule_max_ms": 500,
+     "max_columns_per_rule": 5000,
+     "max_measures_per_rule": 1000,
+     "max_relationships_per_rule": 1000,
+     "adaptive_timeouts": true,
+     "parallel_rules": 4
   },
   "rate_limiting": {
     "enabled": true,

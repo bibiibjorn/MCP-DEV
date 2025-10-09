@@ -7,6 +7,7 @@ Manages connection state and service initialization to avoid repeated initializa
 import logging
 from typing import Any, Dict, Optional, Type
 from core.config_manager import config
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,8 @@ class ConnectionState:
         # Performance baselines and last result summary
         self._perf_baselines: Dict[str, Any] = {}
         self._last_result_meta: Dict[str, Any] = {}
+        # Init lock for lazy managers
+        self._init_lock = threading.RLock()
     
     def is_connected(self) -> bool:
         """Check if currently connected to Power BI."""
@@ -188,6 +191,25 @@ class ConnectionState:
                 logger.warning("BPA rules file not found")
             except Exception as e:
                 logger.error(f"Error initializing BPA: {e}")
+
+    # ---- Thread-safe lazy manager ensure helpers ----
+    def _ensure_model_exporter(self):
+        """Thread-safe lazy initialization for model_exporter manager."""
+        if self.model_exporter is not None:
+            return self.model_exporter
+        with self._init_lock:
+            if self.model_exporter is None:
+                try:
+                    from core.model_exporter import ModelExporter
+                    conn = self.connection_manager.get_connection() if self.connection_manager else None
+                    if conn is None:
+                        raise RuntimeError("No active connection")
+                    self.model_exporter = ModelExporter(conn)
+                    logger.info("✓ Initialized model_exporter")
+                except Exception as e:
+                    logger.error(f"Failed to initialize model_exporter: {e}")
+                    raise
+        return self.model_exporter
     
     def get_manager(self, manager_name: str) -> Optional[Any]:
         """

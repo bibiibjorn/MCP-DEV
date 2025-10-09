@@ -456,9 +456,10 @@ class EnhancedAMOTraceAnalyzer:
 
         ok = [r for r in results if r.get('success')]
         if ok:
-            exec_times = [r['execution_time_ms'] for r in ok]
-            fe_times = [r.get('formula_engine_ms', 0) for r in ok]
-            se_times = [r.get('storage_engine_ms', 0) for r in ok]
+            exec_times = [r.get('execution_time_ms') or 0 for r in ok]
+            # Treat None values as 0 when xEvents metrics are unavailable
+            fe_times = [(r.get('formula_engine_ms') or 0) for r in ok]
+            se_times = [(r.get('storage_engine_ms') or 0) for r in ok]
             avg_exec = sum(exec_times)/len(exec_times)
             avg_fe = sum(fe_times)/len(fe_times)
             avg_se = sum(se_times)/len(se_times)

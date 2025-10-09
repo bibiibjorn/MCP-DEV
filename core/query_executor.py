@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from collections import OrderedDict
 from core.dax_validator import DaxValidator
 from core.config_manager import config
+from core.constants import QueryLimits
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +96,7 @@ class OptimizedQueryExecutor:
         self.connection = connection
         # Simple TTL-based LRU cache for query results
         self.query_cache: "OrderedDict[Tuple[str, int], Dict[str, Any]]" = OrderedDict()
-        self.max_cache_items = 200
+        self.max_cache_items = getattr(QueryLimits, 'TELEMETRY_BUFFER_SIZE', 200)  # align with central limits where practical
         self.cache_ttl_seconds = max(0, int(config.get('performance.cache_ttl_seconds', 300) or 0))
         self._table_cache = None
         self._table_id_by_name: Optional[Dict[str, Any]] = None
@@ -690,6 +691,128 @@ class OptimizedQueryExecutor:
             logger.error(f"Error executing INFO query: {e}")
             return {'success': False, 'error': str(e)}
 
+    # --- Unified fallback helpers to reduce duplication across tools ---
+    def _needs_client_filter(self, result: Dict[str, Any], table_name: Optional[str]) -> bool:
+        try:
+            if not table_name:
+                return False
+            if not isinstance(result, dict) or not result.get('success'):
+                return True
+            rows = result.get('rows') or []
+            return len(rows) == 0
+        except Exception:
+            return True
+
+    def _apply_client_side_filter(
+        self,
+        query_type: str,
+        table_name: Optional[str],
+        all_rows_result: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        try:
+            if not (all_rows_result.get('success') and isinstance(all_rows_result.get('rows'), list)):
+                return all_rows_result
+            t_norm = str(table_name or '').strip().lower()
+            # Build table id -> name map
+            id_to_name = {}
+            try:
+                tbls = self.execute_info_query("TABLES")
+                if tbls.get('success'):
+                    for t in tbls.get('rows', []) or []:
+                        # Prefer bracketed keys first on raw DMV output; execute_info_query() normalizes,
+                        # but keep defensive ordering for robustness.
+                        tid = t.get('[ID]') or t.get('ID') or t.get('[TableID]') or t.get('TableID')
+                        nm = t.get('Name') or t.get('[Name]')
+                        if tid is not None and nm:
+                            id_to_name[str(tid)] = str(nm).strip().lower()
+            except Exception:
+                pass
+
+            def _row_table_name(r: Dict[str, Any]) -> Optional[str]:
+                # prefer Table then map from TableID
+                rt = r.get('Table') or r.get('[Table]') or r.get('TableName') or r.get('[TableName]')
+                if isinstance(rt, str) and rt:
+                    return rt.strip().lower()
+                tid = r.get('TableID') or r.get('[TableID]') or r.get('TABLE_ID') or r.get('[TABLE_ID]')
+                if tid is not None and str(tid) in id_to_name:
+                    return id_to_name[str(tid)]
+                return None
+
+            rows = [r for r in (all_rows_result.get('rows') or []) if _row_table_name(r) == t_norm]
+            return {'success': True, 'rows': rows, 'row_count': len(rows), 'client_filtered': True}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    def execute_info_query_with_fallback(self, query_type: str, table_name: Optional[str] = None, exclude_columns: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Single implementation with automatic fallback for table-scoped queries.
+
+        Attempts table-scoped INFO.* first; if empty or failed and a table_name was requested,
+        fetches all rows and filters client-side using robust Table/ID mapping.
+        """
+        result = self.execute_info_query(query_type, table_name=table_name, exclude_columns=exclude_columns)
+        if self._needs_client_filter(result, table_name):
+            all_res = self.execute_info_query(query_type, exclude_columns=exclude_columns)
+            result = self._apply_client_side_filter(query_type, table_name, all_res)
+        return result
+
+    def get_measure_details_with_fallback(self, table_name: str, measure_name: str) -> Dict[str, Any]:
+        """Fetch measure details scoped to a table with robust fallback.
+
+        Strategy:
+        1) Attempt server-side filter on table and name via INFO.MEASURES().
+        2) If empty or failed, fetch all measures and filter client-side by
+           normalized table name and exact measure name.
+        """
+        try:
+            # Primary: table-scoped query with name filter
+            primary = self.execute_info_query(
+                "MEASURES",
+                filter_expr=f'[Name] = "{self._escape_dax_string(measure_name)}"',
+                table_name=table_name,
+                exclude_columns=None
+            )
+            if primary.get('success') and (primary.get('rows') or []):
+                return primary
+
+            # Fallback: fetch all and filter client-side
+            all_meas = self.execute_info_query("MEASURES")
+            if not all_meas.get('success'):
+                return primary
+
+            t_norm = str(table_name or '').strip().lower()
+            m_norm = str(measure_name or '').strip().lower()
+
+            # Build id->name map once (execute_info_query(TABLES) already normalizes keys)
+            id_to_name: Dict[str, str] = {}
+            try:
+                tbls = self.execute_info_query("TABLES")
+                if tbls.get('success'):
+                    for t in tbls.get('rows', []) or []:
+                        tid = t.get('[ID]') or t.get('ID') or t.get('[TableID]') or t.get('TableID')
+                        nm = t.get('Name') or t.get('[Name]')
+                        if tid is not None and nm:
+                            id_to_name[str(tid)] = str(nm).strip().lower()
+            except Exception:
+                pass
+
+            def _row_table_name(r: Dict[str, Any]) -> Optional[str]:
+                rt = r.get('Table') or r.get('[Table]')
+                if isinstance(rt, str) and rt:
+                    return rt.strip().lower()
+                tid = r.get('TableID') or r.get('[TableID]')
+                if tid is not None and str(tid) in id_to_name:
+                    return id_to_name[str(tid)]
+                return None
+
+            def _row_measure_name(r: Dict[str, Any]) -> Optional[str]:
+                rn = r.get('Name') or r.get('[Name]')
+                return str(rn).strip().lower() if rn is not None else None
+
+            rows = [r for r in (all_meas.get('rows') or []) if _row_table_name(r) == t_norm and _row_measure_name(r) == m_norm]
+            return {'success': True, 'rows': rows, 'row_count': len(rows), 'client_filtered': True}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
     def search_measures_dax(self, search_text: str, search_in_expression: bool = True, search_in_name: bool = True) -> Dict:
         """
         Search for text in DAX measures.
@@ -920,7 +1043,7 @@ class OptimizedQueryExecutor:
             rows: List[Dict[str, Any]] = []
 
             # Read rows with proper error handling
-            max_rows = 10000  # Safety limit
+            max_rows = getattr(QueryLimits, 'SAFETY_MAX_ROWS', 10000)
             row_count = 0
 
             while reader.Read() and row_count < max_rows:
