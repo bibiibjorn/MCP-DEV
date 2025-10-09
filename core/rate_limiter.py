@@ -132,6 +132,41 @@ class RateLimiter:
                 
                 # Wait a bit and retry
                 time.sleep(min(0.1, wait_time))
+
+    # --- Convenience API expected by server wrapper ---
+    def allow_request(self, tool_name: str, cost: float = 1.0) -> bool:
+        """Non-blocking check-and-consume for a request.
+
+        Returns True if tokens were available and consumed; False if throttled.
+        """
+        acquired, _ = self.acquire(tool_name, cost=cost, timeout=0.0)
+        return acquired
+
+    def get_retry_after(self, tool_name: str, cost: float = 1.0) -> float:
+        """Estimate seconds until the next request of given cost would pass.
+
+        Does not consume tokens.
+        """
+        with self.lock:
+            now = time.time()
+            # Refill to current time without consuming
+            self._refill_tokens(now)
+            self._refill_tool_tokens(tool_name, now)
+            # Compute deficits
+            global_deficit = max(0.0, cost - self.global_tokens)
+            global_wait = global_deficit / self.global_rate if self.global_rate > 0 else float('inf')
+            if tool_name in self.tool_limits:
+                tool_deficit = max(0.0, cost - self.tool_tokens.get(tool_name, 0.0))
+                tool_rate = float(self.tool_limits.get(tool_name, self.global_rate) or 0.0)
+                tool_wait = tool_deficit / tool_rate if tool_rate > 0 else float('inf')
+                wait = max(0.0, max(global_wait, tool_wait))
+            else:
+                wait = max(0.0, global_wait)
+            # Bound the value to something reasonable for clients
+            try:
+                return round(wait, 2)
+            except Exception:
+                return float(wait)
     
     def _calculate_wait_time(self, tool_name: str, cost: float, current_time: float) -> float:
         """Calculate seconds to wait for tool-specific tokens."""

@@ -31,7 +31,7 @@ from core.query_executor import COLUMN_TYPE_CALCULATED
 
 from core.error_handler import ErrorHandler
 from core.tool_timeouts import ToolTimeoutManager
-from core.cache_manager import EnhancedCacheManager
+from core.cache_manager import EnhancedCacheManager, create_cache_manager
 from core.input_validator import InputValidator
 from core.rate_limiter import RateLimiter
 
@@ -88,7 +88,12 @@ _telemetry = deque(maxlen=_TELEMETRY_MAX)
 connection_manager = ConnectionManager()
 # Initialize enhanced managers
 timeout_manager = ToolTimeoutManager(config.get('tool_timeouts', {}))
-enhanced_cache = EnhancedCacheManager(config)
+# Build enhanced cache manager from full config dict
+try:
+    enhanced_cache = create_cache_manager(config.get_all())
+except Exception:
+    # Fallback to defaults if config manager changes shape
+    enhanced_cache = EnhancedCacheManager()
 rate_limiter = RateLimiter(config.get('rate_limiting', {}))
 
 
@@ -404,6 +409,26 @@ def _handle_context_and_limits(name: str, arguments: Any) -> Optional[dict]:
             stats = ErrorHandler.handle_manager_unavailable('query_executor')
         return stats
 
+    if name == "get_runtime_cache_stats":
+        try:
+            stats = enhanced_cache.get_stats()
+            stats['success'] = True
+            return stats
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    if name == "get_rate_limit_stats":
+        try:
+            return {'success': True, 'stats': rate_limiter.get_stats()}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    if name == "get_tool_timeouts":
+        try:
+            return {'success': True, 'timeouts': timeout_manager.get_all_timeouts()}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
     if name == "get_context":
         keys = arguments.get('keys')
         data = connection_state.get_context(keys) if connection_state else {}
@@ -594,7 +619,7 @@ def _handle_connection_and_instances(name: str, arguments: Any) -> Optional[dict
             try:
                 result.setdefault('summary', 'Connected to Power BI Desktop. Use list_tools to discover capabilities. Quickstart guide path returned for details.')
                 result.setdefault('hints', [
-                    'Try: get_model_summary, get_column_usage_heatmap, analyze_measure_dependencies',
+                    'Try: get_model_summary, analyze_measure_dependencies, find_unused_objects',
                     'Use describe_table to inspect schema; search_objects to find fields',
                 ])
             except Exception:
@@ -662,7 +687,7 @@ def _generate_quickstart_markdown() -> str:
         "- list: tables | list: columns | list: measures | describe: table | preview: table",
         "- search: objects | search: text in measures | get: data sources | get: m expressions",
         "- analysis: best practices (BPA) | analysis: relationship/cardinality | analysis: storage compression",
-        "- usage: find unused objects | usage: column heatmap",
+    "- usage: find unused objects",
         "- export: compact schema | export: tmsl | export: tmdl | docs: generate",
         "",
         "Tips:",
@@ -789,8 +814,7 @@ def _handle_agent_tools(name: str, arguments: Any) -> Optional[dict]:
         return agent_policy.create_model_changelog(connection_state, arguments.get('reference_tmsl'))
     if name == "get_measure_impact":
         return agent_policy.get_measure_impact(connection_state, arguments.get('table', ''), arguments.get('measure', ''), arguments.get('depth'))
-    if name == "get_column_usage_heatmap":
-        return agent_policy.get_column_usage_heatmap(connection_state, arguments.get('table'), arguments.get('limit', 100))
+    # get_column_usage_heatmap removed from public surface
     if name == "auto_document":
         return agent_policy.auto_document(connection_manager, connection_state, arguments.get('profile', 'light'), arguments.get('include_lineage', False))
     if name == "auto_analyze_or_preview":
@@ -1539,7 +1563,7 @@ FRIENDLY_TOOL_ALIASES = {
     # Dependencies & impact
     "Dependencies: Measure": "analyze_measure_dependencies",
     "Impact: Measure": "get_measure_impact",
-    "Usage: Column heatmap": "get_column_usage_heatmap",
+    # heatmap removed from public surface
     "Dependencies: Column usage": "analyze_column_usage",
     "Find unused objects": "find_unused_objects",
     # Model management
@@ -1728,7 +1752,15 @@ async def list_tools() -> List[Tool]:
     # Dependencies & impact
     add("dependency: analyze measure", "analyze_measure_dependencies", "Analyze measure dependencies", {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "depth": {"type": "integer", "default": 3}}, "required": ["table", "measure"]})
     add("impact: measure", "get_measure_impact", "Forward/backward impact for a measure", {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "depth": {"type": "integer", "default": 3}}, "required": ["table", "measure"]})
-    add("usage: column heatmap", "get_column_usage_heatmap", "Column usage heat map across measures", {"type": "object", "properties": {"table": {"type": "string"}, "limit": {"type": "integer", "default": 100}}, "required": []})
+    # heatmap removed from public surface
+
+    # Maintenance and runtime insight tools
+    add("server: info", "get_server_info", "Server info, telemetry, and config snapshot", {"type": "object", "properties": {}, "required": []})
+    add("server: recent logs", "get_recent_logs", "Tail of server logs for debugging", {"type": "object", "properties": {"lines": {"type": "integer", "default": 200}}, "required": []})
+    add("server: summarize logs", "summarize_logs", "Summarize recent logs (error/warn/info)", {"type": "object", "properties": {"lines": {"type": "integer", "default": 500}}, "required": []})
+    add("server: rate limiter stats", "get_rate_limit_stats", "Rate limiter token and throttle stats", {"type": "object", "properties": {}, "required": []})
+    add("server: tool timeouts", "get_tool_timeouts", "Configured per-tool timeouts", {"type": "object", "properties": {}, "required": []})
+    add("server: runtime cache stats", "get_runtime_cache_stats", "In-process cache stats (TTL/LRU)", {"type": "object", "properties": {}, "required": []})
     add("usage: analyze column", "analyze_column_usage", "Analyze how a column is used", {"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}}, "required": ["table", "column"]})
     add("usage: find unused objects", "find_unused_objects", "Find unused tables/columns/measures", {"type": "object", "properties": {}, "required": []})
 

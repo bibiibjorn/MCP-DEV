@@ -671,7 +671,6 @@ class AgentPolicy:
             return ErrorHandler.handle_manager_unavailable('dependency_analyzer')
         return dep.analyze_measure_dependencies(table, measure, depth or 3)
 
-    # removed: get_column_usage_heatmap
 
     def auto_document(self, connection_manager, connection_state, profile: str = 'light', include_lineage: bool = False) -> Dict[str, Any]:
         actions: List[Dict[str, Any]] = []
