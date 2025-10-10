@@ -152,6 +152,25 @@ def _paginate(result: Any, page_size: Optional[int], next_token: Optional[str], 
     return result
 
 
+def _paginate_section(arr: Any, size: Optional[Any], token: Optional[Any]) -> tuple[list, Optional[str]]:
+    """Internal helper to paginate a single list section returning (slice, next_token)."""
+    try:
+        ps = int(size) if size is not None else None
+    except Exception:
+        ps = None
+    start = 0
+    if token:
+        try:
+            start = max(0, int(token))
+        except Exception:
+            start = 0
+    if not ps or ps <= 0 or not isinstance(arr, list):
+        return (arr if isinstance(arr, list) else []), None
+    end = start + ps
+    nxt = str(end) if end < len(arr) else None
+    return arr[start:end], nxt
+
+
 def _schema_sample(rows: List[dict], sample_size: int) -> dict:
     """Return a compact schema section with count and a small sample of rows.
 
@@ -183,6 +202,79 @@ def _dax_quote_column(name: str) -> str:
     DAX uses [Column] notation; a ']' in the name is represented as ']]'."""
     name = (name or "").replace("]", "]]")
     return f"[{name}]"
+
+
+def _describe_table_impl(qe, table: Optional[str], args: dict) -> dict:
+    """Shared implementation for describe_table including per-section pagination.
+
+    Preserves existing behavior: uses info DMV with robust fallbacks, enriches relationship
+    names via TABLES mapping when needed, and applies independent pagination to columns,
+    measures, and relationships sections using the existing token semantics.
+    """
+    if not table:
+        return {'success': False, 'error': 'table is required', 'error_type': 'invalid_input'}
+
+    # Use unified fallback to reduce duplication and improve cross-version robustness
+    cols = qe.execute_info_query_with_fallback("COLUMNS", table_name=table)
+    measures = qe.execute_info_query_with_fallback("MEASURES", table_name=table, exclude_columns=['Expression'])
+    # Fetch all relationships and filter client-side for robustness across engine versions
+    rels_all = qe.execute_info_query("RELATIONSHIPS")
+    rel_rows = rels_all.get('rows', []) if rels_all.get('success') else []
+    filtered_rels: list[dict] = []
+    if rel_rows:
+        # Prefer direct name columns if present
+        if any('FromTable' in r or 'ToTable' in r for r in rel_rows):
+            for r in rel_rows:
+                ft = str(r.get('FromTable') or '')
+                tt = str(r.get('ToTable') or '')
+                if ft == str(table) or tt == str(table):
+                    filtered_rels.append(r)
+        else:
+            # Fallback: map IDs to names using INFO.TABLES()
+            tbls = qe.execute_info_query("TABLES")
+            id_to_name: dict[str, str] = {}
+            if tbls.get('success'):
+                for t in tbls.get('rows', []) or []:
+                    # Prefer bracketed keys first for Desktop builds that return [ID]
+                    tid = t.get('[ID]') or t.get('ID') or t.get('[TableID]') or t.get('TableID')
+                    nm = t.get('Name') or t.get('[Name]')
+                    if tid is not None and nm:
+                        id_to_name[str(tid)] = str(nm)
+            for r in rel_rows:
+                ftid = r.get('FromTableID') or r.get('[FromTableID]')
+                ttid = r.get('ToTableID') or r.get('[ToTableID]')
+                ft = id_to_name.get(str(ftid)) if ftid is not None else None
+                tt = id_to_name.get(str(ttid)) if ttid is not None else None
+                if ft == str(table) or tt == str(table):
+                    # Optionally enrich with resolved names for convenience
+                    if ft and 'FromTable' not in r:
+                        r['FromTable'] = ft
+                    if tt and 'ToTable' not in r:
+                        r['ToTable'] = tt
+                    filtered_rels.append(r)
+
+    result: dict = {
+        'success': True,
+        'table': table,
+        'columns': cols.get('rows', []),
+        'measures': measures.get('rows', []),
+        'relationships': filtered_rels
+    }
+    # Paginate per-section using unified helper
+    c, c_next = _paginate_section(result['columns'], args.get('columns_page_size'), args.get('columns_next_token'))
+    m, m_next = _paginate_section(result['measures'], args.get('measures_page_size'), args.get('measures_next_token'))
+    r, r_next = _paginate_section(result['relationships'], args.get('relationships_page_size'), args.get('relationships_next_token'))
+
+    result['columns'] = c
+    result['measures'] = m
+    result['relationships'] = r
+    if c_next:
+        result['columns_next_token'] = c_next
+    if m_next:
+        result['measures_next_token'] = m_next
+    if r_next:
+        result['relationships_next_token'] = r_next
+    return result
 
 
 # ----------------------------
@@ -884,75 +976,7 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
         result = qe.execute_info_query_with_fallback("MEASURES", table_name=table, exclude_columns=['Expression'])
         return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
     if name == "describe_table":
-        table = arguments["table"]
-        # Use unified fallback to reduce duplication and improve cross-version robustness
-        cols = qe.execute_info_query_with_fallback("COLUMNS", table_name=table)
-        measures = qe.execute_info_query_with_fallback("MEASURES", table_name=table, exclude_columns=['Expression'])
-        # Fetch all relationships and filter client-side for robustness across engine versions
-        rels_all = qe.execute_info_query("RELATIONSHIPS")
-        rel_rows = rels_all.get('rows', []) if rels_all.get('success') else []
-        filtered_rels = []
-        if rel_rows:
-            # Prefer direct name columns if present
-            if any('FromTable' in r or 'ToTable' in r for r in rel_rows):
-                for r in rel_rows:
-                    ft = str(r.get('FromTable') or '')
-                    tt = str(r.get('ToTable') or '')
-                    if ft == str(table) or tt == str(table):
-                        filtered_rels.append(r)
-            else:
-                # Fallback: map IDs to names using INFO.TABLES()
-                tbls = qe.execute_info_query("TABLES")
-                id_to_name = {}
-                if tbls.get('success'):
-                    for t in tbls.get('rows', []):
-                        # Prefer bracketed keys first for Desktop builds that return [ID]
-                        tid = t.get('[ID]') or t.get('ID') or t.get('[TableID]') or t.get('TableID')
-                        nm = t.get('Name') or t.get('[Name]')
-                        if tid is not None and nm:
-                            id_to_name[str(tid)] = str(nm)
-                for r in rel_rows:
-                    ftid = r.get('FromTableID') or r.get('[FromTableID]')
-                    ttid = r.get('ToTableID') or r.get('[ToTableID]')
-                    ft = id_to_name.get(str(ftid)) if ftid is not None else None
-                    tt = id_to_name.get(str(ttid)) if ttid is not None else None
-                    if ft == str(table) or tt == str(table):
-                        # Optionally enrich with resolved names for convenience
-                        if ft and 'FromTable' not in r:
-                            r['FromTable'] = ft
-                        if tt and 'ToTable' not in r:
-                            r['ToTable'] = tt
-                        filtered_rels.append(r)
-        result = {'success': True, 'table': table, 'columns': cols.get('rows', []), 'measures': measures.get('rows', []), 'relationships': filtered_rels}
-        def _slice(arr, size, token):
-            try:
-                ps = int(size) if size is not None else None
-            except Exception:
-                ps = None
-            start = 0
-            if token:
-                try:
-                    start = max(0, int(token))
-                except Exception:
-                    start = 0
-            if not ps or ps <= 0 or not isinstance(arr, list):
-                return arr, None
-            end = start + ps
-            nxt = str(end) if end < len(arr) else None
-            return arr[start:end], nxt
-        c, c_next = _slice(result['columns'], arguments.get('columns_page_size'), arguments.get('columns_next_token'))
-        m, m_next = _slice(result['measures'], arguments.get('measures_page_size'), arguments.get('measures_next_token'))
-        r, r_next = _slice(result['relationships'], arguments.get('relationships_page_size'), arguments.get('relationships_next_token'))
-        result['columns'] = c
-        result['measures'] = m
-        result['relationships'] = r
-        if c_next:
-            result['columns_next_token'] = c_next
-        if m_next:
-            result['measures_next_token'] = m_next
-        if r_next:
-            result['relationships_next_token'] = r_next
-        return result
+        return _describe_table_impl(qe, arguments.get("table"), arguments)
     if name == "get_measure_details":
         return qe.get_measure_details_with_fallback(arguments["table"], arguments["measure"])
     if name == "search_string":
@@ -1367,70 +1391,7 @@ def _h_describe_table(args: Any) -> dict:
     qe = connection_state.query_executor
     if not qe:
         return ErrorHandler.handle_manager_unavailable('query_executor')
-    table = args.get('table')
-    cols = qe.execute_info_query_with_fallback("COLUMNS", table_name=table)
-    measures = qe.execute_info_query_with_fallback("MEASURES", table_name=table, exclude_columns=['Expression'])
-    rels_all = qe.execute_info_query("RELATIONSHIPS")
-    rel_rows = rels_all.get('rows', []) if rels_all.get('success') else []
-    filtered_rels = []
-    if rel_rows:
-        if any('FromTable' in r or 'ToTable' in r for r in rel_rows):
-            for r in rel_rows:
-                ft = str(r.get('FromTable') or '')
-                tt = str(r.get('ToTable') or '')
-                if ft == str(table) or tt == str(table):
-                    filtered_rels.append(r)
-        else:
-            tbls = qe.execute_info_query("TABLES")
-            id_to_name = {}
-            if tbls.get('success'):
-                for t in tbls.get('rows', []):
-                    tid = t.get('ID') or t.get('TableID')
-                    nm = t.get('Name')
-                    if tid is not None and nm:
-                        id_to_name[str(tid)] = str(nm)
-            for r in rel_rows:
-                ftid = r.get('FromTableID') or r.get('[FromTableID]')
-                ttid = r.get('ToTableID') or r.get('[ToTableID]')
-                ft = id_to_name.get(str(ftid)) if ftid is not None else None
-                tt = id_to_name.get(str(ttid)) if ttid is not None else None
-                if ft == str(table) or tt == str(table):
-                    if ft and 'FromTable' not in r:
-                        r['FromTable'] = ft
-                    if tt and 'ToTable' not in r:
-                        r['ToTable'] = tt
-                    filtered_rels.append(r)
-    result = {'success': True, 'table': table, 'columns': cols.get('rows', []), 'measures': measures.get('rows', []), 'relationships': filtered_rels}
-    # paginate per-section
-    def _slice(arr, size, token):
-        try:
-            ps = int(size) if size is not None else None
-        except Exception:
-            ps = None
-        start = 0
-        if token:
-            try:
-                start = max(0, int(token))
-            except Exception:
-                start = 0
-        if not ps or ps <= 0 or not isinstance(arr, list):
-            return arr, None
-        end = start + ps
-        nxt = str(end) if end < len(arr) else None
-        return arr[start:end], nxt
-    c, c_next = _slice(result['columns'], args.get('columns_page_size'), args.get('columns_next_token'))
-    m, m_next = _slice(result['measures'], args.get('measures_page_size'), args.get('measures_next_token'))
-    r, r_next = _slice(result['relationships'], args.get('relationships_page_size'), args.get('relationships_next_token'))
-    result['columns'] = c
-    result['measures'] = m
-    result['relationships'] = r
-    if c_next:
-        result['columns_next_token'] = c_next
-    if m_next:
-        result['measures_next_token'] = m_next
-    if r_next:
-        result['relationships_next_token'] = r_next
-    return result
+    return _describe_table_impl(qe, args.get('table'), args)
 
 
 # Register
@@ -1709,33 +1670,43 @@ FRIENDLY_TOOL_ALIASES = {
     "Analyze: Propose plan": "propose_analysis",
     "get: column value distribution": "get_column_value_distribution",
     "measure: upsert": "upsert_measure",
-    # Visualization mockup tools
-    "viz: prepare dashboard data": "viz_prepare_dashboard_data",
-    "viz: get chart data": "viz_get_chart_data",
-    "viz: recommend visualizations": "viz_recommend_visualizations",
-    "Viz: Dashboard data": "viz_prepare_dashboard_data",
-    "Viz: Chart data": "viz_get_chart_data",
-    "Viz: Recommendations": "viz_recommend_visualizations",
-    "viz: render html dashboard": "viz_render_html_mockup",
-    "Viz: Render HTML": "viz_render_html_mockup",
-    "viz: export html dashboard": "viz_export_html_mockup",
-    "Viz: Export HTML": "viz_export_html_mockup",
+    # Visualization mockup tools removed
 }
 
 # Lightweight handler registry (progressive migration)
 Handler = Callable[[Any], dict]
 _HANDLERS: Dict[str, Handler] = {}
 
-try:
-    _VIZ_HANDLERS: Dict[str, Handler] = create_viz_tool_handlers(connection_state, config)
-except Exception as _viz_error:
-    logger.debug(f"Visualization handlers unavailable: {_viz_error}")
-    _VIZ_HANDLERS = {}
-try:
-    _VIZ_HTML_HANDLERS: Dict[str, Handler] = create_viz_html_handlers(connection_state, config)
-except Exception as _vizh_error:
-    logger.debug(f"Visualization HTML handlers unavailable: {_vizh_error}")
-    _VIZ_HTML_HANDLERS = {}
+_VIZ_HANDLERS: Dict[str, Handler] = {}
+_VIZ_HTML_HANDLERS: Dict[str, Handler] = {}
+
+
+def _get_viz_handlers() -> Dict[str, Handler]:
+    global _VIZ_HANDLERS
+    if not _VIZ_HANDLERS:
+        try:
+            if config.get('features.visualization_tools.enabled', True):
+                _VIZ_HANDLERS = create_viz_tool_handlers(connection_state, config)
+            else:
+                _VIZ_HANDLERS = {}
+        except Exception as e:
+            logger.debug(f"Visualization tools unavailable: {e}")
+            _VIZ_HANDLERS = {}
+    return _VIZ_HANDLERS
+
+
+def _get_viz_html_handlers() -> Dict[str, Handler]:
+    global _VIZ_HTML_HANDLERS
+    if not _VIZ_HTML_HANDLERS:
+        try:
+            if config.get('features.visualization_tools.enabled', True):
+                _VIZ_HTML_HANDLERS = create_viz_html_handlers(connection_state, config)
+            else:
+                _VIZ_HTML_HANDLERS = {}
+        except Exception as e:
+            logger.debug(f"Visualization HTML handlers unavailable: {e}")
+            _VIZ_HTML_HANDLERS = {}
+    return _VIZ_HTML_HANDLERS
 
 def register_handler(tool_name: str, func: Handler) -> None:
     try:
@@ -1802,28 +1773,14 @@ def _dispatch_tool(name: str, arguments: Any) -> dict:
     if res is not None:
         return _attach_port_if_connected(res)
     # 9) Visualization mockup tools
-    global _VIZ_HANDLERS
-    handler = _VIZ_HANDLERS.get(name)
-    if handler is None and isinstance(name, str) and name.startswith('viz_'):
-        try:
-            _VIZ_HANDLERS = create_viz_tool_handlers(connection_state, config)
-            handler = _VIZ_HANDLERS.get(name)
-        except Exception as e:
-            logger.debug(f"Unable to refresh visualization handlers: {e}")
+    handler = _get_viz_handlers().get(name)
     if handler is not None:
         try:
             return _attach_port_if_connected(handler(arguments))
         except Exception as e:
             return ErrorHandler.handle_unexpected_error(name, e)
     # 10) Visualization HTML tools
-    global _VIZ_HTML_HANDLERS
-    handler = _VIZ_HTML_HANDLERS.get(name)
-    if handler is None and isinstance(name, str) and name.startswith('viz_'):
-        try:
-            _VIZ_HTML_HANDLERS = create_viz_html_handlers(connection_state, config)
-            handler = _VIZ_HTML_HANDLERS.get(name)
-        except Exception as e:
-            logger.debug(f"Unable to refresh visualization HTML handlers: {e}")
+    handler = _get_viz_html_handlers().get(name)
     if handler is not None:
         try:
             return _attach_port_if_connected(handler(arguments))
@@ -1942,141 +1899,7 @@ async def list_tools() -> List[Tool]:
     add("analysis: full model", "full_analysis", "Comprehensive model analysis (summary, relationships, best practices, M scan, optional BPA)", {"type": "object", "properties": {"include_bpa": {"type": "boolean", "default": True}, "depth": {"type": "string", "enum": ["light", "standard", "deep"], "default": "standard"}, "profile": {"type": "string", "enum": ["fast", "balanced", "deep"], "default": "balanced"}, "limits": {"type": "object", "properties": {"relationships_max": {"type": "integer", "default": 200}, "issues_max": {"type": "integer", "default": 200}}, "default": {}}}, "required": []})
     add("analysis: recommend analysis plan", "propose_analysis", "Recommend fast vs thorough analysis options based on your goal", {"type": "object", "properties": {"goal": {"type": "string"}}, "required": []})
 
-    # Visualization mockup tools
-    add(
-        "viz: prepare dashboard data",
-        "viz_prepare_dashboard_data",
-        "Prepare Power BI data for dashboard mockup generation",
-        {
-            "type": "object",
-            "properties": {
-                "request_type": {
-                    "type": "string",
-                    "enum": ["overview", "executive_summary", "operational", "financial", "custom"],
-                    "default": "overview",
-                    "description": "Type of dashboard to prepare"
-                },
-                "tables": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Specific tables to include (optional)"
-                },
-                "measures": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "table": {"type": "string"},
-                            "measure": {"type": "string"},
-                            "chart_type": {
-                                "type": "string",
-                                "enum": ["auto", "kpi_card", "line", "bar", "area", "pie"],
-                                "default": "auto"
-                            }
-                        }
-                    },
-                    "description": "Specific measures to visualize"
-                },
-                "max_rows": {
-                    "type": "integer",
-                    "default": 100,
-                    "description": "Maximum rows per query"
-                },
-                "sample_rows": {
-                    "type": "integer",
-                    "default": 20,
-                    "description": "Sample size for preview data"
-                }
-            },
-            "required": []
-        }
-    )
-    add(
-        "viz: get chart data",
-        "viz_get_chart_data",
-        "Get formatted data for specific chart type",
-        {
-            "type": "object",
-            "properties": {
-                "chart_type": {
-                    "type": "string",
-                    "enum": ["kpi_card", "line", "area", "bar", "pie"],
-                    "default": "line"
-                },
-                "table": {"type": "string"},
-                "measure": {"type": "string"},
-                "dimension": {
-                    "type": "string",
-                    "description": "Dimension table to group by (optional for bar charts)"
-                },
-                "sample_rows": {"type": "integer", "default": 20}
-            },
-            "required": ["table", "measure"]
-        }
-    )
-    add(
-        "viz: recommend visualizations",
-        "viz_recommend_visualizations",
-        "Recommend appropriate visualizations for model or measures",
-        {
-            "type": "object",
-            "properties": {
-                "measures": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "table": {"type": "string"},
-                            "measure": {"type": "string"}
-                        }
-                    },
-                    "description": "Specific measures (optional, auto-detects if not provided)"
-                }
-            },
-            "required": []
-        }
-    )
-
-    add(
-        "viz: render html dashboard",
-        "viz_render_html_mockup",
-        "Render a single-page HTML dashboard from prepared data",
-        {
-            "type": "object",
-            "properties": {
-                "request_type": {
-                    "type": "string",
-                    "enum": ["overview", "executive_summary", "operational", "financial", "custom"],
-                    "default": "financial"
-                },
-                "tables": {"type": "array", "items": {"type": "string"}},
-                "measures": {"type": "array", "items": {"type": "object"}},
-                "page_title": {"type": "string"},
-                "theme": {"type": "string", "enum": ["dark", "light"], "default": "dark"},
-                "max_rows": {"type": "integer", "default": 100},
-                "sample_rows": {"type": "integer", "default": 20}
-            },
-            "required": []
-        }
-    )
-
-    add(
-        "viz: export html dashboard",
-        "viz_export_html_mockup",
-        "Export a single-page HTML dashboard to the exports/mockups folder",
-        {
-            "type": "object",
-            "properties": {
-                "request_type": {"type": "string", "default": "financial"},
-                "tables": {"type": "array", "items": {"type": "string"}},
-                "measures": {"type": "array", "items": {"type": "object"}},
-                "page_title": {"type": "string"},
-                "theme": {"type": "string", "enum": ["dark", "light"], "default": "dark"},
-                "output_dir": {"type": "string"}
-            },
-            "required": []
-        }
-    )
+    # Visualization tools removed
 
     # Help
     add("help: quickstart guide", "show_quickstart", "Show path to Quickstart guide and an excerpt", {"type": "object", "properties": {}, "required": []})

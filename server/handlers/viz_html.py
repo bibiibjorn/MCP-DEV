@@ -21,6 +21,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+try:
+    from PIL import Image  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    Image = None
+
 from .visualization_tools import VisualizationTools
 
 
@@ -31,7 +36,7 @@ def _format_number(val: Any, fmt: Optional[str]) -> str:
         # Basic heuristics for currency/percent
         if isinstance(fmt, str):
             fl = fmt.lower()
-            if any(sym in fl for sym in ["$", "€", "£"]) or "currency" in fl:
+            if any(sym in fl for sym in ["$", "Ôé¼", "┬ú"]) or "currency" in fl:
                 try:
                     return f"{float(val):,.0f}"
                 except Exception:
