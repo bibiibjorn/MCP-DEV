@@ -1226,6 +1226,38 @@ class OptimizedQueryExecutor:
             logger.error(f"Error analyzing DAX query: {e}")
             return {'success': False, 'error': str(e)}
 
+    # ---- Convenience surface for analyzers expecting a 'model' like interface ----
+    # These wrappers allow components such as DependencyAnalyzer to work with the
+    # query executor directly without needing a separate model API object.
+
+    def list_measures(self) -> Dict[str, Any] | list[dict]:
+        res = self.execute_info_query("MEASURES")
+        return res.get('rows', []) if isinstance(res, dict) else []
+
+    def list_columns(self, table: Optional[str] = None) -> Dict[str, Any] | list[dict]:
+        res = self.execute_info_query("COLUMNS", table_name=table) if table else self.execute_info_query("COLUMNS")
+        return res.get('rows', []) if isinstance(res, dict) else []
+
+    def list_tables(self) -> Dict[str, Any] | list[dict]:
+        res = self.execute_info_query("TABLES")
+        return res.get('rows', []) if isinstance(res, dict) else []
+
+    def list_relationships(self) -> Dict[str, Any] | list[dict]:
+        res = self.execute_info_query("RELATIONSHIPS")
+        return res.get('rows', []) if isinstance(res, dict) else []
+
+    def get_measure_details(self, table: str, measure: str) -> Dict[str, Any]:
+        res = self.get_measure_details_with_fallback(table, measure)
+        # Return a single-object shape for dependency analyzers
+        if res.get('success') and res.get('rows'):
+            r0 = res['rows'][0]
+            return {
+                'table': r0.get('Table') or table,
+                'name': r0.get('Name') or measure,
+                'expression': r0.get('Expression')
+            }
+        return {}
+
     def get_tmsl_definition(self) -> Dict:
         """
         Get TMSL definition for BPA analysis.

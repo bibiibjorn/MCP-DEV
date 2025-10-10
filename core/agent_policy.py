@@ -636,7 +636,10 @@ class AgentPolicy:
             ok = perf.connect_amo()
             if not ok:
                 return {'success': False, 'error': 'AMO not available'}
-            started = perf.start_session_trace()
+            qe = connection_state.query_executor
+            if not qe:
+                return ErrorHandler.handle_manager_unavailable('query_executor')
+            started = perf.start_session_trace(qe)
             return {'success': bool(started), 'trace_active': perf.trace_active}
         else:
             perf.stop_session_trace()

@@ -16,7 +16,30 @@ Tip: Install to a user-writable path. Avoid spaces/special characters in the pat
 
 - Extract/clone the folder to a stable location, e.g. `C:\Tools\pbixray-mcp-server`
 
-## 2) Optional: quick environment check
+## 2) Set up Python (venv)
+
+From the project folder in Windows PowerShell:
+
+```powershell
+# Create and activate a local virtual environment
+py -3 -m venv venv ; ./venv/Scripts/Activate.ps1
+
+# Upgrade pip and install dependencies
+python -m pip install --upgrade pip ; pip install -r requirements.txt
+```
+
+Notes:
+
+- If `py` is not found, install Python 3.10+ from python.org and re-run.
+- If execution policy blocks Activate.ps1, run as admin once:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+You should now have `venv\Scripts\python.exe` available.
+
+## 3) Optional: quick environment check
 
 In Windows PowerShell from the project folder:
 
@@ -26,7 +49,7 @@ cd "C:\Tools\pbixray-mcp-server"; ./scripts/test_connection.ps1
 
 This validates Python + runtime bits and prints next steps.
 
-## 3) Configure the MCP client
+## 4) Configure the MCP client
 
 Choose one path below.
 
@@ -78,15 +101,25 @@ Notes
 
 ### Option C — ChatGPT Desktop (with MCP)
 
-From the project folder:
+ChatGPT Desktop supports MCP via a Developer JSON field in Settings.
 
-```powershell
-./scripts/install_to_chatgpt.ps1
+1. Open ChatGPT Desktop
+1. Go to Settings → Tools → Developer
+1. Add a new tool with the following JSON, adjust the two paths to your install folder:
+
+```json
+{
+  "name": "MCP-PowerBi-Finvision",
+  "command": "C:\\Tools\\pbixray-mcp-server\\venv\\Scripts\\python.exe",
+  "args": [
+    "C:\\Tools\\pbixray-mcp-server\\src\\pbixray_server_enhanced.py"
+  ]
+}
 ```
 
-Follow the on-screen instructions to paste the generated JSON into ChatGPT → Settings → Tools → Developer. Then restart ChatGPT.
+1. Save, then restart ChatGPT Desktop.
 
-## 4) Connect and test
+## 5) Connect and test
 
 1) Open Power BI Desktop and load a .pbix file
 2) Wait ~10–15 seconds for the model to finish loading
@@ -122,6 +155,17 @@ Optional: remove logs under `logs/`.
 - “Not connected” → Detect → Connect → Then run tools
 - Claude doesn’t see the server → Re-run the installer or use manual JSON; restart Claude; verify `%APPDATA%\Claude\claude_desktop_config.json`
 - Slow queries → Use `TOPN()` to limit DMV outputs; use performance tools to see SE vs FE time
+
+If Claude/ChatGPT can’t launch the server
+
+- Confirm these files exist and point to your install folder:
+  - `venv\Scripts\python.exe`
+  - `src\pbixray_server_enhanced.py`
+- Try launching once from a terminal to surface errors:
+
+```powershell
+venv\Scripts\python.exe src\pbixray_server_enhanced.py --help
+```
 
 ## Team distribution (optional)
 

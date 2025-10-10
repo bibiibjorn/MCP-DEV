@@ -2,7 +2,7 @@
 
 This page summarizes the scripts shipped in `scripts/`, what they do, and whether most users need them. No behavior changes are implied here.
 
-Last updated: 2025-10-09
+Last updated: 2025-10-10
 
 ## Overview
 
@@ -18,10 +18,7 @@ Last updated: 2025-10-09
   - Audience: Everyone using Claude.
   - Status: Keep.
 
-- install_to_chatgpt.ps1
-  - Purpose: Generate a JSON snippet to add the MCP server in ChatGPT Desktop > Settings > Tools > Developer.
-  - Audience: ChatGPT Desktop users.
-  - Status: Keep.
+<!-- ChatGPT install is manual via Developer JSON; no script included at this time. -->
 
 - test_connection.ps1
   - Purpose: Quick environment check (Python, CLR, DLL presence) before wiring a client.

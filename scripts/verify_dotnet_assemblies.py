@@ -53,7 +53,7 @@ def main():
     dotnet_dir = project_root / "lib" / "dotnet"
     
     if not dotnet_dir.exists():
-        print(f"{RED}✗ lib/dotnet directory not found!{RESET}")
+        print(f"{RED}X lib/dotnet directory not found!{RESET}")
         print(f"  Expected: {dotnet_dir}")
         print(f"\n{YELLOW}Create the directory and run lib/dotnet/install.ps1{RESET}")
         return 1
@@ -103,7 +103,7 @@ def main():
     
     # Print results
     for result in results:
-        symbol = "✓" if result['exists'] else "✗"
+        symbol = "OK" if result['exists'] else "X"
         color = GREEN if result['exists'] else (RED if result['required'] else YELLOW)
         req_label = "(Required)" if result['required'] else "(Optional)"
         
@@ -126,29 +126,29 @@ def main():
     print(f"{CYAN}{'='*60}{RESET}\n")
     
     if all_required_present:
-        print(f"{GREEN}✓ All required assemblies present{RESET}")
+        print(f"{GREEN}OK All required assemblies present{RESET}")
         
         if any_optional_present:
-            print(f"{GREEN}✓ Optional AMO assemblies available - full features enabled{RESET}")
+            print(f"{GREEN}OK Optional AMO assemblies available - full features enabled{RESET}")
             print(f"\n{CYAN}Enabled features:{RESET}")
-            print(f"  • DMV queries and metadata")
-            print(f"  • Performance analysis with SE/FE split")
-            print(f"  • TMSL/TMDL export")
-            print(f"  • Advanced BPA checks")
+            print(f"  - DMV queries and metadata")
+            print(f"  - Performance analysis with SE/FE split")
+            print(f"  - TMSL/TMDL export")
+            print(f"  - Advanced BPA checks")
         else:
-            print(f"{YELLOW}⚠ Optional AMO assemblies missing - limited features{RESET}")
+            print(f"{YELLOW}WARN Optional AMO assemblies missing - limited features{RESET}")
             print(f"\n{CYAN}Available features:{RESET}")
-            print(f"  • DMV queries and metadata")
-            print(f"  • Basic performance analysis")
+            print(f"  - DMV queries and metadata")
+            print(f"  - Basic performance analysis")
             print(f"\n{YELLOW}Missing features:{RESET}")
-            print(f"  • Advanced performance tracing")
-            print(f"  • TMSL/TMDL export")
+            print(f"  - Advanced performance tracing")
+            print(f"  - TMSL/TMDL export")
             print(f"\n{YELLOW}To enable all features:{RESET}")
             print(f"  Run: lib/dotnet/install.ps1")
         
         return 0
     else:
-        print(f"{RED}✗ Required assemblies missing!{RESET}")
+        print(f"{RED}X Required assemblies missing!{RESET}")
         print(f"\n{YELLOW}Installation options:{RESET}")
         print(f"  1. Automatic: Run lib/dotnet/install.ps1")
         print(f"  2. Manual: Download from https://aka.ms/ssmsfullsetup")

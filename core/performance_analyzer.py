@@ -1,505 +1,424 @@
 """
-Performance Analyzer for PBIXRay MCP Server
+Performance analyzer utilities for DAX queries.
 
-xEvents-based FE/SE analyzer using XMLA through ADOMD.
-Creates a ring_buffer xEvent session, executes the query, reads events from
-DMV $SYSTEM.DISCOVER_XEVENT_SESSION_TARGETS, and computes SE/FE metrics.
+This module provides a lightweight EnhancedAMOTraceAnalyzer used by the server
+to analyze query performance. When AMO/xEvents are unavailable, it gracefully
+falls back to basic timing using the provided query executor.
 """
 
-import time
 import logging
-import uuid
-import xml.etree.ElementTree as ET
-from typing import Dict, Any, List, Optional
-from core.config_manager import config
+import os
+import threading
+import time
+from collections import defaultdict
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
+# AMO import state is cached so repeated calls stay cheap
+_AMO_IMPORT_LOCK = threading.RLock()
+_AMO_IMPORT_READY: Optional[bool] = None
+_AMO_TYPES: Dict[str, Any] = {}
+_AMO_IMPORT_ERROR: Optional[str] = None
+
+
+def _ensure_amo_environment() -> bool:
+    """Load pythonnet + AMO assemblies once. Returns True on success."""
+    global _AMO_IMPORT_READY, _AMO_TYPES, _AMO_IMPORT_ERROR
+    with _AMO_IMPORT_LOCK:
+        if _AMO_IMPORT_READY is not None:
+            return bool(_AMO_IMPORT_READY)
+        try:
+            import clr  # type: ignore
+        except Exception as exc:  # pragma: no cover - environment specific
+            _AMO_IMPORT_READY = False
+            _AMO_IMPORT_ERROR = f"pythonnet clr import failed: {exc}"
+            logger.debug(_AMO_IMPORT_ERROR)
+            return False
+
+        try:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            root_dir = os.path.dirname(base_dir)
+            dll_dir = os.path.join(root_dir, "lib", "dotnet")
+            dlls = (
+                "Microsoft.AnalysisServices.Core.dll",
+                "Microsoft.AnalysisServices.dll",
+                "Microsoft.AnalysisServices.Tabular.dll",
+            )
+            for name in dlls:
+                path = os.path.join(dll_dir, name)
+                if os.path.exists(path):
+                    try:
+                        clr.AddReference(path)  # type: ignore[attr-defined]
+                    except Exception as add_exc:
+                        logger.debug("Failed to add reference %s: %s", path, add_exc)
+                else:
+                    logger.debug("AMO DLL missing at %s", path)
+
+            from Microsoft.AnalysisServices import Server as AmoServer  # type: ignore  # noqa: E402
+            from Microsoft.AnalysisServices import TraceEventArgs, TraceEventClass  # type: ignore  # noqa: E402
+
+            try:
+                from Microsoft.AnalysisServices.Tabular import Server as TabularServer  # type: ignore  # noqa: E402
+            except Exception:
+                TabularServer = None
+
+            _AMO_TYPES = {
+                "AmoServer": AmoServer,
+                "TabularServer": TabularServer,
+                "TraceEventArgs": TraceEventArgs,
+                "TraceEventClass": TraceEventClass,
+            }
+            _AMO_IMPORT_READY = True
+            _AMO_IMPORT_ERROR = None
+            return True
+        except Exception as exc:  # pragma: no cover - environment specific
+            _AMO_IMPORT_READY = False
+            _AMO_IMPORT_ERROR = str(exc)
+            logger.debug("Failed to initialize AMO environment: %s", exc)
+            return False
+
 
 class EnhancedAMOTraceAnalyzer:
-    """
-    Extended Events analyzer (reuses public class name for compatibility).
+    """Analyzer facade used by the server with optional AMO/xEvents support."""
 
-    Public API is preserved: analyze_query(executor, query, runs, clear_cache)
-    and disconnect(). Internally, this class manages a per-run xEvent session.
-    """
+    _TRACE_BUFFER_LIMIT = 5000
+    _SE_EVENT_NAMES = {
+        "VertiPaqSEQueryEnd",
+        "VertiPaqSEQueryCacheMatch",
+        "VertiPaqSEQueryCacheMiss",
+        "QuerySubcube",
+        "QuerySubcubeVerbose",
+        "DirectQueryEnd",
+    }
 
     def __init__(self, connection_string: str):
-        # Keep signature for compatibility; we operate via executor.connection
         self.connection_string = connection_string
-        self._last_session: Optional[str] = None
-        # Back-compat fields referenced elsewhere
-        self.amo_server = True  # truthy to indicate analyzer is available
+        self.amo_server: Optional[Any] = None
         self.trace_active = False
-        # Tunable waits (seconds) to minimize latency while keeping reliability
-        self._session_start_wait = 0.03  # wait after session create
-        self._cache_clear_wait = 0.08    # wait after cache clear
-        self._event_poll_interval = 0.03 # interval when polling ring_buffer
-        self._max_event_flush_wait = 0.25 # maximum time to wait for events
-        # Behavior controls via config
-        self._trace_mode = str(config.get('performance.trace_mode', 'full') or 'full').lower()  # off|basic|full
-        self._trace_init_retries = int(config.get('performance.trace_init_retries', 2) or 2)
-        self._trace_init_backoff_ms = int(config.get('performance.trace_init_backoff_ms', 150) or 150)
-        # Once we hit a known XMLA incompatibility, suppress noisy errors and downgrade
-        self._suppress_trace_errors = False
-        self._suppression_logged = False
+        self._trace: Optional[Any] = None
+        self._trace_handler = None
+        self._trace_handler_attached = False
+        self._session_id: Optional[str] = None
+        self._event_buffer: List[Dict[str, Any]] = []
+        self._event_lock = threading.RLock()
 
-    # Back-compat: older code calls connect_amo() and checks amo_server
+    # ---- AMO/xEvents wiring ----
+    def _resolve_session_id(self, query_executor: Any) -> Optional[str]:
+        connection = getattr(query_executor, "connection", None)
+        if connection is None:
+            return self._session_id
+        try:
+            session_id = getattr(connection, "SessionID", None)
+        except Exception:
+            session_id = None
+        if session_id:
+            self._session_id = str(session_id)
+        return self._session_id
+
+    def _get_session_trace(self) -> Optional[Any]:
+        if not self.amo_server:
+            return None
+        try:
+            trace = getattr(self.amo_server, "SessionTrace", None)
+            return trace
+        except Exception as exc:
+            logger.debug("Failed to access SessionTrace: %s", exc)
+            return None
+
+    def _attach_trace_handler(self, trace: Any) -> None:
+        if self._trace_handler_attached or trace is None:
+            return
+
+        def _on_event(sender, args):  # type: ignore[no-redef]
+            self._handle_trace_event(args)
+
+        self._trace_handler = _on_event
+        try:
+            trace.add_OnEvent(self._trace_handler)
+            self._trace_handler_attached = True
+        except AttributeError:
+            # pythonnet also supports += operator; fall back if add_OnEvent missing
+            try:
+                trace.OnEvent += self._trace_handler  # type: ignore[attr-defined]
+                self._trace_handler_attached = True
+            except Exception as exc:
+                logger.debug("Failed to attach trace handler: %s", exc)
+                self._trace_handler = None
+
+    def _detach_trace_handler(self) -> None:
+        if not self._trace or not self._trace_handler_attached or not self._trace_handler:
+            return
+        try:
+            self._trace.remove_OnEvent(self._trace_handler)
+        except AttributeError:
+            try:
+                self._trace.OnEvent -= self._trace_handler  # type: ignore[attr-defined]
+            except Exception:
+                pass
+        except Exception:
+            pass
+        finally:
+            self._trace_handler_attached = False
+            self._trace_handler = None
+
+    def _handle_trace_event(self, args: Any) -> None:
+        try:
+            event_name = str(getattr(args, "EventClass", "") or "")
+            session_id = str(getattr(args, "SessionID", "") or "")
+            record = {
+                "event": event_name,
+                "session_id": session_id,
+                "duration_ms": float(getattr(args, "Duration", 0) or 0),
+                "cpu_time_ms": float(getattr(args, "CpuTime", 0) or 0),
+                "event_subclass": int(getattr(args, "EventSubclass", 0) or 0),
+                "request_id": str(getattr(args, "RequestID", "") or ""),
+                "timestamp": getattr(args, "CurrentTime", None),
+                "text": str(getattr(args, "TextData", "") or ""),
+            }
+        except Exception:
+            return
+
+        with self._event_lock:
+            self._event_buffer.append(record)
+            # Avoid unbounded growth across long sessions
+            if len(self._event_buffer) > self._TRACE_BUFFER_LIMIT:
+                excess = len(self._event_buffer) - self._TRACE_BUFFER_LIMIT
+                del self._event_buffer[0:excess]
+
+    def _snapshot_event_index(self) -> int:
+        with self._event_lock:
+            return len(self._event_buffer)
+
+    def _events_since(self, index: int) -> Tuple[List[Dict[str, Any]], int]:
+        with self._event_lock:
+            if index <= 0:
+                data = list(self._event_buffer)
+            else:
+                data = self._event_buffer[index:]
+            return data, len(self._event_buffer)
+
+    def _summarize_events(self, events: List[Dict[str, Any]], fallback_ms: float) -> Optional[Dict[str, Any]]:
+        if not events:
+            return None
+        session_id = self._session_id or ""
+        total_ms = None
+        se_ms = 0.0
+        counts: Dict[str, int] = defaultdict(int)
+        for evt in events:
+            if session_id and evt.get("session_id") and evt["session_id"] != session_id:
+                continue
+            name = evt.get("event") or ""
+            counts[name] += 1
+            if name == "QueryEnd":
+                total_ms = float(evt.get("duration_ms") or 0)
+            elif name in self._SE_EVENT_NAMES:
+                se_ms += float(evt.get("duration_ms") or 0)
+
+        if total_ms is None:
+            total_ms = max(fallback_ms, 0.0)
+        fe_ms = max(total_ms - se_ms, 0.0)
+        return {
+            "total_ms": round(total_ms, 2),
+            "se_ms": round(se_ms, 2),
+            "fe_ms": round(fe_ms, 2),
+            "counts": dict(counts),
+        }
+
     def connect_amo(self) -> bool:
-        return True
+        """Best-effort AMO connect. Returns False when unavailable."""
+        if self.amo_server is not None:
+            return True
+        if not _ensure_amo_environment():
+            logger.debug("AMO environment unavailable: %s", _AMO_IMPORT_ERROR)
+            return False
 
-    # Compatibility no-ops for older tooling that toggles a SessionTrace
-    def start_session_trace(self) -> bool:
-        self.trace_active = True
-        return True
+        server_cls = _AMO_TYPES.get("TabularServer") or _AMO_TYPES.get("AmoServer")
+        if not server_cls:
+            logger.debug("AMO server class missing after import")
+            return False
+
+        try:
+            server = server_cls()
+            server.Connect(self.connection_string)
+            self.amo_server = server
+            logger.info("Connected to AMO using connection string")
+            return True
+        except Exception as exc:
+            logger.warning("AMO connect failed: %s", exc)
+            self.amo_server = None
+            return False
+
+    def start_session_trace(self, query_executor: Optional[Any] = None) -> bool:
+        if not self.connect_amo():
+            self.trace_active = False
+            return False
+
+        session_id = self._resolve_session_id(query_executor) or ""
+        if not session_id:
+            logger.debug("Cannot start trace without session id")
+            self.trace_active = False
+            return False
+
+        trace = self._get_session_trace()
+        if trace is None:
+            logger.debug("SessionTrace not available on AMO server")
+            self.trace_active = False
+            return False
+
+        self._attach_trace_handler(trace)
+        self._trace = trace
+
+        # Ensure a clean buffer for new runs
+        with self._event_lock:
+            self._event_buffer.clear()
+
+        try:
+            if getattr(trace, "IsStarted", False):
+                trace.Stop()
+            trace.Start()
+            self.trace_active = True
+            logger.info("AMO SessionTrace started for session %s", session_id)
+            return True
+        except Exception as exc:
+            logger.warning("Failed to start SessionTrace: %s", exc)
+            self.trace_active = False
+            return False
 
     def stop_session_trace(self) -> None:
         self.trace_active = False
-
-    # ---- XMLA helpers ----
-    def _exec_xmla(self, executor, xmla: str) -> None:
-        """Execute an XMLA command using ADOMD with the correct command type.
-
-        Without explicitly setting CommandType=Xmla, ADOMD treats the text as
-        MDX/DAX and the server returns a protocol/parse error. This method
-        ensures proper XMLA execution and applies a conservative timeout.
-        """
-        from Microsoft.AnalysisServices.AdomdClient import AdomdCommand
-        cmd = AdomdCommand(xmla, executor.connection)
+        if not self._trace:
+            return
         try:
-            # Ensure ADOMD understands this is XMLA, not DAX/MDX text
+            if getattr(self._trace, "IsStarted", False):
+                self._trace.Stop()
+        except Exception as exc:
+            logger.debug("Error stopping trace: %s", exc)
+        finally:
+            self._detach_trace_handler()
+
+    def _ensure_trace_ready(self, query_executor: Any) -> bool:
+        if not self.amo_server:
+            return False
+
+        self._resolve_session_id(query_executor)
+        if not self.trace_active:
+            return False
+
+        trace = self._get_session_trace()
+        if trace is None:
+            return False
+
+        self._attach_trace_handler(trace)
+        self._trace = trace
+
+        if not getattr(trace, "IsStarted", False):
             try:
-                from Microsoft.AnalysisServices.AdomdClient import AdomdCommandType  # type: ignore
-                cmd.CommandType = AdomdCommandType.Xmla  # type: ignore[attr-defined]
-            except Exception:
-                # Fallback: some bindings expose CommandType as int where 4 == Xmla
-                try:
-                    cmd.CommandType = 4  # type: ignore[attr-defined]
-                except Exception:
-                    pass
-        except Exception:
-            # Older clients may not expose the enum; best-effort fallback
-            pass
-        # Honor executor timeout if available
-        try:
-            timeout = int(getattr(executor, 'command_timeout_seconds', 60) or 60)
-            cmd.CommandTimeout = timeout
-        except Exception:
-            pass
-        cmd.ExecuteNonQuery()
+                trace.Start()
+            except Exception as exc:
+                logger.debug("Could not start trace during analyze: %s", exc)
+                return False
+        return True
 
-    def _query_rowset(self, executor, rowset_sql: str):
-        from Microsoft.AnalysisServices.AdomdClient import AdomdCommand
-        cmd = AdomdCommand(rowset_sql, executor.connection)
-        try:
-            timeout = int(getattr(executor, 'command_timeout_seconds', 60) or 60)
-            cmd.CommandTimeout = timeout
-        except Exception:
-            pass
-        reader = cmd.ExecuteReader()
-        columns = [reader.GetName(i) for i in range(reader.FieldCount)]
-        rows: List[Dict[str, Any]] = []
-        while reader.Read():
-            row: Dict[str, Any] = {}
-            for i, col in enumerate(columns):
-                try:
-                    val = reader.GetValue(i)
-                    row[col] = None if val is None else str(val)
-                except Exception:
-                    row[col] = None
-            rows.append(row)
-        reader.Close()
-        return rows
-
-    def _create_xe_session(self, executor, name: str) -> None:
-        # Create a ring_buffer xEvent session capturing FE/SE events with actions
-                xmla = f"""
-<Execute xmlns=\"urn:schemas-microsoft-com:xml-analysis\"
-         xmlns:ddl300_300=\"http://schemas.microsoft.com/analysisservices/2011/engine/300/300\">
-  <Command>
-    <Create>
-      <ObjectDefinition>
-        <Trace>
-          <ID>{name}</ID>
-          <Name>{name}</Name>
-          <ddl300_300:XEvent>
-            <event_session name=\"{name}\" dispatchLatency=\"0\" eventRetentionMode=\"allowSingleEventLoss\" trackCausality=\"true\">
-              <event package=\"AS\" name=\"QueryBegin\"> 
-                <action package=\"AS\" name=\"ActivityID\"/>
-                <action package=\"AS\" name=\"TextData\"/>
-                <action package=\"AS\" name=\"CurrentTime\"/>
-                <action package=\"AS\" name=\"StartTime\"/>
-              </event>
-                            <event package=\"AS\" name=\"QueryEnd\"> 
-                                <action package=\"AS\" name=\"ActivityID\"/>
-                                <action package=\"AS\" name=\"TextData\"/>
-                                <action package=\"AS\" name=\"CurrentTime\"/>
-                                <action package=\"AS\" name=\"StartTime\"/>
-                            </event>
-              <event package=\"AS\" name=\"VertiPaqSEQueryBegin\"> 
-                <action package=\"AS\" name=\"ActivityID\"/>
-              </event>
-                            <event package=\"AS\" name=\"VertiPaqSEQueryEnd\"> 
-                                <action package=\"AS\" name=\"ActivityID\"/>
-                            </event>
-              <event package=\"AS\" name=\"VertiPaqSEQueryCacheMatch\"> 
-                <action package=\"AS\" name=\"ActivityID\"/>
-              </event>
-                            <target package=\"package0\" name=\"ring_buffer\"> 
-                                <parameter name=\"bufferSize\" value=\"10000\"/>
-                            </target>
-            </event_session>
-          </ddl300_300:XEvent>
-        </Trace>
-      </ObjectDefinition>
-    </Create>
-  </Command>
-</Execute>
-"""
-                # Retry/backoff on known transient or compatibility errors
-                last_err: Optional[Exception] = None
-                attempts = max(1, int(self._trace_init_retries) + 1)
-                for i in range(attempts):
-                        try:
-                                self._exec_xmla(executor, xmla)
-                                return
-                        except Exception as e:
-                                last_err = e
-                                # Known desktop mismatch symptom: Execute element cannot appear under Envelope/Body/Execute/Command
-                                err_msg = str(e)
-                                if 'Execute element' in err_msg and 'Envelope/Body/Execute/Command' in err_msg:
-                                        # No point in retrying too many times; break and allow caller to downgrade
-                                        break
-                                # Backoff before next attempt
-                                if i < attempts - 1:
-                                        time.sleep((self._trace_init_backoff_ms * (i + 1)) / 1000.0)
-                                else:
-                                        break
-                # Bubble up the last error to allow graceful downgrade by caller
-                if last_err:
-                        raise last_err
-
-    def _drop_xe_session(self, executor, name: str) -> None:
-        xmla = f"""
-<Execute xmlns=\"urn:schemas-microsoft-com:xml-analysis\">  
-  <Command>  
-    <Delete>  
-      <Object>  
-        <TraceID>{name}</TraceID>  
-      </Object>  
-    </Delete>  
-  </Command>  
-</Execute>  
-"""
-        try:
-            self._exec_xmla(executor, xmla)
-        except Exception as e:
-            logger.debug(f"Drop session failed (may already be gone): {e}")
-
-    def _fetch_ring_buffer(self, executor, name: str) -> List[Dict[str, Any]]:
-        # Read target data from DMV; parse XML into event rows
-        rows = self._query_rowset(executor, f"SELECT * FROM $SYSTEM.DISCOVER_XEVENT_SESSION_TARGETS WHERE SESSION_NAME = '{name}'")
-        if not rows:
-            return []
-        # TARGET_DATA is XML
-        xml_text = rows[0].get('TARGET_DATA') or rows[0].get('target_data') or ''
-        if not xml_text:
-            return []
-        events: List[Dict[str, Any]] = []
-        try:
-            root = ET.fromstring(xml_text)
-            # Iterate with namespace-agnostic tags
-            def _lname(tag: str) -> str:
-                return tag.split('}', 1)[-1] if '}' in tag else tag
-            for ev in root.iter():
-                if _lname(ev.tag) != 'event':
-                    continue
-                name_attr = ev.get('name')
-                ts = ev.get('timestamp')
-                data_map: Dict[str, Any] = {'event': str(name_attr or ''), 'timestamp': ts}
-                for d in list(ev):
-                    lt = _lname(d.tag)
-                    if lt == 'data':
-                        dn = d.get('name')
-                        if not dn:
-                            continue
-                        v = None
-                        val_node = None
-                        # Find child named 'value' regardless of namespace
-                        for ch in list(d):
-                            if _lname(ch.tag) == 'value':
-                                val_node = ch
-                                break
-                        if val_node is not None and val_node.text is not None:
-                            v = val_node.text
-                        data_map[str(dn)] = v
-                    elif lt == 'action':
-                        an = d.get('name')
-                        if not an:
-                            continue
-                        aval_node = None
-                        for ch in list(d):
-                            if _lname(ch.tag) == 'value':
-                                aval_node = ch
-                                break
-                        aval = aval_node.text if aval_node is not None else None
-                        data_map[str(an)] = aval
-                events.append(data_map)
-        except Exception as e:
-            logger.warning(f"Failed parsing ring_buffer XML: {e}")
-        return events
-
-    def _analyze_events(self, events: List[Dict[str, Any]], compute_counts: bool = True) -> Dict[str, Any]:
-        if not events:
-            return {
-                'total_duration_ms': 0.0,
-                'se_duration_ms': 0.0,
-                'fe_duration_ms': 0.0,
-                'se_queries': 0,
-                'se_cache_matches': 0,
-                'metrics_available': False,
-                'total_events': 0,
-                'query_end_events': 0,
-                'se_end_events': 0,
-                'event_counts': {} if compute_counts else None
-            }
-        # Map of events
-        query_ends = [e for e in events if (e.get('event') == 'QueryEnd')]
-        query_begins = [e for e in events if (e.get('event') == 'QueryBegin')]
-        se_ends = [e for e in events if (e.get('event') == 'VertiPaqSEQueryEnd')]
-        se_cache = [e for e in events if (e.get('event') == 'VertiPaqSEQueryCacheMatch')]
-        # Aggregate counts by event name
-        counts: Dict[str, int] = {}
-        if compute_counts:
-            for ev in events:
-                nm = str(ev.get('event') or '')
-                counts[nm] = counts.get(nm, 0) + 1
-
-        # Choose the last QueryEnd as the one to report
-        qe = query_ends[-1] if query_ends else None
-        total_ms = 0.0
-        se_ms = 0.0
-        se_events: List[Dict[str, Any]] = []
-        cache_events: List[Dict[str, Any]] = []
-        if qe:
-            total_ms = float((qe.get('Duration') or qe.get('duration') or 0) or 0)
-            act = qe.get('ActivityID') or qe.get('activity_id')
-            if act:
-                se_events = [e for e in se_ends if (e.get('ActivityID') or e.get('activity_id')) == act]
-                cache_events = [e for e in se_cache if (e.get('ActivityID') or e.get('activity_id')) == act]
-            else:
-                # Fallback: include all
-                se_events = list(se_ends)
-                cache_events = list(se_cache)
-        else:
-            # Fallback
-            total_ms = max([float((e.get('Duration') or 0) or 0) for e in query_ends], default=0.0) if query_ends else 0.0
-            se_events = list(se_ends)
-            cache_events = list(se_cache)
-
-        for se in se_events:
-            try:
-                se_ms += float((se.get('Duration') or se.get('duration') or 0) or 0)
-            except Exception:
-                pass
-
-        fe_ms = max(0.0, total_ms - se_ms)
-
-        return {
-            'total_duration_ms': round(total_ms, 2),
-            'se_duration_ms': round(se_ms, 2),
-            'fe_duration_ms': round(fe_ms, 2),
-            'se_queries': len(se_events),
-            'se_cache_matches': len(cache_events),
-            'metrics_available': total_ms > 0,
-            'total_events': len(events),
-            'query_end_events': len(query_ends),
-            'se_end_events': len(se_events),
-            'event_counts': counts if compute_counts else None
-        }
-
-    def _get_database_name(self, executor) -> Optional[str]:
-        try:
-            rows = self._query_rowset(executor, "SELECT [CATALOG_NAME] FROM $SYSTEM.DBSCHEMA_CATALOGS")
-            return rows[0]['CATALOG_NAME'] if rows else None
-        except Exception:
-            return None
-
-    def _clear_cache(self, executor):
-        db_name = self._get_database_name(executor)
-        # Use a proper XMLA Execute envelope to ensure protocol correctness
-        xmla_clear = (
-            '<Execute xmlns="urn:schemas-microsoft-com:xml-analysis">'
-            '  <Command>'
-            '    <ClearCache xmlns="http://schemas.microsoft.com/analysisservices/2003/engine">'
-            '      <Object><DatabaseID>{db}</DatabaseID></Object>'
-            '    </ClearCache>'
-            '  </Command>'
-            '</Execute>'
-        ).format(db=db_name or '')
-        try:
-            self._exec_xmla(executor, xmla_clear)
-        except Exception as e:
-            # On engines where XMLA payload mismatches, cache clear will also fail; keep it quiet
-            if self._suppress_trace_errors or self._trace_mode in ('off', 'basic'):
-                logger.debug(f"Cache clear suppressed/failed: {e}")
-            else:
-                logger.warning(f"Cache clear failed: {e}")
-
-    # ---- public API ----
-    def analyze_query(self, executor, query: str, runs: int = 3, clear_cache: bool = True, include_event_counts: bool = False) -> Dict[str, Any]:
-        # Respect configured trace mode and any previous suppression
-        mode = self._trace_mode
-        if mode in ('off', 'basic') or self._suppress_trace_errors:
-            res = self._fallback_analysis(executor, query, runs, clear_cache)
-            # Add a quiet note for transparency
-            try:
-                res.setdefault('notes', []).append(
-                    'Performance trace mode is %s; using basic timing only' % ('suppressed' if self._suppress_trace_errors else mode)
-                )
-            except Exception:
-                pass
-            return res
+    # ---- Core API expected by server/agent_policy ----
+    def analyze_query(
+        self,
+        query_executor,
+        query: str,
+        runs: int = 3,
+        clear_cache: bool = True,
+        include_event_counts: bool = False,
+    ) -> Dict[str, Any]:
+        """Time the query over N runs using the provided executor."""
         results: List[Dict[str, Any]] = []
-        total_runs = max(1, int(runs or 1))
-        for i in range(total_runs):
-            run_no = i + 1
-            session_name = f"PBIXRay_XE_{uuid.uuid4().hex[:8]}"
-            self._last_session = session_name
-            try:
-                # Create session first
-                self._create_xe_session(executor, session_name)
-                # Small delay to ensure the session is active
-                time.sleep(self._session_start_wait)
+        se_totals: List[float] = []
+        fe_totals: List[float] = []
+        trace_totals: List[float] = []
+        aggregated_counts: Dict[str, int] = defaultdict(int)
+        trace_enabled = self._ensure_trace_ready(query_executor)
 
-                # Only clear cache on the first run to provide cold vs warm comparison
-                if clear_cache and i == 0:
-                    self._clear_cache(executor)
-                    time.sleep(self._cache_clear_wait)
-
-                t0 = time.time()
-                query_res = executor.validate_and_execute_dax(query, 0)
-                wall_ms = (time.time() - t0) * 1000.0
-                # Poll ring buffer briefly; return early once QueryEnd appears
-                deadline = time.time() + self._max_event_flush_wait
-                events: List[Dict[str, Any]] = []
-                while True:
-                    events = self._fetch_ring_buffer(executor, session_name)
-                    if any((e.get('event') == 'QueryEnd') for e in events):
-                        break
-                    if time.time() >= deadline:
-                        break
-                    time.sleep(self._event_poll_interval)
-                metrics = self._analyze_events(events, include_event_counts)
-                total = metrics.get('total_duration_ms') or wall_ms
-                se_ms = metrics.get('se_duration_ms', 0.0)
-                fe_ms = max(0.0, total - se_ms)
-
-                run_out = {
-                    'run': run_no,
-                    'success': query_res.get('success', False),
-                    'execution_time_ms': round(total, 2),
-                    'formula_engine_ms': round(fe_ms, 2),
-                    'storage_engine_ms': round(se_ms, 2),
-                    'storage_engine_queries': metrics.get('se_queries', 0),
-                    'storage_engine_cache_matches': metrics.get('se_cache_matches', 0),
-                    'row_count': query_res.get('row_count', 0),
-                    'metrics_available': metrics.get('metrics_available', False),
-                    'cache_state': 'cold' if (clear_cache and i == 0) else 'warm'
-                }
-                if include_event_counts:
-                    run_out['event_counts'] = metrics.get('event_counts', {}) or {}
-                if total > 0:
-                    run_out['fe_percent'] = round((fe_ms / total) * 100, 1)
-                    run_out['se_percent'] = round((se_ms / total) * 100, 1)
-                results.append(run_out)
-            except Exception as e:
-                # On xEvent init or fetch issues, downgrade this run to basic timing quietly
-                msg = str(e)
-                is_payload_mismatch = ('Execute element' in msg and 'Envelope/Body/Execute/Command' in msg)
-                if is_payload_mismatch and not self._suppression_logged:
-                    logger.info('xEvents unavailable on this engine/build (XMLA payload mismatch). Downgrading to basic timing.')
-                    self._suppression_logged = True
-                # If repeated failures, suppress further xEvent attempts for the life of this analyzer
-                if is_payload_mismatch:
-                    self._suppress_trace_errors = True
-                # Do a basic timing run for this iteration
+        try:
+            if clear_cache and hasattr(query_executor, "flush_cache"):
                 try:
-                    if clear_cache and i == 0:
-                        self._clear_cache(executor)
-                        time.sleep(self._cache_clear_wait)
-                except Exception:
-                    pass
-                t0b = time.time()
-                basic_res = executor.validate_and_execute_dax(query, 0)
-                wall_ms_b = (time.time() - t0b) * 1000.0
-                run_out_b = {
-                    'run': run_no,
-                    'success': basic_res.get('success', False),
-                    'execution_time_ms': round(wall_ms_b, 2),
-                    'formula_engine_ms': None,
-                    'storage_engine_ms': None,
-                    'storage_engine_queries': 0,
-                    'storage_engine_cache_matches': 0,
-                    'row_count': basic_res.get('row_count', 0),
-                    'metrics_available': False,
-                    'cache_state': 'cold' if (clear_cache and i == 0) else 'warm',
-                    'note': 'xEvents unavailable; basic timing used'
-                }
-                results.append(run_out_b)
-            finally:
-                # Drop session regardless of outcome
-                try:
-                    self._drop_xe_session(executor, session_name)
+                    query_executor.flush_cache()
                 except Exception:
                     pass
 
-        ok = [r for r in results if r.get('success')]
-        if ok:
-            exec_times = [r.get('execution_time_ms') or 0 for r in ok]
-            # Treat None values as 0 when xEvents metrics are unavailable
-            fe_times = [(r.get('formula_engine_ms') or 0) for r in ok]
-            se_times = [(r.get('storage_engine_ms') or 0) for r in ok]
-            avg_exec = sum(exec_times)/len(exec_times)
-            avg_fe = sum(fe_times)/len(fe_times)
-            avg_se = sum(se_times)/len(se_times)
-            summary = {
-                'total_runs': total_runs,
-                'successful_runs': len(ok),
-                'avg_execution_ms': round(avg_exec, 2),
-                'min_execution_ms': round(min(exec_times), 2),
-                'max_execution_ms': round(max(exec_times), 2),
-                'avg_formula_engine_ms': round(avg_fe, 2),
-                'avg_storage_engine_ms': round(avg_se, 2),
-                'fe_percent': round((avg_fe/avg_exec)*100, 1) if avg_exec > 0 else 0.0,
-                'se_percent': round((avg_se/avg_exec)*100, 1) if avg_exec > 0 else 0.0,
-                'cache_mode': 'cold_then_warm' if clear_cache else 'warm_only'
+            run_count = max(1, int(runs or 1))
+            for i in range(run_count):
+                start_index = self._snapshot_event_index() if trace_enabled else 0
+
+                t0 = time.perf_counter()
+                res = query_executor.validate_and_execute_dax(query, 0, bypass_cache=False)
+                t1 = time.perf_counter()
+                elapsed = round((t1 - t0) * 1000.0, 2)
+
+                event_summary = None
+                if trace_enabled:
+                    events, _ = self._events_since(start_index)
+                    event_summary = self._summarize_events(events, elapsed)
+                    if event_summary:
+                        trace_total = event_summary["total_ms"]
+                        trace_totals.append(trace_total)
+                        se_totals.append(event_summary["se_ms"])
+                        fe_totals.append(event_summary["fe_ms"])
+                        if include_event_counts:
+                            for name, count in event_summary["counts"].items():
+                                aggregated_counts[name] += count
+
+                run_record: Dict[str, Any] = {
+                    "run": i + 1,
+                    "execution_time_ms": elapsed,
+                    "row_count": res.get("row_count", 0) if isinstance(res, dict) else None,
+                    "cache_state": "cold" if (i == 0 and clear_cache) else "warm",
+                }
+                if event_summary:
+                    run_record["trace_execution_ms"] = event_summary["total_ms"]
+                    run_record["storage_engine_ms"] = event_summary["se_ms"]
+                    run_record["formula_engine_ms"] = event_summary["fe_ms"]
+                    if include_event_counts:
+                        run_record["event_counts"] = event_summary["counts"]
+
+                results.append(run_record)
+
+            avg_exec_ms = round(
+                sum(r.get("execution_time_ms", 0) for r in results) / len(results), 2
+            ) if results else 0.0
+
+            avg_trace_ms = round(sum(trace_totals) / len(trace_totals), 2) if trace_totals else 0.0
+            avg_se_ms = round(sum(se_totals) / len(se_totals), 2) if se_totals else 0.0
+            avg_fe_ms = round(sum(fe_totals) / len(fe_totals), 2) if fe_totals else 0.0
+            total_for_percent = avg_trace_ms or avg_exec_ms
+            se_percent = round((avg_se_ms / total_for_percent) * 100.0, 1) if total_for_percent else 0.0
+            fe_percent = round((avg_fe_ms / total_for_percent) * 100.0, 1) if total_for_percent else 0.0
+
+            notes: List[str] = []
+            if trace_enabled and trace_totals:
+                notes.append("AMO SessionTrace active; FE/SE metrics derived from xEvents")
+            elif trace_enabled:
+                notes.append("AMO SessionTrace active but no matching events captured; falling back to wall-clock timings")
+            else:
+                notes.append("AMO/xEvents not active; returning basic timing only")
+
+            output: Dict[str, Any] = {
+                "success": True,
+                "query": query,
+                "runs": results,
+                "summary": {
+                    "avg_execution_ms": avg_exec_ms,
+                    "avg_trace_ms": avg_trace_ms,
+                    "avg_se_ms": avg_se_ms,
+                    "avg_fe_ms": avg_fe_ms,
+                    "se_percent": se_percent,
+                    "fe_percent": fe_percent,
+                },
+                "notes": notes,
             }
-        else:
-            summary = {'total_runs': total_runs, 'successful_runs': 0, 'error': 'All runs failed'}
 
-        return {'success': len(ok) > 0, 'runs': results, 'summary': summary, 'query': query}
+            if include_event_counts and aggregated_counts:
+                output.setdefault("events", {})["counts"] = dict(sorted(aggregated_counts.items()))
 
-    def _fallback_analysis(self, executor, query: str, runs: int, clear_cache: bool) -> Dict[str, Any]:
-        # Retained for API compatibility (not used now that xEvents is default)
-        results: List[Dict[str, Any]] = []
-        for i in range(max(1, int(runs or 1))):
-            # Avoid XMLA ClearCache in basic/off or suppression modes to reduce log noise
-            if clear_cache and self._trace_mode == 'full' and not self._suppress_trace_errors:
-                try:
-                    self._clear_cache(executor)
-                    time.sleep(0.1)
-                except Exception:
-                    pass
-            t0 = time.time()
-            res = executor.validate_and_execute_dax(query, 0)
-            ms = (time.time() - t0) * 1000.0
-            results.append({'run': i+1, 'success': res.get('success', False), 'execution_time_ms': round(ms, 2), 'row_count': res.get('row_count', 0), 'metrics_available': False})
-        ok = [r for r in results if r.get('success')]
-        exec_times = [r['execution_time_ms'] for r in ok] if ok else [0]
-        return {'success': len(ok) > 0, 'runs': results, 'summary': {'total_runs': runs, 'successful_runs': len(ok), 'avg_execution_ms': round(sum(exec_times)/len(exec_times), 2) if exec_times else 0, 'note': 'xEvents unavailable'}, 'query': query}
-
-    def disconnect(self):
-        # Nothing persistent to close; ensure last session dropped
-        if self._last_session:
-            logger.debug(f"Last xEvent session: {self._last_session}")
+            return output
+        except Exception as exc:
+            logger.error("Performance analysis failed: %s", exc)
+            return {"success": False, "error": str(exc)}

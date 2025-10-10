@@ -100,7 +100,7 @@ class ConnectionState:
                     self.query_executor.set_history_logger(self._history_logger)
                 except Exception:
                     pass
-                logger.info("✓ Query executor initialized")
+                logger.info("[OK] Query executor initialized")
             
             # Initialize performance analyzer
             if not self.performance_analyzer or force_reinit:
@@ -113,60 +113,60 @@ class ConnectionState:
                     except Exception:
                         mode = 'full'
                     if mode == 'off':
-                        logger.info("✓ Performance analyzer initialized (trace_mode=off; basic timing only)")
+                        logger.info("[OK] Performance analyzer initialized (trace_mode=off; basic timing only)")
                     elif mode == 'basic':
-                        logger.info("✓ Performance analyzer initialized (trace_mode=basic; basic timing preferred)")
+                        logger.info("[OK] Performance analyzer initialized (trace_mode=basic; basic timing preferred)")
                     else:
                         if amo_connected:
-                            logger.info("✓ Performance analyzer initialized (xEvents enabled)")
+                            logger.info("[OK] Performance analyzer initialized (xEvents enabled)")
                         else:
-                            logger.warning("✗ AMO not available - performance analysis will use basic timing")
+                            logger.warning("[WARN] AMO not available - performance analysis will use basic timing")
                 else:
                     logger.warning("Cannot initialize performance analyzer: no connection string")
             
             # Initialize other managers
             if not self.dax_injector or force_reinit:
                 self.dax_injector = DAXInjector(conn)
-                logger.debug("✓ DAX injector initialized")
+                logger.debug("[OK] DAX injector initialized")
             
             if not self.dependency_analyzer or force_reinit:
                 self.dependency_analyzer = DependencyAnalyzer(self.query_executor)
-                logger.debug("✓ Dependency analyzer initialized")
+                logger.debug("[OK] Dependency analyzer initialized")
             
             if not self.bulk_operations or force_reinit:
                 self.bulk_operations = BulkOperationsManager(self.dax_injector)
-                logger.debug("✓ Bulk operations initialized")
+                logger.debug("[OK] Bulk operations initialized")
             
             if not self.calc_group_manager or force_reinit:
                 self.calc_group_manager = CalculationGroupManager(conn)
-                logger.debug("✓ Calculation group manager initialized")
+                logger.debug("[OK] Calculation group manager initialized")
             
             if not self.partition_manager or force_reinit:
                 self.partition_manager = PartitionManager(conn)
-                logger.debug("✓ Partition manager initialized")
+                logger.debug("[OK] Partition manager initialized")
             
             if not self.rls_manager or force_reinit:
                 self.rls_manager = RLSManager(conn, self.query_executor)
-                logger.debug("✓ RLS manager initialized")
+                logger.debug("[OK] RLS manager initialized")
             
             if not self.model_exporter or force_reinit:
                 self.model_exporter = ModelExporter(conn)
-                logger.debug("✓ Model exporter initialized")
+                logger.debug("[OK] Model exporter initialized")
             
             if not self.performance_optimizer or force_reinit:
                 self.performance_optimizer = PerformanceOptimizer(self.query_executor)
-                logger.debug("✓ Performance optimizer initialized")
+                logger.debug("[OK] Performance optimizer initialized")
             
             if not self.model_validator or force_reinit:
                 self.model_validator = ModelValidator(self.query_executor)
-                logger.debug("✓ Model validator initialized")
+                logger.debug("[OK] Model validator initialized")
             
             # Initialize BPA if available
             if config.is_feature_enabled('enable_bpa'):
                 self._initialize_bpa(force_reinit)
             
             self._managers_initialized = True
-            logger.info("✓ All managers initialized successfully")
+            logger.info("[OK] All managers initialized successfully")
             
         except Exception as e:
             logger.error(f"Error initializing managers: {e}", exc_info=True)
@@ -184,7 +184,7 @@ class ConnectionState:
                 rules_path = os.path.join(parent_dir, "core", "bpa.json")
                 
                 self.bpa_analyzer = BPAAnalyzer(rules_path)
-                logger.debug("✓ BPA analyzer initialized")
+                logger.debug("[OK] BPA analyzer initialized")
             except ImportError:
                 logger.debug("BPA not available (import error)")
             except FileNotFoundError:
@@ -205,7 +205,7 @@ class ConnectionState:
                     if conn is None:
                         raise RuntimeError("No active connection")
                     self.model_exporter = ModelExporter(conn)
-                    logger.info("✓ Initialized model_exporter")
+                    logger.info("[OK] Initialized model_exporter")
                 except Exception as e:
                     logger.error(f"Failed to initialize model_exporter: {e}")
                     raise

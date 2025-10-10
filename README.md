@@ -2,7 +2,7 @@
 
 Analyze your Power BI Desktop model locally with an MCP server. Browse schema, inspect DAX and M, run SE/FE performance checks, export docs, and more — just by asking your AI client.
 
-• Status: Production-ready with security hardening  • OS: Windows 10/11  • Last updated: 2025-10-09
+• Status: Production-ready with security hardening  • OS: Windows 10/11  • Last updated: 2025-10-10
 
 ## Who is this for?
 
@@ -36,19 +36,27 @@ Analyze your Power BI Desktop model locally with an MCP server. Browse schema, i
 
 ## Quick start (Windows)
 
-1) Place this folder somewhere stable, e.g. `C:\Tools\pbixray-mcp-server`.
-2) **Install .NET assemblies** (for full features):
-   ```powershell
-   cd lib/dotnet
-   ./install.ps1
-   ```
-3) Open Power BI Desktop with a .pbix loaded and wait ~10 seconds.
-4) Connect your AI client:
-   - Claude Desktop: run `./scripts/install_to_claude.ps1`, then fully restart Claude.
-   - ChatGPT Desktop: run `./scripts/install_to_chatgpt.ps1`, then restart ChatGPT.
-   - Prefer no scripts? See "Manual install (Claude)" in INSTALL.md.
-5) Optional check: run `./scripts/test_connection.ps1`.
-6) In your AI client, try: "Detect Power BI Desktop instances" → "Connect to instance 0" → "List tables".
+1. Place this folder somewhere stable, e.g. `C:\Tools\pbixray-mcp-server`.
+
+2. Create a Python virtual environment and install requirements.
+
+  - Open Windows PowerShell in the project folder and run the steps from INSTALL.md (section "Set up Python (venv)").
+
+3. Optional: install the .NET assemblies for advanced features:
+
+  ```powershell
+  cd lib/dotnet
+  ./install.ps1
+  ```
+
+4. Open Power BI Desktop with a .pbix loaded and wait ~10 seconds.
+
+5. Connect your AI client:
+
+  - Claude Desktop (recommended): run `./scripts/install_to_claude.ps1`, then fully restart Claude.
+  - ChatGPT Desktop: use the manual Developer JSON steps in INSTALL.md (no script required).
+
+6. In your AI client, try: "Detect Power BI Desktop instances" → "Connect to instance 0" → "List tables".
 
 You're ready to explore your model.
 
@@ -72,16 +80,16 @@ You're ready to explore your model.
 ## Install and manage
 
 - Full install/update/uninstall steps: see INSTALL.md
-  - Scripted install (Claude/ChatGPT)
-  - Manual Claude install by editing a JSON file (no scripts)
+  - Scripted install (Claude)
+  - Manual install for Claude and ChatGPT (Developer JSON)
 - Script catalog and recommendations: see docs/Scripts.md
 
 ## Docs and links
 
-- Production Guide: `docs/Guide.md`
-- Quickstart (friendly): `docs/PBIXRAY_Quickstart.md` (PDF/TXT variants included)
+- Quickstart (friendly): `docs/PBIXRAY_Quickstart.md`
 - Scripts catalog: `docs/Scripts.md`
-- .NET Assembly Guide: `lib/dotnet/VERSIONS.md`
+- .NET notes: `lib/dotnet/README.md`, `lib/dotnet/dotnet_versions.md`
+- Contributing & Git workflow: `CONTRIBUTING.md`
 
 If you use GitHub Pages, `.github/workflows/docs.yml` publishes `docs/` on push to `main`.
 
@@ -117,6 +125,7 @@ Successful responses include minimal connection metadata when available, like `{
 Edit `config/default_config.json` or create `config/local_config.json` for overrides.
 
 New v2.4 settings:
+
 - `rate_limiting.enabled` - Enable rate limiting (default: true)
 - `rate_limiting.profile` - conservative | balanced | aggressive | development
 - `security.enable_input_validation` - Validate inputs (default: true)
@@ -125,7 +134,7 @@ New v2.4 settings:
 ## Support
 
 - Ensure a .pbix is open, then detect → connect → run tools
-- Verify .NET assemblies: `python scripts/verify_dotnet_assemblies.py`
+- Verify .NET assemblies: `venv\\Scripts\\python.exe scripts\\verify_dotnet_assemblies.py`
 - See INSTALL.md for troubleshooting and uninstall
 
 ## Changelog (v2.4)

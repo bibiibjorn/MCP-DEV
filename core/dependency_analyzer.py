@@ -1,791 +1,486 @@
 """
-Dependency Analyzer for PBIXRay MCP Server
-Analyzes measure and column dependencies across the model
+Dependency and usage analyzer for Power BI models.
+Tracks dependencies and usage patterns across measures, columns, and relationships.
 """
 
 import re
-import logging
-from typing import Dict, Any, List, Set, Optional
-from core.query_executor import COLUMN_TYPE_CALCULATED
-
-logger = logging.getLogger(__name__)
-
+from typing import Dict, List, Set, Tuple, Optional
+from .dax_parser import DaxReferenceIndex, parse_dax_references
 
 class DependencyAnalyzer:
-    """Analyzes dependencies between measures, columns, and tables."""
-
-    def __init__(self, query_executor):
-        """Initialize with query executor."""
-        self.executor = query_executor
+    """Analyzes usage patterns and dependencies in Power BI models."""
+    
+    def __init__(self, model):
+        """Initialize with model connection."""
+        self.model = model
         self._dependency_cache = {}
-        self._columns_by_table_cache: Optional[Dict[str, Set[str]]] = None
-
-    # -----------------------------
-    # Internal helpers for measure graph/index
-    # -----------------------------
-    def _get_all_measures(self) -> List[Dict[str, Any]]:
-        """Return all measures with (Table, Name, Expression). Cached implicitly by caller indexes."""
-        try:
-            # FIX: Use execute_info_query() which handles TableID->Table conversion automatically
-            res = self.executor.execute_info_query("MEASURES")
-            if res.get('success'):
-                rows = res.get('rows', [])
-                # Ensure all rows have Table field (should be set by execute_info_query)
-                for row in rows:
-                    if 'Table' not in row:
-                        row['Table'] = ''
-                return rows
-            # Fallback to TOM when DMV blocked
-            tom = getattr(self.executor, 'enumerate_measures_tom', None)
-            if tom:
-                tr = tom()
-                if tr.get('success'):
-                    return tr.get('rows', [])
-        except Exception as e:
-            logger.debug(f"_get_all_measures fallback: {e}")
-            # Last resort: try TOM
-            tom = getattr(self.executor, 'enumerate_measures_tom', None)
-            if tom:
-                tr = tom()
-                if tr.get('success'):
-                    return tr.get('rows', [])
-        return []
-
-    def _normalize_identifier(self, val: Any) -> str:
-        """Normalize identifiers by stripping brackets, quotes, and whitespace."""
-        try:
-            s = str(val or "").strip()
-            # Remove wrapping brackets
-            if s.startswith("[") and s.endswith("]"):
-                s = s[1:-1]
-            # Remove wrapping quotes
-            if s.startswith("'") and s.endswith("'"):
-                s = s[1:-1]
-            if s.startswith('"') and s.endswith('"'):
-                s = s[1:-1]
-            return s.strip()
-        except Exception:
-            return ""
-
-    def _extract_table_name(self, row: dict) -> str:
-        """Extract table name from a DMV row, trying multiple field name variants."""
-        for key in ['Table', 'TABLE_NAME', 'TableName', 'table', '[Table]', 'TABLE', '[TABLE_NAME]']:
-            if key in row and row[key] not in (None, ""):
-                return self._normalize_identifier(row[key])
-        return ""
-
-    def _extract_measure_name(self, row: dict) -> str:
-        """Extract measure name from a DMV row, trying multiple field name variants."""
-        for key in ['Name', 'MEASURE_NAME', 'MeasureName', '[Name]', '[MEASURE_NAME]']:
-            if key in row and row[key] not in (None, ""):
-                return self._normalize_identifier(row[key])
-        return ""
-
-    def _measure_full_name(self, table: Optional[str], name: Optional[str]) -> Optional[str]:
-        if not name:
-            return None
-        t = self._normalize_identifier(table or '')
-        n = self._normalize_identifier(name or '')
-        if not n:
-            return None
-        # Always return Table[Measure] format for consistent parsing
-        # Use empty string as table when unknown (will be resolved during build)
-        return f"{t}[{n}]"
-
-    def _build_measure_dependency_index(self) -> Dict[str, Set[str]]:
-        """Build a graph mapping measure full name -> referenced measure full names.
-
-        We detect measure references in two ways:
-        - Bare [Measure] tokens (assumed to refer to current-table scope)
-        - Qualified 'Table'[Measure] tokens when they exist as measures
-        Columns with the same token shape are filtered by checking against the measure catalog.
-        """
-        measures = self._get_all_measures()
-        # Catalog of known measures for disambiguation
-        by_table: Dict[str, Set[str]] = {}
-        all_full: Set[str] = set()
-        for m in measures:
-            tbl = self._extract_table_name(m)
-            nm = self._extract_measure_name(m)
-            if nm:
-                by_table.setdefault(tbl, set()).add(nm)
-                fn = self._measure_full_name(tbl, nm)
-                if fn:
-                    all_full.add(fn)
-
-        dep_index: Dict[str, Set[str]] = {}
-        for m in measures:
-            nm = self._extract_measure_name(m)
-            if not nm:
-                continue
-            key = self._measure_full_name(self._extract_table_name(m), nm)
-            if key is None:
-                continue
-            dep_index[key] = set()
+        self._reference_index: Optional[DaxReferenceIndex] = None
+    
+    def refresh_metadata(self) -> None:
+        """Reset cached DMV metadata and dependency cache."""
+        self._reference_index = None
+        self._dependency_cache.clear()
+    
+    def _get_reference_index(self) -> DaxReferenceIndex:
+        """Return cached reference metadata, loading it on demand."""
+        if self._reference_index is not None:
+            return self._reference_index
         
-        # Regexes
-        bare_measure = re.compile(r"(?<!['\w])\[([^\]]+)\]")
-        qualified = re.compile(r"(?:'([^']+)'|\b(\w+))\[([^\]]+)\]")
-
-        for m in measures:
-            tbl = self._extract_table_name(m)
-            nm = self._extract_measure_name(m)
-            # Try multiple expression field names
-            expr = None
-            for key in ['Expression', '[Expression]', 'EXPRESSION']:
-                if key in m:
-                    expr = m.get(key)
-                    break
-            if not expr:
-                expr = ""
-            me_key = self._measure_full_name(tbl, nm)
-            if not me_key:
-                continue
-            refs: Set[str] = set()
-            # 1) Bare [Measure] references -> current table
-            for bm in bare_measure.findall(expr):
-                if bm in by_table.get(tbl, set()):
-                    fn = self._measure_full_name(tbl, bm)
-                    if fn:
-                        refs.add(fn)
-            # 2) Qualified 'Table'[Name] tokens; keep only those that are known measures
-            for q in qualified.findall(expr):
-                qtable = q[0] or q[1] or ''
-                qname = q[2]
-                if qname in by_table.get(qtable, set()):
-                    fn = self._measure_full_name(qtable, qname)
-                    if fn:
-                        refs.add(fn)
-            dep_index.setdefault(me_key, set()).update(refs)
-        return dep_index
-
-    def _build_measure_columns_direct(self) -> Dict[str, Set[str]]:
-        """Return direct column references per measure as a map measure_full_name -> {table[col]}"""
-        measures = self._get_all_measures()
-        direct: Dict[str, Set[str]] = {}
-        # Build catalogs to disambiguate bare or qualified tokens
-        by_table_measures: Dict[str, Set[str]] = {}
-        for m in measures:
-            mt = self._extract_table_name(m)
-            mn = self._extract_measure_name(m)
-            if mn:
-                by_table_measures.setdefault(mt, set()).add(mn)
-        by_table_columns = self._get_columns_by_table()
-        for m in measures:
-            tbl = self._extract_table_name(m)
-            nm = self._extract_measure_name(m)
-            key = self._measure_full_name(tbl, nm)
-            if not key:
-                continue
-            # Try multiple expression field names
-            expr = None
-            for field in ['Expression', '[Expression]', 'EXPRESSION']:
-                if field in m:
-                    expr = m.get(field)
-                    break
-            if not expr:
-                expr = ""
-            refs = self._extract_dax_references(expr, current_table=tbl, measures_by_table=by_table_measures, columns_by_table=by_table_columns)
-            cols = set(refs.get('columns', []) or [])
-            direct[key] = cols
-        return direct
-
-    def _get_columns_by_table(self) -> Dict[str, Set[str]]:
-        """Build or return a catalog of column names per table for disambiguation."""
-        if isinstance(self._columns_by_table_cache, dict) and self._columns_by_table_cache:
-            return self._columns_by_table_cache
-        catalog: Dict[str, Set[str]] = {}
+        measure_rows: List[Dict[str, object]] = []
+        column_rows: List[Dict[str, object]] = []
         try:
-            cols_res = self.executor.execute_info_query("COLUMNS")
-            rows = cols_res.get('rows', []) if cols_res.get('success') else []
-            if not rows:
-                # TOM fallback
-                tom_cols = getattr(self.executor, 'enumerate_columns_tom', None)
-                if callable(tom_cols):
-                    tr = tom_cols()
-                    if isinstance(tr, dict) and tr.get('success'):
-                        rows = tr.get('rows', []) or []
-            for r in rows or []:
-                # Try multiple table field variants
-                t = None
-                for tkey in ['Table', '[Table]', 'TABLE_NAME', '[TABLE_NAME]', 'TableName']:
-                    if tkey in r and r[tkey]:
-                        t = self._normalize_identifier(r[tkey])
-                        break
-                # Try multiple column field variants
-                n = None
-                for ckey in ['Name', '[Name]', 'COLUMN_NAME', '[COLUMN_NAME]', 'ColumnName']:
-                    if ckey in r and r[ckey]:
-                        n = self._normalize_identifier(r[ckey])
-                        break
-                if t and n:
-                    catalog.setdefault(t, set()).add(n)
+            measures_result = self.model.execute_info_query("MEASURES")
+            if measures_result.get("success"):
+                measure_rows = measures_result.get("rows", [])
         except Exception:
-            pass
-        self._columns_by_table_cache = catalog
-        return catalog
-
-    def _get_measure_columns_index(self) -> Dict[str, Set[str]]:
-        """Compute or return cached transitive columns used by each measure."""
-        cache_key = 'measure_columns_index'
-        idx = self._dependency_cache.get(cache_key)
-        if isinstance(idx, dict) and idx:
-            return idx
-        graph = self._build_measure_dependency_index()
-        direct = self._build_measure_columns_direct()
-
-        # DFS with memoization to accumulate columns
-        memo: Dict[str, Set[str]] = {}
-        visiting: Set[str] = set()
-
-        def dfs(measure_key: str) -> Set[str]:
-            if measure_key in memo:
-                return memo[measure_key]
-            if measure_key in visiting:
-                # cycle detected; return current direct set to break the loop
-                return direct.get(measure_key, set())
-            visiting.add(measure_key)
-            cols = set(direct.get(measure_key, set()))
-            for dep in graph.get(measure_key, set()):
-                cols.update(dfs(dep))
-            visiting.remove(measure_key)
-            memo[measure_key] = cols
-            return cols
-
-        # Build index for all known measures
-        all_keys = set(direct.keys()) | set(graph.keys())
-        for k in all_keys:
-            dfs(k)
-        self._dependency_cache[cache_key] = memo
-        return memo
-
-    def _extract_dax_references(
-        self,
-        expression: str,
-        current_table: Optional[str] = None,
-        measures_by_table: Optional[Dict[str, Set[str]]] = None,
-        columns_by_table: Optional[Dict[str, Set[str]]] = None,
-    ) -> Dict[str, List[str]]:
-        """Extract table, column, and measure references from DAX expression.
-
-        - Disambiguates qualified tokens 'Table'[Name] as measures vs columns based on catalogs
-        - Classifies bare [Name] as column if it exists in current_table's columns; else as measure if in measures
-        """
-        if not expression:
-            return {"tables": [], "columns": [], "measures": []}
-
-        # Remove comments and strings to avoid false positives
-        clean_expr = re.sub(r'--[^\n]*', '', expression)
-        clean_expr = re.sub(r'"[^"]*"', '', clean_expr)
-
-        tables = set()
-        columns = set()
-        measures = set()
-
-        # Qualified tokens: 'Table'[Name] or Table[Name]
-        qual_tokens = re.findall(r"(?:'([^']+)'|\b(\w+))\[([^\]]+)\]", clean_expr)
-        for q in qual_tokens:
-            table = self._normalize_identifier(q[0] or q[1] or '')
-            name = self._normalize_identifier(q[2])
-            if table:
-                tables.add(table)
-            if measures_by_table and name in measures_by_table.get(table, set()):
-                measures.add(name)
-            elif columns_by_table and name in columns_by_table.get(table, set()):
-                columns.add(f"{table}[{name}]")
-            else:
-                # Default to column when unknown to not undercount column usage
-                columns.add(f"{table}[{name}]")
-
-        # Bare tokens: [Name] not preceded by table identifier
-        bare_tokens = re.findall(r"(?<!['\w])\[([^\]]+)\]", clean_expr)
-        for name in bare_tokens:
-            name = self._normalize_identifier(name)
-            # Prefer column in current table if known; else a measure if known
-            if current_table and columns_by_table and name in columns_by_table.get(current_table, set()):
-                columns.add(f"{current_table}[{name}]")
-            elif current_table and measures_by_table and name in measures_by_table.get(current_table, set()):
-                measures.add(name)
-            else:
-                # Unknown scope: assume it's a measure to avoid fabricating column refs
-                measures.add(name)
-
-        # RELATED, RELATEDTABLE functions
-        related_refs = re.findall(r"RELATED(?:TABLE)?\s*\(\s*(?:'([^']+)'|(\w+))\[([^\]]+)\]", clean_expr)
-        for match in related_refs:
-            table = self._normalize_identifier(match[0] or match[1])
-            column = self._normalize_identifier(match[2])
-            if table:
-                tables.add(table)
-            if table and column:
-                columns.add(f"{table}[{column}]")
-
-        return {
-            "tables": sorted(list(tables)),
-            "columns": sorted(list(columns)),
-            "measures": sorted(list(measures))
-        }
-
+            measure_rows = []
+        
+        try:
+            columns_result = self.model.execute_info_query("COLUMNS")
+            if columns_result.get("success"):
+                column_rows = columns_result.get("rows", [])
+        except Exception:
+            column_rows = []
+        
+        self._reference_index = DaxReferenceIndex(measure_rows, column_rows)
+        return self._reference_index
+    
+    def _parse_references(self, expression: Optional[str]) -> Dict[str, List]:
+        """Helper to parse an expression using cached metadata."""
+        return parse_dax_references(expression, self._get_reference_index())
+        
     def analyze_measure_dependencies(
-        self,
-        table: str,
-        measure: str,
-        depth: int = 3,
-        include_upstream: bool = True,
-        include_downstream: bool = True
-    ) -> Dict[str, Any]:
+        self, 
+        table: str, 
+        measure: str, 
+        max_depth: int = 3
+    ) -> Dict:
         """
-        Analyze dependencies for a measure.
-
+        Analyze dependencies for a specific measure.
+        
         Args:
             table: Table containing the measure
             measure: Measure name
-            depth: Maximum depth to traverse
-            include_upstream: Include what this measure depends on
-            include_downstream: Include what depends on this measure
-
+            max_depth: Maximum recursion depth
+            
         Returns:
-            Dependency analysis results
+            Dictionary with dependency tree
         """
-        try:
-            # Get measure details
-            measure_result = self.executor.execute_info_query(
-                "MEASURES",
-                filter_expr=f'[Name] = "{measure}"',
-                table_name=table
-            )
-
-            # Some Desktop builds regress on table-scoped DMV filters; fallback to client-side filter
-            if not (measure_result.get('success') and measure_result.get('rows')):
-                all_measures = self.executor.execute_info_query("MEASURES")
-                if not all_measures.get('success'):
-                    # TOM fallback
-                    tom_meas = getattr(self.executor, 'enumerate_measures_tom', None)
-                    if tom_meas:
-                        tr = tom_meas()
-                        if tr.get('success'):
-                            all_measures = tr
-                if all_measures.get('success'):
-                    t_norm = self._normalize_identifier(table)
-                    m_norm = self._normalize_identifier(measure)
-                    rows = []
-                    for r in all_measures.get('rows', []) or []:
-                        rt = self._extract_table_name(r)
-                        rn = self._extract_measure_name(r)
-                        if rt == t_norm and rn == m_norm:
-                            rows.append(r)
-                    if rows:
-                        measure_result = {'success': True, 'rows': rows, 'row_count': len(rows)}
-                # If still no rows, return not-found error
-                if not (measure_result.get('success') and measure_result.get('rows')):
-                    return {
-                        'success': False,
-                        'error': f"Measure '{measure}' not found in table '{table}'"
-                    }
-
-            measure_data = measure_result['rows'][0]
-            expression = None
-            for key in ['Expression', '[Expression]', 'EXPRESSION']:
-                if key in measure_data:
-                    expression = measure_data.get(key, '') or ''
-                    break
-            if expression is None:
-                expression = ''
-
-            # Extract direct dependencies with disambiguation catalogs
-            by_table_measures: Dict[str, Set[str]] = {}
-            try:
-                all_meas = self._get_all_measures()
-                for mm in all_meas:
-                    mt = self._extract_table_name(mm)
-                    mn = self._extract_measure_name(mm)
-                    if mn:
-                        by_table_measures.setdefault(mt, set()).add(mn)
-            except Exception:
-                pass
-            by_table_columns = self._get_columns_by_table()
-            direct_deps = self._extract_dax_references(expression, current_table=table, measures_by_table=by_table_measures, columns_by_table=by_table_columns)
-
-            result = {
-                'success': True,
-                'measure': measure,
-                'table': table,
-                'expression': expression,
-                'direct_dependencies': direct_deps
-            }
-
-            # Get all measures for downstream analysis
-            if include_downstream:
-                all_measures_result = self.executor.execute_info_query("MEASURES")
-                if all_measures_result.get('success'):
-                    downstream = self._find_downstream_dependencies(
-                        measure,
-                        all_measures_result['rows'],
-                        depth
-                    )
-                    result['downstream_dependencies'] = downstream
-
-            # Get upstream chain
-            if include_upstream:
-                upstream = self._build_upstream_chain(direct_deps, depth)
-                result['upstream_dependencies'] = upstream
-
-            return result
-
-        except Exception as e:
-            logger.error(f"Error analyzing dependencies: {e}")
-            return {'success': False, 'error': str(e)}
-
-    def _find_downstream_dependencies(
+        cache_key = f"{table}|{measure}"
+        if cache_key in self._dependency_cache:
+            return self._dependency_cache[cache_key]
+            
+        result = {
+            "measure": measure,
+            "table": table,
+            "dependencies": [],
+            "depth": 0,
+            "circular_reference": False
+        }
+        
+        visited = set()
+        result["dependencies"] = self._build_dependency_tree(
+            table, measure, max_depth, 0, visited
+        )
+        
+        self._dependency_cache[cache_key] = result
+        return result
+        
+    def _build_dependency_tree(
         self,
-        measure_name: str,
-        all_measures: List[Dict],
-        max_depth: int
-    ) -> List[Dict[str, Any]]:
-        """Find measures that depend on the given measure."""
-        downstream = []
-
-        for m in all_measures:
-            expr = None
-            for key in ['Expression', '[Expression]', 'EXPRESSION']:
-                if key in m:
-                    expr = m.get(key, '') or ''
+        table: str,
+        measure: str,
+        max_depth: int,
+        current_depth: int,
+        visited: Set[str]
+    ) -> List[Dict]:
+        """Recursively build dependency tree."""
+        if current_depth >= max_depth:
+            return []
+            
+        node_id = f"{table}|{measure}"
+        if node_id in visited:
+            return [{"circular_reference": True, "to": node_id}]
+            
+        visited.add(node_id)
+        
+        # Get measure details
+        measure_data = self.model.get_measure_details(table, measure)
+        if not measure_data or not measure_data.get("expression"):
+            return []
+            
+        # Parse references from expression
+        refs = self._parse_references(measure_data["expression"])
+        
+        dependencies = []
+        for ref_table, ref_obj in refs.get("measures", []):
+            dep = {
+                "type": "measure",
+                "table": ref_table,
+                "name": ref_obj,
+                "depth": current_depth + 1
+            }
+            
+            # Recurse if not at max depth
+            if current_depth + 1 < max_depth:
+                sub_deps = self._build_dependency_tree(
+                    ref_table, ref_obj, max_depth, current_depth + 1, visited.copy()
+                )
+                if sub_deps:
+                    dep["dependencies"] = sub_deps
+                    
+            dependencies.append(dep)
+            
+        for ref_table, ref_col in refs.get("columns", []):
+            dependencies.append({
+                "type": "column",
+                "table": ref_table,
+                "name": ref_col,
+                "depth": current_depth + 1
+            })
+            
+        return dependencies
+        
+    def analyze_column_usage(self, table: str, column: str) -> Dict:
+        """
+        Analyze where a column is used in the model.
+        
+        Args:
+            table: Table name
+            column: Column name
+            
+        Returns:
+            Dictionary with usage information
+        """
+        result = {
+            "column": column,
+            "table": table,
+            "used_in_measures": [],
+            "used_in_calculated_columns": [],
+            "used_in_relationships": [],
+            "summary": {
+                "used_in_measures_count": 0,
+                "used_in_relationships_count": 0,
+                "is_used": False
+            }
+        }
+        
+        # Check measures
+        measures = self.model.list_measures()
+        for m in measures:
+            m_table = m.get("Table", "")
+            m_name = m.get("Name", "")
+            m_expr = m.get("Expression", "")
+            
+            if not m_expr:
+                continue
+                
+            refs = self._parse_references(m_expr)
+            for ref_table, ref_col in refs.get("columns", []):
+                if ref_table.lower() == table.lower() and ref_col.lower() == column.lower():
+                    result["used_in_measures"].append({
+                        "table": m_table,
+                        "measure": m_name
+                    })
                     break
+                    
+        # Check calculated columns
+        columns = self.model.list_columns(table=table)
+        for col in columns:
+            if col.get("Type") != "Calculated":
+                continue
+                
+            col_name = col.get("Name", "")
+            col_expr = col.get("Expression", "")
+            
+            if not col_expr or col_name.lower() == column.lower():
+                continue
+                
+            refs = self._parse_references(col_expr)
+            for ref_table, ref_col in refs.get("columns", []):
+                if ref_table.lower() == table.lower() and ref_col.lower() == column.lower():
+                    result["used_in_calculated_columns"].append({
+                        "calculated_column": col_name
+                    })
+                    break
+                    
+        # Check relationships
+        relationships = self.model.list_relationships()
+        for rel in relationships:
+            from_table = rel.get("FromTable", "")
+            from_col = rel.get("FromColumn", "")
+            to_table = rel.get("ToTable", "")
+            to_col = rel.get("ToColumn", "")
+            
+            if (from_table.lower() == table.lower() and from_col.lower() == column.lower()) or \
+               (to_table.lower() == table.lower() and to_col.lower() == column.lower()):
+                result["used_in_relationships"].append({
+                    "from": f"{from_table}[{from_col}]",
+                    "to": f"{to_table}[{to_col}]",
+                    "active": rel.get("IsActive", False)
+                })
+                
+        # Update summary
+        result["summary"]["used_in_measures_count"] = len(result["used_in_measures"])
+        result["summary"]["used_in_relationships_count"] = len(result["used_in_relationships"])
+        result["summary"]["is_used"] = (
+            len(result["used_in_measures"]) > 0 or
+            len(result["used_in_calculated_columns"]) > 0 or
+            len(result["used_in_relationships"]) > 0
+        )
+        
+        return result
+        
+    def find_where_measure_used(
+        self,
+        table: str,
+        measure: str,
+        max_depth: int = 3
+    ) -> Dict:
+        """
+        Find where a measure is used (forward and backward impact).
+        
+        Args:
+            table: Table containing the measure
+            measure: Measure name
+            max_depth: Maximum recursion depth
+            
+        Returns:
+            Dictionary with usage information
+        """
+        result = {
+            "measure": measure,
+            "table": table,
+            "used_by_measures": [],
+            "depends_on": {
+                "measures": [],
+                "columns": []
+            },
+            "impact_summary": {
+                "direct_dependents": 0,
+                "total_dependents": 0,
+                "direct_dependencies": 0,
+                "max_depth_analyzed": max_depth
+            }
+        }
+        
+        # Find measures that reference this measure
+        all_measures = self.model.list_measures()
+        for m in all_measures:
+            m_table = m.get("Table", "")
+            m_name = m.get("Name", "")
+            m_expr = m.get("Expression", "")
+            
+            if not m_expr:
+                continue
+                
+            # Skip self
+            if m_table.lower() == table.lower() and m_name.lower() == measure.lower():
+                continue
+                
+            refs = self._parse_references(m_expr)
+            for ref_table, ref_measure in refs.get("measures", []):
+                if ref_table.lower() == table.lower() and ref_measure.lower() == measure.lower():
+                    result["used_by_measures"].append({
+                        "table": m_table,
+                        "measure": m_name
+                    })
+                    break
+                    
+        # Get dependencies (what this measure uses)
+        deps = self.analyze_measure_dependencies(table, measure, max_depth)
+        if deps.get("dependencies"):
+            for dep in deps["dependencies"]:
+                if dep.get("type") == "measure":
+                    result["depends_on"]["measures"].append({
+                        "table": dep.get("table"),
+                        "measure": dep.get("name")
+                    })
+                elif dep.get("type") == "column":
+                    result["depends_on"]["columns"].append({
+                        "table": dep.get("table"),
+                        "column": dep.get("name")
+                    })
+                    
+        # Update summary
+        result["impact_summary"]["direct_dependents"] = len(result["used_by_measures"])
+        result["impact_summary"]["total_dependents"] = len(result["used_by_measures"])
+        result["impact_summary"]["direct_dependencies"] = (
+            len(result["depends_on"]["measures"]) + 
+            len(result["depends_on"]["columns"])
+        )
+        
+        return result
+        
+    def find_unused_objects(self) -> Dict:
+        """
+        Find unused measures, columns, and tables in the model.
+        
+        Returns:
+            Dictionary with lists of unused objects
+        """
+        result = {
+            "unused_measures": [],
+            "unused_columns": [],
+            "unused_tables": [],
+            "summary": {
+                "total_unused_measures": 0,
+                "total_unused_columns": 0,
+                "total_unused_tables": 0
+            }
+        }
+        
+        # Get all objects
+        measures = self.model.list_measures()
+        columns = self.model.list_columns()
+        tables = self.model.list_tables()
+        relationships = self.model.list_relationships()
+        
+        try:
+            self._reference_index = DaxReferenceIndex(measures, columns)
+        except Exception:
+            # Fall back to lazy loading inside _get_reference_index
+            self._reference_index = None
+        
+        # Build lowercase reference sets for case-insensitive matching
+        referenced_measures_lower = set()
+        referenced_columns_lower = set()
+        referenced_tables_lower = set()
+        
+        # Check measure references
+        for m in measures:
+            expr = m.get("Expression", "")
             if not expr:
                 continue
-
-            # Check if this measure references the target measure (bare or qualified)
-            refs = self._extract_dax_references(expr)
-            if measure_name in refs['measures']:
-                downstream.append({
-                    'measure': self._extract_measure_name(m),
-                    'table': self._extract_table_name(m),
-                    'expression': expr[:200]  # Truncate for readability
-                })
-
-        return downstream
-
-    def _build_upstream_chain(
-        self,
-        dependencies: Dict[str, List[str]],
-        max_depth: int,
-        current_depth: int = 0
-    ) -> Dict[str, Any]:
-        """Build upstream dependency chain."""
-        if current_depth >= max_depth:
-            return dependencies
-
-        # For now, return direct dependencies
-        # Full recursive chain would require querying each dependent measure
-        return dependencies
-
-    def find_unused_objects(self) -> Dict[str, Any]:
-        """Find unused tables, columns, and measures."""
-        try:
-            # Get all measures
-            measures_result = self.executor.execute_info_query("MEASURES")
-            if not measures_result.get('success'):
-                # Try TOM fallback
-                tom_meas = getattr(self.executor, 'enumerate_measures_tom', None)
-                if tom_meas:
-                    tr = tom_meas()
-                    if tr.get('success'):
-                        measures_result = tr
-                if not measures_result.get('success'):
-                    return {'success': False, 'error': 'Failed to get measures'}
-
-            measures = measures_result['rows']
-
-            # Get all columns
-            columns_result = self.executor.execute_info_query("COLUMNS")
-            if not columns_result.get('success'):
-                tom_cols = getattr(self.executor, 'enumerate_columns_tom', None)
-                if tom_cols:
-                    tr = tom_cols()
-                    if tr.get('success'):
-                        columns_result = tr
-                if not columns_result.get('success'):
-                    return {'success': False, 'error': 'Failed to get columns'}
-
-            columns = columns_result['rows']
-
-            # Get all tables
-            tables_result = self.executor.execute_info_query("TABLES")
-            if not tables_result.get('success'):
-                return {'success': False, 'error': 'Failed to get tables'}
-
-            tables = tables_result['rows']
-
-            # Build reference sets
-            referenced_measures = set()
-            referenced_columns = set()
-            referenced_tables = set()
-
-            # Analyze all measure expressions with catalogs
-            by_table_measures: Dict[str, Set[str]] = {}
-            for mm in measures:
-                mt = self._extract_table_name(mm)
-                mn = self._extract_measure_name(mm)
-                if mn:
-                    by_table_measures.setdefault(mt, set()).add(mn)
-            by_table_columns = self._get_columns_by_table()
-            
-            for m in measures:
-                expr = None
-                for key in ['Expression', '[Expression]', 'EXPRESSION']:
-                    if key in m:
-                        expr = m.get(key, '') or ''
-                        break
-                if not expr:
-                    expr = ''
-                current_tbl = self._extract_table_name(m)
-                refs = self._extract_dax_references(expr, current_table=current_tbl, measures_by_table=by_table_measures, columns_by_table=by_table_columns)
-
-                referenced_measures.update(refs['measures'])
-                referenced_columns.update(refs['columns'])
-                referenced_tables.update(refs['tables'])
-
-            # Check relationships for table/column usage
-            rels_result = self.executor.execute_info_query("RELATIONSHIPS")
-            if rels_result.get('success'):
-                for rel in rels_result['rows']:
-                    # Try to extract from/to table and column names with normalization
-                    ft = None
-                    for key in ['FromTable', '[FromTable]']:
-                        if key in rel and rel[key]:
-                            ft = self._normalize_identifier(rel[key])
-                            break
-                    tt = None
-                    for key in ['ToTable', '[ToTable]']:
-                        if key in rel and rel[key]:
-                            tt = self._normalize_identifier(rel[key])
-                            break
-                    fc = None
-                    for key in ['FromColumn', '[FromColumn]']:
-                        if key in rel and rel[key]:
-                            fc = self._normalize_identifier(rel[key])
-                            break
-                    tc = None
-                    for key in ['ToColumn', '[ToColumn]']:
-                        if key in rel and rel[key]:
-                            tc = self._normalize_identifier(rel[key])
-                            break
-                    
-                    # Only add when we have at least the table names
-                    if ft:
-                        referenced_tables.add(ft)
-                    if tt:
-                        referenced_tables.add(tt)
-                    if ft and fc:
-                        referenced_columns.add(f"{ft}[{fc}]")
-                    if tt and tc:
-                        referenced_columns.add(f"{tt}[{tc}]")
-            else:
-                # Try TOM fallback
-                tom_rels = getattr(self.executor, 'list_relationships_tom', None)
-                if tom_rels:
-                    rr = tom_rels()
-                    if rr.get('success'):
-                        for rel in rr['rows']:
-                            ft = self._normalize_identifier(rel.get('FromTable', ''))
-                            tt = self._normalize_identifier(rel.get('ToTable', ''))
-                            fc = self._normalize_identifier(rel.get('FromColumn', ''))
-                            tc = self._normalize_identifier(rel.get('ToColumn', ''))
-                            if ft:
-                                referenced_tables.add(ft)
-                            if tt:
-                                referenced_tables.add(tt)
-                            if ft and fc:
-                                referenced_columns.add(f"{ft}[{fc}]")
-                            if tt and tc:
-                                referenced_columns.add(f"{tt}[{tc}]")
-
-            # Find unused objects
-            unused_measures = []
-            for m in measures:
-                mname = self._extract_measure_name(m)
-                if mname not in referenced_measures:
-                    # Skip if it's hidden (likely internal)
-                    hidden = bool(m.get('IsHidden')) if 'IsHidden' in m else False
-                    if not hidden:
-                        unused_measures.append({
-                            'name': mname,
-                            'table': self._extract_table_name(m)
-                        })
-
-            unused_columns = []
-            for c in columns:
-                tbl = self._extract_table_name(c)
-                name = None
-                for key in ['Name', '[Name]', 'COLUMN_NAME', '[COLUMN_NAME]']:
-                    if key in c and c[key]:
-                        name = self._normalize_identifier(c[key])
-                        break
                 
-                col_ref = f"{tbl}[{name}]" if tbl and name else f"[${name}]"
-                if col_ref not in referenced_columns:
-                    # Skip hidden and key columns
-                    hidden = bool(c.get('IsHidden')) if 'IsHidden' in c else False
-                    is_key = bool(c.get('IsKey')) if 'IsKey' in c else False
-                    if not hidden and not is_key:
-                        unused_columns.append({
-                            'name': name if name else '',
-                            'table': tbl if tbl else '',
-                            'type': c.get('Type')
-                        })
-
-            unused_tables = []
-            for t in tables:
-                tname = self._extract_table_name(t)
-                if tname not in referenced_tables:
-                    # Check if table has any non-calculated columns (data table)
-                    table_cols = [col for col in columns if self._extract_table_name(col) == tname]
-                    hidden = bool(t.get('IsHidden')) if 'IsHidden' in t else False
-                    if table_cols and not hidden:
-                        unused_tables.append({
-                            'name': tname
-                        })
-
-            return {
-                'success': True,
-                'unused_measures': unused_measures,
-                'unused_columns': unused_columns[:50],  # Limit for readability
-                'unused_tables': unused_tables,
-                'summary': {
-                    'total_unused_measures': len(unused_measures),
-                    'total_unused_columns': len(unused_columns),
-                    'total_unused_tables': len(unused_tables)
-                }
-            }
-
-        except Exception as e:
-            logger.error(f"Error finding unused objects: {e}")
-            return {'success': False, 'error': str(e)}
-
-    def analyze_column_usage(self, table: str, column: str) -> Dict[str, Any]:
-        """Analyze where a column is used in the model."""
-        try:
-            t_norm = self._normalize_identifier(table)
-            c_norm = self._normalize_identifier(column)
-            col_ref = f"{t_norm}[{c_norm}]"
-
-            usage = {
-                'success': True,
-                'column': column,
-                'table': table,
-                'used_in_measures': [],
-                'used_in_calculated_columns': [],
-                'used_in_relationships': []
-            }
-
-            # Check measures (transitively) using computed index
-            idx = self._get_measure_columns_index()
-            for me_key, cols in idx.items():
-                if col_ref in cols or f"{t_norm}[{c_norm}]" in cols:
-                    # me_key format: Table[Measure] - extract both parts
-                    try:
-                        if '[' in me_key and me_key.endswith(']'):
-                            # Split on last [ to handle edge cases
-                            bracket_pos = me_key.rfind('[')
-                            table_part = me_key[:bracket_pos] if bracket_pos > 0 else ''
-                            measure_part = me_key[bracket_pos+1:-1] if bracket_pos >= 0 else me_key
-                        else:
-                            table_part = ''
-                            measure_part = me_key
-                        usage['used_in_measures'].append({'measure': measure_part, 'table': table_part})
-                    except Exception:
-                        usage['used_in_measures'].append({'measure': me_key, 'table': ''})
-
-            # Fallback: direct regex search in measure expressions for environments where
-            # INFO.MEASURES()/TOM normalization mismatches lead to empty transitive results
-            if not usage['used_in_measures']:
-                measures = self._get_all_measures()
-                # Pattern that tolerates quotes around table name and escapes brackets
-                import re as _re
-                pattern = _re.compile(r"(?:'" + _re.escape(t_norm) + r"'|" + _re.escape(t_norm) + r")\[" + _re.escape(c_norm) + r"\]", _re.IGNORECASE)
-                for m in measures:
-                    expr = None
-                    for key in ['Expression', '[Expression]', 'EXPRESSION']:
-                        if key in m:
-                            expr = str(m.get(key, '') or '')
-                            break
-                    if not expr:
-                        expr = ''
-                    if pattern.search(expr):
-                        usage['used_in_measures'].append({
-                            'measure': self._extract_measure_name(m),
-                            'table': self._extract_table_name(m)
-                        })
-
-            # Check calculated columns
-            calc_cols_query = f'EVALUATE FILTER(INFO.COLUMNS(), [Type] = {COLUMN_TYPE_CALCULATED})'
-            calc_result = self.executor.validate_and_execute_dax(calc_cols_query)
-            if calc_result.get('success'):
-                for row in calc_result.get('rows', []):
-                    # Would need expression to check, skip for now
-                    pass
-
-            # Check relationships
-            rels_result = self.executor.execute_info_query("RELATIONSHIPS")
-            if rels_result.get('success'):
-                for rel in rels_result['rows']:
-                    # Accept several key variants and compare using normalized strings
-                    ft = None
-                    for key in ['FromTable', '[FromTable]']:
-                        if key in rel and rel[key]:
-                            ft = self._normalize_identifier(rel[key])
-                            break
-                    fc = None
-                    for key in ['FromColumn', '[FromColumn]']:
-                        if key in rel and rel[key]:
-                            fc = self._normalize_identifier(rel[key])
-                            break
-                    tt = None
-                    for key in ['ToTable', '[ToTable]']:
-                        if key in rel and rel[key]:
-                            tt = self._normalize_identifier(rel[key])
-                            break
-                    tc = None
-                    for key in ['ToColumn', '[ToColumn]']:
-                        if key in rel and rel[key]:
-                            tc = self._normalize_identifier(rel[key])
-                            break
+            refs = self._parse_references(expr)
+            
+            # Add referenced measures
+            for ref_table, ref_measure in refs.get("measures", []):
+                if ref_table and ref_measure:
+                    ref_key = f"{ref_table.lower()}|{ref_measure.lower()}"
+                    referenced_measures_lower.add(ref_key)
+                    referenced_tables_lower.add(ref_table.lower())
+                
+            # Add referenced columns
+            for ref_table, ref_col in refs.get("columns", []):
+                if ref_table and ref_col:
+                    ref_key = f"{ref_table.lower()}|{ref_col.lower()}"
+                    referenced_columns_lower.add(ref_key)
+                    referenced_tables_lower.add(ref_table.lower())
+        
+        # Check calculated column references
+        for col in columns:
+            if col.get("Type") == "Calculated":
+                expr = col.get("Expression", "")
+                if expr:
+                    refs = self._parse_references(expr)
                     
-                    if ((ft and ft.lower() == t_norm.lower() and fc and fc.lower() == c_norm.lower()) or
-                        (tt and tt.lower() == t_norm.lower() and tc and tc.lower() == c_norm.lower())):
-                        usage['used_in_relationships'].append({
-                            'from': f"{ft}[{fc}]",
-                            'to': f"{tt}[{tc}]",
-                            'active': rel.get('IsActive')
-                        })
-            else:
-                # TOM fallback
-                tom_rels = getattr(self.executor, 'list_relationships_tom', None)
-                if tom_rels:
-                    rr = tom_rels()
-                    if rr.get('success'):
-                        for rel in rr['rows']:
-                            ft = self._normalize_identifier(rel.get('FromTable', ''))
-                            fc = self._normalize_identifier(rel.get('FromColumn', ''))
-                            tt = self._normalize_identifier(rel.get('ToTable', ''))
-                            tc = self._normalize_identifier(rel.get('ToColumn', ''))
-                            if ((ft and ft.lower() == t_norm.lower() and fc and fc.lower() == c_norm.lower()) or
-                                (tt and tt.lower() == t_norm.lower() and tc and tc.lower() == c_norm.lower())):
-                                usage['used_in_relationships'].append({
-                                    'from': f"{ft}[{fc}]",
-                                    'to': f"{tt}[{tc}]",
-                                    'active': rel.get('IsActive')
-                                })
-
-            usage['summary'] = {
-                'used_in_measures_count': len(usage['used_in_measures']),
-                'used_in_relationships_count': len(usage['used_in_relationships']),
-                'is_used': (len(usage['used_in_measures']) +
-                           len(usage['used_in_relationships'])) > 0
-            }
-
-            return usage
-
-        except Exception as e:
-            logger.error(f"Error analyzing column usage: {e}")
-            return {'success': False, 'error': str(e)}
+                    for ref_table, ref_col in refs.get("columns", []):
+                        if ref_table and ref_col:
+                            ref_key = f"{ref_table.lower()}|{ref_col.lower()}"
+                            referenced_columns_lower.add(ref_key)
+                            referenced_tables_lower.add(ref_table.lower())
+        
+        # Check relationship references
+        for rel in relationships:
+            from_table = rel.get("FromTable", "")
+            from_col = rel.get("FromColumn", "")
+            to_table = rel.get("ToTable", "")
+            to_col = rel.get("ToColumn", "")
+            
+            if from_table and from_col:
+                ref_key = f"{from_table.lower()}|{from_col.lower()}"
+                referenced_columns_lower.add(ref_key)
+                referenced_tables_lower.add(from_table.lower())
+                
+            if to_table and to_col:
+                ref_key = f"{to_table.lower()}|{to_col.lower()}"
+                referenced_columns_lower.add(ref_key)
+                referenced_tables_lower.add(to_table.lower())
+        
+        # Find unused measures
+        for m in measures:
+            table = m.get("Table", "")
+            name = m.get("Name", "")
+            
+            if not table or not name:
+                continue
+                
+            key = f"{table.lower()}|{name.lower()}"
+            
+            if key not in referenced_measures_lower:
+                result["unused_measures"].append({
+                    "table": table,
+                    "measure": name,
+                    "description": m.get("Description", "")
+                })
+        
+        # Find unused columns (exclude hidden, key columns, and system RowNumber)
+        for c in columns:
+            table = c.get("Table", "")
+            name = c.get("Name", "")
+            is_hidden = c.get("IsHidden", False)
+            is_key = c.get("IsKey", False)
+            
+            if not table or not name:
+                continue
+                
+            # Skip hidden, key, and system columns
+            if is_hidden or is_key or name.startswith("RowNumber-"):
+                continue
+            
+            key = f"{table.lower()}|{name.lower()}"
+            
+            if key not in referenced_columns_lower:
+                result["unused_columns"].append({
+                    "table": table,
+                    "column": name,
+                    "type": c.get("Type", ""),
+                    "data_type": c.get("DataType", "")
+                })
+        
+        # Find unused tables
+        tables_with_measures = {m.get("Table", "").lower() for m in measures if m.get("Table")}
+        tables_with_columns_used = {c.get("Table", "").lower() for c in columns if c.get("Table")}
+        
+        for t in tables:
+            name = t.get("Name", "")
+            is_hidden = t.get("IsHidden", False)
+            
+            if not name:
+                continue
+                
+            # Skip hidden tables
+            if is_hidden:
+                continue
+            
+            name_lower = name.lower()
+            
+            # Table is used if it has measures, is referenced, or has columns used
+            is_used = (
+                name_lower in tables_with_measures or
+                name_lower in referenced_tables_lower or
+                name_lower in tables_with_columns_used
+            )
+            
+            if not is_used:
+                result["unused_tables"].append({
+                    "table": name,
+                    "columns": t.get("Columns", 0),
+                    "rows": t.get("RowsCount", 0)
+                })
+        
+        # Update summary
+        result["summary"]["total_unused_measures"] = len(result["unused_measures"])
+        result["summary"]["total_unused_columns"] = len(result["unused_columns"])
+        result["summary"]["total_unused_tables"] = len(result["unused_tables"])
+        result["summary"]["columns_analyzed"] = len(columns)
+        result["summary"]["columns_referenced"] = len(referenced_columns_lower)
+        
+        # Limit output
+        result["unused_measures"] = result["unused_measures"][:50]
+        result["unused_columns"] = result["unused_columns"][:50]
+        result["unused_tables"] = result["unused_tables"][:20]
+        
+        return result
