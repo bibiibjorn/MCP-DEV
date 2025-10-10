@@ -1,5 +1,7 @@
 {
   "measure_usage": {},
   "dimension_usage": {},
-  "layout_usage": {}
+  "layout_usage": {
+    "Mixed Dashboard": 1
+  }
 }

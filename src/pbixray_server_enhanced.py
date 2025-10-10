@@ -46,6 +46,7 @@ from core.connection_state import connection_state
 from server.handlers.relationships_graph import export_relationship_graph as _export_relationship_graph
 from server.handlers.full_analysis import run_full_analysis as _run_full_analysis
 from server.handlers.visualization_tools import create_viz_tool_handlers
+from server.handlers.viz_html import create_viz_html_handlers
 from server.utils.m_practices import scan_m_practices as _scan_m_practices
 
 BPA_AVAILABLE = False
@@ -1715,6 +1716,10 @@ FRIENDLY_TOOL_ALIASES = {
     "Viz: Dashboard data": "viz_prepare_dashboard_data",
     "Viz: Chart data": "viz_get_chart_data",
     "Viz: Recommendations": "viz_recommend_visualizations",
+    "viz: render html dashboard": "viz_render_html_mockup",
+    "Viz: Render HTML": "viz_render_html_mockup",
+    "viz: export html dashboard": "viz_export_html_mockup",
+    "Viz: Export HTML": "viz_export_html_mockup",
 }
 
 # Lightweight handler registry (progressive migration)
@@ -1726,6 +1731,11 @@ try:
 except Exception as _viz_error:
     logger.debug(f"Visualization handlers unavailable: {_viz_error}")
     _VIZ_HANDLERS = {}
+try:
+    _VIZ_HTML_HANDLERS: Dict[str, Handler] = create_viz_html_handlers(connection_state, config)
+except Exception as _vizh_error:
+    logger.debug(f"Visualization HTML handlers unavailable: {_vizh_error}")
+    _VIZ_HTML_HANDLERS = {}
 
 def register_handler(tool_name: str, func: Handler) -> None:
     try:
@@ -1800,6 +1810,20 @@ def _dispatch_tool(name: str, arguments: Any) -> dict:
             handler = _VIZ_HANDLERS.get(name)
         except Exception as e:
             logger.debug(f"Unable to refresh visualization handlers: {e}")
+    if handler is not None:
+        try:
+            return _attach_port_if_connected(handler(arguments))
+        except Exception as e:
+            return ErrorHandler.handle_unexpected_error(name, e)
+    # 10) Visualization HTML tools
+    global _VIZ_HTML_HANDLERS
+    handler = _VIZ_HTML_HANDLERS.get(name)
+    if handler is None and isinstance(name, str) and name.startswith('viz_'):
+        try:
+            _VIZ_HTML_HANDLERS = create_viz_html_handlers(connection_state, config)
+            handler = _VIZ_HTML_HANDLERS.get(name)
+        except Exception as e:
+            logger.debug(f"Unable to refresh visualization HTML handlers: {e}")
     if handler is not None:
         try:
             return _attach_port_if_connected(handler(arguments))
@@ -2008,6 +2032,47 @@ async def list_tools() -> List[Tool]:
                     },
                     "description": "Specific measures (optional, auto-detects if not provided)"
                 }
+            },
+            "required": []
+        }
+    )
+
+    add(
+        "viz: render html dashboard",
+        "viz_render_html_mockup",
+        "Render a single-page HTML dashboard from prepared data",
+        {
+            "type": "object",
+            "properties": {
+                "request_type": {
+                    "type": "string",
+                    "enum": ["overview", "executive_summary", "operational", "financial", "custom"],
+                    "default": "financial"
+                },
+                "tables": {"type": "array", "items": {"type": "string"}},
+                "measures": {"type": "array", "items": {"type": "object"}},
+                "page_title": {"type": "string"},
+                "theme": {"type": "string", "enum": ["dark", "light"], "default": "dark"},
+                "max_rows": {"type": "integer", "default": 100},
+                "sample_rows": {"type": "integer", "default": 20}
+            },
+            "required": []
+        }
+    )
+
+    add(
+        "viz: export html dashboard",
+        "viz_export_html_mockup",
+        "Export a single-page HTML dashboard to the exports/mockups folder",
+        {
+            "type": "object",
+            "properties": {
+                "request_type": {"type": "string", "default": "financial"},
+                "tables": {"type": "array", "items": {"type": "string"}},
+                "measures": {"type": "array", "items": {"type": "object"}},
+                "page_title": {"type": "string"},
+                "theme": {"type": "string", "enum": ["dark", "light"], "default": "dark"},
+                "output_dir": {"type": "string"}
             },
             "required": []
         }
