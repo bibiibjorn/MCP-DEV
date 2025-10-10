@@ -1395,6 +1395,18 @@ __DEFERRED_REGISTRATION__ = [
     ('list_columns', _h_list_columns),
     ('list_measures', _h_list_measures),
     ('describe_table', _h_describe_table),
+    # Helper tool to surface Quickstart guide and excerpt on demand
+    ('show_quickstart', lambda args: (lambda: (
+        (lambda guides_dir: (lambda pdf_path: (
+            (lambda guide_path: {
+                'success': True,
+                'quickstart_guide': guide_path,
+                'quickstart_excerpt': ("\n".join(_generate_quickstart_markdown().splitlines()[:16]) if True else None),
+                'open_hint': 'Open the quickstart_guide path locally to view the full PDF.',
+                'summary': f'Quickstart guide available at: {guide_path}'
+            })(pdf_path if os.path.exists(pdf_path) else os.path.join(guides_dir, 'PBIXRAY_Quickstart.txt'))
+        ))(os.path.join(guides_dir, 'PBIXRAY_Quickstart.pdf'))
+    ))(os.path.join(os.path.dirname(script_dir), 'docs')) )()),
 ]
 
 
@@ -1581,10 +1593,12 @@ FRIENDLY_TOOL_ALIASES = {
     "Model: Summary": "get_model_summary",
     "Compare: Models": "compare_models",
     "Schema: Relationships": "relationships",
-    "Schema: Export (paged)": "export_model_schema",
+    # Renamed for clarity; keep old alias too below
+    "Export: Model schema (sections)": "export_model_schema",
     # Orchestration
     "Analyze: Full model": "full_analysis",
-    "Analyze: Propose plan": "propose_analysis",
+    # Renamed for clarity; keep old alias too below
+    "Analysis: Recommend analysis plan": "propose_analysis",
     # New alphabetized friendly names (v2.3 style)
     # analysis:
     "analysis: best practices (BPA)": "analyze_model_bpa",
@@ -1604,7 +1618,8 @@ FRIENDLY_TOOL_ALIASES = {
     # describe/search/get:
     "describe: table": "describe_table",
     "get: column summary": "get_column_summary",
-    "get: column value distribution": "get_column_value_distribution",
+    # Renamed surface label for clarity under profiling context
+    "profile: top values for column": "get_column_value_distribution",
     "get: data sources": "get_data_sources",
     "get: m expressions": "get_m_expressions",
     "get: measure details": "get_measure_details",
@@ -1621,7 +1636,8 @@ FRIENDLY_TOOL_ALIASES = {
     "measure: bulk create": "bulk_create_measures",
     "measure: bulk delete": "bulk_delete_measures",
     "measure: delete": "delete_measure",
-    "measure: upsert": "upsert_measure",
+    # Friendlier name for Power BI users
+    "measure: create or update": "upsert_measure",
     # export/docs:
     "export: columns with samples": "export_columns_with_samples",
     "export: compact schema": "export_compact_schema",
@@ -1644,6 +1660,11 @@ FRIENDLY_TOOL_ALIASES = {
     "preview: table": "preview_table_data",
     # spelling variant (user typo safety)
     "anlysis: full model": "full_analysis",
+    # Back-compat entries for renamed labels
+    "Schema: Export (paged)": "export_model_schema",
+    "Analyze: Propose plan": "propose_analysis",
+    "get: column value distribution": "get_column_value_distribution",
+    "measure: upsert": "upsert_measure",
 }
 
 # Lightweight handler registry (progressive migration)
@@ -1757,28 +1778,29 @@ async def list_tools() -> List[Tool]:
     add("get: measure details", "get_measure_details", "Get details for a specific measure", {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}}, "required": ["table", "measure"]})
     add("get: data sources", "get_data_sources", "List Power Query data sources", {"type": "object", "properties": {"page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []})
     add("get: m expressions", "get_m_expressions", "List M expressions for queries", {"type": "object", "properties": {"page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []})
-    add("get: column value distribution", "get_column_value_distribution", "Top values distribution for a column", {"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}, "top_n": {"type": "integer", "default": 50}}, "required": ["table", "column"]})
+    add("profile: top values for column", "get_column_value_distribution", "Top values distribution for a column", {"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}, "top_n": {"type": "integer", "default": 50}}, "required": ["table", "column"]})
     add("get: column summary", "get_column_summary", "Summary stats for a column", {"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}}, "required": ["table", "column"]})
     add("get: vertipaq stats", "get_vertipaq_stats", "VertiPaq statistics (table-level)", {"type": "object", "properties": {"table": {"type": "string"}}, "required": []})
     add("get: model summary", "get_model_summary", "Lightweight model summary suitable for large models", {"type": "object", "properties": {}, "required": []})
 
     # Dependencies & impact
     add("dependency: analyze measure", "analyze_measure_dependencies", "Analyze measure dependencies", {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "depth": {"type": "integer", "default": 3}}, "required": ["table", "measure"]})
-    add("impact: measure", "get_measure_impact", "Forward/backward impact for a measure", {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "depth": {"type": "integer", "default": 3}}, "required": ["table", "measure"]})
+    add("usage: where measure is used", "get_measure_impact", "Forward/backward impact for a measure", {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "depth": {"type": "integer", "default": 3}}, "required": ["table", "measure"]})
     # heatmap removed from public surface
 
-    # Maintenance and runtime insight tools
-    add("server: info", "get_server_info", "Server info, telemetry, and config snapshot", {"type": "object", "properties": {}, "required": []})
-    add("server: recent logs", "get_recent_logs", "Tail of server logs for debugging", {"type": "object", "properties": {"lines": {"type": "integer", "default": 200}}, "required": []})
-    add("server: summarize logs", "summarize_logs", "Summarize recent logs (error/warn/info)", {"type": "object", "properties": {"lines": {"type": "integer", "default": 500}}, "required": []})
-    add("server: rate limiter stats", "get_rate_limit_stats", "Rate limiter token and throttle stats", {"type": "object", "properties": {}, "required": []})
-    add("server: tool timeouts", "get_tool_timeouts", "Configured per-tool timeouts", {"type": "object", "properties": {}, "required": []})
-    add("server: runtime cache stats", "get_runtime_cache_stats", "In-process cache stats (TTL/LRU)", {"type": "object", "properties": {}, "required": []})
+    # Maintenance and runtime insight tools (hidden by default; can be enabled via server.show_admin_tools)
+    if bool(config.get('server.show_admin_tools', False)):
+        add("server: info", "get_server_info", "Server info, telemetry, and config snapshot", {"type": "object", "properties": {}, "required": []})
+        add("server: recent logs", "get_recent_logs", "Tail of server logs for debugging", {"type": "object", "properties": {"lines": {"type": "integer", "default": 200}}, "required": []})
+        add("server: summarize logs", "summarize_logs", "Summarize recent logs (error/warn/info)", {"type": "object", "properties": {"lines": {"type": "integer", "default": 500}}, "required": []})
+        add("server: rate limiter stats", "get_rate_limit_stats", "Rate limiter token and throttle stats", {"type": "object", "properties": {}, "required": []})
+        add("server: tool timeouts", "get_tool_timeouts", "Configured per-tool timeouts", {"type": "object", "properties": {}, "required": []})
+        add("server: runtime cache stats", "get_runtime_cache_stats", "In-process cache stats (TTL/LRU)", {"type": "object", "properties": {}, "required": []})
     add("usage: analyze column", "analyze_column_usage", "Analyze how a column is used", {"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}}, "required": ["table", "column"]})
     add("usage: find unused objects", "find_unused_objects", "Find unused tables/columns/measures", {"type": "object", "properties": {}, "required": []})
 
     # Model management
-    add("measure: upsert", "upsert_measure", "Create or update a measure", {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "expression": {"type": "string"}, "display_folder": {"type": "string"}, "description": {"type": "string"}, "format_string": {"type": "string"}}, "required": ["table", "measure", "expression"]})
+    add("measure: create or update", "upsert_measure", "Create or update a measure", {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "expression": {"type": "string"}, "display_folder": {"type": "string"}, "description": {"type": "string"}, "format_string": {"type": "string"}}, "required": ["table", "measure", "expression"]})
     add("measure: delete", "delete_measure", "Delete a measure", {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}}, "required": ["table", "measure"]})
     add("measure: bulk create", "bulk_create_measures", "Create multiple measures", {"type": "object", "properties": {"measures": {"type": "array", "items": {"type": "object"}}}, "required": ["measures"]})
     add("measure: bulk delete", "bulk_delete_measures", "Delete multiple measures", {"type": "object", "properties": {"measures": {"type": "array", "items": {"type": "object"}}}, "required": ["measures"]})
@@ -1800,7 +1822,7 @@ async def list_tools() -> List[Tool]:
     add("export: tmsl", "export_tmsl", "Export TMSL (summary by default)", {"type": "object", "properties": {"include_full_model": {"type": "boolean", "default": False}}, "required": []})
     add("export: tmdl", "export_tmdl", "Export TMDL model structure", {"type": "object", "properties": {}, "required": []})
     add("export: model overview", "export_model_overview", "Export compact model overview (json/yaml)", {"type": "object", "properties": {"format": {"type": "string", "enum": ["json", "yaml"], "default": "json"}, "include_counts": {"type": "boolean", "default": True}}, "required": []})
-    add("export: schema (paged)", "export_model_schema", "Export model schema by section with pagination", {"type": "object", "properties": {"section": {"type": "string", "enum": ["tables", "columns", "measures", "relationships"]}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}, "preview_size": {"type": "integer", "description": "Rows per section in compact preview (default 30)"}, "include": {"type": "array", "items": {"type": "string"}, "description": "Subset of sections to include in compact preview"}}, "required": []})
+    add("export: model schema (sections)", "export_model_schema", "Export model schema by section with pagination", {"type": "object", "properties": {"section": {"type": "string", "enum": ["tables", "columns", "measures", "relationships"]}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}, "preview_size": {"type": "integer", "description": "Rows per section in compact preview (default 30)"}, "include": {"type": "array", "items": {"type": "string"}, "description": "Subset of sections to include in compact preview"}}, "required": []})
 
     # Analysis
     add("analysis: m query practices", "analyze_m_practices", "Scan M expressions for common issues", {"type": "object", "properties": {}, "required": []})
@@ -1824,7 +1846,10 @@ async def list_tools() -> List[Tool]:
     add("analysis: column cardinality", "analyze_column_cardinality", "Analyze column cardinality for a table", {"type": "object", "properties": {"table": {"type": "string"}}, "required": []})
     add("analysis: storage compression", "analyze_storage_compression", "Analyze storage/compression efficiency for a table", {"type": "object", "properties": {"table": {"type": "string"}}, "required": ["table"]})
     add("analysis: full model", "full_analysis", "Comprehensive model analysis (summary, relationships, best practices, M scan, optional BPA)", {"type": "object", "properties": {"include_bpa": {"type": "boolean", "default": True}, "depth": {"type": "string", "enum": ["light", "standard", "deep"], "default": "standard"}, "profile": {"type": "string", "enum": ["fast", "balanced", "deep"], "default": "balanced"}, "limits": {"type": "object", "properties": {"relationships_max": {"type": "integer", "default": 200}, "issues_max": {"type": "integer", "default": 200}}, "default": {}}}, "required": []})
-    add("analysis: propose plan", "propose_analysis", "Propose normal vs fast analysis options depending on goal", {"type": "object", "properties": {"goal": {"type": "string"}}, "required": []})
+    add("analysis: recommend analysis plan", "propose_analysis", "Recommend fast vs thorough analysis options based on your goal", {"type": "object", "properties": {"goal": {"type": "string"}}, "required": []})
+
+    # Help
+    add("help: quickstart guide", "show_quickstart", "Show path to Quickstart guide and an excerpt", {"type": "object", "properties": {}, "required": []})
 
     # Helper: sanitize tool identifier to match ^[a-zA-Z0-9_-]{1,64}$ while preserving readability
     def _sanitize_tool_identifier(name: str) -> str:

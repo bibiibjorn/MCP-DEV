@@ -3,7 +3,8 @@
     "name": "MCP-PowerBi-Finvision",
     "log_level": "INFO",
     "timeout_seconds": 60,
-    "tool_names_mode": "friendly"
+    "tool_names_mode": "friendly",
+    "show_admin_tools": false
   },
   "performance": {
     "cache_ttl_seconds": 300,
