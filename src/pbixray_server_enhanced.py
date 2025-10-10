@@ -45,6 +45,7 @@ from core.connection_state import connection_state
 # Delegated handlers & utils (modularized)
 from server.handlers.relationships_graph import export_relationship_graph as _export_relationship_graph
 from server.handlers.full_analysis import run_full_analysis as _run_full_analysis
+from server.handlers.visualization_tools import create_viz_tool_handlers
 from server.utils.m_practices import scan_m_practices as _scan_m_practices
 
 BPA_AVAILABLE = False
@@ -1136,13 +1137,26 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
         return qe.execute_info_query("RELATIONSHIPS")
     if name == "get_vertipaq_stats":
         table = arguments.get("table")
-        # Safest cross-version behavior: query full INFO.STORAGETABLECOLUMNS and apply client-side filtering if requested
         dsp = qe.validate_and_execute_dax("EVALUATE INFO.STORAGETABLECOLUMNS()")
-        if table and dsp.get('success'):
+        if not dsp.get('success'):
+            return dsp
+
+        rows = list(dsp.get('rows') or [])
+        if table:
             t = str(table)
             keys = [
-                'TABLE_FULL_NAME', 'TABLE_ID', 'TABLE_NAME', 'Table', 'TABLE', 'Name'
+                'TABLE_FULL_NAME',
+                'TABLE_ID',
+                'TABLE_NAME',
+                'Table',
+                'TABLE',
+                'Name',
+                '[TABLE_ID]',
+                '[TABLE_NAME]',
+                '[MEASURE_GROUP_NAME]',
+                '[DIMENSION_NAME]',
             ]
+
             def match_row(r: dict) -> bool:
                 for k in keys:
                     v = r.get(k)
@@ -1152,16 +1166,45 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
                     if sv == t or t in sv:
                         return True
                 return False
-            filtered = [r for r in dsp.get('rows', []) if isinstance(r, dict) and match_row(r)]
+
+            filtered = [r for r in rows if isinstance(r, dict) and match_row(r)]
             if filtered:
-                res = {'success': True, 'rows': filtered, 'row_count': len(filtered)}
-                _note_client_filter_vertipaq(res, str(table))
-                return res
-            # If filter produced no rows, fall back to returning full dataset to keep tool useful
-            dsp = dict(dsp)
-            dsp.setdefault('notes', []).append('Table filter produced no VertiPaq rows; returning full dataset for client-side filtering')
-            return dsp
-        return dsp
+                rows = filtered
+                dsp = {k: v for k, v in dsp.items() if k != 'rows'}
+                dsp['rows'] = rows
+                _note_client_filter_vertipaq(dsp, t)
+
+        total_rows = len(rows)
+        try:
+            page_size = int(arguments.get("page_size", 400) or 400)
+        except Exception:
+            page_size = 400
+        page_size = max(50, min(page_size, 1000))
+
+        try:
+            start = int(arguments.get("next_token", 0) or 0)
+        except Exception:
+            start = 0
+        start = max(0, min(start, max(total_rows - 1, 0)))
+        end = start + page_size
+
+        paged_rows = rows[start:end]
+        result = {k: v for k, v in dsp.items() if k != 'rows' and k != 'row_count'}
+        result['rows'] = paged_rows
+        result['row_count'] = len(paged_rows)
+        result['total_rows'] = total_rows
+        if end < total_rows:
+            result['next_token'] = str(end)
+        if start > 0:
+            prev = max(0, start - page_size)
+            if prev != start:
+                result['previous_token'] = str(prev)
+        if total_rows > page_size:
+            _note_truncated(result, page_size)
+            result.setdefault('notes', []).append(
+                "Use page_size/next_token arguments to page through the complete VertiPaq stats dataset."
+            )
+        return result
     if name == "analyze_query_performance":
         if not performance_analyzer:
             basic = qe.validate_and_execute_dax(arguments['query'], 0, arguments.get('clear_cache', True))
@@ -1665,6 +1708,13 @@ FRIENDLY_TOOL_ALIASES = {
     "Analyze: Propose plan": "propose_analysis",
     "get: column value distribution": "get_column_value_distribution",
     "measure: upsert": "upsert_measure",
+    # Visualization mockup tools
+    "viz: prepare dashboard data": "viz_prepare_dashboard_data",
+    "viz: get chart data": "viz_get_chart_data",
+    "viz: recommend visualizations": "viz_recommend_visualizations",
+    "Viz: Dashboard data": "viz_prepare_dashboard_data",
+    "Viz: Chart data": "viz_get_chart_data",
+    "Viz: Recommendations": "viz_recommend_visualizations",
 }
 
 # Lightweight handler registry (progressive migration)
@@ -1735,6 +1785,14 @@ def _dispatch_tool(name: str, arguments: Any) -> dict:
     res = _handle_dependency_and_bulk(name, arguments)
     if res is not None:
         return _attach_port_if_connected(res)
+    # 9) Visualization mockup tools
+    viz_handlers = create_viz_tool_handlers(connection_state, config)
+    handler = viz_handlers.get(name)
+    if handler is not None:
+        try:
+            return _attach_port_if_connected(handler(arguments))
+        except Exception as e:
+            return ErrorHandler.handle_unexpected_error(name, e)
     # Unknown tool
     return ErrorHandler.handle_unknown_tool(name)
 
@@ -1847,6 +1905,101 @@ async def list_tools() -> List[Tool]:
     add("analysis: storage compression", "analyze_storage_compression", "Analyze storage/compression efficiency for a table", {"type": "object", "properties": {"table": {"type": "string"}}, "required": ["table"]})
     add("analysis: full model", "full_analysis", "Comprehensive model analysis (summary, relationships, best practices, M scan, optional BPA)", {"type": "object", "properties": {"include_bpa": {"type": "boolean", "default": True}, "depth": {"type": "string", "enum": ["light", "standard", "deep"], "default": "standard"}, "profile": {"type": "string", "enum": ["fast", "balanced", "deep"], "default": "balanced"}, "limits": {"type": "object", "properties": {"relationships_max": {"type": "integer", "default": 200}, "issues_max": {"type": "integer", "default": 200}}, "default": {}}}, "required": []})
     add("analysis: recommend analysis plan", "propose_analysis", "Recommend fast vs thorough analysis options based on your goal", {"type": "object", "properties": {"goal": {"type": "string"}}, "required": []})
+
+    # Visualization mockup tools
+    add(
+        "viz: prepare dashboard data",
+        "viz_prepare_dashboard_data",
+        "Prepare Power BI data for dashboard mockup generation",
+        {
+            "type": "object",
+            "properties": {
+                "request_type": {
+                    "type": "string",
+                    "enum": ["overview", "executive_summary", "operational", "financial", "custom"],
+                    "default": "overview",
+                    "description": "Type of dashboard to prepare"
+                },
+                "tables": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Specific tables to include (optional)"
+                },
+                "measures": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "table": {"type": "string"},
+                            "measure": {"type": "string"},
+                            "chart_type": {
+                                "type": "string",
+                                "enum": ["auto", "kpi_card", "line", "bar", "area", "pie"],
+                                "default": "auto"
+                            }
+                        }
+                    },
+                    "description": "Specific measures to visualize"
+                },
+                "max_rows": {
+                    "type": "integer",
+                    "default": 100,
+                    "description": "Maximum rows per query"
+                },
+                "sample_rows": {
+                    "type": "integer",
+                    "default": 20,
+                    "description": "Sample size for preview data"
+                }
+            },
+            "required": []
+        }
+    )
+    add(
+        "viz: get chart data",
+        "viz_get_chart_data",
+        "Get formatted data for specific chart type",
+        {
+            "type": "object",
+            "properties": {
+                "chart_type": {
+                    "type": "string",
+                    "enum": ["kpi_card", "line", "area", "bar", "pie"],
+                    "default": "line"
+                },
+                "table": {"type": "string"},
+                "measure": {"type": "string"},
+                "dimension": {
+                    "type": "string",
+                    "description": "Dimension table to group by (optional for bar charts)"
+                },
+                "sample_rows": {"type": "integer", "default": 20}
+            },
+            "required": ["table", "measure"]
+        }
+    )
+    add(
+        "viz: recommend visualizations",
+        "viz_recommend_visualizations",
+        "Recommend appropriate visualizations for model or measures",
+        {
+            "type": "object",
+            "properties": {
+                "measures": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "table": {"type": "string"},
+                            "measure": {"type": "string"}
+                        }
+                    },
+                    "description": "Specific measures (optional, auto-detects if not provided)"
+                }
+            },
+            "required": []
+        }
+    )
 
     # Help
     add("help: quickstart guide", "show_quickstart", "Show path to Quickstart guide and an excerpt", {"type": "object", "properties": {}, "required": []})

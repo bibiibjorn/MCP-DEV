@@ -3,9 +3,97 @@ Dependency and usage analyzer for Power BI models.
 Tracks dependencies and usage patterns across measures, columns, and relationships.
 """
 
+import logging
 import re
 from typing import Dict, List, Set, Tuple, Optional
-from .dax_parser import DaxReferenceIndex, parse_dax_references
+
+logger = logging.getLogger(__name__)
+
+try:
+    from .dax_parser import DaxReferenceIndex, parse_dax_references  # type: ignore
+    _DAX_PARSER_AVAILABLE = True
+except ImportError as exc:  # pragma: no cover - safety fallback
+    logger.warning(
+        "core.dax_parser unavailable (%s); using simplified inline DAX parser. "
+        "Install the full package for richer dependency detection.",
+        exc,
+    )
+    _DAX_PARSER_AVAILABLE = False
+
+    class DaxReferenceIndex:  # type: ignore[override]
+        """Minimal reference index used when the dedicated parser module is missing."""
+
+        def __init__(self, measure_rows=None, column_rows=None) -> None:
+            self.measure_keys: Set[str] = set()
+            self.measure_names: Dict[str, Set[str]] = {}
+            self.column_keys: Set[str] = set()
+            if measure_rows:
+                for row in measure_rows:
+                    table = str(row.get("Table") or "").strip()
+                    name = str(row.get("Name") or "").strip()
+                    if table and name:
+                        key = f"{table.lower()}|{name.lower()}"
+                        self.measure_keys.add(key)
+                        self.measure_names.setdefault(name.lower(), set()).add(table)
+            if column_rows:
+                for row in column_rows:
+                    table = str(row.get("Table") or "").strip()
+                    name = str(row.get("Name") or "").strip()
+                    if table and name:
+                        self.column_keys.add(f"{table.lower()}|{name.lower()}")
+
+    _QUALIFIED_TOKEN = re.compile(r"'([^']+)'\s*\[([^\]]+)\]")
+    _UNQUALIFIED_TOKEN = re.compile(r"(?<!')\[(.+?)\]")
+
+    def parse_dax_references(  # type: ignore[override]
+        expression: Optional[str],
+        reference_index: Optional[DaxReferenceIndex] = None,
+    ) -> Dict[str, List]:
+        """Basic fallback parser that keeps initialization working when the full parser is missing."""
+        if not isinstance(expression, str) or not expression.strip():
+            return {"tables": [], "columns": [], "measures": [], "identifiers": []}
+
+        cleaned = re.sub(r"/\*.*?\*/", "", expression, flags=re.DOTALL)
+        cleaned = re.sub(r"//.*?$", "", cleaned, flags=re.MULTILINE)
+
+        tables: Set[str] = set()
+        columns: Set[Tuple[str, str]] = set()
+        measures: Set[Tuple[str, str]] = set()
+        identifiers: Set[str] = set()
+
+        ref_idx = reference_index or DaxReferenceIndex()
+
+        for table, name in _QUALIFIED_TOKEN.findall(cleaned):
+            tbl = table.strip()
+            obj = name.strip()
+            if not obj:
+                continue
+            identifiers.add(obj)
+            key = f"{tbl.lower()}|{obj.lower()}"
+            tables.add(tbl)
+            if key in ref_idx.measure_keys:
+                measures.add((tbl, obj))
+            else:
+                columns.add((tbl, obj))
+
+        for match in _UNQUALIFIED_TOKEN.finditer(cleaned):
+            name = match.group(1).strip()
+            if not name or name.startswith("@"):
+                continue
+            identifiers.add(name)
+            owners = ref_idx.measure_names.get(name.lower())
+            if owners:
+                for tbl in owners:
+                    measures.add((tbl, name))
+            else:
+                measures.add(("", name))
+
+        return {
+            "tables": sorted(tables),
+            "columns": sorted(columns),
+            "measures": sorted(measures),
+            "identifiers": sorted(identifiers),
+        }
 
 class DependencyAnalyzer:
     """Analyzes usage patterns and dependencies in Power BI models."""

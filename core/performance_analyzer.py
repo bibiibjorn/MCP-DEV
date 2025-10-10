@@ -137,30 +137,32 @@ class EnhancedAMOTraceAnalyzer:
         try:
             trace.add_OnEvent(self._trace_handler)
             self._trace_handler_attached = True
-        except AttributeError:
-            # pythonnet also supports += operator; fall back if add_OnEvent missing
-            try:
-                trace.OnEvent += self._trace_handler  # type: ignore[attr-defined]
-                self._trace_handler_attached = True
-            except Exception as exc:
-                logger.debug("Failed to attach trace handler: %s", exc)
-                self._trace_handler = None
+            return
+        except Exception as exc:
+            logger.debug("add_OnEvent failed: %s", exc)
+        try:
+            trace.OnEvent += self._trace_handler  # type: ignore[attr-defined]
+            self._trace_handler_attached = True
+        except Exception as exc:
+            logger.debug("Failed to attach trace handler via OnEvent: %s", exc)
+            self._trace_handler = None
 
     def _detach_trace_handler(self) -> None:
         if not self._trace or not self._trace_handler_attached or not self._trace_handler:
             return
         try:
             self._trace.remove_OnEvent(self._trace_handler)
-        except AttributeError:
-            try:
-                self._trace.OnEvent -= self._trace_handler  # type: ignore[attr-defined]
-            except Exception:
-                pass
-        except Exception:
-            pass
-        finally:
             self._trace_handler_attached = False
             self._trace_handler = None
+            return
+        except Exception as exc:
+            logger.debug("remove_OnEvent failed: %s", exc)
+        try:
+            self._trace.OnEvent -= self._trace_handler  # type: ignore[attr-defined]
+        except Exception as exc:
+            logger.debug("Failed to detach trace handler via OnEvent: %s", exc)
+        self._trace_handler_attached = False
+        self._trace_handler = None
 
     def _handle_trace_event(self, args: Any) -> None:
         try:
@@ -303,7 +305,10 @@ class EnhancedAMOTraceAnalyzer:
 
         self._resolve_session_id(query_executor)
         if not self.trace_active:
-            return False
+            # Attempt to auto-start the trace so callers don't have to invoke set_performance_trace first.
+            started = self.start_session_trace(query_executor)
+            if not started:
+                return False
 
         trace = self._get_session_trace()
         if trace is None:
