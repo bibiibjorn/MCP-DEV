@@ -1721,6 +1721,12 @@ FRIENDLY_TOOL_ALIASES = {
 Handler = Callable[[Any], dict]
 _HANDLERS: Dict[str, Handler] = {}
 
+try:
+    _VIZ_HANDLERS: Dict[str, Handler] = create_viz_tool_handlers(connection_state, config)
+except Exception as _viz_error:
+    logger.debug(f"Visualization handlers unavailable: {_viz_error}")
+    _VIZ_HANDLERS = {}
+
 def register_handler(tool_name: str, func: Handler) -> None:
     try:
         _HANDLERS[tool_name] = func
@@ -1786,8 +1792,14 @@ def _dispatch_tool(name: str, arguments: Any) -> dict:
     if res is not None:
         return _attach_port_if_connected(res)
     # 9) Visualization mockup tools
-    viz_handlers = create_viz_tool_handlers(connection_state, config)
-    handler = viz_handlers.get(name)
+    global _VIZ_HANDLERS
+    handler = _VIZ_HANDLERS.get(name)
+    if handler is None and isinstance(name, str) and name.startswith('viz_'):
+        try:
+            _VIZ_HANDLERS = create_viz_tool_handlers(connection_state, config)
+            handler = _VIZ_HANDLERS.get(name)
+        except Exception as e:
+            logger.debug(f"Unable to refresh visualization handlers: {e}")
     if handler is not None:
         try:
             return _attach_port_if_connected(handler(arguments))
