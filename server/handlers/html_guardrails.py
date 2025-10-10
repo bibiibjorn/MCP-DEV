@@ -158,6 +158,10 @@ def _validate_html(
                 reasons.append(
                     f"Add responsive container near {rec_px}px and center it (e.g., <div class=\"max-w-[{rec_px}px] mx-auto\">)."
                 )
+            # Also accept clamped widths to avoid oversizing in panels (95% viewport)
+            if 'max-width' in html.lower():
+                # If inline style is present, suggest using Math.min with 95% viewport comment
+                reasons.append('Ensure container width is clamped to ~95% of available viewport to prevent overflow in side panels')
     # Header/title
     if not re.search(r'<h1[^>]*>', html, flags=re.IGNORECASE):
         reasons.append('Missing page title <h1>')
@@ -204,6 +208,20 @@ def _validate_html(
     # One-page heuristic: look for very large inline content or excessive repeated rows
     if html.count('<tr') > 60:
         reasons.append('Too many table rows; may not fit on a single page')
+
+    # Chart structure heuristics (SVG-first rules)
+    has_svg = '<svg' in html.lower()
+    css_height_bars = bool(re.search(r'style\s*=\s*"[^"]*height\s*:\s*\d+%\s*;?', html, flags=re.IGNORECASE))
+    if css_height_bars and not has_svg:
+        reasons.append('Charts appear to be CSS-based; prefer SVG with explicit coordinates and viewBox')
+    if has_svg and 'viewbox' not in html.lower():
+        reasons.append('SVG charts should include a viewBox for responsive scaling')
+    # Combo chart hints: dashed polylines and circles for points
+    if has_svg and ('polyline' in html.lower()) and ('stroke-dasharray' not in html.lower()):
+        reasons.append('Combo lines should use dashed stroke for comparison series and include point markers')
+    # Waterfall connectors
+    if has_svg and ('waterfall' in html.lower()) and ('stroke-dasharray' not in html.lower()):
+        reasons.append('Waterfall charts should include dashed connector lines between segments')
 
     return {
         'ok': ok,
