@@ -75,6 +75,10 @@ try {
     Write-Host "3. Ask Claude: 'Detect my Power BI Desktop instances'" -ForegroundColor White
     Write-Host "4. Ask Claude: 'Connect to instance 0'" -ForegroundColor White
     Write-Host "5. Ask Claude: 'What tables are in this model?'" -ForegroundColor White
+    Write-Host "" 
+    Write-Host "Guardrails for HTML mockups:" -ForegroundColor Yellow
+    Write-Host "- When Claude prompts to use the MCP server, click 'Always allow' so tool calls don't require confirmation every time." -ForegroundColor White
+    Write-Host "- Pin the guardrails workflow from docs/Claude_Guardrails_AutoUse.md into Claude's instructions to auto-use validation." -ForegroundColor White
     Write-Host ""
 }
 catch {

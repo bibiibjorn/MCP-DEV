@@ -45,8 +45,7 @@ from core.connection_state import connection_state
 # Delegated handlers & utils (modularized)
 from server.handlers.relationships_graph import export_relationship_graph as _export_relationship_graph
 from server.handlers.full_analysis import run_full_analysis as _run_full_analysis
-from server.handlers.visualization_tools import create_viz_tool_handlers
-from server.handlers.viz_html import create_viz_html_handlers
+from server.handlers.html_guardrails import create_html_guardrail_handlers
 from server.utils.m_practices import scan_m_practices as _scan_m_practices
 
 BPA_AVAILABLE = False
@@ -716,7 +715,24 @@ def _handle_connection_and_instances(name: str, arguments: Any) -> Optional[dict
                 result.setdefault('hints', [
                     'Try: get_model_summary, analyze_measure_dependencies, find_unused_objects',
                     'Use describe_table to inspect schema; search_objects to find fields',
+                    'Generate HTML mockups: call "html: guardrails" then "html: validate mockup" (use layout_mode=full-width for app UIs)',
+                    'Pinned instructions file: docs/Claude_Guardrails_AutoUse.md (copy into Claude Instructions and click "Always allow")',
                 ])
+            except Exception:
+                pass
+            # Add HTML mockup guidance text from docs/Claude_Guardrails_AutoUse.md (first few lines) if available
+            try:
+                guides_dir = os.path.join(os.path.dirname(script_dir), 'docs')
+                auto_use = os.path.join(guides_dir, 'Claude_Guardrails_AutoUse.md')
+                if os.path.exists(auto_use):
+                    with open(auto_use, 'r', encoding='utf-8') as f:
+                        lines = []
+                        for i, line in enumerate(f):
+                            if i > 20:
+                                break
+                            lines.append(line.rstrip())
+                        result.setdefault('html_mockup_info', "\n".join(lines))
+                        result.setdefault('message', result.get('message', '') + "\nHTML mockups: see html_mockup_info and use the html tools.")
             except Exception:
                 pass
         return result
@@ -1671,6 +1687,9 @@ FRIENDLY_TOOL_ALIASES = {
     "get: column value distribution": "get_column_value_distribution",
     "measure: upsert": "upsert_measure",
     # Visualization mockup tools removed
+    # HTML guardrails
+    "HTML: Guardrails": "help_html_mockup_guardrails",
+    "HTML: Validate mockup": "validate_html_mockup",
 }
 
 # Lightweight handler registry (progressive migration)
@@ -1679,34 +1698,15 @@ _HANDLERS: Dict[str, Handler] = {}
 
 _VIZ_HANDLERS: Dict[str, Handler] = {}
 _VIZ_HTML_HANDLERS: Dict[str, Handler] = {}
+_HTML_GUARD_HANDLERS: Dict[str, Handler] = create_html_guardrail_handlers(connection_state, config)
 
 
 def _get_viz_handlers() -> Dict[str, Handler]:
-    global _VIZ_HANDLERS
-    if not _VIZ_HANDLERS:
-        try:
-            if config.get('features.visualization_tools.enabled', True):
-                _VIZ_HANDLERS = create_viz_tool_handlers(connection_state, config)
-            else:
-                _VIZ_HANDLERS = {}
-        except Exception as e:
-            logger.debug(f"Visualization tools unavailable: {e}")
-            _VIZ_HANDLERS = {}
-    return _VIZ_HANDLERS
+    return {}
 
 
 def _get_viz_html_handlers() -> Dict[str, Handler]:
-    global _VIZ_HTML_HANDLERS
-    if not _VIZ_HTML_HANDLERS:
-        try:
-            if config.get('features.visualization_tools.enabled', True):
-                _VIZ_HTML_HANDLERS = create_viz_html_handlers(connection_state, config)
-            else:
-                _VIZ_HTML_HANDLERS = {}
-        except Exception as e:
-            logger.debug(f"Visualization HTML handlers unavailable: {e}")
-            _VIZ_HTML_HANDLERS = {}
-    return _VIZ_HTML_HANDLERS
+    return {}
 
 def register_handler(tool_name: str, func: Handler) -> None:
     try:
@@ -1781,6 +1781,13 @@ def _dispatch_tool(name: str, arguments: Any) -> dict:
             return ErrorHandler.handle_unexpected_error(name, e)
     # 10) Visualization HTML tools
     handler = _get_viz_html_handlers().get(name)
+    if handler is not None:
+        try:
+            return _attach_port_if_connected(handler(arguments))
+        except Exception as e:
+            return ErrorHandler.handle_unexpected_error(name, e)
+    # 11) HTML guardrail tools
+    handler = (_HTML_GUARD_HANDLERS or {}).get(name)
     if handler is not None:
         try:
             return _attach_port_if_connected(handler(arguments))
@@ -1903,6 +1910,30 @@ async def list_tools() -> List[Tool]:
 
     # Help
     add("help: quickstart guide", "show_quickstart", "Show path to Quickstart guide and an excerpt", {"type": "object", "properties": {}, "required": []})
+
+    # HTML guardrails & validation
+    add(
+        "html: guardrails",
+        "help_html_mockup_guardrails",
+        "Return canonical guardrails and checklist for single-page HTML mockups",
+        {"type": "object", "properties": {}, "required": []}
+    )
+    add(
+        "html: validate mockup",
+        "validate_html_mockup",
+        "Validate and score an HTML mockup against guardrails; return suggestions",
+        {
+            "type": "object",
+            "properties": {
+                "html": {"type": "string"},
+                "expected_library": {"type": "string"},
+                "expected_theme": {"type": "string", "enum": ["dark", "light"]},
+                "layout_mode": {"type": "string", "enum": ["auto", "centered", "full-width"], "default": "auto"},
+                "screenshot_colors": {"type": "array", "items": {"type": "string"}}
+            },
+            "required": ["html"]
+        }
+    )
 
     # Helper: sanitize tool identifier to match ^[a-zA-Z0-9_-]{1,64}$ while preserving readability
     def _sanitize_tool_identifier(name: str) -> str:
