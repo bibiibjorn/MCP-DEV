@@ -76,10 +76,11 @@ try {
     Write-Host "4. Ask Claude: 'Connect to instance 0'" -ForegroundColor White
     Write-Host "5. Ask Claude: 'What tables are in this model?'" -ForegroundColor White
     Write-Host "" 
-    Write-Host "Guardrails for HTML mockups:" -ForegroundColor Yellow
-    Write-Host "- When Claude prompts to use the MCP server, click 'Always allow' so tool calls don't require confirmation every time." -ForegroundColor White
-    Write-Host "- Review enhanced_pbi_mockup_guardrails.md (root) for the canonical mockup guardrails used by the MCP server." -ForegroundColor White
-    Write-Host ""
+Write-Host "Guardrails for HTML mockups:" -ForegroundColor Yellow
+Write-Host "- When Claude prompts to use the MCP server, click 'Always allow' so tool calls don't require confirmation every time." -ForegroundColor White
+Write-Host "- Review guardrails_v6.md (root) for the canonical mockup guardrails used by the MCP server." -ForegroundColor White
+Write-Host "- For mockups, Claude Desktop must call 'html: guardrails' (store guardrail_token) before 'html: validate mockup'. Keep that handshake in your MCP workflow so every visualization respects the guardrails automatically." -ForegroundColor White
+Write-Host ""
 }
 catch {
     Write-Host ""

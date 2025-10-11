@@ -10,27 +10,35 @@ Tools exposed:
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
+import secrets
+import time
 from typing import Any, Dict, List, Optional, Tuple
+
+
+GUARDRAIL_TOKEN_TTL_SECONDS = 15 * 60  # 15 minutes
 
 
 def _read_guardrails_text(base_dir: Optional[str]) -> str:
     """Read the canonical mockup/visualization guardrails.
 
-    Canonical source: enhanced_pbi_mockup_guardrails.md at the repo root.
+    Canonical source: guardrails_v6.md (preferred) or enhanced_pbi_mockup_guardrails.md at the repo root.
     """
     try:
         if base_dir:
+            v6 = os.path.join(base_dir, 'guardrails_v6.md')
+            if os.path.exists(v6):
+                with open(v6, 'r', encoding='utf-8') as f:
+                    return f.read()
             enhanced = os.path.join(base_dir, 'enhanced_pbi_mockup_guardrails.md')
             if os.path.exists(enhanced):
                 with open(enhanced, 'r', encoding='utf-8') as f:
                     return f.read()
     except Exception:
         pass
-    return (
-        "Mockup guardrails not found. Expected enhanced_pbi_mockup_guardrails.md at repo root."
-    )
+    return "Mockup guardrails not found. Expected guardrails_v6.md (or enhanced_pbi_mockup_guardrails.md) at repo root."
 
 
 def _detect_flag(html: str, patterns: List[str]) -> bool:
@@ -298,28 +306,119 @@ def _suggest_improvements(
     return suggestions
 
 
+
+
 def create_html_guardrail_handlers(connection_state, config):
     base_dir = None
     try:
-        # src/.. parent directory
         import inspect
         base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
     except Exception:
         pass
 
-    def help_html_mockup_guardrails(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    state: Dict[str, Any] = {
+        'token': None,
+        'issued_at': 0.0,
+        'sequence': 0,
+        'digest': None,
+        'last_validation_at': 0.0,
+        'guardrails': None,
+    }
+
+    def _refresh_guardrails() -> str:
         text = _read_guardrails_text(base_dir)
+        state['guardrails'] = text
+        state['digest'] = hashlib.sha256(text.encode('utf-8', errors='ignore')).hexdigest()
+        return text
+
+    def _current_guardrails() -> str:
+        cached = state.get('guardrails')
+        if cached is None:
+            return _refresh_guardrails()
+        return cached
+
+    def _snapshot(now: Optional[float] = None) -> Dict[str, Any]:
+        ts = time.time() if now is None else now
+        issued = state.get('issued_at') or 0.0
+        age = ts - issued if issued else None
+        remaining = None if age is None else max(0.0, GUARDRAIL_TOKEN_TTL_SECONDS - age)
+        return {
+            'guardrail_digest_sha256': state.get('digest'),
+            'token_sequence': state.get('sequence'),
+            'token_present': bool(state.get('token')),
+            'token_age_seconds': age,
+            'token_seconds_remaining': remaining,
+            'token_ttl_seconds': GUARDRAIL_TOKEN_TTL_SECONDS,
+            'last_validation_at': state.get('last_validation_at'),
+        }
+
+    def _issue_token(text: str) -> Dict[str, Any]:
+        now = time.time()
+        token = secrets.token_hex(8)
+        seq = (state.get('sequence') or 0) + 1
+        state.update({
+            'token': token,
+            'issued_at': now,
+            'sequence': seq,
+            'guardrails': text,
+            'last_validation_at': 0.0,
+        })
+        return {
+            'token': token,
+            'issued_at': now,
+            'expires_at': now + GUARDRAIL_TOKEN_TTL_SECONDS,
+            'sequence': seq,
+        }
+
+    def _require_token(token: str) -> Optional[Dict[str, Any]]:
+        snapshot = _snapshot()
+        active = state.get('token')
+        trimmed = (token or '').strip()
+        if not active:
+            return {
+                'success': False,
+                'error': 'Guardrails not acknowledged. Call html: guardrails first.',
+                'error_type': 'guardrail_not_acknowledged',
+                'guardrail_state': snapshot,
+            }
+        if not trimmed:
+            return {
+                'success': False,
+                'error': 'guardrail_token is required. Call html: guardrails before validation.',
+                'error_type': 'guardrail_token_missing',
+                'guardrail_state': snapshot,
+            }
+        if trimmed != active:
+            return {
+                'success': False,
+                'error': 'guardrail_token mismatch. Re-run html: guardrails to obtain the latest token.',
+                'error_type': 'guardrail_token_mismatch',
+                'guardrail_state': snapshot,
+            }
+        issued = state.get('issued_at') or 0.0
+        now = time.time()
+        if issued <= 0.0 or (now - issued) > GUARDRAIL_TOKEN_TTL_SECONDS:
+            snapshot = _snapshot(now)
+            return {
+                'success': False,
+                'error': 'guardrail_token expired. Call html: guardrails again to refresh the handshake.',
+                'error_type': 'guardrail_token_expired',
+                'guardrail_state': snapshot,
+            }
+        return None
+
+    def help_html_mockup_guardrails(arguments: Dict[str, Any]) -> Dict[str, Any]:
+        text_value = _refresh_guardrails()
         checklist = [
-            'Call html: guardrails before drafting',
-            'Generate first HTML draft (single file; inline CSS/JS; CDN deps)',
-            'Call html: validate mockup with full HTML (layout_mode as needed)',
-            'Iterate if suggestions/violations returned (1–2 rounds)',
-            'Return final single-file HTML only'
+            'Call html: guardrails, store guardrail_token (expires in 15 minutes)',
+            'Research domain standards and document layout/story decisions',
+            'Generate first HTML draft (single file; inline CSS/JS; CDN dependencies only)',
+            'Call html: validate mockup with guardrail_token; iterate until violations clear',
+            'Deliver final single-file HTML with compliance notes and validation score',
         ]
         screen_width = arguments.get('screen_width')
         screen_height = arguments.get('screen_height')
         if screen_width is None or screen_height is None:
-            # Attempt to auto-detect on this host (best-effort)
             auto_w, auto_h = _detect_os_screen_size()
             if screen_width is None:
                 screen_width = auto_w
@@ -327,14 +426,31 @@ def create_html_guardrail_handlers(connection_state, config):
                 screen_height = auto_h
         detect_ultrawide = bool(arguments.get('detect_ultrawide', True))
         screen_info = _compute_screen_bucket(screen_width, screen_height)
-        # If caller prefers not to detect ultrawide, override flag
         if not detect_ultrawide:
             screen_info['is_ultrawide'] = False
+        issued = _issue_token(text_value)
+        snapshot = _snapshot(issued['issued_at'])
+        snapshot.update({
+            'token_status': 'issued',
+            'guardrail_token_echo': issued['token'],
+        })
         return {
             'success': True,
-            'guardrails': text,
+            'guardrails': text_value,
             'checklist': checklist,
-            'user_screen_info': screen_info
+            'user_screen_info': screen_info,
+            'guardrail_token': issued['token'],
+            'token_expires_in_seconds': GUARDRAIL_TOKEN_TTL_SECONDS,
+            'enforcement': {
+                'guardrail_token': issued['token'],
+                'issued_at': issued['issued_at'],
+                'expires_at': issued['expires_at'],
+                'guardrail_digest_sha256': state.get('digest'),
+                'token_sequence': issued['sequence'],
+                'token_ttl_seconds': GUARDRAIL_TOKEN_TTL_SECONDS,
+            },
+            'guardrail_state': snapshot,
+            'automation_hint': 'Claude Desktop must automatically call html: guardrails (store guardrail_token) before html: validate mockup. Wire this into the MCP workflow so it cannot be skipped.',
         }
 
     def validate_html_mockup(arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -346,7 +462,10 @@ def create_html_guardrail_handlers(connection_state, config):
             layout_mode = 'auto'
         if not isinstance(html, str) or not html.strip():
             return {'success': False, 'error': 'html string is required', 'error_type': 'invalid_input'}
-        # Screen parameters (optional)
+        token = arguments.get('guardrail_token')
+        failure = _require_token(token if isinstance(token, str) else '')
+        if failure:
+            return failure
         screen_width = arguments.get('screen_width')
         screen_height = arguments.get('screen_height')
         if screen_width is None or screen_height is None:
@@ -362,7 +481,6 @@ def create_html_guardrail_handlers(connection_state, config):
 
         validation = _validate_html(html, expected_library, expected_theme, layout_mode, screen_info)
         suggestions = _suggest_improvements(html, expected_library, layout_mode, screen_info)
-        # Library-agnostic; score using core signals
         sig = validation.get('signals', {})
         score = 0
         score += 1 if validation.get('ok') else 0
@@ -370,6 +488,14 @@ def create_html_guardrail_handlers(connection_state, config):
         score += 1 if re.search(r'<h1[^>]*>', html, flags=re.IGNORECASE) else 0
         score += 1 if (sig.get('has_grid') or sig.get('has_flex')) else 0
         score += 1 if sig.get('has_viewport') else 0
+        now = time.time()
+        state['last_validation_at'] = now
+        snapshot = _snapshot(now)
+        snapshot.update({
+            'token_status': 'accepted',
+            'guardrail_token_echo': token,
+        })
+        guardrail_excerpt = "\n".join(_current_guardrails().splitlines()[:40])
         result: Dict[str, Any] = {
             'success': True,
             'ok': validation.get('ok'),
@@ -379,20 +505,19 @@ def create_html_guardrail_handlers(connection_state, config):
             'suggestions': suggestions,
             'layout_mode': layout_mode,
             'profile': 'powerbi',
-            'user_screen_info': screen_info
+            'user_screen_info': screen_info,
+            'guardrails_excerpt': guardrail_excerpt,
+            'guardrail_state': snapshot,
         }
-        # Always apply Power BI style violations by default
         violations: List[str] = []
-        # Single-file and CDN-only deps: flag local/relative imports
         for m in re.finditer(r'<link[^>]+href="([^"]+)"', html, flags=re.IGNORECASE):
             href = m.group(1)
             if not (href.startswith('http://') or href.startswith('https://') or href.startswith('//')):
                 violations.append(f'External stylesheet not CDN-based: {href}')
         for m in re.finditer(r'<script[^>]+src="([^"]+)"', html, flags=re.IGNORECASE):
-            src = m.group(1)
-            if not (src.startswith('http://') or src.startswith('https://') or src.startswith('//')):
-                violations.append(f'External script not CDN-based: {src}')
-        # Storage APIs
+            src_attr = m.group(1)
+            if not (src_attr.startswith('http://') or src_attr.startswith('https://') or src_attr.startswith('//')):
+                violations.append(f'External script not CDN-based: {src_attr}')
         if _detect_flag(html, ['localstorage']):
             violations.append('Uses localStorage (disallowed)')
         if _detect_flag(html, ['sessionstorage']):
@@ -401,12 +526,9 @@ def create_html_guardrail_handlers(connection_state, config):
             violations.append('Uses IndexedDB (disallowed)')
         if _detect_flag(html, ['document.cookie']):
             violations.append('Uses document.cookie (disallowed)')
-        # Large tables without virtualization
         if html.count('<tr') > 120:
             violations.append('Large table (>120 rows) with no virtualization/pagination detected')
-        # Add violations list to result
         result['violations'] = violations
-        # Optional: compare against palette if provided (screenshot_colors)
         try:
             palette = arguments.get('screenshot_colors') or []
             used = []
