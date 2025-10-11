@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="dashboard_base.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <div class="app-shell">
+        {{ navigation }}
+        <div class="dashboard-surface">
+            <header class="header-bar">
+                <div class="header-title">
+                    <h1>{{ heading }}</h1>
+                    <p>{{ subtitle }}</p>
+                </div>
+                <div class="header-actions">
+                    {{ controls }}
+                </div>
+            </header>
+            <section class="dashboard-grid">
+                {{ content }}
+            </section>
+        </div>
+    </div>
+    <script>
+        if (window.lucide && lucide.createIcons) {
+            lucide.createIcons();
+        }
+    </script>
+</body>
+</html>

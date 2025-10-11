@@ -12,6 +12,7 @@ import os
 import time
 import re
 from collections import deque
+from pathlib import Path
 from typing import Any, List, Optional, Callable, Dict
 
 from mcp.server import Server
@@ -53,6 +54,7 @@ from core.connection_state import connection_state
 from server.handlers.relationships_graph import export_relationship_graph as _export_relationship_graph
 from server.handlers.full_analysis import run_full_analysis as _run_full_analysis
 from server.handlers.html_guardrails import create_html_guardrail_handlers
+from server.handlers.mockup_library import create_mockup_library_handlers
 from server.utils.m_practices import scan_m_practices as _scan_m_practices
 
 BPA_AVAILABLE = False
@@ -1725,10 +1727,11 @@ _HANDLERS: Dict[str, Handler] = {}
 _VIZ_HANDLERS: Dict[str, Handler] = {}
 _VIZ_HTML_HANDLERS: Dict[str, Handler] = {}
 _HTML_GUARD_HANDLERS: Dict[str, Handler] = create_html_guardrail_handlers(connection_state, config)
+_MOCKUP_LIBRARY_HANDLERS: Dict[str, Handler] = create_mockup_library_handlers(Path(parent_dir))
 
 
 def _get_viz_handlers() -> Dict[str, Handler]:
-    return {}
+    return _MOCKUP_LIBRARY_HANDLERS
 
 
 def _get_viz_html_handlers() -> Dict[str, Handler]:
@@ -2012,6 +2015,48 @@ async def list_tools() -> List[Tool]:
             },
             "required": ["html", "guardrail_token"]
         }
+    )
+
+    add(
+        "mockup: list components",
+        "mockup_list_components",
+        "List component metadata from the mockup library (optional category filter).",
+        {
+            "type": "object",
+            "properties": {
+                "category": {"type": "string", "description": "Optional metadata category id (e.g., kpi_cards)."}
+            },
+            "required": [],
+        },
+    )
+    add(
+        "mockup: generate html",
+        "mockup_generate_html",
+        "Compose dashboard HTML by stitching component snippets into the base template.",
+        {
+            "type": "object",
+            "properties": {
+                "components": {"type": "array", "items": {"type": "string"}},
+                "title": {"type": "string"},
+                "heading": {"type": "string"},
+                "subtitle": {"type": "string"},
+            },
+            "required": ["components"],
+        },
+    )
+    add(
+        "mockup: analyze screenshots",
+        "mockup_analyze_screenshots",
+        "Analyze screenshots in assets/screenshots/incoming, append findings to the log, and surface suggestions.",
+        {
+            "type": "object",
+            "properties": {
+                "folder": {"type": "string", "description": "Optional folder path relative to project root."},
+                "log_path": {"type": "string", "description": "Optional log file path (defaults to docs/screenshot_analysis_log.md)."},
+                "auto_update_library": {"type": "boolean", "default": False, "description": "Generate new component variants and update metadata automatically."},
+            },
+            "required": [],
+        },
     )
 
     # Helper: sanitize tool identifier to match ^[a-zA-Z0-9_-]{1,64}$ while preserving readability

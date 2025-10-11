@@ -1,0 +1,647 @@
+{
+  "version": "1.0",
+  "updated_at": "2025-10-11T19:34:30.688383Z",
+  "icon_library": "lucide",
+  "base_template": "templates/base/dashboard_base.html",
+  "base_stylesheet": "templates/base/dashboard_base.css",
+  "component_groups": [
+    {
+      "id": "kpi_cards",
+      "name": "KPI Cards",
+      "description": "Reusable cards for key business metrics with optional trend indicators.",
+      "components": [
+        "kpi_standard",
+        "kpi_nested",
+        "kpi_compact",
+        "kpi_sparkline",
+        "kpi_rating"
+      ]
+    },
+    {
+      "id": "data_tables",
+      "name": "Data Tables",
+      "description": "Table structures covering hierarchical, paged, and comparison views.",
+      "components": [
+        "table_basic",
+        "table_hierarchical",
+        "table_compact",
+        "table_kpi_matrix"
+      ]
+    },
+    {
+      "id": "chart_visuals",
+      "name": "Chart Visuals",
+      "description": "High signal charts for executive dashboards.",
+      "components": [
+        "chart_column_combo",
+        "chart_line_trend",
+        "chart_donut_segment",
+        "chart_horizontal_bars"
+      ]
+    },
+    {
+      "id": "interactive_controls",
+      "name": "Interactive Controls",
+      "description": "Filter controls and state toggles that drive dashboard interactions.",
+      "components": [
+        "control_date_range",
+        "control_button_segmented",
+        "control_filter_pills",
+        "control_toggle_group",
+        "control_scenario_switch"
+      ]
+    },
+    {
+      "id": "layout_patterns",
+      "name": "Layout Patterns",
+      "description": "Grid primitives that snap components into balanced compositions.",
+      "components": [
+        "layout_kpi_strip",
+        "layout_golden_split",
+        "layout_sidebar_main",
+        "layout_auto_grid"
+      ]
+    },
+    {
+      "id": "navigation",
+      "name": "Navigation Systems",
+      "description": "Global navigation elements for application style dashboards.",
+      "components": [
+        "nav_dark_sidebar"
+      ]
+    },
+    {
+      "id": "status_indicators",
+      "name": "Status Indicators",
+      "description": "Micro-visuals to call attention to changes, risk, and progress.",
+      "components": [
+        "status_delta_chip",
+        "status_stacked_bar",
+        "status_progress",
+        "status_badge_set"
+      ]
+    },
+    {
+      "id": "specialized",
+      "name": "Specialized Components",
+      "description": "Advanced visuals reserved for niche dashboard patterns.",
+      "components": [
+        "special_heatmap_calendar",
+        "special_balance_waterfall"
+      ]
+    }
+  ],
+  "components": [
+    {
+      "id": "kpi_standard",
+      "name": "KPI Card - Standard",
+      "category": "kpi_cards",
+      "template": "templates/components/kpi_cards.html#standard",
+      "description": "4x3 card with headline metric, delta badge, and footnote.",
+      "data_shape": "single_value_with_delta",
+      "supports_dark_mode": true,
+      "recommended_span": 3,
+      "css_tokens": [
+        "surface-card",
+        "metric-heading",
+        "delta-positive"
+      ],
+      "guardrails": [
+        "Use 8px spacing increments",
+        "Always include aria-label on info buttons"
+      ]
+    },
+    {
+      "id": "kpi_nested",
+      "name": "KPI Card - Nested",
+      "category": "kpi_cards",
+      "template": "templates/components/kpi_cards.html#nested",
+      "description": "Primary metric with three inline sub-metrics and sparkline.",
+      "data_shape": "metric_with_breakout",
+      "supports_dark_mode": true,
+      "recommended_span": 3,
+      "css_tokens": [
+        "surface-card",
+        "metric-sparkline",
+        "micro-grid"
+      ],
+      "guardrails": [
+        "Keep sub-metrics to three items max",
+        "Sparkline should reflect delta direction"
+      ]
+    },
+    {
+      "id": "kpi_compact",
+      "name": "KPI Card - Compact Grid",
+      "category": "kpi_cards",
+      "template": "templates/components/kpi_cards.html#compact",
+      "description": "Compact KPI variant for dense layouts with inline icon.",
+      "data_shape": "single_value_no_delta",
+      "supports_dark_mode": true,
+      "recommended_span": 2,
+      "css_tokens": [
+        "surface-subtle",
+        "metric-compact",
+        "icon-circle"
+      ],
+      "guardrails": [
+        "Use only for supporting metrics",
+        "Icon color should match semantic tone"
+      ]
+    },
+    {
+      "id": "kpi_sparkline",
+      "name": "KPI Card - Sparkline",
+      "category": "kpi_cards",
+      "template": "templates/components/kpi_cards.html#sparkline",
+      "description": "Tall KPI card with inline sparkline representing trend history.",
+      "data_shape": "metric_with_timeseries",
+      "supports_dark_mode": true,
+      "recommended_span": 3,
+      "css_tokens": [
+        "surface-card",
+        "sparkline-track",
+        "sparkline-fill"
+      ],
+      "guardrails": [
+        "Supply 12 data points minimum for sparkline",
+        "Annotate last value and delta explicitly"
+      ]
+    },
+    {
+      "id": "kpi_rating",
+      "name": "KPI Card - Rating",
+      "category": "kpi_cards",
+      "template": "templates/components/kpi_cards.html#rating",
+      "description": "KPI with qualitative rating gauge and callouts.",
+      "data_shape": "metric_with_rating",
+      "supports_dark_mode": true,
+      "recommended_span": 3,
+      "css_tokens": [
+        "surface-card",
+        "rating-badge",
+        "status-chip"
+      ],
+      "guardrails": [
+        "Rating badge must include aria-label",
+        "Color grade should map to status tokens"
+      ]
+    },
+    {
+      "id": "table_basic",
+      "name": "Data Table - Basic",
+      "category": "data_tables",
+      "template": "templates/components/data_tables.html#basic",
+      "description": "Simple striped table with sortable headers and zebra rows.",
+      "data_shape": "tabular_flat",
+      "supports_dark_mode": true,
+      "recommended_span": 6,
+      "css_tokens": [
+        "table-shell",
+        "header-sortable",
+        "row-muted"
+      ],
+      "guardrails": [
+        "Wrap values using text-ellipsis utility",
+        "Use aria-sort on active column"
+      ]
+    },
+    {
+      "id": "table_hierarchical",
+      "name": "Data Table - Hierarchical",
+      "category": "data_tables",
+      "template": "templates/components/data_tables.html#hierarchical",
+      "description": "Expandable rows to drill into sub segments.",
+      "data_shape": "hierarchical_flattened",
+      "supports_dark_mode": true,
+      "recommended_span": 7,
+      "css_tokens": [
+        "table-shell",
+        "row-expandable",
+        "indent-level"
+      ],
+      "guardrails": [
+        "Only two levels of hierarchy supported",
+        "Provide aria-expanded for toggle buttons"
+      ]
+    },
+    {
+      "id": "table_compact",
+      "name": "Data Table - Compact",
+      "category": "data_tables",
+      "template": "templates/components/data_tables.html#compact",
+      "description": "Dense data table optimized for side panels and detail views.",
+      "data_shape": "tabular_flat",
+      "supports_dark_mode": true,
+      "recommended_span": 4,
+      "css_tokens": [
+        "table-shell",
+        "compact-cell",
+        "text-xs"
+      ],
+      "guardrails": [
+        "Keep column count under six",
+        "Use title tooltips for truncated labels"
+      ]
+    },
+    {
+      "id": "table_kpi_matrix",
+      "name": "Data Table - KPI Matrix",
+      "category": "data_tables",
+      "template": "templates/components/data_tables.html#kpi-matrix",
+      "description": "Matrix with inline bars and delta badges for quick scanning.",
+      "data_shape": "tabular_comparison",
+      "supports_dark_mode": true,
+      "recommended_span": 7,
+      "css_tokens": [
+        "matrix-grid",
+        "inline-bar",
+        "delta-chip"
+      ],
+      "guardrails": [
+        "Normalize inline bars within the row context",
+        "Provide aria-label for status indicators"
+      ]
+    },
+    {
+      "id": "chart_column_combo",
+      "name": "Chart - Column Combo",
+      "category": "chart_visuals",
+      "template": "templates/components/charts.html#column-combo",
+      "description": "Dual axis column and line combo for actual vs target.",
+      "data_shape": "timeseries_dual",
+      "supports_dark_mode": true,
+      "recommended_span": 6,
+      "css_tokens": [
+        "chart-canvas",
+        "axis-label",
+        "legend-pill"
+      ],
+      "guardrails": [
+        "Ensure line uses contrast color against columns",
+        "Label last point inline for clarity"
+      ]
+    },
+    {
+      "id": "chart_line_trend",
+      "name": "Chart - Line Trend",
+      "category": "chart_visuals",
+      "template": "templates/components/charts.html#line-trend",
+      "description": "Smooth line chart with highlighted last value and area fill.",
+      "data_shape": "timeseries_single",
+      "supports_dark_mode": true,
+      "recommended_span": 6,
+      "css_tokens": [
+        "chart-canvas",
+        "trend-line",
+        "trend-fill"
+      ],
+      "guardrails": [
+        "Provide date axis ticks every four points",
+        "Annotate significant inflection points"
+      ]
+    },
+    {
+      "id": "chart_donut_segment",
+      "name": "Chart - Donut Segment",
+      "category": "chart_visuals",
+      "template": "templates/components/charts.html#donut-segment",
+      "description": "Donut chart with center summary and legend.",
+      "data_shape": "categorical_percentage",
+      "supports_dark_mode": true,
+      "recommended_span": 4,
+      "css_tokens": [
+        "chart-canvas",
+        "donut-slice",
+        "legend-pill"
+      ],
+      "guardrails": [
+        "Limit categories to six",
+        "Center summary must show total or primary KPI"
+      ]
+    },
+    {
+      "id": "chart_horizontal_bars",
+      "name": "Chart - Horizontal Bars",
+      "category": "chart_visuals",
+      "template": "templates/components/charts.html#horizontal-bars",
+      "description": "Horizontal bar chart with inline value labels and sparklines.",
+      "data_shape": "categorical_comparison",
+      "supports_dark_mode": true,
+      "recommended_span": 5,
+      "css_tokens": [
+        "bar-track",
+        "bar-fill",
+        "value-label"
+      ],
+      "guardrails": [
+        "Use descending order by default",
+        "Cap at ten categories per chart"
+      ]
+    },
+    {
+      "id": "control_date_range",
+      "name": "Control - Date Range",
+      "category": "interactive_controls",
+      "template": "templates/components/controls.html#date-range",
+      "description": "Date range selector with preset chips and calendar button.",
+      "data_shape": "date_range",
+      "supports_dark_mode": true,
+      "recommended_span": 3,
+      "css_tokens": [
+        "control-pill",
+        "control-active",
+        "icon-button"
+      ],
+      "guardrails": [
+        "Preset chips map to query filters",
+        "Calendar button must include aria-label"
+      ]
+    },
+    {
+      "id": "control_button_segmented",
+      "name": "Control - Segmented Buttons",
+      "category": "interactive_controls",
+      "template": "templates/components/controls.html#button-segmented",
+      "description": "Segmented button control for view switching.",
+      "data_shape": "enum_selection",
+      "supports_dark_mode": true,
+      "recommended_span": 3,
+      "css_tokens": [
+        "control-pill",
+        "control-muted",
+        "control-active"
+      ],
+      "guardrails": [
+        "Active state must be visually reinforced",
+        "Icons optional but require aria-label"
+      ]
+    },
+    {
+      "id": "control_filter_pills",
+      "name": "Control - Filter Pills",
+      "category": "interactive_controls",
+      "template": "templates/components/controls.html#filter-pills",
+      "description": "Floating filter pills with removable tags.",
+      "data_shape": "facet_selection",
+      "supports_dark_mode": true,
+      "recommended_span": 4,
+      "css_tokens": [
+        "pill-filter",
+        "pill-active",
+        "pill-dismiss"
+      ],
+      "guardrails": [
+        "Provide aria-pressed state on toggles",
+        "Dismiss buttons should include aria-label"
+      ]
+    },
+    {
+      "id": "control_toggle_group",
+      "name": "Control - Toggle Group",
+      "category": "interactive_controls",
+      "template": "templates/components/controls.html#toggle-group",
+      "description": "Toggle switches for binary states.",
+      "data_shape": "binary_options",
+      "supports_dark_mode": true,
+      "recommended_span": 3,
+      "css_tokens": [
+        "toggle-track",
+        "toggle-thumb",
+        "icon-label"
+      ],
+      "guardrails": [
+        "Label toggles clearly with aria-labelledby",
+        "Use semantic color for on state"
+      ]
+    },
+    {
+      "id": "control_scenario_switch",
+      "name": "Control - Scenario Switcher",
+      "category": "interactive_controls",
+      "template": "templates/components/controls.html#scenario-switch",
+      "description": "Scenario selector mixing dropdown and inline pills.",
+      "data_shape": "scenario_selection",
+      "supports_dark_mode": true,
+      "recommended_span": 4,
+      "css_tokens": [
+        "scenario-label",
+        "scenario-pill",
+        "scenario-dropdown"
+      ],
+      "guardrails": [
+        "Highlight default scenario on load",
+        "Dropdown should include aria-expanded"
+      ]
+    },
+    {
+      "id": "layout_kpi_strip",
+      "name": "Layout - KPI Strip",
+      "category": "layout_patterns",
+      "template": "templates/components/layouts.html#kpi-strip",
+      "description": "Twelve column strip optimized for four KPI cards.",
+      "data_shape": "layout",
+      "supports_dark_mode": true,
+      "recommended_span": 12,
+      "css_tokens": [
+        "grid-12",
+        "span-3",
+        "gap-20"
+      ],
+      "guardrails": [
+        "Use for hero metrics at top of dashboard",
+        "Enforce consistent card heights"
+      ]
+    },
+    {
+      "id": "layout_golden_split",
+      "name": "Layout - Golden Split",
+      "category": "layout_patterns",
+      "template": "templates/components/layouts.html#golden-split",
+      "description": "Two column layout at 66/34 split with responsive stack.",
+      "data_shape": "layout",
+      "supports_dark_mode": true,
+      "recommended_span": 12,
+      "css_tokens": [
+        "grid-12",
+        "span-8",
+        "span-4"
+      ],
+      "guardrails": [
+        "Use for chart plus supporting list",
+        "Stacks on tablets at breakpoint 1024px"
+      ]
+    },
+    {
+      "id": "layout_sidebar_main",
+      "name": "Layout - Sidebar Main",
+      "category": "layout_patterns",
+      "template": "templates/components/layouts.html#sidebar-main",
+      "description": "Pinned sidebar at 280px with responsive collapse.",
+      "data_shape": "layout",
+      "supports_dark_mode": true,
+      "recommended_span": 12,
+      "css_tokens": [
+        "app-shell",
+        "sidebar-fixed",
+        "main-fluid"
+      ],
+      "guardrails": [
+        "Collapse sidebar below 1280px",
+        "Provide aria-label on toggle button"
+      ]
+    },
+    {
+      "id": "layout_auto_grid",
+      "name": "Layout - Auto Grid",
+      "category": "layout_patterns",
+      "template": "templates/components/layouts.html#auto-grid",
+      "description": "Auto-fit grid using minmax columns for modular layouts.",
+      "data_shape": "layout",
+      "supports_dark_mode": true,
+      "recommended_span": 12,
+      "css_tokens": [
+        "auto-grid",
+        "gap-24",
+        "card-span"
+      ],
+      "guardrails": [
+        "Define min column width at 320px",
+        "Use card-span utilities for emphasis"
+      ]
+    },
+    {
+      "id": "nav_dark_sidebar",
+      "name": "Navigation - Dark Sidebar",
+      "category": "navigation",
+      "template": "templates/components/navigation.html#dark-sidebar",
+      "description": "Left navigation with active state, profile summary, and quick filters.",
+      "data_shape": "navigation",
+      "supports_dark_mode": true,
+      "recommended_span": 3,
+      "css_tokens": [
+        "sidebar-dark",
+        "nav-item",
+        "nav-active"
+      ],
+      "guardrails": [
+        "Active and hover states must meet contrast",
+        "Sidebar collapse button must be keyboard accessible"
+      ]
+    },
+    {
+      "id": "status_delta_chip",
+      "name": "Status - Delta Chip",
+      "category": "status_indicators",
+      "template": "templates/components/status.html#delta-chip",
+      "description": "Compact delta indicator with icon and percentage.",
+      "data_shape": "delta_value",
+      "supports_dark_mode": true,
+      "recommended_span": 1,
+      "css_tokens": [
+        "delta-chip",
+        "delta-positive",
+        "delta-negative"
+      ],
+      "guardrails": [
+        "Color should match delta polarity",
+        "Include aria-label describing change"
+      ]
+    },
+    {
+      "id": "status_stacked_bar",
+      "name": "Status - Stacked Bar",
+      "category": "status_indicators",
+      "template": "templates/components/status.html#stacked-bar",
+      "description": "Inline stacked bar for contribution breakdown.",
+      "data_shape": "distribution",
+      "supports_dark_mode": true,
+      "recommended_span": 2,
+      "css_tokens": [
+        "stacked-track",
+        "stacked-segment",
+        "stacked-label"
+      ],
+      "guardrails": [
+        "Limit segments to five categories",
+        "Provide aria-valuenow and aria-valuetext"
+      ]
+    },
+    {
+      "id": "status_progress",
+      "name": "Status - Progress Ring",
+      "category": "status_indicators",
+      "template": "templates/components/status.html#progress-ring",
+      "description": "Radial progress indicator with center label.",
+      "data_shape": "percentage",
+      "supports_dark_mode": true,
+      "recommended_span": 2,
+      "css_tokens": [
+        "progress-ring",
+        "ring-track",
+        "ring-fill"
+      ],
+      "guardrails": [
+        "Annotate completion percentage in text",
+        "Use aria-valuenow for assistive tech"
+      ]
+    },
+    {
+      "id": "status_badge_set",
+      "name": "Status - Badge Set",
+      "category": "status_indicators",
+      "template": "templates/components/status.html#badge-set",
+      "description": "Badge set showing status counts (good, warning, risk).",
+      "data_shape": "status_counts",
+      "supports_dark_mode": true,
+      "recommended_span": 2,
+      "css_tokens": [
+        "status-badge",
+        "status-good",
+        "status-risk"
+      ],
+      "guardrails": [
+        "Provide explicit label for each badge",
+        "Use consistent ordering (positive to negative)"
+      ]
+    },
+    {
+      "id": "special_heatmap_calendar",
+      "name": "Special - Heatmap Calendar",
+      "category": "specialized",
+      "template": "templates/components/special.html#heatmap-calendar",
+      "description": "Calendar heatmap for day level performance or activity.",
+      "data_shape": "calendar_heatmap",
+      "supports_dark_mode": true,
+      "recommended_span": 6,
+      "css_tokens": [
+        "heatmap-grid",
+        "heatmap-cell",
+        "legend-gradient"
+      ],
+      "guardrails": [
+        "Always include legend with unit label",
+        "Color scale should be sequential"
+      ]
+    },
+    {
+      "id": "special_balance_waterfall",
+      "name": "Special - Balance Waterfall",
+      "category": "specialized",
+      "template": "templates/components/special.html#balance-waterfall",
+      "description": "Waterfall chart for reconciliations or financial bridges.",
+      "data_shape": "waterfall",
+      "supports_dark_mode": true,
+      "recommended_span": 6,
+      "css_tokens": [
+        "waterfall-track",
+        "waterfall-positive",
+        "waterfall-negative"
+      ],
+      "guardrails": [
+        "Sort contributions chronologically",
+        "Call out starting and ending balances"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+
+```json
+{
+  "version": "1.0",
+  "last_updated": "2025-01-11",
+  "total_components": 29,
+  "categories": {
+    "kpi_cards": {
+      "count": 5,
+      "components": {
+        "kpi-standard": {
+          "id": "kpi-standard",
+          "name": "Standard KPI Card",
+          "frequency": "very_high",
+          "complexity": "low",
+          "use_cases": ["executive_summary", "metrics_overview"],
+          "required_data": ["label", "value", "delta", "sparkline_data"],
+          "theme_support": ["light", "dark"],
+          "responsive": true,
+          "accessibility": {
+            "aria_labels": true,
+            "keyboard_nav": false
+          },
+          "source_screenshots": [1, 8],
+          "template_file": "templates/components/kpi_cards.html",
+          "section_ref": "1.1",
+          "tags": ["metric", "trend", "comparison", "sparkline"]
+        },
+        "kpi-nested": {
+          "id": "kpi-nested",
+          "name": "Nested KPI Card",
+          "frequency": "high",
+          "complexity": "medium",
+          "use_cases": ["financial_analysis", "detailed_metrics"],
+          "required_data": ["main_value", "main_label", "sub_metrics[]"],
+          "theme_support": ["light", "dark"],
+          "responsive": true,
+          "source_screenshots": [2],
+          "section_ref": "1.2",
+          "tags": ["metric", "breakdown", "financial"]
+        }
+        // ... all other components
+      }
+    },
+    "tables": { /* ... */ },
+    "charts": { /* ... */ },
+    "controls": { /* ... */ },
+    "layouts": { /* ... */ },
+    "navigation": { /* ... */ },
+    "indicators": { /* ... */ },
+    "specialized": { /* ... */ }
+  },
+  "screenshot_analysis_history": [
+    {
+      "screenshot_id": 1,
+      "name": "Product Margin Analysis",
+      "date_analyzed": "2025-01-11",
+      "components_extracted": [
+        "kpi-standard",
+        "hierarchical-table",
+        "donut-chart",
+        "horizontal-bars",
+        "button-group"
+      ],
+      "new_patterns": [
+        "three-column-bottom-grid"
+      ]
+    }
+    // ... more screenshots
+  ]
+}
+```
+
+---
