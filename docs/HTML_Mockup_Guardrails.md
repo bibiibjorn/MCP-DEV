@@ -1,55 +1,7 @@
-# HTML Mockup Guardrails for Claude (MCP)
+<!-- Deprecated pointer: The canonical mockup/visualization guardrails live in enhanced_pbi_mockup_guardrails.md at the repository root. -->
+# HTML Mockup Guardrails (Deprecated)
 
-Purpose: When you ask Claude (or another MCP-enabled assistant) to generate a visualization or dashboard mockup, keep the rendering purely client-side (no server tools) but consistent, readable, and single-page. Use these constraints in your prompt and as acceptance criteria.
-
-## Constraints (what Claude should follow)
-
-- Single page only, designed to fit a 1920x1080 screen without vertical scroll when possible.
-- Layout: centered max-width (1200–1400px) OR full-width when the application style or screenshot calls for it.
-- Use only client-side HTML/CSS/JS. Prefer CDN links when libraries are used.
-- No external images unless provided; inline small SVGs are fine.
-- If a screenshot is provided, match layout structure (grid or flex sections, card arrangement, chart placement) and style (dark/light, spacing) as closely as feasible.
-- Avoid heavy frameworks; Tailwind CSS via CDN is optional. Your own stylesheet or inline CSS is fine.
-- Charts/components are optional and library-agnostic. You may use any lightweight client-side approach (or none). Include simple cards/tables if charts aren't necessary.
-- Accessibility: sufficient color contrast, semantic tags, alt text where relevant.
-
-## Minimal Page Shell
-
-- Head includes meta viewport, CSS baseline (Tailwind CDN or a stylesheet), and chart library (if used)
-- Body uses a structured layout via grid or flex; choose max-width container or full-width based on context
-- Use data- attributes or embedded JSON for specs where helpful
-
-### Fit the Panel (Responsive Container)
-
-Use a centered container that adapts to screen width and embedding panels:
-
-```html
-<div class="main-container">
-  <!-- content -->
-  ...
-</div>
-<style>
-.main-container { margin: 0 auto; padding: 16px; max-width: 1400px; }
-@media (min-width: 1440px) { .main-container { max-width: 1400px; } }
-@media (min-width: 1920px) { .main-container { max-width: 1800px; } }
-@media (min-width: 2560px) { .main-container { max-width: 2400px; } }
-@media (min-width: 3440px) { .main-container { max-width: 3200px; } }
-</style>
-<script>
-function optimizeLayout() {
-  const w = window.innerWidth || document.documentElement.clientWidth;
-  const container = document.querySelector('.main-container');
-  if (!container) return;
-  let max = 1200;
-  if (w >= 3440) max = 3200; else if (w >= 2560) max = 2400; else if (w >= 1920) max = 1800; else if (w >= 1440) max = 1400; else max = 1200;
-  // Clamp to 95% of available space to avoid edge overflow in side panels
-  const clamp = Math.floor(Math.min(max, w * 0.95));
-  container.style.maxWidth = clamp + 'px';
-}
-optimizeLayout();
-window.addEventListener('resize', optimizeLayout);
-</script>
-```
+Please use `enhanced_pbi_mockup_guardrails.md` as the single source of truth for mockup rules, SVG chart requirements, color palette, and responsive container guidance. This file is retained only to avoid breaking old links.
 
 ## Example Template Hints
 

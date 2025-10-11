@@ -78,7 +78,7 @@ try {
     Write-Host "" 
     Write-Host "Guardrails for HTML mockups:" -ForegroundColor Yellow
     Write-Host "- When Claude prompts to use the MCP server, click 'Always allow' so tool calls don't require confirmation every time." -ForegroundColor White
-    Write-Host "- Pin the guardrails workflow from docs/Claude_Guardrails_AutoUse.md into Claude's instructions to auto-use validation." -ForegroundColor White
+    Write-Host "- Review enhanced_pbi_mockup_guardrails.md (root) for the canonical mockup guardrails used by the MCP server." -ForegroundColor White
     Write-Host ""
 }
 catch {

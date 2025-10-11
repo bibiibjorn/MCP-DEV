@@ -716,16 +716,16 @@ def _handle_connection_and_instances(name: str, arguments: Any) -> Optional[dict
                     'Try: get_model_summary, analyze_measure_dependencies, find_unused_objects',
                     'Use describe_table to inspect schema; search_objects to find fields',
                     'Generate HTML mockups: call "html: guardrails" then "html: validate mockup" (use layout_mode=full-width for app UIs)',
-                    'Pinned instructions file: docs/Claude_Guardrails_AutoUse.md (copy into Claude Instructions and click "Always allow")',
+                    'Mockup guardrails: enhanced_pbi_mockup_guardrails.md is the canonical guide',
                 ])
             except Exception:
                 pass
-            # Add HTML mockup guidance text from docs/Claude_Guardrails_AutoUse.md (first few lines) if available
+            # Add HTML mockup guidance text from enhanced_pbi_mockup_guardrails.md (first few lines) if available
             try:
-                guides_dir = os.path.join(os.path.dirname(script_dir), 'docs')
-                auto_use = os.path.join(guides_dir, 'Claude_Guardrails_AutoUse.md')
-                if os.path.exists(auto_use):
-                    with open(auto_use, 'r', encoding='utf-8') as f:
+                root_dir = os.path.dirname(script_dir)
+                enhanced = os.path.join(root_dir, 'enhanced_pbi_mockup_guardrails.md')
+                if os.path.exists(enhanced):
+                    with open(enhanced, 'r', encoding='utf-8') as f:
                         lines = []
                         for i, line in enumerate(f):
                             if i > 20:

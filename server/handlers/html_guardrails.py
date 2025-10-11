@@ -16,18 +16,20 @@ from typing import Any, Dict, List, Optional, Tuple
 
 
 def _read_guardrails_text(base_dir: Optional[str]) -> str:
-    # Use only the canonical doc: docs/Claude_Guardrails_AutoUse.md
+    """Read the canonical mockup/visualization guardrails.
+
+    Canonical source: enhanced_pbi_mockup_guardrails.md at the repo root.
+    """
     try:
         if base_dir:
-            path = os.path.join(base_dir, 'docs', 'Claude_Guardrails_AutoUse.md')
-            if os.path.exists(path):
-                with open(path, 'r', encoding='utf-8') as f:
+            enhanced = os.path.join(base_dir, 'enhanced_pbi_mockup_guardrails.md')
+            if os.path.exists(enhanced):
+                with open(enhanced, 'r', encoding='utf-8') as f:
                     return f.read()
     except Exception:
         pass
-    # Fallback concise content
     return (
-        "Pinned guardrails not found. Ensure docs/Claude_Guardrails_AutoUse.md exists."
+        "Mockup guardrails not found. Expected enhanced_pbi_mockup_guardrails.md at repo root."
     )
 
 
