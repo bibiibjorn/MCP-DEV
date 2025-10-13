@@ -1,6 +1,6 @@
 # MCP-PowerBi-Finvision Server
 
-[![Version](https://img.shields.io/badge/version-2.4.0-blue.svg)](https://github.com/yourusername/MCP-PowerBi-Finvision)
+[![Version](https://img.shields.io/badge/version-2.4.0-blue.svg)](https://github.com/bibiibjorn/MCP-PowerBi-Finvision)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey.svg)](https://www.microsoft.com/windows)

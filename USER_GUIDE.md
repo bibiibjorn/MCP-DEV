@@ -194,7 +194,7 @@ The `setup.ps1` script handles this automatically!
 
 - **Full documentation:** [README.md](README.md)
 - **Technical details:** [INSTALL.md](INSTALL.md)
-- **Report issues:** [GitHub Issues](https://github.com/yourusername/MCP-PowerBi-Finvision/issues)
+- **Report issues:** [GitHub Issues](https://github.com/bibiibjorn/MCP-PowerBi-Finvision/issues)
 
 ---
 
