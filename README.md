@@ -1,8 +1,15 @@
-# MCP-PowerBi-Finvision Server (v2.4)
+# MCP-PowerBi-Finvision Server
 
-Analyze your Power BI Desktop model locally with an MCP server. Browse schema, inspect DAX and M, run SE/FE performance checks, export docs, and more — just by asking your AI client.
+[![Version](https://img.shields.io/badge/version-2.4.0-blue.svg)](https://github.com/yourusername/MCP-PowerBi-Finvision)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey.svg)](https://www.microsoft.com/windows)
 
-• Status: Production-ready with security hardening  • OS: Windows 10/11  • Last updated: 2025-10-10
+A production-ready Model Context Protocol (MCP) server for Power BI Desktop. Analyze your models locally with AI assistance - browse schema, inspect DAX and M code, run performance checks, export documentation, and more.
+
+**Status:** Production-ready with security hardening
+**Platform:** Windows 10/11 (64-bit)
+**Last updated:** 2025-10-13
 
 ## Who is this for?
 
@@ -34,31 +41,72 @@ Analyze your Power BI Desktop model locally with an MCP server. Browse schema, i
 - .NET Framework 4.7.2+
 - An MCP-capable client: Claude Desktop or ChatGPT Desktop (with MCP)
 
-## Quick start (Windows)
+## Quick Start
 
-1. Place this folder somewhere stable, e.g. `C:\Tools\pbixray-mcp-server`.
+### One-Click Installation ⚡
 
-2. Create a Python virtual environment and install requirements.
+1. **Extract to a stable location** (avoid paths with spaces)
 
-  - Open Windows PowerShell in the project folder and run the steps from INSTALL.md (section "Set up Python (venv)").
+   ```text
+   Recommended: C:\Tools\MCP-PowerBi-Finvision
+   ```
 
-3. Optional: install the .NET assemblies for advanced features:
+2. **Run the automated setup** - Right-click in the folder, select "Open PowerShell here":
 
-  ```powershell
-  cd lib/dotnet
-  ./install.ps1
-  ```
+   ```powershell
+   .\setup.ps1
+   ```
 
-4. Open Power BI Desktop with a .pbix loaded and wait ~10 seconds.
+   The script automatically:
+   - ✅ Checks Python installation
+   - ✅ Creates virtual environment
+   - ✅ Installs all dependencies
+   - ✅ Optionally installs .NET assemblies
+   - ✅ Configures your AI client
 
-5. Connect your AI client:
+**Done!** The venv is created fresh on your machine with all dependencies.
 
-  - Claude Desktop (recommended): run `./scripts/install_to_claude.ps1`, then fully restart Claude.
-  - ChatGPT Desktop: use the manual Developer JSON steps in INSTALL.md (no script required).
+### Manual Installation (Alternative)
 
-6. In your AI client, try: "Detect Power BI Desktop instances" → "Connect to instance 0" → "List tables".
+<details>
+<summary>Click here if you prefer manual control</summary>
 
-You're ready to explore your model.
+1. **Set up Python environment:**
+
+   ```powershell
+   py -3 -m venv venv
+   ./venv/Scripts/Activate.ps1
+   python -m pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+
+2. **Install .NET assemblies** (Optional):
+
+   ```powershell
+   cd lib/dotnet
+   ./install.ps1
+   ```
+
+3. **Configure AI client:**
+
+   ```powershell
+   ./scripts/install_to_claude.ps1
+   ```
+
+   For ChatGPT Desktop, see [INSTALL.md](INSTALL.md)
+
+</details>
+
+### First Use
+
+1. Open Power BI Desktop with a .pbix file loaded
+2. Wait ~10-15 seconds for the model to fully load
+3. In your AI client, ask:
+   - "Detect Power BI Desktop instances"
+   - "Connect to instance 0"
+   - "List tables"
+
+**You're ready to analyze your model!**
 
 ## Common things to ask
 
@@ -77,21 +125,19 @@ You're ready to explore your model.
 
 - propose_analysis: returns a small menu with fast vs normal options when a user asks to "analyze the model".
 
-## Install and manage
+## Documentation
 
-- Full install/update/uninstall steps: see INSTALL.md
-  - Scripted install (Claude)
-  - Manual install for Claude and ChatGPT (Developer JSON)
-- Script catalog and recommendations: see docs/Scripts.md
+- **[USER_GUIDE.md](USER_GUIDE.md)** - Simple installation guide with automated setup script ⭐ Start here!
+- **[INSTALL.md](INSTALL.md)** - Manual installation and troubleshooting details
+- **[docs/Scripts.md](docs/Scripts.md)** - Script catalog and recommendations
 
-## Docs and links
+## Additional Resources
 
-- Quickstart (friendly): `docs/PBIXRAY_Quickstart.md`
-- Scripts catalog: `docs/Scripts.md`
-- .NET notes: `lib/dotnet/README.md`, `lib/dotnet/dotnet_versions.md`
-- Contributing & Git workflow: `CONTRIBUTING.md`
+- **Quickstart guide:** [docs/PBIXRAY_Quickstart.md](docs/PBIXRAY_Quickstart.md)
+- **.NET assemblies:** [lib/dotnet/README.md](lib/dotnet/README.md)
+- **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md)
 
-If you use GitHub Pages, `.github/workflows/docs.yml` publishes `docs/` on push to `main`.
+GitHub Pages publishes `docs/` automatically on push to `main` (if configured).
 
 ## Tips, diagnostics, and safety
 
@@ -101,7 +147,7 @@ If you use GitHub Pages, `.github/workflows/docs.yml` publishes `docs/` on push 
 - To force a fresh DAX run, set `bypass_cache: true` on run_dax
 - For DMV queries with $SYSTEM.*, wrap sources in TOPN(...) before SELECTCOLUMNS to materialize
 
-Privacy & security
+### Privacy & Security
 
 - Everything runs locally over stdio; no ports exposed
 - Connections use Desktop's embedded SSAS over localhost
@@ -137,9 +183,12 @@ New v2.4 settings:
 - Verify .NET assemblies: `venv\\Scripts\\python.exe scripts\\verify_dotnet_assemblies.py`
 - See INSTALL.md for troubleshooting and uninstall
 
-## Changelog (v2.4)
+## Changelog
 
-### Added
+### Version 2.4.0 (2025-10-13)
+
+#### Added
+
 - Input validation to prevent injection attacks
 - Rate limiting (token bucket, per-tool limits)
 - Enhanced error handler with Desktop version detection
@@ -148,13 +197,15 @@ New v2.4 settings:
 - .NET assembly auto-installer and verifier
 - Monitoring tools: get_rate_limit_stats, get_cache_stats, get_error_stats
 
-### Security
+#### Security
+
 - DAX/M expression validation
 - Path traversal prevention
 - Identifier sanitization
 - Configurable rate limits
 
-### Performance
+#### Performance
+
 - Bounded cache (100MB, 1000 entries, LRU eviction)
 - Per-tool timeouts
 - Cache hit rate tracking

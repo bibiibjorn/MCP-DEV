@@ -1,10 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(*)",           
-      "Bash(python:*)",    
-      "Bash(timeout:*)",   
-      "Bash(mwsh:*)"       
+      "Bash(powershell:*)"
     ],
     "deny": [],
     "ask": []

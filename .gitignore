@@ -10,7 +10,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -21,6 +20,15 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# Keep lib/dotnet/ directory and DLLs
+!lib/
+!lib/dotnet/
+!lib/dotnet/*.dll
+!lib/dotnet/*.xml
+!lib/dotnet/*.ps1
+!lib/dotnet/*.md
+!lib/dotnet/*.txt
 
 # PyInstaller
 *.manifest
@@ -81,8 +89,8 @@ $RECYCLE.BIN/
 *.msp
 *.lnk
 
-# Test files
-test_*.py
+# Test files (tests/ directory should be included)
+scripts/dev/
 
 # Temporary
 *.tmp
@@ -93,3 +101,10 @@ test_*.py
 *.pbix
 *.pbit
 config/local_config.json
+
+# Exports directory (user-generated files)
+exports/*
+!exports/.gitkeep
+
+# Distribution packages
+*.zip
