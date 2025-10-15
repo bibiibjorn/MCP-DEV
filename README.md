@@ -1,213 +1,163 @@
-# MCP-PowerBi-Finvision Server
+# MCP-PowerBi-Finvision
 
-[![Version](https://img.shields.io/badge/version-2.4.0-blue.svg)](https://github.com/bibiibjorn/MCP-PowerBi-Finvision)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey.svg)](https://www.microsoft.com/windows)
+A production-ready Model Context Protocol (MCP) server for Power BI Desktop. Analyze your Power BI models locally with AI assistance - browse schema, inspect DAX and M code, run performance checks, export documentation, and more.
 
-A production-ready Model Context Protocol (MCP) server for Power BI Desktop. Analyze your models locally with AI assistance - browse schema, inspect DAX and M code, run performance checks, export documentation, and more.
+## Installation
 
-**Status:** Production-ready with security hardening
-**Platform:** Windows 10/11 (64-bit)
-**Last updated:** 2025-10-13
+### Option 1: One-Click Installation (Recommended)
 
-## Who is this for?
+1. **Download** the latest release: `mcp-powerbi-finvision-2.4.0.mcpb` (35 MB)
+2. **Open Claude Desktop**
+3. Click **Profile** → **Settings** → **Extensions**
+4. Click **Install Extension**
+5. Select the downloaded `.mcpb` file
+6. **Restart** Claude Desktop when prompted
 
-- Power BI analysts who want instant, safe model introspection from Claude or ChatGPT
-- Engineers who need fast diagnostics, exports, and best-practices checks
+Done! The server is now installed with all dependencies bundled.
 
-## Features at a glance
+### Option 2: Development Installation
 
-- Auto-detect and connect to Power BI Desktop
-- List tables/columns/measures, preview data, inspect relationships and M
-- Validate DAX, scan VertiPaq stats, analyze cardinality/encoding
-- Detect unused objects, analyze dependencies and RLS coverage
-- Export compact schema, TMSL/TMDL, relationship graph, docs
-- **NEW v2.4:** Input validation, rate limiting, enhanced error context
+For developers who want to modify the server:
 
-## Security & Performance (v2.4)
+```powershell
+# Clone the repository
+git clone https://github.com/bibiibjorn/MCP-PowerBi-Finvision.git
+cd MCP-PowerBi-Finvision
 
-- ✅ **Input sanitization** - Prevents DAX/M injection attacks
-- ✅ **Rate limiting** - Protects Desktop from query overload (10 req/sec default)
-- ✅ **Path validation** - Prevents directory traversal in exports
-- ✅ **Cache management** - Bounded memory (100MB/1000 entries)
-- ✅ **Enhanced errors** - Desktop version context & known issue detection
-- ✅ **Tool timeouts** - Per-tool execution limits
+# Create virtual environment
+py -3 -m venv venv
+./venv/Scripts/Activate.ps1
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Optional: Install .NET assemblies for enhanced features
+cd lib/dotnet
+./install.ps1
+cd ../..
+
+# Configure Claude Desktop
+# Add to claude_desktop_config.json:
+{
+  "mcpServers": {
+    "MCP-PowerBi-Finvision": {
+      "command": "C:/path/to/venv/Scripts/python.exe",
+      "args": ["C:/path/to/src/pbixray_server_enhanced.py"],
+      "env": {
+        "PYTHONIOENCODING": "utf-8"
+      }
+    }
+  }
+}
+```
 
 ## Requirements
 
-- Windows 10/11 (64‑bit)
-- Power BI Desktop (latest recommended)
-- .NET Framework 4.7.2+
-- An MCP-capable client: Claude Desktop or ChatGPT Desktop (with MCP)
+- **Windows 10/11** (64-bit)
+- **Power BI Desktop** (latest recommended)
+- **Python 3.10+** (for Option 2 or if bundled Python doesn't work)
+- **.NET Framework 4.7.2+**
+- **Claude Desktop** (latest version)
 
-## Quick Start
+## Features
 
-### One-Click Installation ⚡
+- Auto-detect and connect to Power BI Desktop instances
+- Browse tables, columns, measures, and relationships
+- Inspect DAX expressions and M queries
+- Run performance analysis and VertiPaq stats
+- Detect unused objects and analyze dependencies
+- Export schema, TMSL/TMDL, and documentation
+- Input validation and rate limiting for security
+- Enhanced error context with Desktop version detection
 
-1. **Extract to a stable location** (avoid paths with spaces)
+## First Use
 
-   ```text
-   Recommended: C:\Tools\MCP-PowerBi-Finvision
-   ```
-
-2. **Run the automated setup** - Right-click in the folder, select "Open PowerShell here":
-
-   ```powershell
-   .\setup.ps1
-   ```
-
-   The script automatically:
-   - ✅ Checks Python installation
-   - ✅ Creates virtual environment
-   - ✅ Installs all dependencies
-   - ✅ Optionally installs .NET assemblies
-   - ✅ Configures your AI client
-
-**Done!** The venv is created fresh on your machine with all dependencies.
-
-### Manual Installation (Alternative)
-
-<details>
-<summary>Click here if you prefer manual control</summary>
-
-1. **Set up Python environment:**
-
-   ```powershell
-   py -3 -m venv venv
-   ./venv/Scripts/Activate.ps1
-   python -m pip install --upgrade pip
-   pip install -r requirements.txt
-   ```
-
-2. **Install .NET assemblies** (Optional):
-
-   ```powershell
-   cd lib/dotnet
-   ./install.ps1
-   ```
-
-3. **Configure AI client:**
-
-   ```powershell
-   ./scripts/install_to_claude.ps1
-   ```
-
-   For ChatGPT Desktop, see [INSTALL.md](INSTALL.md)
-
-</details>
-
-### First Use
-
-1. Open Power BI Desktop with a .pbix file loaded
-2. Wait ~10-15 seconds for the model to fully load
-3. In your AI client, ask:
+1. **Open Power BI Desktop** with a .pbix file loaded
+2. **Wait 10-15 seconds** for the model to fully load
+3. **In Claude Desktop**, ask:
    - "Detect Power BI Desktop instances"
    - "Connect to instance 0"
    - "List tables"
 
-**You're ready to analyze your model!**
+## Example Queries
 
-## Common things to ask
+Ask Claude:
 
-- "Search for measures containing CALCULATE"
-- "Analyze this DAX and break down SE vs FE"
-- "Export a compact schema" or "Generate documentation"
-- "Show me rate limit stats" (NEW)
-- "Check cache performance" (NEW)
+- "Show me all measures that use CALCULATE"
+- "Analyze this DAX expression for performance"
+- "Export a compact schema of my model"
+- "What tables are not being used?"
+- "Generate documentation for my Power BI model"
+- "Show me rate limit stats"
 
-### Full analysis: fast vs normal
+## Building the MCPB Package
 
-- full_analysis: summary, relationships, best practices, M scan, optional BPA
-  - profile: fast | balanced | deep (default: balanced)
-  - depth: light | standard | deep (default: standard)
-  - include_bpa: true/false (ignored when profile=fast)
+For maintainers who want to create a new release:
 
-- propose_analysis: returns a small menu with fast vs normal options when a user asks to "analyze the model".
+```powershell
+# Install mcpb CLI
+npm install -g @anthropic-ai/mcpb
 
-## Documentation
+# Ensure venv has all dependencies
+./venv/Scripts/Activate.ps1
+pip install -r requirements.txt
 
-- **[USER_GUIDE.md](USER_GUIDE.md)** - Simple installation guide with automated setup script ⭐ Start here!
-- **[INSTALL.md](INSTALL.md)** - Manual installation and troubleshooting details
-- **[docs/Scripts.md](docs/Scripts.md)** - Script catalog and recommendations
+# Build the package
+mcpb pack . mcp-powerbi-finvision-2.4.0.mcpb
 
-## Additional Resources
+# The .mcpb file is now ready for distribution
+```
 
-- **Quickstart guide:** [docs/PBIXRAY_Quickstart.md](docs/PBIXRAY_Quickstart.md)
-- **.NET assemblies:** [lib/dotnet/README.md](lib/dotnet/README.md)
-- **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md)
+## Troubleshooting
 
-GitHub Pages publishes `docs/` automatically on push to `main` (if configured).
+### Server Disconnects After Installation
 
-## Tips, diagnostics, and safety
+Check Claude Desktop logs: `%APPDATA%\Claude\logs\mcp-server-Power BI Analysis MCP Server.log`
 
-- Results are paged (page_size + next_token) for large outputs
-- Use `get_recent_logs`, `summarize_logs`, and `get_server_info` for quick diagnostics
-- **NEW:** Use `get_rate_limit_stats` and `get_cache_stats` for performance monitoring
-- To force a fresh DAX run, set `bypass_cache: true` on run_dax
-- For DMV queries with $SYSTEM.*, wrap sources in TOPN(...) before SELECTCOLUMNS to materialize
+Common issues:
+- Python not in PATH: Ensure `python --version` works
+- Missing dependencies: The .mcpb should include everything, but verify Python 3.10+ is installed
 
-### Privacy & Security
+### No Tools Appearing
 
-- Everything runs locally over stdio; no ports exposed
-- Connections use Desktop's embedded SSAS over localhost
-- Input validation prevents injection attacks
-- Rate limiting protects Desktop from overload
-- Logs live in `logs/pbixray.log`
+1. Ensure extension is enabled in Settings → Extensions
+2. Restart Claude Desktop
+3. Start a new conversation
 
-## Error envelope shape (for integrators)
+### Power BI Not Detected
 
-- Not connected → `{ success: false, error_type: "not_connected", ... }`
-- Manager unavailable → `{ success: false, error_type: "manager_unavailable", required_manager: "<n>" }`
-- Unknown tool → `{ success: false, error_type: "unknown_tool", tool_name: "..." }`
-- Unexpected error → `{ success: false, error_type: "unexpected_error", tool_name: "..." }`
-- **NEW:** Rate limited → `{ success: false, error_type: "rate_limited", retry_after_seconds: X }`
-- **NEW:** Validation error → `{ success: false, error_type: "validation_error", field: "..." }`
+1. Ensure Power BI Desktop is running
+2. Ensure a .pbix file is open and **fully loaded** (wait 10-15 seconds)
+3. Try running "Detect Power BI Desktop instances" again
 
-Successful responses include minimal connection metadata when available, like `{ port: "<desktop-port>" }`.
+## Architecture
 
-## Configuration
+The server uses:
+- **MCP Protocol** for communication with Claude Desktop
+- **Python.NET** for Power BI connectivity
+- **ADOMD.NET** for querying Analysis Services
+- **Bundled venv** with all dependencies (in .mcpb package)
+- **Wrapper script** (`run_server.py`) to ensure dependencies are found
 
-Edit `config/default_config.json` or create `config/local_config.json` for overrides.
+## Security & Performance
 
-New v2.4 settings:
-
-- `rate_limiting.enabled` - Enable rate limiting (default: true)
-- `rate_limiting.profile` - conservative | balanced | aggressive | development
-- `security.enable_input_validation` - Validate inputs (default: true)
-- `security.strict_m_validation` - Strict M expression validation (default: false)
-
-## Support
-
-- Ensure a .pbix is open, then detect → connect → run tools
-- Verify .NET assemblies: `venv\\Scripts\\python.exe scripts\\verify_dotnet_assemblies.py`
-- See INSTALL.md for troubleshooting and uninstall
-
-## Changelog
-
-### Version 2.4.0 (2025-10-13)
-
-#### Added
-
-- Input validation to prevent injection attacks
-- Rate limiting (token bucket, per-tool limits)
-- Enhanced error handler with Desktop version detection
-- Cache manager with size limits and eviction metrics
+- Input sanitization prevents DAX/M injection attacks
+- Rate limiting protects Desktop from query overload (10 req/sec default)
+- Path validation prevents directory traversal in exports
+- Bounded cache management (100MB/1000 entries)
+- Enhanced error context with Desktop version detection
 - Tool-specific timeout configuration
-- .NET assembly auto-installer and verifier
-- Monitoring tools: get_rate_limit_stats, get_cache_stats, get_error_stats
 
-#### Security
+## Contributing
 
-- DAX/M expression validation
-- Path traversal prevention
-- Identifier sanitization
-- Configurable rate limits
+This is a production-ready release. For bugs or feature requests, please open an issue.
 
-#### Performance
+## License
 
-- Bounded cache (100MB, 1000 entries, LRU eviction)
-- Per-tool timeouts
-- Cache hit rate tracking
+MIT License - See LICENSE file for details
 
-— Happy analyzing!
+## Version
+
+Current version: **2.4.0** (Production Ready)
+
+Last updated: 2025-10-15

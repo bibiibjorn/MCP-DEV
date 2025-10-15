@@ -1,0 +1,115 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/mcpb/main/dist/mcpb-manifest.schema.json",
+  "manifest_version": "0.2",
+  "name": "mcp-powerbi-finvision",
+  "display_name": "Power BI Analysis MCP Server",
+  "version": "2.4.0",
+  "description": "A production-ready MCP server for Power BI Desktop analysis",
+  "long_description": "MCP-PowerBi-Finvision enables AI-powered analysis of Power BI models. Features include:\n\n- Auto-detect and connect to Power BI Desktop instances\n- Browse tables, columns, measures, and relationships\n- Inspect DAX expressions and M queries\n- Run performance analysis and VertiPaq stats\n- Detect unused objects and analyze dependencies\n- Export schema, TMSL/TMDL, and documentation\n- Input validation and rate limiting for security\n- Enhanced error context with Desktop version detection\n\nRequirements:\n- Windows 10/11 (64-bit)\n- Power BI Desktop installed and running\n- .NET Framework 4.7.2+\n\nEverything runs locally over stdio with no exposed ports.",
+  "author": {
+    "name": "Finvision",
+    "url": "https://github.com/bibiibjorn/MCP-PowerBi-Finvision"
+  },
+  "server": {
+    "type": "python",
+    "entry_point": "run_server.py",
+    "mcp_config": {
+      "command": "python",
+      "args": [
+        "${__dirname}/run_server.py"
+      ],
+      "env": {
+        "PYTHONIOENCODING": "utf-8"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "detect_pbi_instances",
+      "description": "Detect running Power BI Desktop instances"
+    },
+    {
+      "name": "connect_to_instance",
+      "description": "Connect to a specific Power BI Desktop instance"
+    },
+    {
+      "name": "list_tables",
+      "description": "List all tables in the model"
+    },
+    {
+      "name": "list_columns",
+      "description": "List columns for a specific table"
+    },
+    {
+      "name": "list_measures",
+      "description": "List all measures in the model"
+    },
+    {
+      "name": "get_measure_details",
+      "description": "Get detailed information about a measure"
+    },
+    {
+      "name": "get_relationships",
+      "description": "Get all relationships in the model"
+    },
+    {
+      "name": "run_dax",
+      "description": "Execute DAX queries against the model"
+    },
+    {
+      "name": "validate_dax",
+      "description": "Validate DAX expression syntax"
+    },
+    {
+      "name": "analyze_dax",
+      "description": "Analyze DAX expression performance"
+    },
+    {
+      "name": "get_m_expressions",
+      "description": "Get M/Power Query expressions for tables"
+    },
+    {
+      "name": "export_schema",
+      "description": "Export compact model schema"
+    },
+    {
+      "name": "export_documentation",
+      "description": "Export comprehensive model documentation"
+    },
+    {
+      "name": "full_analysis",
+      "description": "Run comprehensive model analysis"
+    },
+    {
+      "name": "get_server_info",
+      "description": "Get server diagnostic information"
+    },
+    {
+      "name": "get_rate_limit_stats",
+      "description": "Get rate limiting statistics"
+    },
+    {
+      "name": "get_cache_stats",
+      "description": "Get cache performance statistics"
+    }
+  ],
+  "keywords": [
+    "power-bi",
+    "dax",
+    "tabular-model",
+    "analysis",
+    "vertipaq",
+    "pbix",
+    "business-intelligence",
+    "data-modeling",
+    "ssas"
+  ],
+  "license": "MIT",
+  "compatibility": {
+    "clients": {
+      "claude-desktop": ">=0.10.0"
+    },
+    "platforms": ["win32"],
+    "python": ">=3.10.0 <4.0.0"
+  }
+}

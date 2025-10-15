@@ -57,6 +57,9 @@ cover/
 logs/
 *.log
 
+# Claude goblin
+claude-goblin/
+
 # Environments
 .env
 .venv

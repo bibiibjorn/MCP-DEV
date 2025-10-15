@@ -1,0 +1,77 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+# IMPORTANT: venv/ is included in the package (not excluded)
+# Comment out the line below to include venv in the package
+# venv/
+env/
+ENV/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# Claude Code
+.claude/
+
+# Logs and exports (generated at runtime)
+logs/
+*.log
+exports/
+
+# Tests
+tests/
+test_*.py
+*_test.py
+
+# Development scripts (not needed in production)
+scripts/dev/
+scripts/mini_test.py
+scripts/print_tool_names.py
+scripts/quick_export_compact.py
+scripts/quick_probe.py
+scripts/usage_selftest.py
+
+# Development tools
+tools/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+
+# Development and unnecessary files
+claude-goblin/
+INSTALLATION_GUIDE.md
+.github/
+.vscode/
+USER_GUIDE.md
+setup.ps1
+
+# Previous packages and backups
+*.mcpb
+manifest.json.backup
