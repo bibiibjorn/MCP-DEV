@@ -46,7 +46,8 @@
       "Skill(review-agent)",
       "Bash(find:*)",
       "mcp__ide__getDiagnostics",
-      "Bash(findstr \"__version__\" __version__.py)"
+      "Bash(findstr \"__version__\" __version__.py)",
+      "Skill(powerbi-mcp-dev)"
     ],
     "deny": [],
     "ask": []
