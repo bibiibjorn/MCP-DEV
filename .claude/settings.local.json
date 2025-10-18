@@ -38,7 +38,15 @@
       "Bash(py -3 -m pip install --target=lib/python -r requirements.txt)",
       "Read(//c/Users/bjorn.braet/AppData/Roaming/Claude/logs/**)",
       "Bash(tail:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(mkdir:*)",
+      "Read(//c/Users/bjorn.braet/AppData/Roaming/Claude/**)",
+      "Skill(plan-agent)",
+      "Skill(code-agent)",
+      "Skill(review-agent)",
+      "Bash(find:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(findstr \"__version__\" __version__.py)"
     ],
     "deny": [],
     "ask": []

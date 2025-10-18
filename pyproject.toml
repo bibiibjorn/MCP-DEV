@@ -1,0 +1,131 @@
+[project]
+name = "mcp-powerbi-finvision"
+version = "2.4.0"
+description = "Production-ready MCP server for Power BI Desktop analysis"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    {name = "Finvision", email = "info@finvision.com"}
+]
+license = {text = "MIT"}
+
+dependencies = [
+    "mcp>=1.0.0",
+    "pythonnet>=3.0.3",
+    "WMI>=1.5.1",
+    "requests>=2.31.0",
+    "psutil>=5.9.0",
+    "pbixray>=0.1.0,<0.2.0",
+    "openpyxl>=3.1.0",
+    "reportlab>=4.0.0",
+    "python-docx>=0.8.11",
+    "matplotlib>=3.8.0",
+    "networkx>=3.2.0",
+    "pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "black>=24.0.0",
+    "mypy>=1.8.0",
+    "flake8>=7.0.0",
+    "pre-commit>=3.6.0",
+]
+
+[project.scripts]
+pbixray-server = "src.pbixray_server_enhanced:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | venv
+  | __pycache__
+  | \.mypy_cache
+  | \.pytest_cache
+  | build
+  | dist
+)/
+'''
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false  # Gradual adoption
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_optional = true
+show_error_codes = true
+show_error_context = true
+pretty = true
+
+# Start with core modules
+[[tool.mypy.overrides]]
+module = "core.*"
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "pythonnet.*",
+    "clr.*",
+    "WMI.*",
+    "pbixray.*",
+    "matplotlib.*",
+    "networkx.*",
+    "reportlab.*",
+    "docx.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q --strict-markers --cov=core --cov=src --cov-report=html --cov-report=term"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+]
+
+[tool.coverage.run]
+source = ["core", "src"]
+omit = [
+    "*/tests/*",
+    "*/venv/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.bandit]
+exclude_dirs = ["tests", "venv", ".venv"]
+skips = ["B101"]  # Skip assert_used in tests

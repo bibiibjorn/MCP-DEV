@@ -58,6 +58,11 @@ class ToolTimeoutManager:
         'export_tmsl': 30,
         'export_tmdl': 60,
         'generate_documentation': 60,
+
+        # Word documentation generation (120-300s)
+        'generate_model_documentation_word': 300,
+        'update_model_documentation_word': 300,
+        'export_interactive_relationship_graph': 60,
         
         # Bulk operations (30-120s)
         'bulk_create_measures': 60,

@@ -13,6 +13,15 @@ from datetime import datetime
 from typing import Any, Dict, Optional, List
 from core.error_handler import ErrorHandler
 from core.policies.query_policy import QueryPolicy
+from core.documentation_builder import (
+    collect_model_documentation,
+    compute_diff,
+    generate_relationship_graph,
+    load_snapshot,
+    render_word_report,
+    save_snapshot,
+    snapshot_from_context,
+)
 
 
 class AgentPolicy:
@@ -467,6 +476,218 @@ class AgentPolicy:
         doc.setdefault('format', format)
         doc.setdefault('include_examples', include_examples)
         return doc
+
+    def generate_model_documentation_word(
+        self,
+        connection_state,
+        output_dir: Optional[str] = None,
+        include_hidden: bool = True,
+        dependency_depth: int = 1,
+        export_pdf: bool = False,
+    ) -> Dict[str, Any]:
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+
+        try:
+            lightweight_bpa = self.validate_best_practices(connection_state)
+        except Exception:
+            lightweight_bpa = None
+
+        context = collect_model_documentation(
+            connection_state,
+            include_hidden=include_hidden,
+            dependency_depth=dependency_depth,
+            lightweight_best_practices=lightweight_bpa if isinstance(lightweight_bpa, dict) else None,
+        )
+        if not context.get('success'):
+            return context
+
+        graph_path, graph_notes = generate_relationship_graph(context.get('relationships', []), output_dir)
+
+        doc_result = render_word_report(
+            context,
+            output_dir=output_dir,
+            graph_path=graph_path,
+            graph_notes=graph_notes,
+            change_summary=None,
+            mode='full',
+            export_pdf=export_pdf,
+        )
+        if not doc_result.get('success'):
+            return doc_result
+
+        snapshot_result = save_snapshot(context, output_dir)
+        response: Dict[str, Any] = {
+            'success': True,
+            'doc_path': doc_result.get('doc_path'),
+            'snapshot_path': snapshot_result.get('snapshot_path'),
+            'graph_path': graph_path,
+            'counts': (context.get('summary') or {}).get('counts'),
+            'best_practices': context.get('best_practices'),
+        }
+        if doc_result.get('pdf_path'):
+            response['pdf_path'] = doc_result.get('pdf_path')
+        if doc_result.get('pdf_warning'):
+            response['pdf_warning'] = doc_result.get('pdf_warning')
+        if graph_notes:
+            response['graph_notes'] = graph_notes
+        if context.get('notes'):
+            response['notes'] = context.get('notes')
+        return response
+
+    def update_model_documentation_word(
+        self,
+        connection_state,
+        output_dir: Optional[str] = None,
+        snapshot_path: Optional[str] = None,
+        include_hidden: bool = True,
+        dependency_depth: int = 1,
+        export_pdf: bool = False,
+    ) -> Dict[str, Any]:
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+
+        qe = getattr(connection_state, 'query_executor', None)
+        if not qe:
+            return ErrorHandler.handle_manager_unavailable('query_executor')
+
+        try:
+            lightweight_bpa = self.validate_best_practices(connection_state)
+        except Exception:
+            lightweight_bpa = None
+
+        try:
+            database_name = qe._get_database_name()
+        except Exception:
+            database_name = None
+
+        previous_snapshot = load_snapshot(snapshot_path, output_dir, database_name)
+
+        context = collect_model_documentation(
+            connection_state,
+            include_hidden=include_hidden,
+            dependency_depth=dependency_depth,
+            lightweight_best_practices=lightweight_bpa if isinstance(lightweight_bpa, dict) else None,
+        )
+        if not context.get('success'):
+            return context
+
+        new_snapshot = snapshot_from_context(context)
+        diff = compute_diff(previous_snapshot, new_snapshot)
+
+        graph_path, graph_notes = generate_relationship_graph(context.get('relationships', []), output_dir)
+
+        doc_result = render_word_report(
+            context,
+            output_dir=output_dir,
+            graph_path=graph_path,
+            graph_notes=graph_notes,
+            change_summary=diff,
+            mode='update',
+            export_pdf=export_pdf,
+        )
+        if not doc_result.get('success'):
+            return doc_result
+
+        snapshot_result = save_snapshot(context, output_dir)
+
+        response: Dict[str, Any] = {
+            'success': True,
+            'doc_path': doc_result.get('doc_path'),
+            'snapshot_path': snapshot_result.get('snapshot_path'),
+            'graph_path': graph_path,
+            'change_summary': diff,
+            'best_practices': context.get('best_practices'),
+        }
+        if doc_result.get('pdf_path'):
+            response['pdf_path'] = doc_result.get('pdf_path')
+        if doc_result.get('pdf_warning'):
+            response['pdf_warning'] = doc_result.get('pdf_warning')
+        if graph_notes:
+            response['graph_notes'] = graph_notes
+        if context.get('notes'):
+            response['notes'] = context.get('notes')
+        if not diff.get('changes_detected'):
+            response['message'] = 'No structural changes detected; documentation refreshed with latest metadata.'
+        return response
+
+    def export_interactive_relationship_graph(
+        self,
+        connection_state,
+        output_dir: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Export an interactive HTML relationship graph visualization using Plotly."""
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+
+        qe = getattr(connection_state, 'query_executor', None)
+        if not qe:
+            return ErrorHandler.handle_manager_unavailable('query_executor')
+
+        # Get relationships
+        relationships_res = qe.execute_info_query("RELATIONSHIPS")
+        if not relationships_res.get('success'):
+            return {
+                'success': False,
+                'error': 'Failed to fetch relationships from model',
+                'details': relationships_res
+            }
+
+        relationships_rows = relationships_res.get('rows', [])
+        if not relationships_rows:
+            return {
+                'success': False,
+                'error': 'No relationships found in the model'
+            }
+
+        # Convert to standard format
+        from core.documentation_builder import generate_interactive_relationship_graph
+
+        def _pick(row: Dict[str, Any], *keys: str, default: Any = None) -> Any:
+            for key in keys:
+                if key in row and row[key] not in (None, ""):
+                    return row[key]
+                alt = f"[{key}]"
+                if alt in row and row[alt] not in (None, ""):
+                    return row[alt]
+            return default
+
+        def _to_bool(value: Any) -> bool:
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, (int, float)):
+                return bool(value)
+            if isinstance(value, str):
+                return value.strip().lower() in {"true", "1", "yes", "y"}
+            return False
+
+        relationships: List[Dict[str, Any]] = []
+        for rel in relationships_rows:
+            relationships.append({
+                "from_table": str(_pick(rel, "FromTable", default="")),
+                "from_column": str(_pick(rel, "FromColumn", default="")),
+                "to_table": str(_pick(rel, "ToTable", default="")),
+                "to_column": str(_pick(rel, "ToColumn", default="")),
+                "is_active": _to_bool(_pick(rel, "IsActive", default=False)),
+                "cardinality": str(_pick(rel, "Cardinality", default=_pick(rel, "RelationshipType", default=""))),
+                "direction": str(_pick(rel, "CrossFilterDirection", default="")),
+            })
+
+        graph_path, graph_notes = generate_interactive_relationship_graph(relationships, output_dir)
+
+        if graph_path:
+            return {
+                'success': True,
+                'graph_path': graph_path,
+                'relationships_count': len(relationships),
+                'notes': graph_notes
+            }
+        else:
+            return {
+                'success': False,
+                'error': 'Failed to generate interactive relationship graph',
+                'notes': graph_notes
+            }
 
     def export_compact_schema(self, connection_state, include_hidden: bool = True) -> Dict[str, Any]:
         """Export expression-free schema (tables/columns/measures/relationships) via exporter.

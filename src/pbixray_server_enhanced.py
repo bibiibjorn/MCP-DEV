@@ -528,6 +528,32 @@ def _handle_context_and_limits(name: str, arguments: Any) -> Optional[dict]:
         except Exception as e:
             return {'success': False, 'error': str(e)}
 
+    if name == "get_performance_metrics":
+        try:
+            from core.performance_monitor import get_performance_metrics
+            operation = arguments.get("operation_name")
+            metrics = get_performance_metrics(operation)
+            return {'success': True, 'metrics': metrics}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    if name == "get_performance_summary":
+        try:
+            from core.performance_monitor import get_performance_summary
+            summary = get_performance_summary()
+            return {'success': True, **summary}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    if name == "get_slow_operations":
+        try:
+            from core.performance_monitor import get_slow_operations
+            threshold = arguments.get("threshold", 1.0)
+            slow_ops = get_slow_operations(threshold)
+            return {'success': True, 'slow_operations': slow_ops}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
     if name == "get_context":
         keys = arguments.get('keys')
         data = connection_state.get_context(keys) if connection_state else {}
@@ -787,7 +813,7 @@ def _generate_quickstart_markdown() -> str:
         "- search: objects | search: text in measures | get: data sources | get: m expressions",
         "- analysis: best practices (BPA) | analysis: relationship/cardinality | analysis: storage compression",
     "- usage: find unused objects",
-        "- export: compact schema | export: tmsl | export: tmdl | docs: generate",
+        "- export: compact schema | export: tmsl | export: tmdl | documentation: generate word",
         "",
         "Tips:",
         "- Large results are paged; use page_size + next_token",
@@ -859,6 +885,55 @@ def _handle_agent_tools(name: str, arguments: Any) -> Optional[dict]:
             return agent_policy.generate_documentation_profiled(connection_state, fmt, include_examples)
         except Exception:
             return agent_policy.generate_docs_safe(connection_state)
+    if name == "generate_model_documentation_word":
+        ensured = agent_policy.ensure_connected(connection_manager, connection_state, None)
+        if not ensured.get('success'):
+            return ensured
+        try:
+            dep_depth = int(arguments.get('dependency_depth', 1) or 1)
+        except Exception:
+            dep_depth = 1
+        return agent_policy.generate_model_documentation_word(
+            connection_state,
+            arguments.get('output_dir'),
+            bool(arguments.get('include_hidden', True)),
+            dep_depth,
+            export_pdf=False,
+        )
+    if name == "update_model_documentation_word":
+        ensured = agent_policy.ensure_connected(connection_manager, connection_state, None)
+        if not ensured.get('success'):
+            return ensured
+        try:
+            dep_depth = int(arguments.get('dependency_depth', 1) or 1)
+        except Exception:
+            dep_depth = 1
+        return agent_policy.update_model_documentation_word(
+            connection_state,
+            arguments.get('output_dir'),
+            arguments.get('snapshot_path'),
+            bool(arguments.get('include_hidden', True)),
+            dep_depth,
+            export_pdf=False,
+        )
+    if name == "export_documentation_pdf":
+        docx_path = arguments.get('docx_path')
+        if not docx_path:
+            return {"success": False, "error": "docx_path parameter is required", "error_type": "invalid_input"}
+        if not os.path.exists(docx_path):
+            return {"success": False, "error": f"File not found: {docx_path}", "error_type": "file_not_found"}
+        from core.documentation_builder import convert_to_pdf
+        pdf_path = docx_path.replace(".docx", ".pdf")
+        result = convert_to_pdf(docx_path, pdf_path)
+        return result
+    if name == "export_interactive_relationship_graph":
+        ensured = agent_policy.ensure_connected(connection_manager, connection_state, None)
+        if not ensured.get('success'):
+            return ensured
+        return agent_policy.export_interactive_relationship_graph(
+            connection_state,
+            arguments.get('output_dir'),
+        )
     if name == "execute_intent":
         return agent_policy.execute_intent(
             connection_manager,
@@ -1598,6 +1673,8 @@ FRIENDLY_TOOL_ALIASES = {
     "Export: TMSL": "export_tmsl",
     "Export: TMDL": "export_tmdl",
     "Docs: Generate": "generate_documentation",
+    "Docs: Generate Word": "generate_model_documentation_word",
+    "Docs: Update Word": "update_model_documentation_word",
     "Docs: Overview": "export_model_overview",
     "Model: Summary": "get_model_summary",
     "Compare: Models": "compare_models",
@@ -1651,10 +1728,14 @@ FRIENDLY_TOOL_ALIASES = {
     "export: columns with samples": "export_columns_with_samples",
     "export: compact schema": "export_compact_schema",
     "export: model overview": "export_model_overview",
-    "export: relationships graph": "export_relationship_graph",
+    "Export: Relationships Graph": "export_relationship_graph",
     "export: schema (paged)": "export_model_schema",
     "export: tmdl": "export_tmdl",
     "export: tmsl": "export_tmsl",
+    "documentation: generate word": "generate_model_documentation_word",
+    "documentation: update word": "update_model_documentation_word",
+    "Export: PDF from Word": "export_documentation_pdf",
+    "Export: Interactive Relationship Graph HTML": "export_interactive_relationship_graph",
     # performance/run
     "run: dax": "run_dax",
     # search:
@@ -1819,6 +1900,9 @@ async def list_tools() -> List[Tool]:
         add("server: rate limiter stats", "get_rate_limit_stats", "Rate limiter token and throttle stats", {"type": "object", "properties": {}, "required": []})
         add("server: tool timeouts", "get_tool_timeouts", "Configured per-tool timeouts", {"type": "object", "properties": {}, "required": []})
         add("server: runtime cache stats", "get_runtime_cache_stats", "In-process cache stats (TTL/LRU)", {"type": "object", "properties": {}, "required": []})
+        add("server: performance metrics", "get_performance_metrics", "Get performance metrics for operations", {"type": "object", "properties": {"operation_name": {"type": "string", "description": "Specific operation name (optional)"}}, "required": []})
+        add("server: performance summary", "get_performance_summary", "Get overall performance summary", {"type": "object", "properties": {}, "required": []})
+        add("server: slow operations", "get_slow_operations", "Get operations running slower than threshold", {"type": "object", "properties": {"threshold": {"type": "number", "default": 1.0, "description": "Time threshold in seconds"}}, "required": []})
     add("usage: analyze column", "analyze_column_usage", "Analyze how a column is used", {"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}}, "required": ["table", "column"]})
     add("usage: find unused objects", "find_unused_objects", "Find unused tables/columns/measures", {"type": "object", "properties": {}, "required": []})
 
@@ -1841,11 +1925,75 @@ async def list_tools() -> List[Tool]:
     # Docs & export
     add("export: columns with samples", "export_columns_with_samples", "Export flat list of columns with sample values (csv/txt/xlsx)", {"type": "object", "properties": {"format": {"type": "string", "enum": ["csv", "txt", "xlsx"], "default": "csv"}, "rows": {"type": "integer", "default": 3}, "extras": {"type": "array", "items": {"type": "string"}, "default": []}, "output_dir": {"type": "string", "description": "Directory to write export files; defaults to exports/"}}, "required": []})
     add("export: compact schema", "export_compact_schema", "Export compact model schema for diffs (json/xlsx)", {"type": "object", "properties": {"include_hidden": {"type": "boolean", "default": True}, "format": {"type": "string", "enum": ["json", "xlsx"], "default": "json"}, "output_dir": {"type": "string", "description": "Directory to write XLSX (or other files) to; defaults to exports/"}}, "required": []})
-    add("export: relationships graph", "export_relationship_graph", "Export relationships graph (json/graphml)", {"type": "object", "properties": {"format": {"type": "string", "enum": ["json", "graphml"], "default": "json"}}, "required": []})
     add("export: tmsl", "export_tmsl", "Export TMSL (summary by default)", {"type": "object", "properties": {"include_full_model": {"type": "boolean", "default": False}}, "required": []})
     add("export: tmdl", "export_tmdl", "Export TMDL model structure", {"type": "object", "properties": {}, "required": []})
     add("export: model overview", "export_model_overview", "Export compact model overview (json/yaml)", {"type": "object", "properties": {"format": {"type": "string", "enum": ["json", "yaml"], "default": "json"}, "include_counts": {"type": "boolean", "default": True}}, "required": []})
     add("export: model schema (sections)", "export_model_schema", "Export model schema by section with pagination", {"type": "object", "properties": {"section": {"type": "string", "enum": ["tables", "columns", "measures", "relationships"]}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}, "preview_size": {"type": "integer", "description": "Rows per section in compact preview (default 30)"}, "include": {"type": "array", "items": {"type": "string"}, "description": "Subset of sections to include in compact preview"}}, "required": []})
+    add(
+        "documentation: generate word",
+        "generate_model_documentation_word",
+        "Generate a professionally formatted Word report covering the full model",
+        {
+            "type": "object",
+            "properties": {
+                "output_dir": {"type": "string", "description": "Directory to write files; defaults to exports/docs/"},
+                "include_hidden": {"type": "boolean", "default": True, "description": "Include hidden objects"},
+                "dependency_depth": {"type": "integer", "default": 1, "minimum": 1, "description": "Dependency analysis depth"},
+            },
+            "required": [],
+        },
+    )
+    add(
+        "documentation: update word",
+        "update_model_documentation_word",
+        "Refresh the Word documentation and append a change log for recent model updates",
+        {
+            "type": "object",
+            "properties": {
+                "output_dir": {"type": "string", "description": "Directory to write files; defaults to exports/docs/"},
+                "snapshot_path": {"type": "string", "description": "Path to previous snapshot (auto-detects if omitted)"},
+                "include_hidden": {"type": "boolean", "default": True, "description": "Include hidden objects"},
+                "dependency_depth": {"type": "integer", "default": 1, "minimum": 1, "description": "Dependency analysis depth"},
+            },
+            "required": [],
+        },
+    )
+    add(
+        "Export: PDF from Word",
+        "export_documentation_pdf",
+        "Convert existing Word documentation to PDF format",
+        {
+            "type": "object",
+            "properties": {
+                "docx_path": {"type": "string", "description": "Path to the Word document to convert"},
+            },
+            "required": ["docx_path"],
+        },
+    )
+    add(
+        "Export: Interactive Relationship Graph HTML",
+        "export_interactive_relationship_graph",
+        "Generate an interactive HTML relationship graph visualization using Plotly",
+        {
+            "type": "object",
+            "properties": {
+                "output_dir": {"type": "string", "description": "Directory to write HTML file; defaults to exports/"},
+            },
+            "required": [],
+        },
+    )
+    add(
+        "Export: Relationship Graph PNG",
+        "export_relationship_graph",
+        "Export relationships graph as PNG image (json/graphml also available)",
+        {
+            "type": "object",
+            "properties": {
+                "format": {"type": "string", "enum": ["json", "graphml", "png"], "default": "png", "description": "Output format for the relationship graph"},
+            },
+            "required": [],
+        },
+    )
 
     # Analysis
     add("analysis: m query practices", "analyze_m_practices", "Scan M expressions for common issues", {"type": "object", "properties": {}, "required": []})
@@ -1868,7 +2016,7 @@ async def list_tools() -> List[Tool]:
     add("analysis: relationship cardinality", "analyze_relationship_cardinality", "Analyze relationship cardinality and recommendations", {"type": "object", "properties": {}, "required": []})
     add("analysis: column cardinality", "analyze_column_cardinality", "Analyze column cardinality for a table", {"type": "object", "properties": {"table": {"type": "string"}}, "required": []})
     add("analysis: storage compression", "analyze_storage_compression", "Analyze storage/compression efficiency for a table", {"type": "object", "properties": {"table": {"type": "string"}}, "required": ["table"]})
-    add("analysis: full model", "full_analysis", "Comprehensive model analysis (summary, relationships, best practices, M scan, optional BPA)", {"type": "object", "properties": {"include_bpa": {"type": "boolean", "default": True}, "depth": {"type": "string", "enum": ["light", "standard", "deep"], "default": "standard"}, "profile": {"type": "string", "enum": ["fast", "balanced", "deep"], "default": "balanced"}, "limits": {"type": "object", "properties": {"relationships_max": {"type": "integer", "default": 200}, "issues_max": {"type": "integer", "default": 200}}, "default": {}}}, "required": []})
+    add("analysis: full model", "full_analysis", "Comprehensive model analysis (summary, relationships, best practices, M scan, optional BPA)", {"type": "object", "properties": {"include_bpa": {"type": "boolean", "default": True}, "depth": {"type": "string", "enum": ["light", "standard", "deep"], "default": "standard"}, "profile": {"type": "string", "enum": ["fast", "balanced", "deep"], "default": "balanced"}, "limits": {"type": "object", "properties": {"relationships_max": {"type": "integer", "default": 200}, "issues_max": {"type": "integer", "default": 200}}}}, "required": []})
     add("analysis: recommend analysis plan", "propose_analysis", "Recommend fast vs thorough analysis options based on your goal", {"type": "object", "properties": {"goal": {"type": "string"}}, "required": []})
 
     # Visualization tools removed

@@ -73,5 +73,6 @@ USER_GUIDE.md
 setup.ps1
 
 # Previous packages and backups
-*.mcpb
+# *.mcpb (commented out - we create the package in dist/ folder)
 manifest.json.backup
+dist/
