@@ -20,6 +20,7 @@ from .snapshot_manager import (
 )
 from .complexity_analyzer import calculate_measure_complexity
 from .data_collector import collect_model_documentation
+from .interactive_explorer import generate_interactive_dependency_explorer
 
 __all__ = [
     "render_word_report",
@@ -33,4 +34,5 @@ __all__ = [
     "snapshot_from_context",
     "calculate_measure_complexity",
     "collect_model_documentation",
+    "generate_interactive_dependency_explorer",
 ]

@@ -39,12 +39,7 @@ test_*.py
 *_test.py
 
 # Development scripts (not needed in production)
-scripts/dev/
-scripts/mini_test.py
-scripts/print_tool_names.py
-scripts/quick_export_compact.py
-scripts/quick_probe.py
-scripts/usage_selftest.py
+scripts/
 
 # Development tools
 tools/
@@ -71,6 +66,7 @@ INSTALLATION_GUIDE.md
 .vscode/
 USER_GUIDE.md
 setup.ps1
+pyproject.toml
 
 # Previous packages and backups
 # *.mcpb (commented out - we create the package in dist/ folder)

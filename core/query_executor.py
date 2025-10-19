@@ -101,6 +101,7 @@ class OptimizedQueryExecutor:
         self._table_cache = None
         self._table_id_by_name: Optional[Dict[str, Any]] = None
         self._table_name_by_id: Optional[Dict[Any, str]] = None
+        self._column_name_by_id: Optional[Dict[Any, str]] = None
         # Command timeout (seconds) for ADOMD command execution
         try:
             self.command_timeout_seconds = int(config.get('performance.command_timeout_seconds', 60) or 60)
@@ -540,6 +541,124 @@ class OptimizedQueryExecutor:
         except Exception:
             return None
 
+    def _ensure_column_mappings(self) -> None:
+        """Load column ID<->name mappings once for fast lookups (for relationships)."""
+        try:
+            if self._column_name_by_id is not None:
+                return
+            # Load all columns from INFO.COLUMNS() to build ID->Name mapping
+            result = self.validate_and_execute_dax("EVALUATE INFO.COLUMNS()", 0)
+            if not result.get('success'):
+                logger.error(f"Failed to load column mappings: {result.get('error')}")
+                self._column_name_by_id = None
+                return
+            name_by_id: Dict[Any, str] = {}
+            for row in result.get('rows', []):
+                # Check bracketed keys first, then unbracketed
+                # For columns, the name is in 'ExplicitName' or 'InferredName', not 'Name'
+                col_name = (row.get('[ExplicitName]') or row.get('ExplicitName') or
+                           row.get('[InferredName]') or row.get('InferredName') or
+                           row.get('[Name]') or row.get('Name') or
+                           row.get('[COLUMN_NAME]') or row.get('COLUMN_NAME'))
+                col_id = row.get('[ID]') or row.get('ID') or row.get('[ColumnID]') or row.get('ColumnID')
+                if col_name is not None and col_id is not None:
+                    name_by_id[col_id] = col_name
+            self._column_name_by_id = name_by_id
+            logger.info(f"Column mappings loaded: {len(name_by_id)} columns")
+        except Exception as e:
+            logger.error(f"Error building column mappings: {e}")
+            self._column_name_by_id = None
+
+    def _get_column_name_from_id(self, column_id: Any) -> Optional[str]:
+        """Map numeric/guid ColumnID back to human-readable column name."""
+        try:
+            self._ensure_column_mappings()
+            return (self._column_name_by_id or {}).get(column_id)
+        except Exception:
+            return None
+
+    def get_table_row_counts(self) -> Dict[str, int]:
+        """Get row counts for all tables using DAX queries.
+
+        Returns:
+            Dictionary mapping table name to row count
+        """
+        try:
+            # First, get all table names
+            tables_result = self.execute_info_query("TABLES")
+            if not tables_result.get('success'):
+                logger.warning("Failed to get tables for row count query")
+                return {}
+
+            tables = tables_result.get('rows', [])
+            row_counts = {}
+
+            logger.info(f"Starting row count query for {len(tables)} tables")
+
+            # Query each table's row count using COUNTROWS
+            for table in tables:
+                table_name = table.get('Name') or table.get('[Name]')
+                if not table_name:
+                    continue
+
+                # Escape single quotes in table name
+                escaped_name = table_name.replace("'", "''")
+
+                try:
+                    # Use the simplest possible DAX query: EVALUATE {{ value }}
+                    # This returns a single-column, single-row table
+                    dax_query = f"EVALUATE {{ COUNTROWS('{escaped_name}') }}"
+
+                    result = self.validate_and_execute_dax(dax_query, top_n=0, bypass_cache=True)
+
+                    if result.get('success'):
+                        rows = result.get('rows', [])
+                        if rows and len(rows) > 0:
+                            # Get the first value from the first row
+                            first_row = rows[0]
+                            # Try to get any value from the row (column name varies)
+                            count_value = None
+
+                            # Log what we got for debugging
+                            logger.debug(f"Row data for '{table_name}': {first_row}")
+
+                            # Try all possible keys in the row
+                            for key in first_row.keys():
+                                if first_row[key] is not None:
+                                    count_value = first_row[key]
+                                    logger.debug(f"Found value in key '{key}': {count_value}")
+                                    break
+
+                            if count_value is not None:
+                                try:
+                                    row_counts[table_name] = int(count_value)
+                                    logger.info(f"✓ Table '{table_name}': {row_counts[table_name]:,} rows")
+                                except (ValueError, TypeError) as e:
+                                    row_counts[table_name] = 0
+                                    logger.warning(f"✗ Table '{table_name}': Could not convert value '{count_value}' (type: {type(count_value)}) to int: {e}")
+                            else:
+                                row_counts[table_name] = 0
+                                logger.warning(f"✗ Table '{table_name}': No value found in result row. Keys: {list(first_row.keys())}")
+                        else:
+                            row_counts[table_name] = 0
+                            logger.warning(f"✗ Table '{table_name}': Empty result")
+                    else:
+                        error_msg = result.get('error', 'Unknown error')
+                        row_counts[table_name] = 0
+                        logger.warning(f"✗ Table '{table_name}': Query failed - {error_msg}")
+
+                except Exception as e:
+                    logger.warning(f"✗ Error getting row count for table '{table_name}': {e}")
+                    row_counts[table_name] = 0
+
+            logger.info(f"Fetched row counts for {len(row_counts)} tables via DAX COUNTROWS")
+            logger.info(f"Tables with data: {sum(1 for count in row_counts.values() if count > 0)}")
+            return row_counts
+
+        except Exception as e:
+            logger.error(f"Error fetching row counts via DAX: {e}", exc_info=True)
+            return {}
+
     def _cache_set(self, key: Tuple[str, int], value: Dict[str, Any]) -> None:
         """Insert item into cache and enforce size limit."""
         if self.cache_ttl_seconds <= 0:
@@ -685,6 +804,29 @@ class OptimizedQueryExecutor:
                         if 'Table' not in row and 'TableID' in row:
                             name = self._get_table_name_from_id(row.get('TableID'))
                             row['Table'] = name or (str(row.get('TableID')) if row.get('TableID') is not None else '')
+                    elif function_name == 'RELATIONSHIPS':
+                        # Convert FromTableID/ToTableID to FromTable/ToTable for relationships
+                        if 'FromTable' not in row and 'FromTableID' in row:
+                            from_table_id = row.get('FromTableID')
+                            if from_table_id is not None:
+                                from_name = self._get_table_name_from_id(from_table_id)
+                                row['FromTable'] = from_name or str(from_table_id)
+                        if 'ToTable' not in row and 'ToTableID' in row:
+                            to_table_id = row.get('ToTableID')
+                            if to_table_id is not None:
+                                to_name = self._get_table_name_from_id(to_table_id)
+                                row['ToTable'] = to_name or str(to_table_id)
+                        # Convert FromColumnID/ToColumnID to FromColumn/ToColumn
+                        if 'FromColumn' not in row and 'FromColumnID' in row:
+                            from_column_id = row.get('FromColumnID')
+                            if from_column_id is not None:
+                                from_col_name = self._get_column_name_from_id(from_column_id)
+                                row['FromColumn'] = from_col_name or str(from_column_id)
+                        if 'ToColumn' not in row and 'ToColumnID' in row:
+                            to_column_id = row.get('ToColumnID')
+                            if to_column_id is not None:
+                                to_col_name = self._get_column_name_from_id(to_column_id)
+                                row['ToColumn'] = to_col_name or str(to_column_id)
 
             return result
         except Exception as e:

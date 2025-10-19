@@ -120,14 +120,22 @@ class DependencyAnalyzer:
             measures_result = self.model.execute_info_query("MEASURES")
             if measures_result.get("success"):
                 measure_rows = measures_result.get("rows", [])
-        except Exception:
+        except (ConnectionError, TimeoutError, ValueError) as e:
+            logger.warning(f"Failed to fetch MEASURES for reference index: {e}")
             measure_rows = []
-        
+        except Exception as e:
+            logger.error(f"Unexpected error fetching MEASURES: {type(e).__name__}: {e}")
+            measure_rows = []
+
         try:
             columns_result = self.model.execute_info_query("COLUMNS")
             if columns_result.get("success"):
                 column_rows = columns_result.get("rows", [])
-        except Exception:
+        except (ConnectionError, TimeoutError, ValueError) as e:
+            logger.warning(f"Failed to fetch COLUMNS for reference index: {e}")
+            column_rows = []
+        except Exception as e:
+            logger.error(f"Unexpected error fetching COLUMNS: {type(e).__name__}: {e}")
             column_rows = []
         
         self._reference_index = DaxReferenceIndex(measure_rows, column_rows)
@@ -232,14 +240,18 @@ class DependencyAnalyzer:
     def analyze_column_usage(self, table: str, column: str) -> Dict:
         """
         Analyze where a column is used in the model.
-        
+
         Args:
             table: Table name
             column: Column name
-            
+
         Returns:
             Dictionary with usage information
         """
+        # Pre-compute lowercase versions for performance
+        table_lower = table.lower()
+        column_lower = column.lower()
+
         result = {
             "column": column,
             "table": table,
@@ -252,20 +264,20 @@ class DependencyAnalyzer:
                 "is_used": False
             }
         }
-        
+
         # Check measures
         measures = self.model.list_measures()
         for m in measures:
             m_table = m.get("Table", "")
             m_name = m.get("Name", "")
             m_expr = m.get("Expression", "")
-            
+
             if not m_expr:
                 continue
-                
+
             refs = self._parse_references(m_expr)
             for ref_table, ref_col in refs.get("columns", []):
-                if ref_table.lower() == table.lower() and ref_col.lower() == column.lower():
+                if ref_table.lower() == table_lower and ref_col.lower() == column_lower:
                     result["used_in_measures"].append({
                         "table": m_table,
                         "measure": m_name
@@ -277,21 +289,21 @@ class DependencyAnalyzer:
         for col in columns:
             if col.get("Type") != "Calculated":
                 continue
-                
+
             col_name = col.get("Name", "")
             col_expr = col.get("Expression", "")
-            
-            if not col_expr or col_name.lower() == column.lower():
+
+            if not col_expr or col_name.lower() == column_lower:
                 continue
-                
+
             refs = self._parse_references(col_expr)
             for ref_table, ref_col in refs.get("columns", []):
-                if ref_table.lower() == table.lower() and ref_col.lower() == column.lower():
+                if ref_table.lower() == table_lower and ref_col.lower() == column_lower:
                     result["used_in_calculated_columns"].append({
                         "calculated_column": col_name
                     })
                     break
-                    
+
         # Check relationships
         relationships = self.model.list_relationships()
         for rel in relationships:
@@ -299,9 +311,15 @@ class DependencyAnalyzer:
             from_col = rel.get("FromColumn", "")
             to_table = rel.get("ToTable", "")
             to_col = rel.get("ToColumn", "")
-            
-            if (from_table.lower() == table.lower() and from_col.lower() == column.lower()) or \
-               (to_table.lower() == table.lower() and to_col.lower() == column.lower()):
+
+            # Pre-compute lowercase for comparison
+            from_table_lower = from_table.lower()
+            from_col_lower = from_col.lower()
+            to_table_lower = to_table.lower()
+            to_col_lower = to_col.lower()
+
+            if (from_table_lower == table_lower and from_col_lower == column_lower) or \
+               (to_table_lower == table_lower and to_col_lower == column_lower):
                 result["used_in_relationships"].append({
                     "from": f"{from_table}[{from_col}]",
                     "to": f"{to_table}[{to_col}]",
@@ -327,15 +345,19 @@ class DependencyAnalyzer:
     ) -> Dict:
         """
         Find where a measure is used (forward and backward impact).
-        
+
         Args:
             table: Table containing the measure
             measure: Measure name
             max_depth: Maximum recursion depth
-            
+
         Returns:
             Dictionary with usage information
         """
+        # Pre-compute lowercase versions for performance
+        table_lower = table.lower()
+        measure_lower = measure.lower()
+
         result = {
             "measure": measure,
             "table": table,
@@ -351,24 +373,24 @@ class DependencyAnalyzer:
                 "max_depth_analyzed": max_depth
             }
         }
-        
+
         # Find measures that reference this measure
         all_measures = self.model.list_measures()
         for m in all_measures:
             m_table = m.get("Table", "")
             m_name = m.get("Name", "")
             m_expr = m.get("Expression", "")
-            
+
             if not m_expr:
                 continue
-                
+
             # Skip self
-            if m_table.lower() == table.lower() and m_name.lower() == measure.lower():
+            if m_table.lower() == table_lower and m_name.lower() == measure_lower:
                 continue
-                
+
             refs = self._parse_references(m_expr)
             for ref_table, ref_measure in refs.get("measures", []):
-                if ref_table.lower() == table.lower() and ref_measure.lower() == measure.lower():
+                if ref_table.lower() == table_lower and ref_measure.lower() == measure_lower:
                     result["used_by_measures"].append({
                         "table": m_table,
                         "measure": m_name
@@ -426,8 +448,12 @@ class DependencyAnalyzer:
         
         try:
             self._reference_index = DaxReferenceIndex(measures, columns)
-        except Exception:
+        except (TypeError, KeyError, AttributeError) as e:
             # Fall back to lazy loading inside _get_reference_index
+            logger.warning(f"Failed to build reference index from existing data: {e}")
+            self._reference_index = None
+        except Exception as e:
+            logger.error(f"Unexpected error building reference index: {type(e).__name__}: {e}")
             self._reference_index = None
         
         # Build lowercase reference sets for case-insensitive matching

@@ -615,8 +615,70 @@ class AgentPolicy:
         self,
         connection_state,
         output_dir: Optional[str] = None,
+        include_hidden: bool = True,
+        dependency_depth: int = 5,
     ) -> Dict[str, Any]:
-        """Export an interactive HTML relationship graph visualization using Plotly."""
+        """Export an interactive HTML dependency explorer (replaces old relationship graph).
+
+        This generates a comprehensive interactive HTML app that shows:
+        - Tables with their dependencies, measures, columns, and relationships
+        - Measures with dependency trees (forward and reverse)
+        - Interactive relationship graph visualization with D3.js
+        - Full search and navigation capabilities
+
+        Args:
+            connection_state: Active connection state
+            output_dir: Optional output directory for HTML file
+            include_hidden: Include hidden objects in analysis (default: True)
+            dependency_depth: Maximum depth for dependency tree analysis
+
+        Returns:
+            Dictionary with success status and file path
+        """
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+
+        try:
+            # Use new comprehensive dependency explorer
+            from core.documentation import generate_interactive_dependency_explorer
+
+            html_path, error_notes = generate_interactive_dependency_explorer(
+                connection_state,
+                output_dir=output_dir,
+                include_hidden=include_hidden,
+                dependency_depth=dependency_depth
+            )
+
+            if html_path:
+                return {
+                    'success': True,
+                    'html_path': html_path,
+                    'notes': error_notes if error_notes else []
+                }
+            else:
+                # Provide more detailed error information
+                error_msg = 'Failed to generate interactive dependency explorer'
+                if error_notes and len(error_notes) > 0:
+                    error_msg = error_notes[0] if isinstance(error_notes, list) else str(error_notes)
+                return {
+                    'success': False,
+                    'error': error_msg,
+                    'notes': error_notes if isinstance(error_notes, list) else [str(error_notes)]
+                }
+
+        except Exception as e:
+            logger.error(f"Error generating dependency explorer: {e}", exc_info=True)
+            return {
+                'success': False,
+                'error': f'Failed to generate dependency explorer: {str(e)}'
+            }
+
+    def export_interactive_relationship_graph_legacy(
+        self,
+        connection_state,
+        output_dir: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Legacy method for backward compatibility - exports simple Plotly relationship graph."""
         if not connection_state.is_connected():
             return ErrorHandler.handle_not_connected()
 

@@ -932,7 +932,9 @@ def _handle_agent_tools(name: str, arguments: Any) -> Optional[dict]:
             return ensured
         return agent_policy.export_interactive_relationship_graph(
             connection_state,
-            arguments.get('output_dir'),
+            output_dir=arguments.get('output_dir'),
+            include_hidden=arguments.get('include_hidden', True),
+            dependency_depth=arguments.get('dependency_depth', 5),
         )
     if name == "execute_intent":
         return agent_policy.execute_intent(
@@ -1735,7 +1737,7 @@ FRIENDLY_TOOL_ALIASES = {
     "documentation: generate word": "generate_model_documentation_word",
     "documentation: update word": "update_model_documentation_word",
     "Export: PDF from Word": "export_documentation_pdf",
-    "Export: Interactive Relationship Graph HTML": "export_interactive_relationship_graph",
+    "Export: Interactive Dependency Explorer": "export_interactive_relationship_graph",
     # performance/run
     "run: dax": "run_dax",
     # search:
@@ -1971,13 +1973,15 @@ async def list_tools() -> List[Tool]:
         },
     )
     add(
-        "Export: Interactive Relationship Graph HTML",
+        "Export: Interactive Dependency Explorer",
         "export_interactive_relationship_graph",
-        "Generate an interactive HTML relationship graph visualization using Plotly",
+        "Generate a comprehensive interactive HTML dependency explorer with tables, measures, dependencies, and relationship graph. Click tables to see dependencies, measures to see usage trees, interactive D3.js graph visualization with highlighting.",
         {
             "type": "object",
             "properties": {
                 "output_dir": {"type": "string", "description": "Directory to write HTML file; defaults to exports/"},
+                "include_hidden": {"type": "boolean", "description": "Include hidden objects in analysis", "default": True},
+                "dependency_depth": {"type": "integer", "description": "Maximum depth for dependency tree analysis (1-10)", "default": 5, "minimum": 1, "maximum": 10},
             },
             "required": [],
         },
