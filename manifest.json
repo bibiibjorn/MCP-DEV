@@ -84,8 +84,8 @@
       "description": "Update the Word documentation with the latest model changes"
     },
     {
-      "name": "export_interactive_relationship_graph",
-      "description": "Generate an interactive HTML dependency explorer. Shows tables, columns, measures with DAX code, measure dependencies (forward and reverse), relationship graph visualization with D3.js, and full search capabilities. Includes statistics and export options."
+      "name": "export_model_explorer_html",
+      "description": "Generate an interactive HTML Model Explorer. Shows tables with data preview (10 sample rows), columns, measures with DAX code, measure dependencies (forward and reverse), relationship graph visualization with D3.js, and full search capabilities. Includes statistics and export options."
     },
     {
       "name": "full_analysis",

@@ -926,7 +926,8 @@ def _handle_agent_tools(name: str, arguments: Any) -> Optional[dict]:
         pdf_path = docx_path.replace(".docx", ".pdf")
         result = convert_to_pdf(docx_path, pdf_path)
         return result
-    if name == "export_interactive_relationship_graph":
+    if name == "export_model_explorer_html" or name == "export_interactive_relationship_graph":
+        # Support both new name and legacy name for backwards compatibility
         ensured = agent_policy.ensure_connected(connection_manager, connection_state, None)
         if not ensured.get('success'):
             return ensured
@@ -1737,7 +1738,8 @@ FRIENDLY_TOOL_ALIASES = {
     "documentation: generate word": "generate_model_documentation_word",
     "documentation: update word": "update_model_documentation_word",
     "Export: PDF from Word": "export_documentation_pdf",
-    "Export: Interactive Dependency Explorer": "export_interactive_relationship_graph",
+    "Export: Model Explorer - HTML": "export_model_explorer_html",
+    "Export: Interactive Model Explorer - HTML": "export_model_explorer_html",  # Legacy alias
     # performance/run
     "run: dax": "run_dax",
     # search:
@@ -1973,9 +1975,9 @@ async def list_tools() -> List[Tool]:
         },
     )
     add(
-        "Export: Interactive Dependency Explorer",
-        "export_interactive_relationship_graph",
-        "Generate a comprehensive interactive HTML dependency explorer with tables, measures, dependencies, and relationship graph. Click tables to see dependencies, measures to see usage trees, interactive D3.js graph visualization with highlighting.",
+        "Export: Model Explorer - HTML",
+        "export_model_explorer_html",
+        "Generate a comprehensive interactive HTML Model Explorer with tables (including 10-row data preview), columns, measures with DAX code, dependencies, and relationship graphs. Click tables to see data preview and dependencies, measures to see usage trees, interactive D3.js graph visualization with hierarchical layouts.",
         {
             "type": "object",
             "properties": {

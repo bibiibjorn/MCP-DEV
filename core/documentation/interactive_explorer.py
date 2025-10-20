@@ -1,4 +1,4 @@
-"""Interactive Dependency & Relationship Explorer for Power BI models.
+"""Interactive Model Explorer for Power BI models.
 
 Generates a comprehensive, interactive HTML application for exploring:
 - Table dependencies and usage
@@ -192,17 +192,31 @@ class InteractiveDependencyExplorer:
             )
             logger.debug(f"Built relationship view data: {len(relationships_data.get('nodes', []))} nodes, {len(relationships_data.get('edges', []))} edges")
 
+            # Build dependency graph
+            logger.debug("Building dependency graph...")
+            dependency_graph = self.build_dependency_graph(
+                tables_raw, columns_raw, measures_raw, include_hidden, dependency_depth
+            )
+            logger.debug(f"Built dependency graph: {len(dependency_graph.get('nodes', []))} nodes, {len(dependency_graph.get('edges', []))} edges")
+
             # Calculate statistics
             statistics = self._calculate_statistics(
                 tables_data, measures_data, relationships_data
             )
+
+            # Collect table preview data (sample rows)
+            logger.debug("Collecting table preview data...")
+            table_previews = self._collect_table_previews(tables_raw, columns_raw, limit=10)
+            logger.debug(f"Collected previews for {len(table_previews)} tables")
 
             return {
                 "success": True,
                 "tables": tables_data,
                 "measures": measures_data,
                 "relationships": relationships_data,
+                "dependency_graph": dependency_graph,
                 "statistics": statistics,
+                "table_previews": table_previews,
                 "metadata": {
                     "generated_at": datetime.now().isoformat(),
                     "include_hidden": include_hidden,
@@ -651,6 +665,94 @@ class InteractiveDependencyExplorer:
             ),
         }
 
+    def _collect_table_previews(self, tables_raw: List[Dict], columns_raw: List[Dict], limit: int = 10) -> Dict[str, Dict]:
+        """Collect sample data from tables for preview.
+
+        Args:
+            tables_raw: Raw table data from INFO.TABLES
+            columns_raw: Raw column data from INFO.COLUMNS
+            limit: Maximum number of rows to collect per table
+
+        Returns:
+            Dictionary mapping table names to preview data with columns and rows
+        """
+        previews = {}
+        success_count = 0
+        fail_count = 0
+
+        # Process ALL tables, not just first 15
+        for table in tables_raw:
+            table_name = self._get_field(table, "Name")
+            if not table_name:
+                continue
+
+            try:
+                logger.info(f"Collecting preview for table: {table_name}")
+
+                # Use the execute_with_table_reference_fallback method which tries multiple formats
+                result = self.query_executor.execute_with_table_reference_fallback(
+                    table_name=table_name,
+                    max_rows=limit
+                )
+
+                # Check if query succeeded
+                if not result.get("success"):
+                    error_msg = result.get('error', 'Unknown error')
+                    logger.warning(f"Skipping '{table_name}' - {error_msg}")
+                    fail_count += 1
+                    continue
+
+                # Check if we got rows back
+                rows = result.get("rows", [])
+                if not rows or len(rows) == 0:
+                    logger.warning(f"Table '{table_name}' query succeeded but returned 0 rows (empty table)")
+                    fail_count += 1
+                    continue
+
+                # We have data - process it
+                try:
+                    columns = list(rows[0].keys())
+
+                    # Sanitize rows to ensure JSON serialization works
+                    sanitized_rows = []
+                    for row_idx, row in enumerate(rows[:limit]):
+                        sanitized_row = {}
+                        for key, value in row.items():
+                            try:
+                                # Convert problematic types to strings
+                                if value is None:
+                                    sanitized_row[key] = None
+                                elif isinstance(value, (str, int, float, bool)):
+                                    sanitized_row[key] = value
+                                elif hasattr(value, 'isoformat'):  # DateTime objects
+                                    sanitized_row[key] = value.isoformat()
+                                else:
+                                    # Convert other types to string
+                                    sanitized_row[key] = str(value)
+                            except Exception as col_error:
+                                logger.warning(f"Error converting column '{key}' in row {row_idx} of '{table_name}': {col_error}")
+                                sanitized_row[key] = f"<conversion error: {type(value).__name__}>"
+                        sanitized_rows.append(sanitized_row)
+
+                    previews[table_name] = {
+                        "columns": columns,
+                        "rows": sanitized_rows
+                    }
+
+                    logger.info(f"✓ Collected {len(sanitized_rows)} rows for table '{table_name}'")
+                    success_count += 1
+                except Exception as sanitize_error:
+                    logger.error(f"Error sanitizing data for '{table_name}': {sanitize_error}", exc_info=True)
+                    fail_count += 1
+
+            except Exception as e:
+                logger.error(f"Error collecting preview for table '{table_name}': {e}", exc_info=True)
+                fail_count += 1
+                continue
+
+        logger.info(f"Table preview collection complete: {success_count} succeeded, {fail_count} failed out of {len(tables_raw)} tables")
+        return previews
+
     def _map_data_type_to_name(self, data_type_value) -> str:
         """Map Power BI data type code/value to readable name.
 
@@ -902,6 +1004,362 @@ class InteractiveDependencyExplorer:
         else:
             return 'high'
 
+    def build_dependency_graph(
+        self,
+        tables_raw: List[Dict],
+        columns_raw: List[Dict],
+        measures_raw: List[Dict],
+        include_hidden: bool = False,
+        max_depth: int = 5,
+        focus_node: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Build comprehensive dependency graph for measures, columns, and tables.
+
+        Args:
+            tables_raw: Raw table data from INFO.TABLES
+            columns_raw: Raw column data from INFO.COLUMNS
+            measures_raw: Raw measure data from INFO.MEASURES
+            include_hidden: Include hidden objects in the graph
+            max_depth: Maximum dependency traversal depth
+            focus_node: Optional node ID to center the graph around (format: "table|object")
+
+        Returns:
+            Dictionary with nodes, edges, and statistics
+        """
+        try:
+            logger.info(f"Building dependency graph (max_depth={max_depth}, focus_node={focus_node})")
+
+            nodes = []
+            edges = []
+            node_ids = set()
+
+            # 1. Add table nodes
+            for table in tables_raw:
+                table_name = self._get_field(table, "Name")
+                if not table_name:
+                    continue
+
+                is_hidden = self._get_bool_field(table, "IsHidden", False)
+                if not include_hidden and is_hidden:
+                    continue
+
+                node_id = table_name
+                node_ids.add(node_id)
+
+                # Count related objects
+                table_columns = [c for c in columns_raw if self._get_field(c, "Table") == table_name]
+                table_measures = [m for m in measures_raw if self._get_field(m, "Table") == table_name]
+
+                nodes.append({
+                    "id": node_id,
+                    "label": table_name,
+                    "type": "table",
+                    "table": table_name,
+                    "hidden": is_hidden,
+                    "row_count": 0,  # Will be filled later if available
+                    "column_count": len(table_columns),
+                    "measure_count": len(table_measures),
+                })
+
+            # 2. Add column nodes and create edges to parent tables
+            for col in columns_raw:
+                table_name = self._get_field(col, "Table")
+                col_name = self._get_column_name(col)
+
+                if not table_name or not col_name:
+                    continue
+
+                is_hidden = self._get_bool_field(col, "IsHidden", False)
+                if not include_hidden and is_hidden:
+                    continue
+
+                node_id = f"{table_name}|{col_name}"
+                node_ids.add(node_id)
+
+                # Get data type
+                data_type_raw = (
+                    self._get_field(col, "ExplicitDataType") or
+                    self._get_field(col, "InferredDataType") or
+                    self._get_field(col, "Type")
+                )
+                data_type = self._map_data_type_to_name(data_type_raw)
+
+                nodes.append({
+                    "id": node_id,
+                    "label": col_name,
+                    "type": "column",
+                    "table": table_name,
+                    "hidden": is_hidden,
+                    "data_type": data_type,
+                    "used_in_count": 0,  # Will be calculated when parsing measures
+                })
+
+                # Add edge from column to its parent table
+                if table_name in node_ids:
+                    edges.append({
+                        "from": node_id,
+                        "to": table_name,
+                        "type": "column_to_table",
+                        "strength": 1,
+                    })
+
+            # 3. Add measure nodes and build edges from DAX parsing
+            for measure in measures_raw:
+                table_name = self._get_field(measure, "Table")
+                measure_name = self._get_field(measure, "Name")
+                expression = self._get_field(measure, "Expression", "")
+
+                if not table_name or not measure_name:
+                    continue
+
+                is_hidden = self._get_bool_field(measure, "IsHidden", False)
+                if not include_hidden and is_hidden:
+                    continue
+
+                measure_id = f"{table_name}|{measure_name}"
+                node_ids.add(measure_id)
+
+                # Calculate complexity
+                complexity = self._calculate_measure_complexity(expression, 0)
+
+                nodes.append({
+                    "id": measure_id,
+                    "label": measure_name,
+                    "type": "measure",
+                    "table": table_name,
+                    "hidden": is_hidden,
+                    "expression": expression,
+                    "complexity": complexity,
+                    "folder": self._get_field(measure, "DisplayFolder", ""),
+                    "description": self._get_field(measure, "Description", ""),
+                })
+
+                # Parse dependencies from DAX expression
+                if expression and self.dependency_analyzer:
+                    try:
+                        refs = self.dependency_analyzer._parse_references(expression)
+
+                        # Add edges for measure dependencies
+                        for ref_table, ref_measure in refs.get("measures", []):
+                            if not ref_table or not ref_measure:
+                                continue
+
+                            target_id = f"{ref_table}|{ref_measure}"
+
+                            # Only add edge if target node exists or will exist
+                            edges.append({
+                                "from": measure_id,
+                                "to": target_id,
+                                "type": "measure_to_measure",
+                                "strength": 1,
+                            })
+
+                        # Add edges for column dependencies
+                        for ref_table, ref_col in refs.get("columns", []):
+                            if not ref_table or not ref_col:
+                                continue
+
+                            target_id = f"{ref_table}|{ref_col}"
+
+                            # Only add edge if target node exists
+                            if target_id in node_ids:
+                                edges.append({
+                                    "from": measure_id,
+                                    "to": target_id,
+                                    "type": "measure_to_column",
+                                    "strength": 1,
+                                })
+
+                                # Increment used_in_count for the column
+                                for node in nodes:
+                                    if node["id"] == target_id and node["type"] == "column":
+                                        node["used_in_count"] = node.get("used_in_count", 0) + 1
+
+                        # Add edges for table dependencies (implicit)
+                        for ref_table in refs.get("tables", []):
+                            if not ref_table or ref_table == table_name:
+                                continue
+
+                            # Only add edge if target table node exists
+                            if ref_table in node_ids:
+                                edges.append({
+                                    "from": measure_id,
+                                    "to": ref_table,
+                                    "type": "measure_to_table",
+                                    "strength": 1,
+                                })
+
+                    except Exception as e:
+                        logger.warning(f"Failed to parse dependencies for measure {measure_id}: {e}")
+
+            # 4. Filter by focus node if specified
+            if focus_node:
+                logger.info(f"Filtering graph by focus node: {focus_node}")
+                nodes, edges = self._filter_graph_by_focus(nodes, edges, focus_node, max_depth)
+
+            # 5. Calculate statistics
+            measure_nodes = [n for n in nodes if n["type"] == "measure"]
+            column_nodes = [n for n in nodes if n["type"] == "column"]
+            table_nodes = [n for n in nodes if n["type"] == "table"]
+
+            # Detect circular dependencies
+            circular_refs = self._detect_circular_dependencies(edges)
+
+            statistics = {
+                "total_nodes": len(nodes),
+                "measure_count": len(measure_nodes),
+                "column_count": len(column_nodes),
+                "table_count": len(table_nodes),
+                "total_edges": len(edges),
+                "max_depth": max_depth,
+                "circular_references": circular_refs,
+                "edge_types": {
+                    "measure_to_measure": sum(1 for e in edges if e["type"] == "measure_to_measure"),
+                    "measure_to_column": sum(1 for e in edges if e["type"] == "measure_to_column"),
+                    "measure_to_table": sum(1 for e in edges if e["type"] == "measure_to_table"),
+                    "column_to_table": sum(1 for e in edges if e["type"] == "column_to_table"),
+                }
+            }
+
+            logger.info(f"Built dependency graph: {len(nodes)} nodes, {len(edges)} edges")
+
+            return {
+                "nodes": nodes,
+                "edges": edges,
+                "statistics": statistics,
+            }
+
+        except Exception as e:
+            logger.error(f"Error building dependency graph: {e}", exc_info=True)
+            return {
+                "nodes": [],
+                "edges": [],
+                "statistics": {
+                    "total_nodes": 0,
+                    "measure_count": 0,
+                    "column_count": 0,
+                    "table_count": 0,
+                    "total_edges": 0,
+                    "max_depth": max_depth,
+                    "circular_references": [],
+                    "edge_types": {},
+                },
+                "error": str(e)
+            }
+
+    def _filter_graph_by_focus(
+        self,
+        nodes: List[Dict],
+        edges: List[Dict],
+        focus_node: str,
+        max_depth: int
+    ) -> Tuple[List[Dict], List[Dict]]:
+        """Filter graph to show only nodes within max_depth of focus_node.
+
+        Args:
+            nodes: All graph nodes
+            edges: All graph edges
+            focus_node: Node ID to focus on
+            max_depth: Maximum depth to traverse
+
+        Returns:
+            Tuple of (filtered_nodes, filtered_edges)
+        """
+        # Build adjacency list (bidirectional)
+        adjacency = {}
+        for edge in edges:
+            from_id = edge["from"]
+            to_id = edge["to"]
+
+            if from_id not in adjacency:
+                adjacency[from_id] = []
+            if to_id not in adjacency:
+                adjacency[to_id] = []
+
+            adjacency[from_id].append(to_id)
+            adjacency[to_id].append(from_id)  # Bidirectional
+
+        # BFS to find all nodes within max_depth
+        visited = {focus_node: 0}  # node_id -> depth
+        queue = [(focus_node, 0)]
+
+        while queue:
+            current_id, depth = queue.pop(0)
+
+            if depth >= max_depth:
+                continue
+
+            for neighbor_id in adjacency.get(current_id, []):
+                if neighbor_id not in visited:
+                    visited[neighbor_id] = depth + 1
+                    queue.append((neighbor_id, depth + 1))
+
+        # Filter nodes and edges
+        filtered_node_ids = set(visited.keys())
+        filtered_nodes = [n for n in nodes if n["id"] in filtered_node_ids]
+        filtered_edges = [
+            e for e in edges
+            if e["from"] in filtered_node_ids and e["to"] in filtered_node_ids
+        ]
+
+        logger.info(f"Filtered graph: {len(filtered_nodes)}/{len(nodes)} nodes, {len(filtered_edges)}/{len(edges)} edges")
+
+        return filtered_nodes, filtered_edges
+
+    def _detect_circular_dependencies(self, edges: List[Dict]) -> List[Dict]:
+        """Detect circular dependencies in the dependency graph.
+
+        Args:
+            edges: List of edges in the graph
+
+        Returns:
+            List of circular dependency paths
+        """
+        # Build adjacency list
+        adjacency = {}
+        for edge in edges:
+            from_id = edge["from"]
+            to_id = edge["to"]
+
+            if from_id not in adjacency:
+                adjacency[from_id] = []
+            adjacency[from_id].append(to_id)
+
+        # DFS to detect cycles
+        circular_paths = []
+        visited = set()
+        rec_stack = set()
+
+        def dfs(node_id, path):
+            visited.add(node_id)
+            rec_stack.add(node_id)
+            path.append(node_id)
+
+            for neighbor in adjacency.get(node_id, []):
+                if neighbor not in visited:
+                    if dfs(neighbor, path):
+                        return True
+                elif neighbor in rec_stack:
+                    # Found a cycle
+                    cycle_start = path.index(neighbor)
+                    cycle_path = path[cycle_start:] + [neighbor]
+                    circular_paths.append({
+                        "path": cycle_path,
+                        "length": len(cycle_path) - 1
+                    })
+                    return True
+
+            path.pop()
+            rec_stack.remove(node_id)
+            return False
+
+        # Check all nodes
+        for node_id in adjacency.keys():
+            if node_id not in visited:
+                dfs(node_id, [])
+
+        return circular_paths[:10]  # Limit to first 10 circular paths
+
     def generate_html(
         self, model_data: Dict[str, Any], output_dir: Optional[str] = None
     ) -> Tuple[Optional[str], List[str]]:
@@ -951,7 +1409,20 @@ class InteractiveDependencyExplorer:
         # Embed data as JSON with proper escaping for JavaScript context
         # Use separators without spaces to minimize size
         # ensure_ascii=True to avoid Unicode issues in some browsers
-        model_json = json.dumps(model_data, separators=(',', ':'), ensure_ascii=True)
+        try:
+            model_json = json.dumps(model_data, separators=(',', ':'), ensure_ascii=True)
+        except (TypeError, ValueError) as json_error:
+            logger.error(f"JSON serialization error: {json_error}")
+            # Try to identify which part is failing
+            if 'table_previews' in model_data:
+                logger.error(f"Table previews keys: {list(model_data['table_previews'].keys())}")
+                # Remove table_previews and try again
+                model_data_copy = model_data.copy()
+                model_data_copy['table_previews'] = {}
+                model_json = json.dumps(model_data_copy, separators=(',', ':'), ensure_ascii=True)
+                logger.warning("Removed all table previews due to JSON serialization error")
+            else:
+                raise
 
         # Escape for safe embedding in HTML/JavaScript
         # Replace </script> tags that could break out of script context
@@ -1013,7 +1484,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Power BI Dependency Explorer</title>
+    <title>Power BI Model Explorer</title>
     <script>
         // Early diagnostic check
         console.log('[DIAGNOSTIC] JavaScript is running');
@@ -1288,7 +1759,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
                 <div class="flex justify-between items-center">
                     <div>
-                        <h1 class="text-3xl font-bold" style="color: white;">Power BI Dependency Explorer</h1>
+                        <h1 class="text-3xl font-bold" style="color: white;">Power BI Model Explorer</h1>
                         <p class="text-sm mt-1" style="color: rgba(255,255,255,0.9);">
                             {{{{ modelData.statistics.total_tables }}}} tables ·
                             {{{{ modelData.statistics.total_measures }}}} measures ·
@@ -1383,6 +1854,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         🔗 Relationships ({{{{ modelData.relationships?.edges?.length || 0 }}}})
                     </button>
                     <button
+                        @click="activeTab = 'dependencies'"
+                        :class="{{
+                            'border-blue-500 text-blue-600': activeTab === 'dependencies',
+                            'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300': activeTab !== 'dependencies'
+                       }}"
+                        class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition"
+                    >
+                        🔀 Dependencies ({{{{ modelData.dependency_graph?.nodes?.length || 0 }}}})
+                    </button>
+                    <button
                         @click="activeTab = 'statistics'"
                         :class="{{
                             'border-blue-500 text-blue-600': activeTab === 'statistics',
@@ -1399,157 +1880,233 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <!-- Content -->
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 pb-12">
             <!-- Overview Dashboard -->
-            <div v-if="activeTab === 'overview'">
-                <div class="mb-6">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-2">Model Explorer</h2>
-                    <p class="text-gray-600">Browse all tables and measures in your Power BI model</p>
-                </div>
+            <div v-if="activeTab === 'overview'" class="grid grid-cols-12 gap-6">
+                <!-- Left Panel: Scrollable List -->
+                <div class="col-span-7">
+                    <div class="bg-white rounded-lg shadow">
+                        <div class="p-4 border-b">
+                            <h2 class="text-xl font-bold text-gray-900 mb-2">Model Explorer</h2>
+                            <p class="text-sm text-gray-600 mb-3">Browse all tables and measures in your Power BI model</p>
 
-                <!-- Filter Buttons -->
-                <div class="flex gap-3 mb-6">
-                    <button
-                        @click="overviewFilter = 'all'"
-                        :class="{{
-                            'bg-blue-500 text-white': overviewFilter === 'all',
-                            'bg-white text-gray-700 border': overviewFilter !== 'all'
-                       }}"
-                        class="px-4 py-2 rounded-lg font-medium transition"
-                    >
-                        All
-                    </button>
-                    <button
-                        @click="overviewFilter = 'dimensions'"
-                        :class="{{
-                            'bg-blue-500 text-white': overviewFilter === 'dimensions',
-                            'bg-white text-gray-700 border': overviewFilter !== 'dimensions'
-                       }}"
-                        class="px-4 py-2 rounded-lg font-medium transition"
-                    >
-                        Dimensions
-                    </button>
-                    <button
-                        @click="overviewFilter = 'facts'"
-                        :class="{{
-                            'bg-blue-500 text-white': overviewFilter === 'facts',
-                            'bg-white text-gray-700 border': overviewFilter !== 'facts'
-                       }}"
-                        class="px-4 py-2 rounded-lg font-medium transition"
-                    >
-                        Facts
-                    </button>
-                    <button
-                        @click="overviewFilter = 'measures'"
-                        :class="{{
-                            'bg-blue-500 text-white': overviewFilter === 'measures',
-                            'bg-white text-gray-700 border': overviewFilter !== 'measures'
-                       }}"
-                        class="px-4 py-2 rounded-lg font-medium transition"
-                    >
-                        Measures
-                    </button>
-                </div>
-
-                <!-- Cards Grid -->
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                    <!-- Table Cards -->
-                    <div
-                        v-for="table in overviewFilteredTables"
-                        :key="'table-' + table.name"
-                        @click="selectTableFromOverview(table)"
-                        class="bg-white rounded-lg border border-gray-200 p-3 cursor-pointer transition-all hover:border-blue-500 hover:shadow-md"
-                    >
-                        <!-- Header -->
-                        <div class="flex items-start justify-between mb-2">
-                            <div class="flex items-center gap-2 flex-1 min-w-0">
-                                <div :class="{{
-                                    'bg-green-100': table.table_type === 'dimension',
-                                    'bg-blue-100': table.table_type === 'fact'
-                               }}" class="w-8 h-8 rounded flex items-center justify-center text-lg flex-shrink-0">
-                                    {{{{ table.table_type === 'fact' ? '📊' : '📁' }}}}
-                                </div>
-                                <div class="flex-1 min-w-0">
-                                    <h3 class="font-semibold text-sm text-gray-900 truncate">
-                                        {{{{ table.table_type === 'fact' ? 'f' : 'd' }}}} {{{{ table.name }}}}
-                                    </h3>
-                                    <p class="text-xs text-gray-500">{{{{ table.table_type }}}}</p>
-                                </div>
+                            <!-- Filter Buttons -->
+                            <div class="flex gap-2">
+                                <button
+                                    @click="overviewFilter = 'all'"
+                                    :class="{{
+                                        'bg-blue-500 text-white': overviewFilter === 'all',
+                                        'bg-white text-gray-700 border': overviewFilter !== 'all'
+                                   }}"
+                                    class="px-3 py-1.5 rounded-lg font-medium transition text-sm"
+                                >
+                                    All
+                                </button>
+                                <button
+                                    @click="overviewFilter = 'dimensions'"
+                                    :class="{{
+                                        'bg-blue-500 text-white': overviewFilter === 'dimensions',
+                                        'bg-white text-gray-700 border': overviewFilter !== 'dimensions'
+                                   }}"
+                                    class="px-3 py-1.5 rounded-lg font-medium transition text-sm"
+                                >
+                                    Dimensions
+                                </button>
+                                <button
+                                    @click="overviewFilter = 'facts'"
+                                    :class="{{
+                                        'bg-blue-500 text-white': overviewFilter === 'facts',
+                                        'bg-white text-gray-700 border': overviewFilter !== 'facts'
+                                   }}"
+                                    class="px-3 py-1.5 rounded-lg font-medium transition text-sm"
+                                >
+                                    Facts
+                                </button>
+                                <button
+                                    @click="overviewFilter = 'measures'"
+                                    :class="{{
+                                        'bg-blue-500 text-white': overviewFilter === 'measures',
+                                        'bg-white text-gray-700 border': overviewFilter !== 'measures'
+                                   }}"
+                                    class="px-3 py-1.5 rounded-lg font-medium transition text-sm"
+                                >
+                                    Measures
+                                </button>
                             </div>
-                            <span :class="{{
-                                'bg-green-100 text-green-800': table.complexity === 'low',
-                                'bg-yellow-100 text-yellow-800': table.complexity === 'medium',
-                                'bg-red-100 text-red-800': table.complexity === 'high'
-                           }}" class="px-1.5 py-0.5 rounded text-xs font-semibold uppercase flex-shrink-0 ml-1">
-                                {{{{ table.complexity }}}}
-                            </span>
                         </div>
 
-                        <!-- Stats -->
-                        <div class="grid grid-cols-3 gap-1 text-center">
-                            <div>
-                                <div class="text-lg font-bold text-gray-900">{{{{ table.statistics.column_count }}}}</div>
-                                <div class="text-xs text-gray-500">Cols</div>
+                        <!-- Scrollable List -->
+                        <div class="scrollable" style="max-height: calc(100vh - 300px);">
+                            <!-- Table Items -->
+                            <div
+                                v-for="table in overviewFilteredTables"
+                                :key="'table-' + table.name"
+                                @click="selectTableFromOverview(table)"
+                                class="list-item border-b p-3 cursor-pointer hover:bg-gray-50"
+                            >
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-3 flex-1 min-w-0">
+                                        <div :class="{{
+                                            'bg-green-100': table.table_type === 'dimension',
+                                            'bg-blue-100': table.table_type === 'fact'
+                                       }}" class="w-10 h-10 rounded flex items-center justify-center text-lg flex-shrink-0">
+                                            {{{{ table.table_type === 'fact' ? '📊' : '📁' }}}}
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <h3 class="font-semibold text-sm text-gray-900 truncate">
+                                                {{{{ table.table_type === 'fact' ? 'f' : 'd' }}}} {{{{ table.name }}}}
+                                            </h3>
+                                            <div class="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                                                <span>{{{{ table.statistics.column_count }}}} cols</span>
+                                                <span>{{{{ table.statistics.measure_count }}}} meas</span>
+                                                <span>{{{{ table.statistics.relationship_count }}}} rels</span>
+                                            </div>
+                                        </div>
+                                        <span :class="{{
+                                            'bg-green-100 text-green-800': table.complexity === 'low',
+                                            'bg-yellow-100 text-yellow-800': table.complexity === 'medium',
+                                            'bg-red-100 text-red-800': table.complexity === 'high'
+                                       }}" class="px-2 py-1 rounded text-xs font-semibold uppercase flex-shrink-0">
+                                            {{{{ table.complexity }}}}
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
-                            <div>
-                                <div class="text-lg font-bold text-gray-900">{{{{ table.statistics.measure_count }}}}</div>
-                                <div class="text-xs text-gray-500">Meas</div>
+
+                            <!-- Measure Items (when showing measures) - Grouped by folder -->
+                            <template v-for="(measures, folder) in measuresByFolder" :key="'folder-' + folder">
+                                <!-- Folder Header -->
+                                <div class="bg-gray-100 px-3 py-2 border-b sticky top-0 z-10">
+                                    <h3 class="text-sm font-semibold text-gray-700">
+                                        <span v-if="folder !== '(No folder)'">📁 {{{{ folder }}}}</span>
+                                        <span v-else class="text-gray-400">📂 {{{{ folder }}}}</span>
+                                        <span class="ml-2 text-xs font-normal text-gray-500">({{{{ measures.length }}}})</span>
+                                    </h3>
+                                </div>
+
+                                <!-- Measures in this folder -->
+                                <div
+                                    v-for="measure in measures"
+                                    :key="'measure-' + measure.table + '-' + measure.name"
+                                    @click="selectMeasureFromOverview(measure)"
+                                    class="list-item border-b p-3 cursor-pointer hover:bg-gray-50"
+                                >
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-3 flex-1 min-w-0">
+                                            <div class="bg-pink-100 w-10 h-10 rounded flex items-center justify-center text-lg flex-shrink-0">
+                                                🧮
+                                            </div>
+                                            <div class="flex-1 min-w-0">
+                                                <h3 class="font-semibold text-sm text-gray-900 truncate">m {{{{ measure.name }}}}</h3>
+                                                <div class="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                                                    <span>{{{{ measure.statistics.dependency_count }}}} deps</span>
+                                                    <span>{{{{ measure.statistics.usage_count }}}} used by</span>
+                                                </div>
+                                            </div>
+                                            <span :class="{{
+                                                'bg-green-100 text-green-800': measure.complexity === 'low',
+                                                'bg-yellow-100 text-yellow-800': measure.complexity === 'medium',
+                                                'bg-red-100 text-red-800': measure.complexity === 'high'
+                                           }}" class="px-2 py-1 rounded text-xs font-semibold uppercase flex-shrink-0">
+                                                {{{{ measure.complexity }}}}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Panel: Model Summary -->
+                <div class="col-span-5">
+                    <div class="bg-white rounded-lg shadow p-6 sticky top-6">
+                        <h2 class="text-xl font-bold text-gray-900 mb-4">📊 Model Summary</h2>
+
+                        <!-- Model Statistics -->
+                        <div class="space-y-4 mb-6">
+                            <div class="border-b pb-3">
+                                <h3 class="text-sm font-semibold text-gray-700 mb-2">Overview</h3>
+                                <div class="space-y-2">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-sm text-gray-600">Total Tables</span>
+                                        <span class="font-bold text-lg text-blue-600">{{{{ modelData.statistics.total_tables }}}}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-sm text-gray-600">Total Measures</span>
+                                        <span class="font-bold text-lg text-pink-600">{{{{ modelData.statistics.total_measures }}}}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-sm text-gray-600">Total Relationships</span>
+                                        <span class="font-bold text-lg text-purple-600">{{{{ modelData.statistics.total_relationships }}}}</span>
+                                    </div>
+                                </div>
                             </div>
+
+                            <div class="border-b pb-3">
+                                <h3 class="text-sm font-semibold text-gray-700 mb-2">Table Types</h3>
+                                <div class="space-y-2">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-sm text-gray-600">📁 Dimensions</span>
+                                        <span class="font-semibold text-green-600">{{{{ modelData.statistics.dimension_tables }}}}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-sm text-gray-600">📊 Facts</span>
+                                        <span class="font-semibold text-blue-600">{{{{ modelData.statistics.fact_tables }}}}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="border-b pb-3">
+                                <h3 class="text-sm font-semibold text-gray-700 mb-2">Relationships</h3>
+                                <div class="space-y-2">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-sm text-gray-600">Active</span>
+                                        <span class="font-semibold text-green-600">{{{{ modelData.statistics.active_relationships }}}}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-sm text-gray-600">Inactive</span>
+                                        <span class="font-semibold text-red-600">{{{{ modelData.statistics.inactive_relationships }}}}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-sm text-gray-600">Disconnected Tables</span>
+                                        <span class="font-semibold text-yellow-600">{{{{ modelData.statistics.tables_with_no_relationships }}}}</span>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div>
-                                <div class="text-lg font-bold text-gray-900">{{{{ table.statistics.relationship_count }}}}</div>
-                                <div class="text-xs text-gray-500">Rels</div>
+                                <h3 class="text-sm font-semibold text-gray-700 mb-2">Model Health</h3>
+                                <div class="space-y-2">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-sm text-gray-600">Unused Measures</span>
+                                        <span class="font-semibold" :class="{{
+                                            'text-green-600': modelData.statistics.unused_measures === 0,
+                                            'text-yellow-600': modelData.statistics.unused_measures > 0
+                                        }}">{{{{ modelData.statistics.unused_measures }}}}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-sm text-gray-600">Measures with Dependencies</span>
+                                        <span class="font-semibold text-blue-600">{{{{ modelData.statistics.measures_with_dependencies }}}}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Model Complexity Badge -->
+                        <div class="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4 border border-blue-200">
+                            <div class="text-center">
+                                <div class="text-xs text-gray-600 mb-1">Model Complexity</div>
+                                <div class="text-2xl font-bold" :class="{{
+                                    'text-green-600': modelData.statistics.total_tables < 10 && modelData.statistics.total_measures < 50,
+                                    'text-yellow-600': (modelData.statistics.total_tables >= 10 && modelData.statistics.total_tables < 30) || (modelData.statistics.total_measures >= 50 && modelData.statistics.total_measures < 150),
+                                    'text-red-600': modelData.statistics.total_tables >= 30 || modelData.statistics.total_measures >= 150
+                                }}">
+                                    <span v-if="modelData.statistics.total_tables < 10 && modelData.statistics.total_measures < 50">LOW</span>
+                                    <span v-else-if="modelData.statistics.total_tables >= 30 || modelData.statistics.total_measures >= 150">HIGH</span>
+                                    <span v-else>MEDIUM</span>
+                                </div>
                             </div>
                         </div>
                     </div>
-
-                    <!-- Measure Cards (when showing measures) - Grouped by folder -->
-                    <template v-for="(measures, folder) in measuresByFolder" :key="'folder-' + folder">
-                        <!-- Folder Header -->
-                        <div class="col-span-full">
-                            <h3 class="text-lg font-semibold text-gray-700 mb-2 mt-4">
-                                <span v-if="folder !== '(No folder)'">📁 {{{{ folder }}}}</span>
-                                <span v-else class="text-gray-400">📂 {{{{ folder }}}}</span>
-                            </h3>
-                        </div>
-
-                        <!-- Measures in this folder -->
-                        <div
-                            v-for="measure in measures"
-                            :key="'measure-' + measure.table + '-' + measure.name"
-                            @click="selectMeasureFromOverview(measure)"
-                            class="bg-white rounded-lg border border-gray-200 p-3 cursor-pointer transition-all hover:border-blue-500 hover:shadow-md"
-                        >
-                            <!-- Header -->
-                            <div class="flex items-start justify-between mb-2">
-                                <div class="flex items-center gap-2 flex-1 min-w-0">
-                                    <div class="bg-pink-100 w-8 h-8 rounded flex items-center justify-center text-lg flex-shrink-0">
-                                        🧮
-                                    </div>
-                                    <div class="flex-1 min-w-0">
-                                        <h3 class="font-semibold text-sm text-gray-900 truncate">m {{{{ measure.name }}}}</h3>
-                                        <p class="text-xs text-gray-500">measure</p>
-                                    </div>
-                                </div>
-                                <span :class="{{
-                                    'bg-green-100 text-green-800': measure.complexity === 'low',
-                                    'bg-yellow-100 text-yellow-800': measure.complexity === 'medium',
-                                    'bg-red-100 text-red-800': measure.complexity === 'high'
-                               }}" class="px-1.5 py-0.5 rounded text-xs font-semibold uppercase flex-shrink-0 ml-1">
-                                    {{{{ measure.complexity }}}}
-                                </span>
-                            </div>
-
-                            <!-- Stats -->
-                            <div class="grid grid-cols-2 gap-1 text-center">
-                                <div>
-                                    <div class="text-lg font-bold text-gray-900">{{{{ measure.statistics.dependency_count }}}}</div>
-                                    <div class="text-xs text-gray-500">Deps</div>
-                                </div>
-                                <div>
-                                    <div class="text-lg font-bold text-gray-900">{{{{ measure.statistics.usage_count }}}}</div>
-                                    <div class="text-xs text-gray-500">Used By</div>
-                                </div>
-                            </div>
-                        </div>
-                    </template>
                 </div>
             </div>
 
@@ -1688,6 +2245,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                                     class="py-2 px-1 border-b-2 font-medium text-sm"
                                 >
                                     Usage ({{{{ selectedTable.used_in_measures.length }}}})
+                                </button>
+                                <button
+                                    @click="tableDetailTab = 'preview'; loadTablePreview(selectedTable.name)"
+                                    :class="{{
+                                        'border-blue-500 text-blue-600': tableDetailTab === 'preview',
+                                        'border-transparent text-gray-500': tableDetailTab !== 'preview'
+                                   }}"
+                                    class="py-2 px-1 border-b-2 font-medium text-sm"
+                                >
+                                    📊 Data Preview
                                 </button>
                             </nav>
                         </div>
@@ -1828,6 +2395,73 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             </div>
                             <div v-else class="text-center py-8 text-gray-500">
                                 This table is not referenced in any measures
+                            </div>
+                        </div>
+
+                        <!-- Data Preview -->
+                        <div v-if="tableDetailTab === 'preview'">
+                            <!-- Loading state -->
+                            <div v-if="tablePreviewLoading" class="flex items-center justify-center py-12">
+                                <div class="text-center">
+                                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+                                    <p class="mt-4 text-gray-600">Loading data preview...</p>
+                                </div>
+                            </div>
+
+                            <!-- Error state -->
+                            <div v-else-if="tablePreviewError" class="bg-red-50 border border-red-200 rounded p-4 text-red-800">
+                                <div class="flex items-start">
+                                    <span class="text-2xl mr-3">⚠️</span>
+                                    <div>
+                                        <strong class="font-semibold">Error loading data preview</strong>
+                                        <p class="text-sm mt-1">{{{{ tablePreviewError }}}}</p>
+                                        <button @click="loadTablePreview(selectedTable.name)" class="mt-2 text-sm text-red-600 hover:underline">
+                                            Try again
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Data table -->
+                            <div v-else-if="tablePreviewData && tablePreviewData.rows" class="overflow-x-auto">
+                                <div class="mb-3 text-sm text-gray-600">
+                                    Showing {{{{ tablePreviewData.rows.length }}}} of {{{{ formatNumber(selectedTable.row_count) }}}} rows
+                                </div>
+                                <table class="min-w-full divide-y divide-gray-200 border">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r sticky left-0 bg-gray-50 z-10">
+                                                #
+                                            </th>
+                                            <th
+                                                v-for="column in tablePreviewData.columns"
+                                                :key="column"
+                                                class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r whitespace-nowrap"
+                                            >
+                                                {{{{ column }}}}
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200">
+                                        <tr v-for="(row, rowIdx) in tablePreviewData.rows" :key="rowIdx" class="hover:bg-gray-50">
+                                            <td class="px-3 py-2 text-sm text-gray-500 border-r sticky left-0 bg-white font-medium">
+                                                {{{{ rowIdx + 1 }}}}
+                                            </td>
+                                            <td
+                                                v-for="column in tablePreviewData.columns"
+                                                :key="column"
+                                                class="px-3 py-2 text-sm text-gray-900 border-r whitespace-nowrap"
+                                            >
+                                                {{{{ formatCellValue(row[column]) }}}}
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- Empty state -->
+                            <div v-else class="text-center py-8 text-gray-500">
+                                Click "📊 Data Preview" to load sample data
                             </div>
                         </div>
                     </div>
@@ -2021,8 +2655,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             <label class="text-sm font-medium text-gray-700 ml-4">Layout:</label>
                             <select v-model="graphLayout" @change="changeGraphLayout(graphLayout)" class="px-3 py-1 border rounded text-sm">
                                 <option value="force">Force Directed</option>
-                                <option value="radial">Radial</option>
-                                <option value="hierarchical">Hierarchical</option>
+                                <option value="hierarchical">Hierarchical (Recommended)</option>
+                                <option value="radial">Radial (Tiered)</option>
                             </select>
                             <label class="flex items-center space-x-2 ml-4">
                                 <input type="checkbox" v-model="showInactiveRelationships" class="rounded">
@@ -2058,6 +2692,222 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <h3 class="font-semibold text-lg mb-2">Selected: {{{{ selectedNode }}}}</h3>
                         <div class="text-sm text-gray-700">
                             Click on a table to highlight its relationships
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dependency Graph View -->
+            <div v-if="activeTab === 'dependencies'">
+                <div class="bg-white rounded-lg shadow p-6">
+                    <!-- Header and Controls -->
+                    <div class="mb-4">
+                        <div class="flex justify-between items-center mb-3">
+                            <h2 class="text-2xl font-bold text-gray-900">Dependency Graph</h2>
+                            <div class="flex items-center space-x-2">
+                                <!-- Layout Selector -->
+                                <label class="text-sm font-medium text-gray-700">Layout:</label>
+                                <select v-model="dependencyLayout" @change="changeDependencyLayout" class="px-3 py-1 border rounded text-sm">
+                                    <option value="force">Force Directed</option>
+                                    <option value="hierarchical">Hierarchical (Recommended)</option>
+                                    <option value="radial">Radial (Tiered)</option>
+                                </select>
+
+                                <!-- Reset Button -->
+                                <button
+                                    @click="resetDependencyGraph"
+                                    class="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm"
+                                    title="Reset Graph"
+                                >
+                                    🔄 Reset
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Filter Controls Row -->
+                        <div class="grid grid-cols-12 gap-3 p-3 bg-gray-50 rounded border border-gray-200">
+                            <!-- Focus on Measure -->
+                            <div class="col-span-4">
+                                <label class="text-xs font-medium text-gray-700 block mb-1">Focus on Measure:</label>
+                                <select
+                                    v-model="dependencyFocusMeasure"
+                                    @change="handleMeasureFocus"
+                                    class="w-full px-2 py-1 border rounded text-sm"
+                                >
+                                    <option value="">-- All Measures --</option>
+                                    <optgroup
+                                        v-for="(measures, folder) in dependencyMeasuresByFolder"
+                                        :key="folder"
+                                        :label="folder || '(No Folder)'"
+                                    >
+                                        <option
+                                            v-for="measure in measures"
+                                            :key="measure.id"
+                                            :value="measure.id"
+                                        >
+                                            {{{{ measure.table }}}} | {{{{ measure.label }}}}
+                                        </option>
+                                    </optgroup>
+                                </select>
+                            </div>
+
+                            <!-- Focus on Table -->
+                            <div class="col-span-3">
+                                <label class="text-xs font-medium text-gray-700 block mb-1">Focus on Table:</label>
+                                <select
+                                    v-model="dependencyFocusTable"
+                                    @change="handleTableFocus"
+                                    class="w-full px-2 py-1 border rounded text-sm"
+                                >
+                                    <option value="">-- All Tables --</option>
+                                    <option
+                                        v-for="table in dependencyTables"
+                                        :key="table.id"
+                                        :value="table.id"
+                                    >
+                                        {{{{ table.label }}}}
+                                    </option>
+                                </select>
+                            </div>
+
+                            <!-- Object Type Filter -->
+                            <div class="col-span-3">
+                                <label class="text-xs font-medium text-gray-700 block mb-1">Show Objects:</label>
+                                <select v-model="dependencyFilter" @change="initDependencyGraph" class="w-full px-2 py-1 border rounded text-sm">
+                                    <option value="all">All Objects</option>
+                                    <option value="measures-context">Measure Dependencies</option>
+                                    <option value="tables-context">Table Dependencies</option>
+                                    <option value="columns-context">Column Usage</option>
+                                </select>
+                            </div>
+
+                            <!-- Direction Filter -->
+                            <div class="col-span-2">
+                                <label class="text-xs font-medium text-gray-700 block mb-1">Direction:</label>
+                                <select v-model="dependencyDirection" @change="initDependencyGraph" class="w-full px-2 py-1 border rounded text-sm">
+                                    <option value="both">Both</option>
+                                    <option value="upstream">Upstream</option>
+                                    <option value="downstream">Downstream</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Depth Control (only shown when a focus is active) -->
+                        <div v-if="dependencyFocusMeasure || dependencyFocusTable" class="mt-3 p-3 bg-blue-50 rounded border border-blue-200">
+                            <div class="flex items-center gap-4">
+                                <label class="text-xs font-medium text-gray-700">Dependency Depth:</label>
+                                <input
+                                    v-model.number="dependencyDepth"
+                                    @change="initDependencyGraph"
+                                    type="range"
+                                    min="1"
+                                    max="10"
+                                    class="flex-1"
+                                />
+                                <span class="text-sm font-semibold text-blue-700 w-8 text-center">{{{{ dependencyDepth }}}}</span>
+                                <span class="text-xs text-gray-600">levels</span>
+                            </div>
+                            <div class="text-xs text-gray-600 mt-1">
+                                Showing dependencies up to {{{{ dependencyDepth }}}} {{{{ dependencyDepth === 1 ? 'level' : 'levels' }}}} from the focused node
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Legend and Info -->
+                    <div class="flex items-center justify-between gap-6 mb-4 p-3 bg-gray-50 rounded">
+                        <div class="flex items-center gap-6">
+                            <div class="flex items-center gap-2">
+                                <div class="w-4 h-4 rounded" style="background: linear-gradient(180deg, #B794F6 0%, #9F7AEA 100%);"></div>
+                                <span class="text-gray-600 text-sm">Table</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="w-4 h-4 rotate-45" style="background: linear-gradient(135deg, #7D9AFF 0%, #5B7FFF 100%);"></div>
+                                <span class="text-gray-600 text-sm">Measure</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="w-4 h-4" style="background: linear-gradient(180deg, #10B981 0%, #059669 100%);"></div>
+                                <span class="text-gray-600 text-sm">Column</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <div class="text-xs text-gray-500 border-l pl-4">
+                                Click a node to highlight | Drag to reposition | Scroll to zoom
+                            </div>
+                            <div v-if="modelData.dependency_graph" class="text-xs font-semibold text-blue-600 bg-blue-50 px-3 py-1 rounded">
+                                {{{{ modelData.dependency_graph.nodes?.length || 0 }}}} nodes | {{{{ modelData.dependency_graph.edges?.length || 0 }}}} edges
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Graph Container -->
+                    <div id="dependency-graph-container" style="height: 700px; position: relative; border: 1px solid #e2e8f0; border-radius: 0.5rem; background: white; overflow: hidden;">
+                        <svg id="dependency-graph-svg" width="100%" height="100%"></svg>
+                    </div>
+
+                    <!-- Selected Node Info -->
+                    <div v-if="selectedDependencyNode" class="mt-4 p-4 bg-blue-50 border border-blue-200 rounded">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h3 class="font-semibold text-lg mb-2">{{{{ selectedDependencyNode.label }}}}</h3>
+                                <div class="text-sm text-gray-700 space-y-1">
+                                    <div><strong>Type:</strong> {{{{ selectedDependencyNode.type }}}}</div>
+                                    <div><strong>Table:</strong> {{{{ selectedDependencyNode.table }}}}</div>
+                                    <div v-if="selectedDependencyNode.type === 'measure'">
+                                        <strong>Complexity:</strong>
+                                        <span :class="{{
+                                            'text-green-600': selectedDependencyNode.complexity === 'low',
+                                            'text-yellow-600': selectedDependencyNode.complexity === 'medium',
+                                            'text-red-600': selectedDependencyNode.complexity === 'high'
+                                        }}">
+                                            {{{{ selectedDependencyNode.complexity }}}}
+                                        </span>
+                                    </div>
+                                    <div v-if="selectedDependencyNode.type === 'column'">
+                                        <strong>Data Type:</strong> {{{{ selectedDependencyNode.data_type }}}}
+                                        <span class="ml-2"><strong>Used in:</strong> {{{{ selectedDependencyNode.used_in_count }}}} measure(s)</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                @click="selectedDependencyNode = null; resetDependencyGraph()"
+                                class="text-gray-500 hover:text-gray-700"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <!-- DAX Expression for Measures -->
+                        <div v-if="selectedDependencyNode.type === 'measure' && selectedDependencyNode.expression" class="mt-3">
+                            <strong class="text-sm">DAX Expression:</strong>
+                            <div class="code-block mt-2 text-xs" style="max-height: 150px; overflow-y: auto; white-space: pre-wrap; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; line-height: 1.5;" v-html="formatDAX(selectedDependencyNode.expression)"></div>
+                        </div>
+                    </div>
+
+                    <!-- Graph Statistics -->
+                    <div v-if="modelData.dependency_graph?.statistics" class="mt-4 grid grid-cols-4 gap-4">
+                        <div class="text-center p-3 bg-purple-50 rounded">
+                            <div class="text-2xl font-bold text-purple-600">{{{{ modelData.dependency_graph.statistics.measure_count }}}}</div>
+                            <div class="text-xs text-gray-600">Measures</div>
+                        </div>
+                        <div class="text-center p-3 bg-green-50 rounded">
+                            <div class="text-2xl font-bold text-green-600">{{{{ modelData.dependency_graph.statistics.column_count }}}}</div>
+                            <div class="text-xs text-gray-600">Columns</div>
+                        </div>
+                        <div class="text-center p-3 bg-blue-50 rounded">
+                            <div class="text-2xl font-bold text-blue-600">{{{{ modelData.dependency_graph.statistics.table_count }}}}</div>
+                            <div class="text-xs text-gray-600">Tables</div>
+                        </div>
+                        <div class="text-center p-3 bg-orange-50 rounded">
+                            <div class="text-2xl font-bold text-orange-600">{{{{ modelData.dependency_graph.statistics.total_edges }}}}</div>
+                            <div class="text-xs text-gray-600">Dependencies</div>
+                        </div>
+                    </div>
+
+                    <!-- Circular Dependencies Warning -->
+                    <div v-if="modelData.dependency_graph?.statistics?.circular_references?.length > 0" class="mt-4 p-4 bg-red-50 border border-red-200 rounded">
+                        <h4 class="font-semibold text-red-800 mb-2">⚠️ Circular Dependencies Detected</h4>
+                        <div class="text-sm text-red-700">
+                            Found {{{{ modelData.dependency_graph.statistics.circular_references.length }}}} circular dependency path(s). These can cause calculation errors.
                         </div>
                     </div>
                 </div>
@@ -2277,13 +3127,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     graphFilterTable: '',
                     darkMode: false,
                     showInactiveRelationships: true,
-                    graphLayout: 'force',
+                    graphLayout: 'hierarchical',
                     showColumnModal: false,
                     showRelationshipModal: false,
                     showCommandPalette: false,
                     modelData: {model_json},
                     graphSimulation: null,
-                    graphSvg: null
+                    graphSvg: null,
+                    // Dependency Graph properties
+                    dependencyFilter: 'all',
+                    dependencyDirection: 'both',
+                    dependencyLayout: 'hierarchical',
+                    selectedDependencyNode: null,
+                    dependencySimulation: null,
+                    dependencyFocusMeasure: '',
+                    dependencyFocusTable: '',
+                    dependencyDepth: 3,
+                    // Table preview properties
+                    tablePreviewData: null,
+                    tablePreviewLoading: false,
+                    tablePreviewError: null
                 }};
             }},
             computed: {{
@@ -2409,6 +3272,48 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 allGraphTables() {{
                     const nodes = this.modelData.relationships?.nodes || [];
                     return nodes.map(n => n.id).sort();
+                }},
+                // Dependency Graph computed properties
+                dependencyMeasuresByFolder() {{
+                    const measures = (this.modelData.dependency_graph?.nodes || [])
+                        .filter(n => n.type === 'measure')
+                        .sort((a, b) => {{
+                            // Sort by folder first, then by label
+                            const folderA = a.folder || '';
+                            const folderB = b.folder || '';
+                            if (folderA !== folderB) {{
+                                return folderA.localeCompare(folderB);
+                            }}
+                            return a.label.localeCompare(b.label);
+                        }});
+
+                    // Group by folder
+                    const byFolder = {{}};
+                    measures.forEach(m => {{
+                        const folder = m.folder || '(No Folder)';
+                        if (!byFolder[folder]) {{
+                            byFolder[folder] = [];
+                        }}
+                        byFolder[folder].push(m);
+                    }});
+
+                    return byFolder;
+                }},
+                dependencyTables() {{
+                    return (this.modelData.dependency_graph?.nodes || [])
+                        .filter(n => n.type === 'table')
+                        .sort((a, b) => a.label.localeCompare(b.label));
+                }},
+                dependencyColumns() {{
+                    return (this.modelData.dependency_graph?.nodes || [])
+                        .filter(n => n.type === 'column')
+                        .sort((a, b) => {{
+                            // Sort by table first, then by column name
+                            if (a.table !== b.table) {{
+                                return a.table.localeCompare(b.table);
+                            }}
+                            return a.label.localeCompare(b.label);
+                        }});
                 }}
             }},
             methods: {{
@@ -2443,6 +3348,56 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 }},
                 formatNumber(num) {{
                     return new Intl.NumberFormat().format(num);
+                }},
+                formatCellValue(value) {{
+                    if (value === null || value === undefined) {{
+                        return '(null)';
+                    }}
+                    if (typeof value === 'number') {{
+                        return new Intl.NumberFormat().format(value);
+                    }}
+                    if (typeof value === 'boolean') {{
+                        return value ? 'true' : 'false';
+                    }}
+                    // Truncate long strings
+                    const str = String(value);
+                    if (str.length > 50) {{
+                        return str.substring(0, 50) + '...';
+                    }}
+                    return str;
+                }},
+                async loadTablePreview(tableName) {{
+                    this.tablePreviewLoading = true;
+                    this.tablePreviewError = null;
+                    this.tablePreviewData = null;
+
+                    try {{
+                        // Simulate loading delay
+                        await new Promise(resolve => setTimeout(resolve, 500));
+
+                        // Check if preview data exists in model data
+                        if (this.modelData.table_previews && this.modelData.table_previews[tableName]) {{
+                            this.tablePreviewData = this.modelData.table_previews[tableName];
+                        }} else {{
+                            // Generate helpful error message with debug info
+                            const totalTablesWithData = this.modelData.table_previews ? Object.keys(this.modelData.table_previews).length : 0;
+                            const availableTables = this.modelData.table_previews ? Object.keys(this.modelData.table_previews).join(', ') : 'none';
+
+                            console.log('DEBUG: Looking for table:', tableName);
+                            console.log('DEBUG: Available preview tables:', availableTables);
+                            console.log('DEBUG: Total tables with data:', totalTablesWithData);
+
+                            if (totalTablesWithData > 0) {{
+                                throw new Error(`Preview data not available for this table. Data was collected for ${{totalTablesWithData}} other tables: ${{availableTables}}. This table may have had query errors, special characters, or complex data types that prevented data collection.`);
+                            }} else {{
+                                throw new Error('Table preview data not available. No table data was collected during export. Check the generation logs for details.');
+                            }}
+                        }}
+                    }} catch (error) {{
+                        this.tablePreviewError = error.message;
+                    }} finally {{
+                        this.tablePreviewLoading = false;
+                    }}
                 }},
                 formatDAX(dax) {{
                     if (!dax) return '';
@@ -2491,20 +3446,52 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         .replace(/</g, '&lt;')
                         .replace(/>/g, '&gt;');
 
-                    // DAX Keywords (purple like Power BI)
+                    // Create unique placeholders for elements we want to protect from further processing
+                    const protectedElements = [];
+                    let placeholderIndex = 0;
+
+                    // Function to create placeholder
+                    const createPlaceholder = (content) => {{
+                        const placeholder = `___PROTECTED_${{placeholderIndex++}}___`;
+                        protectedElements.push({{ placeholder: placeholder, content: content }});
+                        return placeholder;
+                    }};
+
+                    // 1. Comments first (green like Power BI) - protect these from all other processing
+                    highlighted = highlighted.replace(/(--[^\\n]*)/g, (match) =>
+                        createPlaceholder('<span style="color: #008000; font-style: italic;">' + match + '</span>')
+                    );
+                    highlighted = highlighted.replace(/\\/\\*[\\s\\S]*?\\*\\//g, (match) =>
+                        createPlaceholder('<span style="color: #008000; font-style: italic;">' + match + '</span>')
+                    );
+
+                    // 2. String literals (orange/amber like Power BI) - protect from keyword matching
+                    highlighted = highlighted.replace(/"([^"]*)"/g, (match, p1) =>
+                        createPlaceholder('<span style="color: #D83B01;">"' + p1 + '"</span>')
+                    );
+
+                    // 3. Table and column references [Table[Column]] (dark color) - protect from keyword matching
+                    highlighted = highlighted.replace(/\\[([^\\]]+)\\]/g, (match, p1) =>
+                        createPlaceholder('<span style="color: #0078D4; font-weight: 500;">[' + p1 + ']</span>')
+                    );
+
+                    // 4. DAX Keywords (purple like Power BI) - protect from further processing
                     const keywords = [
                         'VAR', 'RETURN', 'EVALUATE', 'DEFINE', 'MEASURE', 'COLUMN', 'TABLE',
                         'ORDER BY', 'ASC', 'DESC', 'IN', 'NOT', 'AND', 'OR', 'TRUE', 'FALSE',
-                        'BLANK', 'IF', 'SWITCH', 'IFERROR', 'ISBLANK', 'HASONEVALUE'
+                        'BLANK'
                     ];
 
                     keywords.forEach(keyword => {{
                         const regex = new RegExp('\\\\b(' + keyword + ')\\\\b', 'gi');
-                        highlighted = highlighted.replace(regex, '<span style="color: #AF00DB; font-weight: bold;">$1</span>');
+                        highlighted = highlighted.replace(regex, (match) =>
+                            createPlaceholder('<span style="color: #AF00DB; font-weight: bold;">' + match + '</span>')
+                        );
                     }});
 
-                    // DAX Functions (blue like Power BI)
+                    // 5. DAX Functions (blue like Power BI)
                     const functions = [
+                        'IF', 'SWITCH', 'IFERROR', 'ISBLANK', 'HASONEVALUE',
                         'CALCULATE', 'FILTER', 'ALL', 'ALLEXCEPT', 'ALLSELECTED', 'ALLNOBLANKROW',
                         'SUM', 'SUMX', 'AVERAGE', 'AVERAGEX', 'COUNT', 'COUNTX', 'COUNTA', 'COUNTAX',
                         'MIN', 'MINX', 'MAX', 'MAXX', 'RANKX', 'TOPN', 'DISTINCT', 'VALUES',
@@ -2516,31 +3503,29 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         'PARALLELPERIOD', 'SAMEPERIODLASTYEAR', 'TOTALYTD', 'TOTALMTD', 'TOTALQTD',
                         'STARTOFMONTH', 'STARTOFQUARTER', 'STARTOFYEAR', 'ENDOFMONTH', 'ENDOFQUARTER', 'ENDOFYEAR',
                         'USERELATIONSHIP', 'CROSSFILTER', 'REMOVEFILTERS', 'KEEPFILTERS',
-                        'HASONEFILTER', 'ISCROSSFILTERED', 'ISFILTERED', 'SELECTEDVALUE',
-                        'FIRSTNONBLANK', 'LASTNONBLANK', 'FIRSTDATE', 'LASTDATE'
+                        'HASONEFILTER', 'ISCROSSFILTERED', 'ISFILTERED', 'SELECTEDVALUE', 'SELECTEDVALUE',
+                        'HASONEVALUE', 'FIRSTNONBLANK', 'LASTNONBLANK', 'FIRSTDATE', 'LASTDATE'
                     ];
 
                     functions.forEach(func => {{
                         const regex = new RegExp('\\\\b(' + func + ')\\\\s*\\\\(', 'gi');
-                        highlighted = highlighted.replace(regex, '<span style="color: #0078D4; font-weight: 600;">$1</span>(');
+                        highlighted = highlighted.replace(regex, (match) =>
+                            createPlaceholder('<span style="color: #0078D4; font-weight: 600;">' + match.replace('(', '') + '</span>(')
+                        );
                     }});
 
-                    // Variable names (after VAR keyword) - teal/cyan like Power BI
-                    highlighted = highlighted.replace(/(<span[^>]*>VAR<\\/span>)\\s+([a-zA-Z_][a-zA-Z0-9_]*)/gi,
-                        '$1 <span style="color: #098658; font-weight: 600;">$2</span>');
+                    // 6. Variable names (after VAR keyword) - teal/cyan like Power BI
+                    highlighted = highlighted.replace(/(<span[^>]*>VAR<\\/span>)\\s+([a-zA-Z_][a-zA-Z0-9_]*)/gi, (match, p1, p2) =>
+                        createPlaceholder(p1 + ' <span style="color: #098658; font-weight: 600;">' + p2 + '</span>')
+                    );
 
-                    // String literals (orange/amber like Power BI)
-                    highlighted = highlighted.replace(/"([^"]*)"/g, '<span style="color: #D83B01;">"$1"</span>');
-
-                    // Numbers (green like Power BI)
+                    // 7. Numbers (teal like Power BI) - only match numbers outside of existing HTML tags
                     highlighted = highlighted.replace(/\\b(\\d+\\.?\\d*)\\b/g, '<span style="color: #098658;">$1</span>');
 
-                    // Comments (green like Power BI)
-                    highlighted = highlighted.replace(/(--[^\\n]*)/g, '<span style="color: #008000; font-style: italic;">$1</span>');
-                    highlighted = highlighted.replace(/\\/\\*[\\s\\S]*?\\*\\//g, '<span style="color: #008000; font-style: italic;">$&</span>');
-
-                    // Table and column references [Table[Column]] (default text color)
-                    highlighted = highlighted.replace(/\\[([^\\]]+)\\]/g, '<span style="color: #1F1F1F; font-weight: 500;">[$1]</span>');
+                    // Restore protected elements
+                    protectedElements.reverse().forEach(item => {{
+                        highlighted = highlighted.replace(item.placeholder, item.content);
+                    }});
 
                     return highlighted;
                 }},
@@ -2673,40 +3658,129 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     // Apply layout based on selection
                     let simulation;
                     if (this.graphLayout === 'radial') {{
-                        // Radial layout
-                        const angleStep = (2 * Math.PI) / nodes.length;
-                        const radius = Math.min(width, height) / 3;
-                        nodes.forEach((node, i) => {{
-                            const angle = i * angleStep;
-                            node.x = width / 2 + radius * Math.cos(angle);
-                            node.y = height / 2 + radius * Math.sin(angle);
-                            node.fx = node.x;
-                            node.fy = node.y;
+                        // Improved tiered radial layout - group by table type
+                        const factTables = nodes.filter(n => n.tableType === 'fact');
+                        const dimensionTables = nodes.filter(n => n.tableType === 'dimension');
+                        const slicerTables = nodes.filter(n => n.tableType === 'slicer');
+                        const otherTables = nodes.filter(n => !n.tableType || (n.tableType !== 'fact' && n.tableType !== 'dimension' && n.tableType !== 'slicer'));
+
+                        const tiers = [
+                            {{ nodes: factTables, radius: Math.min(width, height) / 6, color: 'fact' }},
+                            {{ nodes: dimensionTables, radius: Math.min(width, height) / 3.5, color: 'dimension' }},
+                            {{ nodes: slicerTables, radius: Math.min(width, height) / 2.5, color: 'slicer' }},
+                            {{ nodes: otherTables, radius: Math.min(width, height) / 2, color: 'other' }}
+                        ].filter(tier => tier.nodes.length > 0);
+
+                        tiers.forEach(tier => {{
+                            const angleStep = (2 * Math.PI) / Math.max(tier.nodes.length, 1);
+                            tier.nodes.forEach((node, i) => {{
+                                const angle = i * angleStep;
+                                node.x = width / 2 + tier.radius * Math.cos(angle);
+                                node.y = height / 2 + tier.radius * Math.sin(angle);
+                                node.fx = node.x;
+                                node.fy = node.y;
+                            }});
                         }});
+
                         simulation = d3.forceSimulation(nodes)
-                            .force('link', d3.forceLink(edges).id(d => d.id).distance(150))
-                            .force('charge', d3.forceManyBody().strength(-100));
+                            .force('link', d3.forceLink(edges).id(d => d.id).distance(120))
+                            .force('charge', d3.forceManyBody().strength(-80))
+                            .force('collision', d3.forceCollide().radius(40));
                     }} else if (this.graphLayout === 'hierarchical') {{
-                        // Hierarchical layout
-                        const levels = Math.ceil(Math.sqrt(nodes.length));
-                        const nodesPerLevel = Math.ceil(nodes.length / levels);
-                        nodes.forEach((node, i) => {{
-                            const level = Math.floor(i / nodesPerLevel);
-                            const posInLevel = i % nodesPerLevel;
-                            node.x = (width / (nodesPerLevel + 1)) * (posInLevel + 1);
-                            node.y = (height / (levels + 1)) * (level + 1);
+                        // True hierarchical layout based on relationship depth
+                        // Calculate depths for each node using BFS from fact tables
+                        const nodeDepths = new Map();
+                        const factNodes = nodes.filter(n => n.tableType === 'fact');
+
+                        // If no fact tables, use nodes with most incoming connections
+                        let startNodes = factNodes;
+                        if (startNodes.length === 0) {{
+                            const incomingCounts = new Map();
+                            nodes.forEach(n => incomingCounts.set(n.id, 0));
+                            edges.forEach(e => {{
+                                incomingCounts.set(e.to, (incomingCounts.get(e.to) || 0) + 1);
+                            }});
+                            const maxIncoming = Math.max(...incomingCounts.values());
+                            startNodes = nodes.filter(n => incomingCounts.get(n.id) === maxIncoming);
+                            if (startNodes.length === 0) startNodes = [nodes[0]];
+                        }}
+
+                        // BFS to assign depths
+                        const queue = startNodes.map(n => ({{ id: n.id, depth: 0 }}));
+                        const visited = new Set(startNodes.map(n => n.id));
+
+                        startNodes.forEach(n => nodeDepths.set(n.id, 0));
+
+                        while (queue.length > 0) {{
+                            const {{ id, depth }} = queue.shift();
+
+                            // Find connected nodes through edges
+                            edges.forEach(e => {{
+                                if (e.from === id && !visited.has(e.to)) {{
+                                    visited.add(e.to);
+                                    nodeDepths.set(e.to, depth + 1);
+                                    queue.push({{ id: e.to, depth: depth + 1 }});
+                                }} else if (e.to === id && !visited.has(e.from)) {{
+                                    visited.add(e.from);
+                                    nodeDepths.set(e.from, depth + 1);
+                                    queue.push({{ id: e.from, depth: depth + 1 }});
+                                }}
+                            }});
+                        }}
+
+                        // Assign depth to unvisited nodes
+                        nodes.forEach(n => {{
+                            if (!nodeDepths.has(n.id)) {{
+                                nodeDepths.set(n.id, 99); // Put disconnected nodes at the end
+                            }}
                         }});
+
+                        // Group nodes by depth
+                        const depthGroups = new Map();
+                        nodes.forEach(n => {{
+                            const depth = nodeDepths.get(n.id);
+                            if (!depthGroups.has(depth)) {{
+                                depthGroups.set(depth, []);
+                            }}
+                            depthGroups.get(depth).push(n);
+                        }});
+
+                        // Position nodes in layers
+                        const depths = Array.from(depthGroups.keys()).sort((a, b) => a - b);
+                        const layerHeight = height / (depths.length + 1);
+
+                        depths.forEach((depth, layerIdx) => {{
+                            const nodesInLayer = depthGroups.get(depth);
+                            const nodeWidth = width / (nodesInLayer.length + 1);
+
+                            nodesInLayer.forEach((node, nodeIdx) => {{
+                                node.x = nodeWidth * (nodeIdx + 1);
+                                node.y = layerHeight * (layerIdx + 1);
+                            }});
+                        }});
+
                         simulation = d3.forceSimulation(nodes)
                             .force('link', d3.forceLink(edges).id(d => d.id).distance(100))
                             .force('charge', d3.forceManyBody().strength(-300))
-                            .force('collision', d3.forceCollide().radius(50));
+                            .force('collision', d3.forceCollide().radius(50))
+                            .force('y', d3.forceY(d => {{
+                                const depth = nodeDepths.get(d.id);
+                                const layerIdx = depths.indexOf(depth);
+                                return layerHeight * (layerIdx + 1);
+                            }}).strength(0.8));
                     }} else {{
-                        // Force-directed layout (default)
+                        // Enhanced force-directed layout with better parameters for large graphs
+                        const linkDistance = nodes.length > 50 ? 120 : 150;
+                        const chargeStrength = nodes.length > 50 ? -800 : -500;
+                        const collisionRadius = nodes.length > 50 ? 45 : 50;
+
                         simulation = d3.forceSimulation(nodes)
-                            .force('link', d3.forceLink(edges).id(d => d.id).distance(150))
-                            .force('charge', d3.forceManyBody().strength(-500))
+                            .force('link', d3.forceLink(edges).id(d => d.id).distance(linkDistance))
+                            .force('charge', d3.forceManyBody().strength(chargeStrength))
                             .force('center', d3.forceCenter(width / 2, height / 2))
-                            .force('collision', d3.forceCollide().radius(50));
+                            .force('collision', d3.forceCollide().radius(collisionRadius))
+                            .force('x', d3.forceX(width / 2).strength(0.05))
+                            .force('y', d3.forceY(height / 2).strength(0.05));
                     }}
 
                     this.graphSimulation = simulation;
@@ -2980,6 +4054,559 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             this.initGraph();
                         }});
                     }}
+                }},
+                // Dependency Graph Methods
+                initDependencyGraph() {{
+                    if (!this.modelData.dependency_graph) return;
+
+                    const svg = d3.select('#dependency-graph-svg');
+                    const container = document.getElementById('dependency-graph-container');
+                    if (!container) return;
+
+                    const width = container.clientWidth;
+                    const height = container.clientHeight;
+
+                    svg.selectAll('*').remove();
+
+                    // Add gradient definitions for node types
+                    const defs = svg.append('defs');
+
+                    // Table gradient (purple)
+                    const tableGradient = defs.append('linearGradient')
+                        .attr('id', 'depTableGradient')
+                        .attr('x1', '0%').attr('y1', '0%')
+                        .attr('x2', '0%').attr('y2', '100%');
+                    tableGradient.append('stop').attr('offset', '0%').attr('style', 'stop-color:#B794F6;stop-opacity:1');
+                    tableGradient.append('stop').attr('offset', '100%').attr('style', 'stop-color:#9F7AEA;stop-opacity:1');
+
+                    // Measure gradient (blue)
+                    const measureGradient = defs.append('linearGradient')
+                        .attr('id', 'depMeasureGradient')
+                        .attr('x1', '0%').attr('y1', '0%')
+                        .attr('x2', '100%').attr('y2', '100%');
+                    measureGradient.append('stop').attr('offset', '0%').attr('style', 'stop-color:#7D9AFF;stop-opacity:1');
+                    measureGradient.append('stop').attr('offset', '100%').attr('style', 'stop-color:#5B7FFF;stop-opacity:1');
+
+                    // Column gradient (green)
+                    const columnGradient = defs.append('linearGradient')
+                        .attr('id', 'depColumnGradient')
+                        .attr('x1', '0%').attr('y1', '0%')
+                        .attr('x2', '0%').attr('y2', '100%');
+                    columnGradient.append('stop').attr('offset', '0%').attr('style', 'stop-color:#10B981;stop-opacity:1');
+                    columnGradient.append('stop').attr('offset', '100%').attr('style', 'stop-color:#059669;stop-opacity:1');
+
+                    // Arrow markers
+                    const arrowColors = [
+                        {{ id: 'arrow-measure', color: '#5B7FFF' }},
+                        {{ id: 'arrow-column', color: '#10B981' }},
+                        {{ id: 'arrow-table', color: '#9F7AEA' }},
+                        {{ id: 'arrow-column-table', color: '#94A3B8' }}
+                    ];
+
+                    arrowColors.forEach(arrow => {{
+                        defs.append('marker')
+                            .attr('id', arrow.id)
+                            .attr('viewBox', '0 -5 10 10')
+                            .attr('refX', 25)
+                            .attr('refY', 0)
+                            .attr('markerWidth', 6)
+                            .attr('markerHeight', 6)
+                            .attr('orient', 'auto')
+                            .append('path')
+                            .attr('d', 'M0,-5L10,0L0,5')
+                            .attr('fill', arrow.color);
+                    }});
+
+                    const g = svg.append('g');
+
+                    // Zoom behavior
+                    const zoom = d3.zoom()
+                        .scaleExtent([0.1, 4])
+                        .on('zoom', (event) => {{
+                            g.attr('transform', event.transform);
+                        }});
+
+                    svg.call(zoom);
+
+                    // Prepare data
+                    let allNodes = (this.modelData.dependency_graph.nodes || []);
+                    let allEdges = (this.modelData.dependency_graph.edges || []);
+
+                    // Apply focus filter (measure or table)
+                    const focusNode = this.dependencyFocusMeasure || this.dependencyFocusTable;
+                    if (focusNode) {{
+                        // Build adjacency lists based on direction
+                        const upstreamAdj = {{}};   // node -> nodes it depends on
+                        const downstreamAdj = {{}}; // node -> nodes that depend on it
+
+                        allEdges.forEach(edge => {{
+                            // Edge goes FROM source TO target (source depends on target)
+                            if (!upstreamAdj[edge.from]) upstreamAdj[edge.from] = [];
+                            if (!downstreamAdj[edge.to]) downstreamAdj[edge.to] = [];
+                            upstreamAdj[edge.from].push(edge.to);
+                            downstreamAdj[edge.to].push(edge.from);
+                        }});
+
+                        const visited = new Set([focusNode]);
+                        const queue = [[focusNode, 0]];
+
+                        // BFS respecting direction filter
+                        while (queue.length > 0) {{
+                            const [currentId, depth] = queue.shift();
+                            if (depth >= this.dependencyDepth) continue;
+
+                            let neighbors = [];
+
+                            if (this.dependencyDirection === 'upstream') {{
+                                // Show what this node depends on
+                                neighbors = upstreamAdj[currentId] || [];
+                            }} else if (this.dependencyDirection === 'downstream') {{
+                                // Show what depends on this node
+                                neighbors = downstreamAdj[currentId] || [];
+                            }} else {{
+                                // Both directions
+                                neighbors = [
+                                    ...(upstreamAdj[currentId] || []),
+                                    ...(downstreamAdj[currentId] || [])
+                                ];
+                            }}
+
+                            neighbors.forEach(neighborId => {{
+                                if (!visited.has(neighborId)) {{
+                                    visited.add(neighborId);
+                                    queue.push([neighborId, depth + 1]);
+                                }}
+                            }});
+                        }}
+
+                        // Filter to only visited nodes
+                        allNodes = allNodes.filter(n => visited.has(n.id));
+                        allEdges = allEdges.filter(e => visited.has(e.from) && visited.has(e.to));
+                    }}
+
+                    // Filter by object type with context
+                    if (this.dependencyFilter !== 'all') {{
+                        const nodeIds = new Set();
+
+                        if (this.dependencyFilter === 'measures-context') {{
+                            // Show measures + tables/columns they depend on
+                            const measureNodes = allNodes.filter(n => n.type === 'measure');
+                            measureNodes.forEach(m => nodeIds.add(m.id));
+
+                            // Add dependencies (upstream)
+                            allEdges.forEach(edge => {{
+                                if (nodeIds.has(edge.from)) {{
+                                    const target = allNodes.find(n => n.id === edge.to);
+                                    if (target && (target.type === 'table' || target.type === 'column')) {{
+                                        nodeIds.add(edge.to);
+                                    }}
+                                }}
+                            }});
+
+                            // Add dependents (downstream) - other measures that use this measure
+                            allEdges.forEach(edge => {{
+                                if (edge.type === 'measure_to_measure') {{
+                                    if (nodeIds.has(edge.to)) {{
+                                        nodeIds.add(edge.from);
+                                    }}
+                                }}
+                            }});
+
+                        }} else if (this.dependencyFilter === 'tables-context') {{
+                            // Show tables + measures that use them
+                            const tableNodes = allNodes.filter(n => n.type === 'table');
+                            tableNodes.forEach(t => nodeIds.add(t.id));
+
+                            // Add measures that depend on these tables
+                            allEdges.forEach(edge => {{
+                                if (nodeIds.has(edge.to)) {{
+                                    const source = allNodes.find(n => n.id === edge.from);
+                                    if (source && source.type === 'measure') {{
+                                        nodeIds.add(edge.from);
+                                    }}
+                                }}
+                            }});
+
+                        }} else if (this.dependencyFilter === 'columns-context') {{
+                            // Show columns + measures that use them
+                            const columnNodes = allNodes.filter(n => n.type === 'column');
+                            columnNodes.forEach(c => nodeIds.add(c.id));
+
+                            // Add measures that depend on these columns
+                            allEdges.forEach(edge => {{
+                                if (nodeIds.has(edge.to) && edge.type === 'measure_to_column') {{
+                                    nodeIds.add(edge.from);
+                                }}
+                            }});
+                        }}
+
+                        // Filter nodes and edges
+                        allNodes = allNodes.filter(n => nodeIds.has(n.id));
+                        allEdges = allEdges.filter(e => nodeIds.has(e.from) && nodeIds.has(e.to));
+                    }}
+
+                    // Clone nodes to avoid modifying original data
+                    const nodes = allNodes.map(n => ({{
+                        ...n,
+                        x: width / 2 + (Math.random() - 0.5) * 200,
+                        y: height / 2 + (Math.random() - 0.5) * 200
+                    }}));
+
+                    const edges = allEdges.map(e => ({{
+                        ...e,
+                        source: e.from,
+                        target: e.to
+                    }}));
+
+                    // Apply layout
+                    let simulation;
+                    if (this.dependencyLayout === 'radial') {{
+                        // Improved tiered radial - group by node type in concentric circles
+                        const measureNodes = nodes.filter(n => n.type === 'measure');
+                        const columnNodes = nodes.filter(n => n.type === 'column');
+                        const tableNodes = nodes.filter(n => n.type === 'table');
+
+                        const tiers = [
+                            {{ nodes: measureNodes, radius: Math.min(width, height) / 5, type: 'measure' }},
+                            {{ nodes: columnNodes, radius: Math.min(width, height) / 3.2, type: 'column' }},
+                            {{ nodes: tableNodes, radius: Math.min(width, height) / 2.3, type: 'table' }}
+                        ].filter(tier => tier.nodes.length > 0);
+
+                        tiers.forEach(tier => {{
+                            const angleStep = (2 * Math.PI) / Math.max(tier.nodes.length, 1);
+                            tier.nodes.forEach((node, i) => {{
+                                const angle = i * angleStep;
+                                node.x = width / 2 + tier.radius * Math.cos(angle);
+                                node.y = height / 2 + tier.radius * Math.sin(angle);
+                                node.fx = node.x;
+                                node.fy = node.y;
+                            }});
+                        }});
+
+                        simulation = d3.forceSimulation(nodes)
+                            .force('link', d3.forceLink(edges).id(d => d.id).distance(100))
+                            .force('charge', d3.forceManyBody().strength(-80))
+                            .force('collision', d3.forceCollide().radius(45));
+                    }} else if (this.dependencyLayout === 'hierarchical') {{
+                        // True dependency-based hierarchical layout using BFS
+                        const nodeDepths = new Map();
+                        const focusNodeId = this.dependencyFocusMeasure || this.dependencyFocusTable;
+
+                        // Start from focus node if available, otherwise start from leaf measures
+                        let startNodes = [];
+                        if (focusNodeId) {{
+                            const focusNode = nodes.find(n => n.id === focusNodeId);
+                            if (focusNode) {{
+                                startNodes = [focusNode];
+                            }}
+                        }}
+
+                        // If no focus, start from measures with no outgoing measure dependencies
+                        if (startNodes.length === 0) {{
+                            const hasOutgoing = new Set();
+                            edges.forEach(e => {{
+                                if (e.type === 'measure_to_measure') {{
+                                    hasOutgoing.add(e.from);
+                                }}
+                            }});
+                            startNodes = nodes.filter(n => n.type === 'measure' && !hasOutgoing.has(n.id));
+                            if (startNodes.length === 0) {{
+                                startNodes = nodes.filter(n => n.type === 'measure');
+                            }}
+                            if (startNodes.length === 0) startNodes = [nodes[0]];
+                        }}
+
+                        // BFS to assign depths following dependency flow
+                        const queue = startNodes.map(n => ({{ id: n.id, depth: 0 }}));
+                        const visited = new Set(startNodes.map(n => n.id));
+                        startNodes.forEach(n => nodeDepths.set(n.id, 0));
+
+                        while (queue.length > 0) {{
+                            const {{ id, depth }} = queue.shift();
+
+                            // Follow edges to dependent nodes (reverse direction for measures)
+                            edges.forEach(e => {{
+                                let nextNode = null;
+                                if (e.from === id && !visited.has(e.to)) {{
+                                    nextNode = e.to;
+                                }} else if (e.to === id && !visited.has(e.from) && e.type !== 'measure_to_measure') {{
+                                    // For non-measure edges, follow in both directions
+                                    nextNode = e.from;
+                                }}
+
+                                if (nextNode) {{
+                                    visited.add(nextNode);
+                                    nodeDepths.set(nextNode, depth + 1);
+                                    queue.push({{ id: nextNode, depth: depth + 1 }});
+                                }}
+                            }});
+                        }}
+
+                        // Assign depth to unvisited nodes (disconnected components)
+                        nodes.forEach(n => {{
+                            if (!nodeDepths.has(n.id)) {{
+                                nodeDepths.set(n.id, 99);
+                            }}
+                        }});
+
+                        // Group nodes by depth, then by type within each depth
+                        const depthGroups = new Map();
+                        nodes.forEach(n => {{
+                            const depth = nodeDepths.get(n.id);
+                            if (!depthGroups.has(depth)) {{
+                                depthGroups.set(depth, {{ measure: [], column: [], table: [] }});
+                            }}
+                            const typeGroup = depthGroups.get(depth);
+                            if (typeGroup[n.type]) {{
+                                typeGroup[n.type].push(n);
+                            }} else {{
+                                typeGroup.measure.push(n);
+                            }}
+                        }});
+
+                        // Position nodes in structured layers
+                        const depths = Array.from(depthGroups.keys()).sort((a, b) => a - b);
+                        const layerHeight = height / (depths.length + 1);
+
+                        depths.forEach((depth, layerIdx) => {{
+                            const typeGroups = depthGroups.get(depth);
+                            const allNodesInLayer = [...typeGroups.measure, ...typeGroups.column, ...typeGroups.table];
+
+                            // Arrange by type groups within the layer
+                            let xOffset = 0;
+                            const totalNodes = allNodesInLayer.length;
+                            const baseWidth = width / (totalNodes + 1);
+
+                            ['measure', 'column', 'table'].forEach(type => {{
+                                const nodesOfType = typeGroups[type];
+                                nodesOfType.forEach((node, idx) => {{
+                                    node.x = baseWidth * (xOffset + idx + 1);
+                                    node.y = layerHeight * (layerIdx + 1);
+                                }});
+                                xOffset += nodesOfType.length;
+                            }});
+                        }});
+
+                        simulation = d3.forceSimulation(nodes)
+                            .force('link', d3.forceLink(edges).id(d => d.id).distance(120))
+                            .force('charge', d3.forceManyBody().strength(-400))
+                            .force('collision', d3.forceCollide().radius(60))
+                            .force('y', d3.forceY(d => {{
+                                const depth = nodeDepths.get(d.id);
+                                const layerIdx = depths.indexOf(depth);
+                                return layerHeight * (layerIdx + 1);
+                            }}).strength(0.9))
+                            .force('x', d3.forceX(d => d.x).strength(0.3));
+                    }} else {{
+                        // Enhanced force-directed layout with better parameters for large graphs
+                        const linkDistance = nodes.length > 50 ? 100 : 150;
+                        const chargeStrength = nodes.length > 50 ? -1000 : -600;
+                        const collisionRadius = nodes.length > 50 ? 55 : 60;
+
+                        simulation = d3.forceSimulation(nodes)
+                            .force('link', d3.forceLink(edges).id(d => d.id).distance(linkDistance))
+                            .force('charge', d3.forceManyBody().strength(chargeStrength))
+                            .force('center', d3.forceCenter(width / 2, height / 2))
+                            .force('collision', d3.forceCollide().radius(collisionRadius))
+                            .force('x', d3.forceX(width / 2).strength(0.05))
+                            .force('y', d3.forceY(height / 2).strength(0.05));
+                    }}
+
+                    this.dependencySimulation = simulation;
+
+                    // Create links
+                    const link = g.append('g')
+                        .selectAll('path')
+                        .data(edges)
+                        .join('path')
+                        .attr('class', 'dep-link')
+                        .attr('stroke', d => {{
+                            if (d.type === 'measure_to_measure') return '#5B7FFF';
+                            if (d.type === 'measure_to_column') return '#10B981';
+                            if (d.type === 'column_to_table') return '#94A3B8';
+                            return '#9F7AEA';
+                        }})
+                        .attr('stroke-width', d => {{
+                            if (d.type === 'column_to_table') return 1.5;
+                            return 2;
+                        }})
+                        .attr('fill', 'none')
+                        .attr('marker-end', d => {{
+                            if (d.type === 'measure_to_measure') return 'url(#arrow-measure)';
+                            if (d.type === 'measure_to_column') return 'url(#arrow-column)';
+                            if (d.type === 'column_to_table') return 'url(#arrow-column-table)';
+                            return 'url(#arrow-table)';
+                        }})
+                        .attr('opacity', d => {{
+                            if (d.type === 'column_to_table') return 0.4;
+                            return 0.6;
+                        }})
+                        .attr('stroke-dasharray', d => {{
+                            if (d.type === 'column_to_table') return '3,3';
+                            return 'none';
+                        }});
+
+                    // Create node groups
+                    const nodeGroup = g.append('g')
+                        .selectAll('g')
+                        .data(nodes)
+                        .join('g')
+                        .attr('class', 'dep-node-group')
+                        .style('cursor', 'pointer')
+                        .call(d3.drag()
+                            .on('start', (event, d) => {{
+                                if (!event.active) simulation.alphaTarget(0.3).restart();
+                                d.fx = d.x;
+                                d.fy = d.y;
+                            }})
+                            .on('drag', (event, d) => {{
+                                d.fx = event.x;
+                                d.fy = event.y;
+                            }})
+                            .on('end', (event, d) => {{
+                                if (!event.active) simulation.alphaTarget(0);
+                                d.fx = null;
+                                d.fy = null;
+                            }})
+                        )
+                        .on('click', (event, d) => {{
+                            this.selectedDependencyNode = d;
+                            this.highlightDependencies(d.id);
+                        }});
+
+                    // Draw nodes based on type
+                    const focusNodeId = this.dependencyFocusMeasure || this.dependencyFocusTable;
+                    nodeGroup.each(function(d) {{
+                        const selection = d3.select(this);
+                        const isFocusNode = focusNodeId && d.id === focusNodeId;
+                        const baseSize = d.type === 'table' ? 30 : (d.type === 'measure' ? 25 : 20);
+                        const size = isFocusNode ? baseSize * 1.3 : baseSize;
+
+                        if (d.type === 'measure') {{
+                            // Diamond shape for measures
+                            selection.append('path')
+                                .attr('d', `M 0,-${{size}} L ${{size}},0 L 0,${{size}} L -${{size}},0 Z`)
+                                .attr('fill', 'url(#depMeasureGradient)')
+                                .attr('stroke', isFocusNode ? '#FF6B00' : '#4A6BEE')
+                                .attr('stroke-width', isFocusNode ? 4 : 2)
+                                .attr('filter', isFocusNode ? 'drop-shadow(0 0 8px rgba(255, 107, 0, 0.6))' : 'none');
+                        }} else if (d.type === 'column') {{
+                            // Square for columns
+                            selection.append('rect')
+                                .attr('x', -size / 2)
+                                .attr('y', -size / 2)
+                                .attr('width', size)
+                                .attr('height', size)
+                                .attr('fill', 'url(#depColumnGradient)')
+                                .attr('stroke', isFocusNode ? '#FF6B00' : '#059669')
+                                .attr('stroke-width', isFocusNode ? 4 : 2)
+                                .attr('rx', 3)
+                                .attr('filter', isFocusNode ? 'drop-shadow(0 0 8px rgba(255, 107, 0, 0.6))' : 'none');
+                        }} else {{
+                            // Circle for tables
+                            selection.append('circle')
+                                .attr('r', size)
+                                .attr('fill', 'url(#depTableGradient)')
+                                .attr('stroke', isFocusNode ? '#FF6B00' : '#8B5CF6')
+                                .attr('stroke-width', isFocusNode ? 4 : 2)
+                                .attr('filter', isFocusNode ? 'drop-shadow(0 0 8px rgba(255, 107, 0, 0.6))' : 'none');
+                        }}
+                    }});
+
+                    // Add labels
+                    const label = g.append('g')
+                        .selectAll('text')
+                        .data(nodes)
+                        .join('text')
+                        .text(d => d.label)
+                        .attr('font-size', 11)
+                        .attr('font-weight', 'bold')
+                        .attr('text-anchor', 'middle')
+                        .attr('dy', -35)
+                        .style('pointer-events', 'none')
+                        .style('fill', '#1e293b');
+
+                    // Update positions
+                    simulation.on('tick', () => {{
+                        link.attr('d', d => {{
+                            const dx = d.target.x - d.source.x;
+                            const dy = d.target.y - d.source.y;
+                            return `M${{d.source.x}},${{d.source.y}} L${{d.target.x}},${{d.target.y}}`;
+                        }});
+
+                        nodeGroup.attr('transform', d => `translate(${{d.x}},${{d.y}})`);
+                        label.attr('x', d => d.x).attr('y', d => d.y);
+                    }});
+                }},
+                highlightDependencies(nodeId) {{
+                    const svg = d3.select('#dependency-graph-svg');
+
+                    // Reset all
+                    svg.selectAll('.dep-node-group').attr('opacity', 0.3);
+                    svg.selectAll('.dep-link').attr('opacity', 0.1);
+
+                    // Highlight selected node
+                    svg.selectAll('.dep-node-group').filter(d => d.id === nodeId).attr('opacity', 1);
+
+                    // Find connected nodes and edges
+                    const edges = this.modelData.dependency_graph.edges || [];
+                    const connectedNodes = new Set([nodeId]);
+
+                    edges.forEach(edge => {{
+                        if (edge.from === nodeId || edge.to === nodeId) {{
+                            connectedNodes.add(edge.from);
+                            connectedNodes.add(edge.to);
+                        }}
+                    }});
+
+                    // Highlight connected nodes
+                    svg.selectAll('.dep-node-group')
+                        .filter(d => connectedNodes.has(d.id))
+                        .attr('opacity', 1);
+
+                    // Highlight connected edges
+                    svg.selectAll('.dep-link')
+                        .filter(d => d.from === nodeId || d.to === nodeId)
+                        .attr('opacity', 1)
+                        .attr('stroke-width', 3);
+                }},
+                resetDependencyGraph() {{
+                    this.selectedDependencyNode = null;
+                    this.dependencyFocusMeasure = '';
+                    this.dependencyFocusTable = '';
+                    this.dependencyFilter = 'all';
+
+                    const svg = d3.select('#dependency-graph-svg');
+                    svg.selectAll('.dep-node-group').attr('opacity', 1);
+                    svg.selectAll('.dep-link').attr('opacity', 0.6).attr('stroke-width', 2);
+
+                    if (this.dependencySimulation) {{
+                        this.dependencySimulation.alpha(1).restart();
+                    }}
+
+                    // Re-initialize graph with reset filters
+                    this.initDependencyGraph();
+                }},
+                changeDependencyLayout() {{
+                    if (this.activeTab === 'dependencies') {{
+                        this.$nextTick(() => {{
+                            this.initDependencyGraph();
+                        }});
+                    }}
+                }},
+                handleMeasureFocus() {{
+                    // Clear table focus when measure is selected
+                    if (this.dependencyFocusMeasure) {{
+                        this.dependencyFocusTable = '';
+                    }}
+                    this.initDependencyGraph();
+                }},
+                handleTableFocus() {{
+                    // Clear measure focus when table is selected
+                    if (this.dependencyFocusTable) {{
+                        this.dependencyFocusMeasure = '';
+                    }}
+                    this.initDependencyGraph();
                 }}
             }},
             watch: {{
@@ -2987,6 +4614,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     if (newTab === 'relationships') {{
                         this.$nextTick(() => {{
                             this.initGraph();
+                        }});
+                    }} else if (newTab === 'dependencies') {{
+                        this.$nextTick(() => {{
+                            this.initDependencyGraph();
                         }});
                     }}
                 }},
@@ -2999,7 +4630,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 }}
             }},
             mounted() {{
-                console.log('Power BI Dependency Explorer loaded');
+                console.log('Power BI Model Explorer loaded');
                 console.log('Model data:', this.modelData);
 
                 // Add keyboard event listener
