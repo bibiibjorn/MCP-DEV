@@ -9,6 +9,7 @@ validation, safety limits, and fallbacks.
 import time
 import os
 import csv
+import logging
 from datetime import datetime
 from typing import Any, Dict, Optional, List
 from core.error_handler import ErrorHandler
@@ -22,6 +23,9 @@ from core.documentation_builder import (
     save_snapshot,
     snapshot_from_context,
 )
+
+
+logger = logging.getLogger("mcp_powerbi_finvision")
 
 
 class AgentPolicy:
@@ -1487,6 +1491,176 @@ class AgentPolicy:
         plan = self.plan_query(text, table, max_rows)
         actions.append({"action": "plan_query", "result": plan})
         return {"success": True, "actions": actions, "final": plan}
+
+    def analyze_best_practices_unified(
+        self,
+        connection_state,
+        mode: str = "all",
+        bpa_profile: str = "balanced",
+        max_seconds: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Unified best practices analysis combining BPA and M query practices.
+
+        Args:
+            connection_state: Active connection state
+            mode: "all" (both BPA and M), "bpa" (BPA only), "m_queries" (M only)
+            bpa_profile: BPA analysis depth - "fast", "balanced", or "deep"
+            max_seconds: Maximum time for BPA analysis
+
+        Returns:
+            Combined analysis results
+        """
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+
+        mode = (mode or "all").lower()
+        results: Dict[str, Any] = {
+            'success': True,
+            'mode': mode,
+            'analyses': {}
+        }
+
+        # Run BPA if requested
+        if mode in ("all", "bpa"):
+            bpa_analyzer = connection_state.bpa_analyzer
+            if bpa_analyzer:
+                try:
+                    bpa_result = bpa_analyzer.run_bpa(
+                        mode=bpa_profile,
+                        max_seconds=max_seconds
+                    )
+                    results['analyses']['bpa'] = bpa_result
+                except Exception as e:
+                    results['analyses']['bpa'] = {
+                        'success': False,
+                        'error': f'BPA analysis failed: {str(e)}'
+                    }
+            else:
+                results['analyses']['bpa'] = {
+                    'success': False,
+                    'error': 'BPA analyzer not available',
+                    'note': 'Install BPA dependencies to enable this analysis'
+                }
+
+        # Run M query practices scan if requested
+        if mode in ("all", "m_queries"):
+            try:
+                from server.utils.m_practices import scan_m_practices
+                m_result = scan_m_practices(connection_state.query_executor)
+                results['analyses']['m_practices'] = m_result
+            except Exception as e:
+                results['analyses']['m_practices'] = {
+                    'success': False,
+                    'error': f'M practices scan failed: {str(e)}'
+                }
+
+        # Aggregate summary
+        total_issues = 0
+        for analysis_name, analysis_result in results['analyses'].items():
+            if isinstance(analysis_result, dict):
+                issues_count = analysis_result.get('total_issues', 0) or len(analysis_result.get('issues', []))
+                total_issues += issues_count
+
+        results['total_issues'] = total_issues
+        results['summary'] = f'Found {total_issues} total issues across {len(results["analyses"])} analyses'
+
+        return results
+
+    def analyze_performance_unified(
+        self,
+        connection_state,
+        mode: str = "comprehensive",
+        queries: Optional[List[str]] = None,
+        table: Optional[str] = None,
+        runs: int = 3,
+        clear_cache: bool = True,
+        include_event_counts: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Unified performance analysis combining query performance, cardinality, and storage.
+
+        Args:
+            connection_state: Active connection state
+            mode: "comprehensive" (all), "queries" (query batch only), "cardinality" (relationship/column),
+                  "storage" (storage compression only)
+            queries: List of DAX queries for batch performance testing
+            table: Table name for table-specific analyses
+            runs: Number of runs for query performance testing
+            clear_cache: Whether to clear cache before performance testing
+            include_event_counts: Include detailed event counts in query analysis
+
+        Returns:
+            Combined performance analysis results
+        """
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+
+        mode = (mode or "comprehensive").lower()
+        performance_optimizer = connection_state.performance_optimizer
+
+        results: Dict[str, Any] = {
+            'success': True,
+            'mode': mode,
+            'analyses': {}
+        }
+
+        # Run query batch performance if requested and queries provided
+        if mode in ("comprehensive", "queries") and queries:
+            perf_result = self.analyze_queries_batch(
+                connection_state,
+                queries,
+                runs=runs,
+                clear_cache=clear_cache,
+                include_event_counts=include_event_counts
+            )
+            results['analyses']['query_performance'] = perf_result
+
+        # Run cardinality analysis if requested
+        if mode in ("comprehensive", "cardinality"):
+            if performance_optimizer:
+                try:
+                    # Relationship cardinality
+                    rel_card = performance_optimizer.analyze_relationship_cardinality()
+                    results['analyses']['relationship_cardinality'] = rel_card
+
+                    # Column cardinality if table specified
+                    if table:
+                        col_card = performance_optimizer.analyze_column_cardinality(table)
+                        results['analyses']['column_cardinality'] = col_card
+                except Exception as e:
+                    results['analyses']['cardinality_error'] = {
+                        'success': False,
+                        'error': f'Cardinality analysis failed: {str(e)}'
+                    }
+            else:
+                results['analyses']['cardinality'] = {
+                    'success': False,
+                    'error': 'Performance optimizer not available'
+                }
+
+        # Run storage compression analysis if requested
+        if mode in ("comprehensive", "storage") and table:
+            if performance_optimizer:
+                try:
+                    storage_result = performance_optimizer.analyze_encoding_efficiency(table)
+                    results['analyses']['storage_compression'] = storage_result
+                except Exception as e:
+                    results['analyses']['storage_error'] = {
+                        'success': False,
+                        'error': f'Storage analysis failed: {str(e)}'
+                    }
+            else:
+                results['analyses']['storage'] = {
+                    'success': False,
+                    'error': 'Performance optimizer not available'
+                }
+
+        # Generate summary
+        analysis_count = len([a for a in results['analyses'].values() if isinstance(a, dict) and a.get('success')])
+        results['summary'] = f'Completed {analysis_count} performance analyses'
+
+        return results
 
     def propose_analysis_options(self, connection_state, goal: Optional[str] = None) -> Dict[str, Any]:
         """Return a simple decision card offering Fast vs Normal analysis using full_analysis.

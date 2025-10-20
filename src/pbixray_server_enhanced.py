@@ -811,8 +811,8 @@ def _generate_quickstart_markdown() -> str:
         "- connection: detect powerbi desktop | connection: connect to powerbi",
         "- list: tables | list: columns | list: measures | describe: table | preview: table",
         "- search: objects | search: text in measures | get: data sources | get: m expressions",
-        "- analysis: best practices (BPA) | analysis: relationship/cardinality | analysis: storage compression",
-    "- usage: find unused objects",
+        "- analysis: full model | analysis: best practices | analysis: performance",
+        "- usage: find unused objects",
         "- export: compact schema | export: tmsl | export: tmdl | documentation: generate word",
         "",
         "Tips:",
@@ -916,16 +916,6 @@ def _handle_agent_tools(name: str, arguments: Any) -> Optional[dict]:
             dep_depth,
             export_pdf=False,
         )
-    if name == "export_documentation_pdf":
-        docx_path = arguments.get('docx_path')
-        if not docx_path:
-            return {"success": False, "error": "docx_path parameter is required", "error_type": "invalid_input"}
-        if not os.path.exists(docx_path):
-            return {"success": False, "error": f"File not found: {docx_path}", "error_type": "file_not_found"}
-        from core.documentation_builder import convert_to_pdf
-        pdf_path = docx_path.replace(".docx", ".pdf")
-        result = convert_to_pdf(docx_path, pdf_path)
-        return result
     if name == "export_model_explorer_html" or name == "export_interactive_relationship_graph":
         # Support both new name and legacy name for backwards compatibility
         ensured = agent_policy.ensure_connected(connection_manager, connection_state, None)
@@ -968,6 +958,29 @@ def _handle_agent_tools(name: str, arguments: Any) -> Optional[dict]:
     if name == "analyze_queries_batch":
         inc = bool(arguments.get('include_event_counts', False))
         return agent_policy.analyze_queries_batch(connection_state, arguments.get('queries', []), arguments.get('runs'), arguments.get('clear_cache', True), inc)
+    if name == "analyze_best_practices_unified":
+        ensured = agent_policy.ensure_connected(connection_manager, connection_state, None)
+        if not ensured.get('success'):
+            return ensured
+        return agent_policy.analyze_best_practices_unified(
+            connection_state,
+            mode=arguments.get('mode', 'all'),
+            bpa_profile=arguments.get('bpa_profile', 'balanced'),
+            max_seconds=arguments.get('max_seconds')
+        )
+    if name == "analyze_performance_unified":
+        ensured = agent_policy.ensure_connected(connection_manager, connection_state, None)
+        if not ensured.get('success'):
+            return ensured
+        return agent_policy.analyze_performance_unified(
+            connection_state,
+            mode=arguments.get('mode', 'comprehensive'),
+            queries=arguments.get('queries'),
+            table=arguments.get('table'),
+            runs=arguments.get('runs', 3),
+            clear_cache=arguments.get('clear_cache', True),
+            include_event_counts=arguments.get('include_event_counts', False)
+        )
     if name == "set_cache_policy":
         return agent_policy.set_cache_policy(connection_state, arguments.get('ttl_seconds'))
     if name == "profile_columns":
@@ -1032,7 +1045,7 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
             "get_m_expressions", "preview_table_data", "run_dax_query", "export_model_schema",
             "list_columns", "get_column_values", "get_column_summary", "get_column_value_distribution",
             "list_relationships", "get_vertipaq_stats", "analyze_query_performance", "validate_dax_query",
-            "analyze_m_practices", "analyze_model_bpa", "export_relationship_graph", "full_analysis"
+            "full_analysis", "analyze_best_practices_unified", "analyze_performance_unified"
         } else None
 
     qe = connection_state.query_executor
@@ -1416,16 +1429,8 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
             return tmsl_result
         except Exception as _e:
             return {'success': False, 'error': str(_e), 'error_type': 'bpa_error'}
-    if name == "export_relationship_graph":
-        return _export_relationship_graph(qe, arguments.get('format', 'json'))
     if name == "full_analysis":
         return _run_full_analysis(connection_state, config, BPA_AVAILABLE, arguments)
-    if name == "analyze_relationship_cardinality":
-        return performance_optimizer.analyze_relationship_cardinality() if performance_optimizer else ErrorHandler.handle_manager_unavailable('performance_optimizer')
-    if name == "analyze_column_cardinality":
-        return performance_optimizer.analyze_column_cardinality(arguments.get('table')) if performance_optimizer else ErrorHandler.handle_manager_unavailable('performance_optimizer')
-    if name == "analyze_storage_compression":
-        return performance_optimizer.analyze_encoding_efficiency(arguments['table']) if performance_optimizer else ErrorHandler.handle_manager_unavailable('performance_optimizer')
     if name == "validate_model_integrity":
         return model_validator.validate_model_integrity() if model_validator else ErrorHandler.handle_manager_unavailable('model_validator')
     # analyze_data_freshness tool removed from public surface
@@ -1482,18 +1487,6 @@ __DEFERRED_REGISTRATION__ = [
     ('list_columns', _h_list_columns),
     ('list_measures', _h_list_measures),
     ('describe_table', _h_describe_table),
-    # Helper tool to surface Quickstart guide and excerpt on demand
-    ('show_quickstart', lambda args: (lambda: (
-        (lambda guides_dir: (lambda pdf_path: (
-            (lambda guide_path: {
-                'success': True,
-                'quickstart_guide': guide_path,
-                'quickstart_excerpt': ("\n".join(_generate_quickstart_markdown().splitlines()[:16]) if True else None),
-                'open_hint': 'Open the quickstart_guide path locally to view the full PDF.',
-                'summary': f'Quickstart guide available at: {guide_path}'
-            })(pdf_path if os.path.exists(pdf_path) else os.path.join(guides_dir, 'PBIXRAY_Quickstart.txt'))
-        ))(os.path.join(guides_dir, 'PBIXRAY_Quickstart.pdf'))
-    ))(os.path.join(os.path.dirname(script_dir), 'docs')) )()),
 ]
 
 
@@ -1544,8 +1537,6 @@ def _handle_dependency_and_bulk(name: str, arguments: Any) -> Optional[dict]:
         return rls_manager.list_roles() if rls_manager else ErrorHandler.handle_manager_unavailable('rls_manager')
     if name == "test_role_filter":
         return rls_manager.test_role_filter(arguments['role_name'], arguments['test_query']) if rls_manager else ErrorHandler.handle_manager_unavailable('rls_manager')
-    if name == "validate_rls_coverage":
-        return rls_manager.validate_rls_coverage() if rls_manager else ErrorHandler.handle_manager_unavailable('rls_manager')
     if name == "upsert_measure":
         return (dax_injector.upsert_measure(
             arguments["table"],
@@ -1658,21 +1649,16 @@ FRIENDLY_TOOL_ALIASES = {
     "Partitions: List": "list_partitions",
     # Security
     "Security: List roles": "list_roles",
-    "Security: Validate RLS": "validate_rls_coverage",
     # Validation & governance
     "Validate: DAX": "validate_dax_query",
     "Validate: Model integrity": "validate_model_integrity",
-    "Best practices (BPA)": "analyze_model_bpa",
-    "Best practices: M queries": "analyze_m_practices",
-    # Performance
-    "Performance: Analyze queries": "analyze_queries_batch",
-    "Performance: Relationship cardinality": "analyze_relationship_cardinality",
-    "Performance: Column cardinality": "analyze_column_cardinality",
-    "Performance: Storage compression": "analyze_storage_compression",
+    # Analysis
+    "Analysis: Full model": "full_analysis",
+    "Analysis: Best practices": "analyze_best_practices_unified",
+    "Analysis: Performance": "analyze_performance_unified",
     # Docs & export
     "Export: Columns with samples": "export_columns_with_samples",
     "Export: Compact schema": "export_compact_schema",
-    "Export: Relationships graph": "export_relationship_graph",
     "Export: TMSL": "export_tmsl",
     "Export: TMDL": "export_tmdl",
     "Docs: Generate": "generate_documentation",
@@ -1686,17 +1672,10 @@ FRIENDLY_TOOL_ALIASES = {
     "Export: Model schema (sections)": "export_model_schema",
     # Orchestration
     "Analyze: Full model": "full_analysis",
-    # Renamed for clarity; keep old alias too below
-    "Analysis: Recommend analysis plan": "propose_analysis",
-    # New alphabetized friendly names (v2.3 style)
-    # analysis:
-    "analysis: best practices (BPA)": "analyze_model_bpa",
-    "analysis: column cardinality": "analyze_column_cardinality",
+    # Analysis tools (consolidated)
     "analysis: full model": "full_analysis",
-    "analysis: m query practices": "analyze_m_practices",
-    "analysis: performance (batch)": "analyze_queries_batch",
-    "analysis: relationship cardinality": "analyze_relationship_cardinality",
-    "analysis: storage compression": "analyze_storage_compression",
+    "analysis: best practices": "analyze_best_practices_unified",
+    "analysis: performance": "analyze_performance_unified",
     # calc groups:
     "calc: create calculation group": "create_calculation_group",
     "calc: delete calculation group": "delete_calculation_group",
@@ -1731,14 +1710,12 @@ FRIENDLY_TOOL_ALIASES = {
     "export: columns with samples": "export_columns_with_samples",
     "export: compact schema": "export_compact_schema",
     "export: model overview": "export_model_overview",
-    "Export: Relationships Graph": "export_relationship_graph",
     "export: schema (paged)": "export_model_schema",
     "export: tmdl": "export_tmdl",
     "export: tmsl": "export_tmsl",
     "documentation: generate word": "generate_model_documentation_word",
     "documentation: update word": "update_model_documentation_word",
-    "Export: PDF from Word": "export_documentation_pdf",
-    "Export: Model Explorer - HTML": "export_model_explorer_html",
+    "export: model explorer html": "export_model_explorer_html",
     "Export: Interactive Model Explorer - HTML": "export_model_explorer_html",  # Legacy alias
     # performance/run
     "run: dax": "run_dax",
@@ -1746,7 +1723,6 @@ FRIENDLY_TOOL_ALIASES = {
     "search: objects": "search_objects",
     "search: text in measures": "search_string",
     # security/validate
-    "security: validate rls": "validate_rls_coverage",
     "security: list roles": "list_roles",
     "validate: dax": "validate_dax_query",
     "validate: model integrity": "validate_model_integrity",
@@ -1919,9 +1895,6 @@ async def list_tools() -> List[Tool]:
     add("calc: create calculation group", "create_calculation_group", "Create a calculation group", {"type": "object", "properties": {"name": {"type": "string"}, "items": {"type": "array", "items": {"type": "object"}}, "description": {"type": "string"}, "precedence": {"type": "integer", "default": 0}}, "required": ["name", "items"]})
     add("calc: delete calculation group", "delete_calculation_group", "Delete a calculation group", {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]})
 
-    # Security
-    add("security: validate rls", "validate_rls_coverage", "Validate RLS coverage", {"type": "object", "properties": {}, "required": []})
-
     # Validation & governance
     add("validate: dax", "validate_dax_query", "Validate DAX syntax and analyze complexity", {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]})
     add("validate: model integrity", "validate_model_integrity", "Validate model integrity", {"type": "object", "properties": {}, "required": []})
@@ -1963,19 +1936,7 @@ async def list_tools() -> List[Tool]:
         },
     )
     add(
-        "Export: PDF from Word",
-        "export_documentation_pdf",
-        "Convert existing Word documentation to PDF format",
-        {
-            "type": "object",
-            "properties": {
-                "docx_path": {"type": "string", "description": "Path to the Word document to convert"},
-            },
-            "required": ["docx_path"],
-        },
-    )
-    add(
-        "Export: Model Explorer - HTML",
+        "export: model explorer html",
         "export_model_explorer_html",
         "Generate a comprehensive interactive HTML Model Explorer with tables (including 10-row data preview), columns, measures with DAX code, dependencies, and relationship graphs. Click tables to see data preview and dependencies, measures to see usage trees, interactive D3.js graph visualization with hierarchical layouts.",
         {
@@ -1988,47 +1949,77 @@ async def list_tools() -> List[Tool]:
             "required": [],
         },
     )
+
+    # Analysis (consolidated from 8 tools to 3)
     add(
-        "Export: Relationship Graph PNG",
-        "export_relationship_graph",
-        "Export relationships graph as PNG image (json/graphml also available)",
+        "analysis: full model",
+        "full_analysis",
+        "Comprehensive model analysis including summary, relationships, best practices, M scan, and optional BPA",
         {
             "type": "object",
             "properties": {
-                "format": {"type": "string", "enum": ["json", "graphml", "png"], "default": "png", "description": "Output format for the relationship graph"},
+                "include_bpa": {"type": "boolean", "default": True, "description": "Include Best Practice Analyzer scan"},
+                "depth": {"type": "string", "enum": ["light", "standard", "deep"], "default": "standard", "description": "Analysis depth"},
+                "profile": {"type": "string", "enum": ["fast", "balanced", "deep"], "default": "balanced", "description": "Performance profile"},
+                "limits": {
+                    "type": "object",
+                    "properties": {
+                        "relationships_max": {"type": "integer", "default": 200},
+                        "issues_max": {"type": "integer", "default": 200}
+                    }
+                }
             },
-            "required": [],
-        },
+            "required": []
+        }
+    )
+    add(
+        "analysis: best practices",
+        "analyze_best_practices_unified",
+        "Unified best practices analysis combining BPA and M query practices scans",
+        {
+            "type": "object",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["all", "bpa", "m_queries"],
+                    "default": "all",
+                    "description": "Analysis mode: 'all' (BPA + M), 'bpa' (BPA only), 'm_queries' (M only)"
+                },
+                "bpa_profile": {
+                    "type": "string",
+                    "enum": ["fast", "balanced", "deep"],
+                    "default": "balanced",
+                    "description": "BPA analysis depth"
+                },
+                "max_seconds": {"type": "number", "description": "Maximum time for BPA analysis"}
+            },
+            "required": []
+        }
+    )
+    add(
+        "analysis: performance",
+        "analyze_performance_unified",
+        "Unified performance analysis combining query performance, cardinality checks, and storage compression",
+        {
+            "type": "object",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["comprehensive", "queries", "cardinality", "storage"],
+                    "default": "comprehensive",
+                    "description": "Analysis mode: 'comprehensive' (all), 'queries' (DAX batch), 'cardinality' (relationship/column), 'storage' (compression)"
+                },
+                "queries": {"type": "array", "items": {"type": "string"}, "description": "DAX queries for batch performance testing"},
+                "table": {"type": "string", "description": "Table name for table-specific analyses"},
+                "runs": {"type": "integer", "default": 3, "description": "Number of runs for query performance testing"},
+                "clear_cache": {"type": "boolean", "default": True, "description": "Clear cache before performance testing"},
+                "include_event_counts": {"type": "boolean", "default": False, "description": "Include detailed event counts"}
+            },
+            "required": []
+        }
     )
 
-    # Analysis
-    add("analysis: m query practices", "analyze_m_practices", "Scan M expressions for common issues", {"type": "object", "properties": {}, "required": []})
-    if BPA_AVAILABLE:
-        add(
-            "analysis: best practices (BPA)",
-            "analyze_model_bpa",
-            "Run Best Practice Analyzer (rules-based)",
-            {
-                "type": "object",
-                "properties": {
-                    "mode": {"type": "string", "enum": ["fast", "balanced", "deep"], "default": "fast"},
-                    "categories": {"type": "array", "items": {"type": "string"}},
-                    "max_seconds": {"type": "number"}
-                },
-                "required": []
-            }
-        )
-    add("analysis: performance (batch)", "analyze_queries_batch", "Analyze performance for multiple DAX queries (AMO trace)", {"type": "object", "properties": {"queries": {"type": "array", "items": {"type": "string"}}, "runs": {"type": "integer", "default": 3}, "clear_cache": {"type": "boolean", "default": True}, "include_event_counts": {"type": "boolean", "default": False}}, "required": ["queries"]})
-    add("analysis: relationship cardinality", "analyze_relationship_cardinality", "Analyze relationship cardinality and recommendations", {"type": "object", "properties": {}, "required": []})
-    add("analysis: column cardinality", "analyze_column_cardinality", "Analyze column cardinality for a table", {"type": "object", "properties": {"table": {"type": "string"}}, "required": []})
-    add("analysis: storage compression", "analyze_storage_compression", "Analyze storage/compression efficiency for a table", {"type": "object", "properties": {"table": {"type": "string"}}, "required": ["table"]})
-    add("analysis: full model", "full_analysis", "Comprehensive model analysis (summary, relationships, best practices, M scan, optional BPA)", {"type": "object", "properties": {"include_bpa": {"type": "boolean", "default": True}, "depth": {"type": "string", "enum": ["light", "standard", "deep"], "default": "standard"}, "profile": {"type": "string", "enum": ["fast", "balanced", "deep"], "default": "balanced"}, "limits": {"type": "object", "properties": {"relationships_max": {"type": "integer", "default": 200}, "issues_max": {"type": "integer", "default": 200}}}}, "required": []})
-    add("analysis: recommend analysis plan", "propose_analysis", "Recommend fast vs thorough analysis options based on your goal", {"type": "object", "properties": {"goal": {"type": "string"}}, "required": []})
-
     # Visualization tools removed
-
-    # Help
-    add("help: quickstart guide", "show_quickstart", "Show path to Quickstart guide and an excerpt", {"type": "object", "properties": {}, "required": []})
 
     # Helper: sanitize tool identifier to match ^[a-zA-Z0-9_-]{1,64}$ while preserving readability
     def _sanitize_tool_identifier(name: str) -> str:

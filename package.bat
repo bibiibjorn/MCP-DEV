@@ -5,7 +5,7 @@ echo ========================================
 echo.
 
 :: Read version from __version__.py (hardcoded for reliability)
-set VERSION=2.5.0
+set VERSION=2.6.0
 echo Version: %VERSION%
 echo.
 
@@ -50,9 +50,22 @@ echo [5/5] Creating package...
 if not exist "dist" mkdir dist
 
 set OUTFILE=dist\mcp-powerbi-finvision-%VERSION%.mcpb
-if exist "%OUTFILE%" del "%OUTFILE%"
+if exist "%OUTFILE%" (
+    echo Removing old package...
+    del "%OUTFILE%"
+)
 
 echo Packaging to: %OUTFILE%
+echo.
+echo Checking manifest.json version...
+findstr /C:"\"version\": \"%VERSION%\"" manifest.json >nul
+if errorlevel 1 (
+    echo WARNING: manifest.json version does not match %VERSION%
+    echo Please update manifest.json before packaging
+    pause
+    exit /b 1
+)
+echo Manifest version verified: %VERSION%
 echo.
 echo ============================================================
 echo IMPORTANT: This takes 3-5 minutes with NO visible progress
