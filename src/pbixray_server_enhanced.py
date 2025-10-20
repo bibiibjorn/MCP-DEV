@@ -723,35 +723,24 @@ def _handle_connection_and_instances(name: str, arguments: Any) -> Optional[dict
             connection_state.initialize_managers()
             result['managers_initialized'] = connection_state._managers_initialized
             result['performance_analysis'] = 'Available' if connection_state.performance_analyzer else 'Limited'
-            # Provide Quickstart guide path for first-time users
+
+            # Automatically show detailed user guide on first connection
             try:
-                parent = os.path.dirname(script_dir)
-                guides_dir = os.path.join(parent, 'docs')
-                os.makedirs(guides_dir, exist_ok=True)
-                pdf_path = os.path.join(guides_dir, 'PBIXRAY_Quickstart.pdf')
-                if not os.path.exists(pdf_path):
-                    _write_quickstart_assets(guides_dir)
-                # If still not present, fall back to .txt
-                result['quickstart_guide'] = pdf_path if os.path.exists(pdf_path) else os.path.join(guides_dir, 'PBIXRAY_Quickstart.txt')
-                # Also include an excerpt so clients can show something inline
-                try:
-                    excerpt = _generate_quickstart_markdown().splitlines()[:16]
-                    result['quickstart_excerpt'] = "\n".join(excerpt)
-                    result['open_hint'] = "Open the quickstart_guide path locally to view the full PDF."
-                    # Add an explicit top-level message/notes so clients like Claude show it
-                    msg = f"✅ Connected successfully! 📚 For a comprehensive tool guide, run: 'guide: show user guide'"
-                    result.setdefault('message', msg)
-                    result.setdefault('notes', []).append(msg)
-                except Exception:
-                    pass
-            except Exception:
-                pass
-            # Add a short summary to help AI clients display guidance inline
+                user_guide = generate_comprehensive_user_guide(category="all", format_type="detailed", server_version=__version__)
+                if user_guide.get('success'):
+                    result['user_guide'] = user_guide
+                    result['message'] = "✅ Connected successfully! Complete user guide included below."
+                    result['notes'] = ["📚 Scroll down for the complete detailed guide to all available tools organized by category"]
+            except Exception as e:
+                logger.warning(f"Could not generate user guide: {e}")
+                result['message'] = "✅ Connected successfully!"
+            # Add helpful hints
             try:
-                result.setdefault('summary', 'Connected to Power BI Desktop. Use list_tools to discover capabilities. Quickstart guide path returned for details.')
+                result.setdefault('summary', 'Connected to Power BI Desktop. Complete detailed guide included in response.')
                 result.setdefault('hints', [
-                    'Try: get_model_summary, analyze_measure_dependencies, find_unused_objects',
-                    'Use describe_table to inspect schema; search_objects to find fields',
+                    'Most useful tools: analysis: full model, comparison: compare two models, export: model explorer html',
+                    'Start with: get: model summary, list: tables, list: measures',
+                    'All 60+ tools are documented in the user_guide section below'
                 ])
             except Exception:
                 pass

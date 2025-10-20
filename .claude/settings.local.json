@@ -38,7 +38,9 @@
       "Bash(python:*)",
       "Bash(findstr:*)",
       "Read(//c/Users/bjorn.braet/.claude/**)",
-      "Bash(./venv/Scripts/python.exe test_metadata_display.py)"
+      "Bash(./venv/Scripts/python.exe test_metadata_display.py)",
+      "Bash(./venv/Scripts/python.exe -m py_compile src/pbixray_server_enhanced.py)",
+      "Bash(./venv/Scripts/python.exe -m py_compile core/user_guide_generator.py)"
     ],
     "deny": [],
     "ask": []

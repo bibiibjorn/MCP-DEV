@@ -1159,17 +1159,11 @@ class ModelDiffReportGenerator:
         meas_changes = meas.get('changes', {})
         table_name = meas.get('table', 'Unknown')
 
-        # DEBUG: Log what changes we have
-        logger.info(f"Building HTML for measure '{meas['name']}' with changes: {list(meas_changes.keys())}")
-        for key, value in meas_changes.items():
-            logger.info(f"  {key}: {value}")
-
         # Build metadata change displays
         metadata_changes_html = []
         metadata_fields = ['description', 'is_hidden', 'data_category', 'display_folder', 'format_string']
         for field in metadata_fields:
             if field in meas_changes:
-                logger.info(f"  Found metadata change for {field}: {meas_changes[field]}")
                 metadata_changes_html.append(self._build_metadata_change_display(field, meas_changes[field]))
 
         # Annotation changes
