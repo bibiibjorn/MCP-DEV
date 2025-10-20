@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 
 from core.model_diff_engine import ModelDiffer
-from core.model_diff_report import ModelDiffReportGenerator
+from core.model_diff_report_v2 import ModelDiffReportV2
 from core.multi_instance_manager import multi_instance_manager
 from core.connection_manager import ConnectionManager
 import json
@@ -82,6 +82,18 @@ class ModelComparisonOrchestrator:
                 )
 
             logger.info("Successfully connected to both instances")
+
+            # Get database names from connections for auto-labeling
+            db_name1 = conn_result1.get('database_name', f'Model 1 (Port {port1})')
+            db_name2 = conn_result2.get('database_name', f'Model 2 (Port {port2})')
+
+            # Use database names as default labels if not provided
+            if not model1_label:
+                model1_label = db_name1
+            if not model2_label:
+                model2_label = db_name2
+
+            logger.info(f"Model labels: BASE='{model1_label}' vs NEW='{model2_label}'")
 
             # Step 2: Export both models using model_exporter (JSON TMDL structure)
             logger.info("Exporting models to TMDL structure...")
@@ -170,8 +182,9 @@ class ModelComparisonOrchestrator:
                 output_dir.mkdir(parents=True, exist_ok=True)
                 output_path = str(output_dir / f"model_diff_{timestamp}.html")
 
-            report_generator = ModelDiffReportGenerator(diff_result)
-            html_report_path = report_generator.generate_html_report(output_path)
+            # Use V2 report generator (modern, clean layout)
+            report_generator = ModelDiffReportV2(diff_result)
+            html_report_path = report_generator.generate_html(output_path)
 
             logger.info(f"HTML report generated: {html_report_path}")
 
