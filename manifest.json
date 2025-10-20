@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "mcp-powerbi-finvision",
   "display_name": "Power BI Analysis MCP Server",
-  "version": "2.6.0",
+  "version": "2.7.0",
   "description": "A production-ready MCP server for Power BI Desktop analysis with consolidated analysis tools and streamlined workflow",
   "long_description": "MCP-PowerBi-Finvision enables AI-powered analysis of Power BI models. Features include:\n\n- Auto-detect and connect to Power BI Desktop instances\n- Browse tables, columns, measures, and relationships\n- Inspect DAX expressions and M queries\n- Run comprehensive analysis with consolidated tools\n- Performance analysis with DAX profiling, cardinality checks, and storage optimization\n- Best practices analysis combining BPA and M query scans\n- Detect unused objects and analyze dependencies\n- Export schema, TMSL/TMDL, and interactive HTML documentation\n- Input validation and rate limiting for security\n- Enhanced error context with Desktop version detection\n\nRequirements:\n- Windows 10/11 (64-bit)\n- Power BI Desktop installed and running\n- .NET Framework 4.7.2+\n\nEverything runs locally over stdio with no exposed ports.",
   "author": {
@@ -102,6 +102,10 @@
     {
       "name": "get_cache_stats",
       "description": "Get cache performance statistics"
+    },
+    {
+      "name": "compare_pbi_models",
+      "description": "Compare two Power BI models using TMDL and generate an interactive HTML diff report showing all schema, measure, and relationship changes. Requires two Power BI Desktop instances running on different ports."
     }
   ],
   "keywords": [

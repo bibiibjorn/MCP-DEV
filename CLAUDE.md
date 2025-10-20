@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **MCP-PowerBi-Finvision** is a production-ready Model Context Protocol (MCP) server for Power BI Desktop. It enables AI-powered analysis of Power BI models locally - browsing schema, inspecting DAX and M code, running performance checks, exporting documentation, and more.
 
-- **Version**: 2.4.0 (Production Ready)
+- **Version**: 2.7.0 (Year 1 Model Analysis Excellence - TMDL Comparison)
 - **Platform**: Windows 10/11 only
 - **Primary Language**: Python 3.10+
 - **Distribution Format**: `.mcpb` package (bundled with dependencies)

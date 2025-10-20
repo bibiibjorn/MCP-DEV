@@ -140,8 +140,15 @@ class ModelExporter:
             except:
                 pass
 
-    def export_tmdl_structure(self) -> Dict[str, Any]:
-        """Export model structure as TMDL-style hierarchy."""
+    def export_tmdl_structure(self, export_to_file: bool = True, output_path: str = None) -> Dict[str, Any]:
+        """
+        Export model structure as TMDL-style hierarchy (includes all DAX expressions).
+
+        Args:
+            export_to_file: If True, writes TMDL to a JSON file and returns file path (recommended for large models).
+                          If False, returns full TMDL structure in response (may be too large for MCP protocol).
+            output_path: Optional custom output path. If None, uses exports/tmdl_exports/
+        """
         if not AMO_AVAILABLE:
             return {
                 'success': False,
@@ -192,12 +199,14 @@ class ModelExporter:
 
                 # Measures
                 for measure in table.Measures:
-                    table_data['measures'].append({
+                    measure_data = {
                         'name': measure.Name,
-                        'expression': measure.Expression,
+                        'expression': measure.Expression,  # Always include DAX expression
                         'display_folder': measure.DisplayFolder,
-                        'format_string': measure.FormatString if hasattr(measure, 'FormatString') else None
-                    })
+                        'format_string': measure.FormatString if hasattr(measure, 'FormatString') else None,
+                        'is_hidden': measure.IsHidden if hasattr(measure, 'IsHidden') else False
+                    }
+                    table_data['measures'].append(measure_data)
 
                 # Hierarchies
                 for hier in table.Hierarchies:
@@ -241,21 +250,63 @@ class ModelExporter:
                         })
                     tmdl['roles'].append(role_data)
 
-            result = {
-                'success': True,
-                'format': 'TMDL',
-                'database_name': db.Name,
-                'tmdl': tmdl,
-                'export_timestamp': datetime.now().isoformat(),
-                'statistics': {
-                    'tables': len(tmdl['tables']),
-                    'relationships': len(tmdl['relationships']),
-                    'roles': len(tmdl['roles'])
-                }
+            # Calculate statistics
+            statistics = {
+                'tables': len(tmdl['tables']),
+                'relationships': len(tmdl['relationships']),
+                'roles': len(tmdl['roles']),
+                'total_measures': sum(len(t['measures']) for t in tmdl['tables'].values()),
+                'total_columns': sum(len(t['columns']) for t in tmdl['tables'].values())
             }
 
-            logger.info(f"Exported TMDL structure: {result['statistics']['tables']} tables")
-            return result
+            # If export_to_file is True, write to file and return path
+            if export_to_file:
+                if output_path is None:
+                    # Use default exports directory
+                    export_dir = os.path.join(os.getcwd(), 'exports', 'tmdl_exports')
+                    os.makedirs(export_dir, exist_ok=True)
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    model_name_safe = db.Name.replace(' ', '_').replace('/', '_')
+                    output_path = os.path.join(export_dir, f'{model_name_safe}_tmdl_{timestamp}.json')
+                else:
+                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+                # Write full TMDL to file
+                full_export = {
+                    'format': 'TMDL',
+                    'database_name': db.Name,
+                    'tmdl': tmdl,
+                    'export_timestamp': datetime.now().isoformat(),
+                    'statistics': statistics
+                }
+
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    json.dump(full_export, f, indent=2, ensure_ascii=False)
+
+                logger.info(f"Exported TMDL structure to file: {output_path} ({statistics['tables']} tables, {statistics['total_measures']} measures)")
+
+                return {
+                    'success': True,
+                    'format': 'TMDL',
+                    'database_name': db.Name,
+                    'export_file': output_path,
+                    'export_timestamp': datetime.now().isoformat(),
+                    'statistics': statistics,
+                    'message': f'TMDL structure exported to {output_path}'
+                }
+            else:
+                # Return full structure in response (may be too large!)
+                result = {
+                    'success': True,
+                    'format': 'TMDL',
+                    'database_name': db.Name,
+                    'tmdl': tmdl,
+                    'export_timestamp': datetime.now().isoformat(),
+                    'statistics': statistics
+                }
+
+                logger.info(f"Exported TMDL structure: {statistics['tables']} tables (in-memory, not file)")
+                return result
 
         except Exception as e:
             logger.error(f"TMDL export error: {e}")

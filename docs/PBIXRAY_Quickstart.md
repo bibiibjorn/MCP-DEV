@@ -1,4 +1,4 @@
-# MCP-PowerBi-Finvision Quickstart Guide (2025-10-09)
+# MCP-PowerBi-Finvision Quickstart Guide (2025-10-20)
 
 MCP-PowerBi-Finvision is a Model Context Protocol (MCP) server for Power BI Desktop. It lets tools/agents inspect and analyze your open model safely.
 
@@ -15,9 +15,9 @@ Popular tools (friendly names):
 - connection: detect powerbi desktop | connection: connect to powerbi
 - list: tables | list: columns | list: measures | describe: table | preview: table
 - search: objects | search: text in measures | get: data sources | get: m expressions
-- analysis: best practices (BPA) | analysis: relationship/cardinality | analysis: storage compression
+- analysis: full model | analysis: best practices | analysis: performance
 - usage: find unused objects
-- export: compact schema | export: tmsl | export: tmdl | docs: generate
+- export: compact schema | export: tmsl | export: tmdl | documentation: generate word
 
 Tips:
 - Large results are paged; use page_size + next_token

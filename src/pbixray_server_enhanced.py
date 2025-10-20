@@ -47,6 +47,7 @@ from core.agent_policy import AgentPolicy
 # Import configuration and connection state
 from core.config_manager import config
 from core.connection_state import connection_state
+from core.user_guide_generator import generate_comprehensive_user_guide
 
 # Delegated handlers & utils (modularized)
 from server.handlers.relationships_graph import export_relationship_graph as _export_relationship_graph
@@ -347,6 +348,11 @@ def _note_client_filter_vertipaq(result: Any, table: str) -> Any:
 # Small handler groups (reduce call_tool complexity)
 # ----------------------------
 def _handle_logs_and_health(name: str, arguments: Any) -> Optional[dict]:
+    if name == "show_user_guide":
+        category = arguments.get("category", "all")
+        format_type = arguments.get("format", "detailed")
+        return generate_comprehensive_user_guide(category, format_type, __version__)
+
     if name == "get_recent_logs":
         lines = int(arguments.get("lines", 200) or 200)
         log_path = LOG_PATH
@@ -733,7 +739,7 @@ def _handle_connection_and_instances(name: str, arguments: Any) -> Optional[dict
                     result['quickstart_excerpt'] = "\n".join(excerpt)
                     result['open_hint'] = "Open the quickstart_guide path locally to view the full PDF."
                     # Add an explicit top-level message/notes so clients like Claude show it
-                    msg = f"Connected successfully. Quickstart guide available at: {result['quickstart_guide']}"
+                    msg = f"✅ Connected successfully! 📚 For a comprehensive tool guide, run: 'guide: show user guide'"
                     result.setdefault('message', msg)
                     result.setdefault('notes', []).append(msg)
                 except Exception:
@@ -1564,6 +1570,27 @@ def _handle_dependency_and_bulk(name: str, arguments: Any) -> Optional[dict]:
         return model_exporter.get_model_summary(connection_state.query_executor) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
     if name == "compare_models":
         return model_exporter.compare_models(arguments['reference_tmsl']) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
+    if name == "compare_pbi_models":
+        # TMDL-based model comparison tool
+        from core.model_comparison_orchestrator import compare_pbi_models
+        try:
+            port1 = int(arguments['port1'])
+            port2 = int(arguments['port2'])
+            output_path = arguments.get('output_path')
+            include_restricted = arguments.get('include_restricted', False)
+            generate_json = arguments.get('generate_json', False)
+            model1_label = arguments.get('model1_label')
+            model2_label = arguments.get('model2_label')
+
+            result = compare_pbi_models(port1, port2, output_path, include_restricted, generate_json, model1_label, model2_label)
+            return result
+        except Exception as e:
+            logger.error(f"Model comparison failed: {e}", exc_info=True)
+            return {
+                'success': False,
+                'error': str(e),
+                'error_type': 'comparison_failed'
+            }
     if name == "apply_tmdl_patch":
         # Safe patch application limited to measures only; supports dry_run
         updates = arguments.get('updates', []) or []
@@ -1905,6 +1932,9 @@ async def list_tools() -> List[Tool]:
     add("export: tmsl", "export_tmsl", "Export TMSL (summary by default)", {"type": "object", "properties": {"include_full_model": {"type": "boolean", "default": False}}, "required": []})
     add("export: tmdl", "export_tmdl", "Export TMDL model structure", {"type": "object", "properties": {}, "required": []})
     add("export: model overview", "export_model_overview", "Export compact model overview (json/yaml)", {"type": "object", "properties": {"format": {"type": "string", "enum": ["json", "yaml"], "default": "json"}, "include_counts": {"type": "boolean", "default": True}}, "required": []})
+
+    # Model comparison
+    add("comparison: compare two models", "compare_pbi_models", "COMPARE TWO MODELS: Side-by-side comparison of TWO different Power BI models showing what changed (tables/measures/columns added/removed/modified with DAX diffs). Requires TWO Power BI Desktop instances open on different ports. Outputs HTML diff report. Use 'export: model explorer html' if you only have ONE model.", {"type": "object", "properties": {"port1": {"type": "integer", "description": "Port number of BASE/OLD model (first Power BI Desktop instance)"}, "port2": {"type": "integer", "description": "Port number of NEW model (second Power BI Desktop instance)"}, "model1_label": {"type": "string", "description": "Optional descriptive name for base model (e.g., 'Sales_v1.pbix' or 'Production Model')"}, "model2_label": {"type": "string", "description": "Optional descriptive name for new model (e.g., 'Sales_v2.pbix' or 'Development Model')"}, "output_path": {"type": "string", "description": "Optional custom path for HTML report"}, "include_restricted": {"type": "boolean", "default": False, "description": "Include restricted information in TMDL export"}, "generate_json": {"type": "boolean", "default": False, "description": "Also generate JSON export of diff data"}}, "required": ["port1", "port2"]})
     add("export: model schema (sections)", "export_model_schema", "Export model schema by section with pagination", {"type": "object", "properties": {"section": {"type": "string", "enum": ["tables", "columns", "measures", "relationships"]}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}, "preview_size": {"type": "integer", "description": "Rows per section in compact preview (default 30)"}, "include": {"type": "array", "items": {"type": "string"}, "description": "Subset of sections to include in compact preview"}}, "required": []})
     add(
         "documentation: generate word",
@@ -1938,7 +1968,7 @@ async def list_tools() -> List[Tool]:
     add(
         "export: model explorer html",
         "export_model_explorer_html",
-        "Generate a comprehensive interactive HTML Model Explorer with tables (including 10-row data preview), columns, measures with DAX code, dependencies, and relationship graphs. Click tables to see data preview and dependencies, measures to see usage trees, interactive D3.js graph visualization with hierarchical layouts.",
+        "SINGLE MODEL EXPLORER: Generate interactive HTML documentation for ONE currently connected model. Shows tables with data previews, measures with DAX code, dependencies, and relationship graphs. Use this to explore/document a single model, NOT for comparing two models.",
         {
             "type": "object",
             "properties": {
@@ -2014,6 +2044,31 @@ async def list_tools() -> List[Tool]:
                 "runs": {"type": "integer", "default": 3, "description": "Number of runs for query performance testing"},
                 "clear_cache": {"type": "boolean", "default": True, "description": "Clear cache before performance testing"},
                 "include_event_counts": {"type": "boolean", "default": False, "description": "Include detailed event counts"}
+            },
+            "required": []
+        }
+    )
+
+    # User Guide & Help
+    add(
+        "guide: show user guide",
+        "show_user_guide",
+        "📚 COMPREHENSIVE USER GUIDE - Get detailed explanations of ALL tools organized by category with examples and best practices",
+        {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "enum": ["all", "connection", "exploration", "analysis", "export", "validation", "management", "comparison"],
+                    "default": "all",
+                    "description": "Show specific category or 'all' for complete guide"
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["detailed", "quick"],
+                    "default": "detailed",
+                    "description": "Guide detail level: 'detailed' (full), 'quick' (summaries)"
+                }
             },
             "required": []
         }

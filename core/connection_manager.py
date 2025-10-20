@@ -238,6 +238,76 @@ class ConnectionManager:
                 ]
             }
 
+    def connect_to_port(self, port: int) -> Dict[str, Any]:
+        """
+        Connect directly to a Power BI Desktop instance on a specific port.
+
+        Args:
+            port: Port number of the Power BI Desktop instance
+
+        Returns:
+            Connection result dictionary
+        """
+        if not ADOMD_AVAILABLE:
+            return {
+                'success': False,
+                'error': 'ADOMD.NET not available'
+            }
+
+        try:
+            # Build connection string
+            conn_str = f'Data Source=localhost:{port}'
+
+            # Close existing connection if any
+            if self.active_connection:
+                try:
+                    self.active_connection.Close()
+                except:
+                    pass
+
+            # Create and open connection
+            self.active_connection = AdomdConnection(conn_str)
+            self.active_connection.Open()
+
+            # Get database name
+            cmd = self.active_connection.CreateCommand()
+            cmd.CommandText = "SELECT [CATALOG_NAME] FROM $SYSTEM.DBSCHEMA_CATALOGS"
+            reader = cmd.ExecuteReader()
+
+            db_name = None
+            if reader.Read():
+                db_name = str(reader.GetValue(0))
+            reader.Close()
+
+            # Store instance info
+            self.active_instance = {
+                'port': port,
+                'database': db_name,
+                'connection_string': conn_str,
+                'display_name': f'Power BI Desktop (Port {port})'
+            }
+            self.connection_string = conn_str
+
+            logger.info(f"Connected to Power BI Desktop on port {port}")
+
+            return {
+                'success': True,
+                'port': port,
+                'database_name': db_name,
+                'connection_string': conn_str,
+                'instance': self.active_instance,
+                'message': f'Successfully connected to port {port}'
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to connect to port {port}: {e}")
+            return {
+                'success': False,
+                'port': port,
+                'error': str(e),
+                'error_type': 'connection_failed'
+            }
+
     def test_connection(self, port: Optional[int] = None) -> Dict[str, Any]:
         """
         Test connection to a specific port or current connection.
