@@ -456,7 +456,7 @@ class ModelDiffReportV2:
     # ============================================================================
 
     def _build_measures_section(self) -> str:
-        """Build top-level measures section."""
+        """Build top-level measures section with folder grouping."""
         measures = self.diff.get('measures', {})
         added = measures.get('added', [])
         removed = measures.get('removed', [])
@@ -465,22 +465,63 @@ class ModelDiffReportV2:
         if not (added or removed or modified):
             return ""
 
-        items_html = []
-
+        # Group all measures by folder
+        all_measures = []
         for meas in added:
-            items_html.append(self._build_measure_item(meas, 'added'))
-
+            all_measures.append(('added', meas))
         for meas in removed:
-            items_html.append(self._build_measure_item(meas, 'removed'))
-
+            all_measures.append(('removed', meas))
         for meas in modified:
-            items_html.append(self._build_measure_item(meas, 'modified'))
+            all_measures.append(('modified', meas))
+
+        # Group by folder
+        folders = {}
+        for change_type, meas in all_measures:
+            folder = meas.get('display_folder', '') or '(No Folder)'
+            if folder not in folders:
+                folders[folder] = {'added': [], 'removed': [], 'modified': []}
+            folders[folder][change_type].append(meas)
+
+        # Build HTML for each folder
+        folder_sections = []
+        for folder in sorted(folders.keys()):
+            folder_measures = folders[folder]
+            folder_added = folder_measures['added']
+            folder_removed = folder_measures['removed']
+            folder_modified = folder_measures['modified']
+
+            items_html = []
+            for meas in folder_added:
+                items_html.append(self._build_measure_item(meas, 'added'))
+            for meas in folder_removed:
+                items_html.append(self._build_measure_item(meas, 'removed'))
+            for meas in folder_modified:
+                items_html.append(self._build_measure_item(meas, 'modified'))
+
+            folder_count = len(folder_added) + len(folder_removed) + len(folder_modified)
+            folder_icon = "📁" if folder != "(No Folder)" else "📊"
+
+            folder_sections.append(f"""
+                <div class="folder-group">
+                    <div class="folder-header clickable" onclick="this.parentElement.classList.toggle('collapsed')">
+                        <span class="folder-icon">{folder_icon}</span>
+                        <strong class="folder-name">{self._escape(folder)}</strong>
+                        <span class="folder-count">({folder_count} measure{'s' if folder_count != 1 else ''})</span>
+                        <span class="expand-icon">▼</span>
+                    </div>
+                    <div class="folder-body">
+                        <div class="changes-list">
+                            {''.join(items_html)}
+                        </div>
+                    </div>
+                </div>
+            """)
 
         return f"""
         <div class="section">
             <h2>Measures (All Tables) - {len(added)} added, {len(removed)} removed, {len(modified)} modified</h2>
-            <div class="changes-list">
-                {''.join(items_html)}
+            <div class="folder-groups">
+                {''.join(folder_sections)}
             </div>
         </div>
         """
@@ -772,6 +813,204 @@ class ModelDiffReportV2:
         # Return as-is if can't parse
         return col_ref
 
+    def _build_semantic_measures_grouped(self, changes: Dict) -> str:
+        """Build measures section with folder grouping for Semantic View."""
+        # Collect all measures with their change types
+        all_measures = []
+
+        # Added measures
+        for meas in changes.get('added', []):
+            all_measures.append(('added', meas))
+
+        # Removed measures
+        for meas in changes.get('removed', []):
+            all_measures.append(('removed', meas))
+
+        # Modified measures
+        for meas in changes.get('modified', []):
+            all_measures.append(('modified', meas))
+
+        if not all_measures:
+            return ""
+
+        # Group by folder
+        folders = {}
+        for change_type, meas in all_measures:
+            folder = meas.get('display_folder', '') or '(No Folder)'
+            if folder not in folders:
+                folders[folder] = {'added': [], 'removed': [], 'modified': []}
+            folders[folder][change_type].append(meas)
+
+        # Build HTML for each folder
+        folder_sections = []
+        for folder in sorted(folders.keys()):
+            items_html = []
+            folder_data = folders[folder]
+
+            # Count total measures in this folder
+            folder_count = len(folder_data['added']) + len(folder_data['removed']) + len(folder_data['modified'])
+
+            # Build items for this folder
+            # Added measures
+            for meas in folder_data['added']:
+                item_name = meas.get('name', 'Unknown')
+                table = meas.get('table', '')
+                metadata = f"{table}." if table else ""
+                expression = meas.get('expression', '')
+
+                if expression:
+                    items_html.append(f"""
+                        <div class="change-item added expandable">
+                            <div class="change-item-name clickable" onclick="this.parentElement.classList.toggle('expanded')">
+                                <span class="badge mini added">+</span>
+                                {self._escape(metadata + item_name)}
+                                <span class="expand-icon">▼</span>
+                            </div>
+                            <div class="change-item-body">
+                                <div class="dax-expression added">
+                                    <pre>{self._escape(expression)}</pre>
+                                </div>
+                            </div>
+                        </div>
+                    """)
+                else:
+                    items_html.append(f"""
+                        <div class="change-item added">
+                            <div class="change-item-name">
+                                <span class="badge mini added">+</span>
+                                {self._escape(metadata + item_name)}
+                            </div>
+                        </div>
+                    """)
+
+            # Removed measures
+            for meas in folder_data['removed']:
+                item_name = meas.get('name', 'Unknown')
+                table = meas.get('table', '')
+                metadata = f"{table}." if table else ""
+                expression = meas.get('expression', '')
+
+                if expression:
+                    items_html.append(f"""
+                        <div class="change-item removed expandable">
+                            <div class="change-item-name clickable" onclick="this.parentElement.classList.toggle('expanded')">
+                                <span class="badge mini removed">-</span>
+                                {self._escape(metadata + item_name)}
+                                <span class="expand-icon">▼</span>
+                            </div>
+                            <div class="change-item-body">
+                                <div class="dax-expression removed">
+                                    <pre>{self._escape(expression)}</pre>
+                                </div>
+                            </div>
+                        </div>
+                    """)
+                else:
+                    items_html.append(f"""
+                        <div class="change-item removed">
+                            <div class="change-item-name">
+                                <span class="badge mini removed">-</span>
+                                {self._escape(metadata + item_name)}
+                            </div>
+                        </div>
+                    """)
+
+            # Modified measures
+            for meas in folder_data['modified']:
+                item_name = meas.get('name', 'Unknown')
+                table = meas.get('table', '')
+                metadata = f"{table}." if table else ""
+                item_changes = meas.get('changes', {})
+
+                # If expression changed, show DAX diff
+                if 'expression' in item_changes:
+                    expr_change = item_changes['expression']
+                    expr_from = expr_change.get('from', '')
+                    expr_to = expr_change.get('to', '')
+
+                    # Build other changes summary (excluding expression)
+                    other_changes = []
+                    for change_key, change_val in item_changes.items():
+                        if change_key != 'expression' and isinstance(change_val, dict) and 'from' in change_val:
+                            from_val = change_val.get('from', '')
+                            to_val = change_val.get('to', '')
+                            other_changes.append(f"{change_key}: <span class='old'>{self._escape(str(from_val))}</span> → <span class='new'>{self._escape(str(to_val))}</span>")
+
+                    other_detail = ', '.join(other_changes) if other_changes else ''
+
+                    items_html.append(f"""
+                        <div class="change-item modified expandable">
+                            <div class="change-item-name clickable" onclick="this.parentElement.classList.toggle('expanded')">
+                                <span class="badge mini modified">~</span>
+                                {self._escape(metadata + item_name)}
+                                <span class="expand-icon">▼</span>
+                            </div>
+                            <div class="change-item-body">
+                                {f'<div class="change-detail">{other_detail}</div>' if other_detail else ''}
+                                <div class="dax-mini-diff">
+                                    <div class="dax-before">
+                                        <div class="label">BEFORE</div>
+                                        <pre>{self._escape(expr_from)}</pre>
+                                    </div>
+                                    <div class="dax-after">
+                                        <div class="label">AFTER</div>
+                                        <pre>{self._escape(expr_to)}</pre>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    """)
+                else:
+                    # Build change summary
+                    change_parts = []
+                    for change_key, change_val in item_changes.items():
+                        if isinstance(change_val, dict) and 'from' in change_val:
+                            from_val = change_val.get('from', '')
+                            to_val = change_val.get('to', '')
+                            change_parts.append(f"{change_key}: <span class='old'>{self._escape(str(from_val))}</span> → <span class='new'>{self._escape(str(to_val))}</span>")
+
+                    change_detail = ', '.join(change_parts) if change_parts else 'Modified'
+
+                    items_html.append(f"""
+                        <div class="change-item modified">
+                            <div class="change-item-name">
+                                <span class="badge mini modified">~</span>
+                                {self._escape(metadata + item_name)}
+                            </div>
+                            <div class="change-detail">{change_detail}</div>
+                        </div>
+                    """)
+
+            # Determine folder icon
+            folder_icon = '📊' if folder == '(No Folder)' else '📁'
+
+            # Build folder group
+            folder_sections.append(f"""
+                <div class="folder-group">
+                    <div class="folder-header clickable" onclick="this.parentElement.classList.toggle('collapsed')">
+                        <span class="folder-icon">{folder_icon}</span>
+                        <strong class="folder-name">{self._escape(folder)}</strong>
+                        <span class="folder-count">({folder_count} measure{'s' if folder_count != 1 else ''})</span>
+                        <span class="expand-icon">▼</span>
+                    </div>
+                    <div class="folder-body">
+                        <div class="change-items">
+                            {''.join(items_html)}
+                        </div>
+                    </div>
+                </div>
+            """)
+
+        # Return the complete measures section with folder groups
+        return f"""
+        <div class="change-group">
+            <div class="change-group-title">Measures</div>
+            <div class="folder-groups">
+                {''.join(folder_sections)}
+            </div>
+        </div>
+        """
+
     def _build_semantic_section(self, title: str, changes: Dict) -> str:
         """Build a semantic diff section."""
         items = []
@@ -782,6 +1021,10 @@ class ModelDiffReportV2:
             # Determine if this is a measures section (has expression field)
             is_measures = title == 'Measures'
             is_relationships = title == 'Relationships'
+
+            # Special handling for measures - group by display folder
+            if is_measures:
+                return self._build_semantic_measures_grouped(changes)
 
             # Added items
             for item in changes.get('added', []):

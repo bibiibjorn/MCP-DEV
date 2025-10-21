@@ -69,6 +69,7 @@ class MultiInstanceManager:
                 "success": True,
                 "port": port,
                 "status": "connected",
+                "database_name": result.get('database_name'),
                 "instance_info": result.get('instance')
             }
 

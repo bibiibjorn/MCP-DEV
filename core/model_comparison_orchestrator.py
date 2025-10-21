@@ -84,8 +84,14 @@ class ModelComparisonOrchestrator:
             logger.info("Successfully connected to both instances")
 
             # Get database names from connections for auto-labeling
-            db_name1 = conn_result1.get('database_name', f'Model 1 (Port {port1})')
-            db_name2 = conn_result2.get('database_name', f'Model 2 (Port {port2})')
+            # Remove port suffix if present in database name
+            db_name1 = conn_result1.get('database_name', f'Model (Port {port1})')
+            db_name2 = conn_result2.get('database_name', f'Model (Port {port2})')
+
+            # Clean up database names - remove port suffix if present
+            import re
+            db_name1 = re.sub(r'\s*\(Port\s+\d+\)\s*$', '', db_name1)
+            db_name2 = re.sub(r'\s*\(Port\s+\d+\)\s*$', '', db_name2)
 
             # Use database names as default labels if not provided
             if not model1_label:

@@ -173,6 +173,16 @@ body {font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-ser
 .no-details {padding:15px;color:#6c757d;font-style:italic;text-align:center;}
 .dax-full {margin-top:10px;}
 .dax-full pre {background:#f8f9fa;padding:12px;border-radius:6px;overflow-x:auto;border-left:3px solid #dee2e6;}
+.folder-groups {display:flex;flex-direction:column;gap:20px;}
+.folder-group {background:#f8f9fa;border-radius:8px;overflow:hidden;border-left:4px solid #667eea;}
+.folder-group.collapsed .folder-body {display:none;}
+.folder-group.collapsed .expand-icon {transform:rotate(-90deg);}
+.folder-header {padding:15px 20px;background:#f1f3f5;cursor:pointer;user-select:none;display:flex;align-items:center;gap:12px;transition:background 0.2s;}
+.folder-header:hover {background:#e9ecef;}
+.folder-icon {font-size:1.2rem;}
+.folder-name {flex:1;font-size:1.05rem;}
+.folder-count {color:#6c757d;font-size:0.9rem;}
+.folder-body {padding:15px;}
 @media (max-width:1024px) {
 .tmdl-split-view {grid-template-columns:1fr;}
 .dax-mini-diff {grid-template-columns:1fr;}
