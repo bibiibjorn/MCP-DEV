@@ -745,6 +745,33 @@ class ModelDiffReportV2:
             </div>
             """
 
+    def _format_relationship_column(self, col_ref: str) -> str:
+        """
+        Format a relationship column reference to be more readable.
+        Handles formats like:
+          - "TableName.ColumnName"
+          - "'TableName'[ColumnName]"
+          - "TableName[ColumnName]"
+        """
+        if not col_ref or col_ref == 'Unknown':
+            return col_ref
+
+        # If already in dot notation, return as-is
+        if '.' in col_ref and '[' not in col_ref:
+            return col_ref
+
+        # Extract table and column from bracket notation
+        # Formats: 'TableName'[ColumnName] or TableName[ColumnName]
+        import re
+        match = re.match(r"^'?([^'\[]+)'?\[([^\]]+)\]$", col_ref)
+        if match:
+            table = match.group(1)
+            column = match.group(2)
+            return f"{table}.{column}"
+
+        # Return as-is if can't parse
+        return col_ref
+
     def _build_semantic_section(self, title: str, changes: Dict) -> str:
         """Build a semantic diff section."""
         items = []
@@ -760,8 +787,13 @@ class ModelDiffReportV2:
             for item in changes.get('added', []):
                 # Handle relationships specially
                 if is_relationships:
-                    from_col = item.get('from_column', 'Unknown')
-                    to_col = item.get('to_column', 'Unknown')
+                    from_col = item.get('from_column') or item.get('fromColumn') or 'Unknown'
+                    to_col = item.get('to_column') or item.get('toColumn') or 'Unknown'
+
+                    # Clean up the column names if they're in reference format
+                    from_col = self._format_relationship_column(from_col)
+                    to_col = self._format_relationship_column(to_col)
+
                     item_display = f"{from_col} → {to_col}"
 
                     items.append(f"""
@@ -812,8 +844,13 @@ class ModelDiffReportV2:
             for item in changes.get('removed', []):
                 # Handle relationships specially
                 if is_relationships:
-                    from_col = item.get('from_column', 'Unknown')
-                    to_col = item.get('to_column', 'Unknown')
+                    from_col = item.get('from_column') or item.get('fromColumn') or 'Unknown'
+                    to_col = item.get('to_column') or item.get('toColumn') or 'Unknown'
+
+                    # Clean up the column names if they're in reference format
+                    from_col = self._format_relationship_column(from_col)
+                    to_col = self._format_relationship_column(to_col)
+
                     item_display = f"{from_col} → {to_col}"
 
                     items.append(f"""
@@ -863,8 +900,13 @@ class ModelDiffReportV2:
             for item in changes.get('modified', []):
                 # Handle relationships specially
                 if is_relationships:
-                    from_col = item.get('from_column', 'Unknown')
-                    to_col = item.get('to_column', 'Unknown')
+                    from_col = item.get('from_column') or item.get('fromColumn') or 'Unknown'
+                    to_col = item.get('to_column') or item.get('toColumn') or 'Unknown'
+
+                    # Clean up the column names if they're in reference format
+                    from_col = self._format_relationship_column(from_col)
+                    to_col = self._format_relationship_column(to_col)
+
                     item_display = f"{from_col} → {to_col}"
                     item_changes = item.get('changes', {})
 
