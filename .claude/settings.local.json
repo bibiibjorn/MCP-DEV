@@ -8,7 +8,10 @@
       "Bash(fi)",
       "Bash(./venv/Scripts/python.exe -m py_compile src/pbixray_server_enhanced.py)",
       "Bash(./venv/Scripts/python.exe -m py_compile core/connection_manager.py)",
-      "Bash(./venv/Scripts/python.exe:*)"
+      "Bash(./venv/Scripts/python.exe:*)",
+      "Bash(powershell -Command \"$styles = (Select-String -Path ''core/model_diff_report_v2.py'' -Pattern ''def _get_styles'' -Context 0,50 | Select-Object -First 1).Context.PostContext.Count; $scripts = (Select-String -Path ''core/model_diff_report_v2.py'' -Pattern ''def _get_scripts'' -Context 0,50 | Select-Object -First 1).Context.PostContext.Count; Write-Output \"\"Styles context: $styles lines, Scripts context: $scripts lines\"\"\")",
+      "Bash(powershell -Command:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []
