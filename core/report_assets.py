@@ -155,7 +155,13 @@ body {font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-ser
 .change-item.added {border-left-color:#28a745;}
 .change-item.removed {border-left-color:#dc3545;}
 .change-item.modified {border-left-color:#ffc107;}
-.change-item-name {font-weight:600;margin-bottom:8px;}
+.change-item.expandable .change-item-body {display:none;}
+.change-item.expandable.expanded .change-item-body {display:block;margin-top:10px;}
+.change-item.expandable.expanded .expand-icon {transform:rotate(180deg);}
+.change-item-name {font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:8px;}
+.change-item-name.clickable {cursor:pointer;user-select:none;}
+.change-item-name.clickable:hover {background:rgba(0,0,0,0.02);margin:-5px;padding:5px;border-radius:4px;}
+.change-item-body {padding-top:10px;}
 .change-detail {font-size:0.9rem;color:#6c757d;margin-top:5px;}
 .tmdl-diff-container {background:#f8f9fa;padding:20px;border-radius:8px;font-family:'Consolas','Monaco',monospace;font-size:0.85rem;overflow-x:auto;}
 .diff-line {padding:2px 10px;white-space:pre;}

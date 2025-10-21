@@ -752,68 +752,205 @@ class ModelDiffReportV2:
         # Handle different formats
         # Format 1: Collections with added/removed/modified lists (check this FIRST)
         if 'added' in changes or 'removed' in changes or 'modified' in changes:
+            # Determine if this is a measures section (has expression field)
+            is_measures = title == 'Measures'
+            is_relationships = title == 'Relationships'
+
             # Added items
             for item in changes.get('added', []):
-                item_name = item.get('name', 'Unknown')
-                table = item.get('table', '')
-                metadata = f"{table}." if table else ""
-                data_type = item.get('data_type', '')
-                type_str = f" ({data_type})" if data_type else ""
+                # Handle relationships specially
+                if is_relationships:
+                    from_col = item.get('from_column', 'Unknown')
+                    to_col = item.get('to_column', 'Unknown')
+                    item_display = f"{from_col} → {to_col}"
 
-                items.append(f"""
-                    <div class="change-item added">
-                        <div class="change-item-name">
-                            <span class="badge mini added">+</span>
-                            {self._escape(metadata + item_name)}
-                            {self._escape(type_str)}
+                    items.append(f"""
+                        <div class="change-item added">
+                            <div class="change-item-name">
+                                <span class="badge mini added">+</span>
+                                {self._escape(item_display)}
+                            </div>
                         </div>
-                    </div>
-                """)
+                    """)
+                else:
+                    # Handle columns/measures/tables
+                    item_name = item.get('name', 'Unknown')
+                    table = item.get('table', '')
+                    metadata = f"{table}." if table else ""
+                    data_type = item.get('data_type', '')
+                    type_str = f" ({data_type})" if data_type else ""
+
+                    # For measures, make them expandable to show DAX
+                    if is_measures and item.get('expression'):
+                        expression = item.get('expression', '')
+                        items.append(f"""
+                            <div class="change-item added expandable">
+                                <div class="change-item-name clickable" onclick="this.parentElement.classList.toggle('expanded')">
+                                    <span class="badge mini added">+</span>
+                                    {self._escape(metadata + item_name)}
+                                    <span class="expand-icon">▼</span>
+                                </div>
+                                <div class="change-item-body">
+                                    <div class="dax-expression added">
+                                        <pre>{self._escape(expression)}</pre>
+                                    </div>
+                                </div>
+                            </div>
+                        """)
+                    else:
+                        items.append(f"""
+                            <div class="change-item added">
+                                <div class="change-item-name">
+                                    <span class="badge mini added">+</span>
+                                    {self._escape(metadata + item_name)}
+                                    {self._escape(type_str)}
+                                </div>
+                            </div>
+                        """)
 
             # Removed items
             for item in changes.get('removed', []):
-                item_name = item.get('name', 'Unknown')
-                table = item.get('table', '')
-                metadata = f"{table}." if table else ""
-                data_type = item.get('data_type', '')
-                type_str = f" ({data_type})" if data_type else ""
+                # Handle relationships specially
+                if is_relationships:
+                    from_col = item.get('from_column', 'Unknown')
+                    to_col = item.get('to_column', 'Unknown')
+                    item_display = f"{from_col} → {to_col}"
 
-                items.append(f"""
-                    <div class="change-item removed">
-                        <div class="change-item-name">
-                            <span class="badge mini removed">-</span>
-                            {self._escape(metadata + item_name)}
-                            {self._escape(type_str)}
+                    items.append(f"""
+                        <div class="change-item removed">
+                            <div class="change-item-name">
+                                <span class="badge mini removed">-</span>
+                                {self._escape(item_display)}
+                            </div>
                         </div>
-                    </div>
-                """)
+                    """)
+                else:
+                    item_name = item.get('name', 'Unknown')
+                    table = item.get('table', '')
+                    metadata = f"{table}." if table else ""
+                    data_type = item.get('data_type', '')
+                    type_str = f" ({data_type})" if data_type else ""
+
+                    # For measures, make them expandable to show DAX
+                    if is_measures and item.get('expression'):
+                        expression = item.get('expression', '')
+                        items.append(f"""
+                            <div class="change-item removed expandable">
+                                <div class="change-item-name clickable" onclick="this.parentElement.classList.toggle('expanded')">
+                                    <span class="badge mini removed">-</span>
+                                    {self._escape(metadata + item_name)}
+                                    <span class="expand-icon">▼</span>
+                                </div>
+                                <div class="change-item-body">
+                                    <div class="dax-expression removed">
+                                        <pre>{self._escape(expression)}</pre>
+                                    </div>
+                                </div>
+                            </div>
+                        """)
+                    else:
+                        items.append(f"""
+                            <div class="change-item removed">
+                                <div class="change-item-name">
+                                    <span class="badge mini removed">-</span>
+                                    {self._escape(metadata + item_name)}
+                                    {self._escape(type_str)}
+                                </div>
+                            </div>
+                        """)
 
             # Modified items
             for item in changes.get('modified', []):
-                item_name = item.get('name', 'Unknown')
-                table = item.get('table', '')
-                metadata = f"{table}." if table else ""
-                item_changes = item.get('changes', {})
+                # Handle relationships specially
+                if is_relationships:
+                    from_col = item.get('from_column', 'Unknown')
+                    to_col = item.get('to_column', 'Unknown')
+                    item_display = f"{from_col} → {to_col}"
+                    item_changes = item.get('changes', {})
 
-                # Build change summary
-                change_parts = []
-                for change_key, change_val in item_changes.items():
-                    if isinstance(change_val, dict) and 'from' in change_val:
-                        from_val = change_val.get('from', '')
-                        to_val = change_val.get('to', '')
-                        change_parts.append(f"{change_key}: <span class='old'>{self._escape(str(from_val))}</span> → <span class='new'>{self._escape(str(to_val))}</span>")
+                    # Build change summary
+                    change_parts = []
+                    for change_key, change_val in item_changes.items():
+                        if isinstance(change_val, dict) and 'from' in change_val:
+                            from_val = change_val.get('from', '')
+                            to_val = change_val.get('to', '')
+                            change_parts.append(f"{change_key}: <span class='old'>{self._escape(str(from_val))}</span> → <span class='new'>{self._escape(str(to_val))}</span>")
 
-                change_detail = ', '.join(change_parts) if change_parts else 'Modified'
+                    change_detail = ', '.join(change_parts) if change_parts else 'Modified'
 
-                items.append(f"""
-                    <div class="change-item modified">
-                        <div class="change-item-name">
-                            <span class="badge mini modified">~</span>
-                            {self._escape(metadata + item_name)}
+                    items.append(f"""
+                        <div class="change-item modified">
+                            <div class="change-item-name">
+                                <span class="badge mini modified">~</span>
+                                {self._escape(item_display)}
+                            </div>
+                            <div class="change-detail">{change_detail}</div>
                         </div>
-                        <div class="change-detail">{change_detail}</div>
-                    </div>
-                """)
+                    """)
+                else:
+                    item_name = item.get('name', 'Unknown')
+                    table = item.get('table', '')
+                    metadata = f"{table}." if table else ""
+                    item_changes = item.get('changes', {})
+
+                    # For measures with expression changes, show DAX diff
+                    if is_measures and 'expression' in item_changes:
+                        expr_change = item_changes['expression']
+                        expr_from = expr_change.get('from', '')
+                        expr_to = expr_change.get('to', '')
+
+                        # Build other changes summary (excluding expression)
+                        other_changes = []
+                        for change_key, change_val in item_changes.items():
+                            if change_key != 'expression' and isinstance(change_val, dict) and 'from' in change_val:
+                                from_val = change_val.get('from', '')
+                                to_val = change_val.get('to', '')
+                                other_changes.append(f"{change_key}: <span class='old'>{self._escape(str(from_val))}</span> → <span class='new'>{self._escape(str(to_val))}</span>")
+
+                        other_detail = ', '.join(other_changes) if other_changes else ''
+
+                        items.append(f"""
+                            <div class="change-item modified expandable">
+                                <div class="change-item-name clickable" onclick="this.parentElement.classList.toggle('expanded')">
+                                    <span class="badge mini modified">~</span>
+                                    {self._escape(metadata + item_name)}
+                                    <span class="expand-icon">▼</span>
+                                </div>
+                                <div class="change-item-body">
+                                    {f'<div class="change-detail">{other_detail}</div>' if other_detail else ''}
+                                    <div class="dax-mini-diff">
+                                        <div class="dax-before">
+                                            <div class="label">BEFORE</div>
+                                            <pre>{self._escape(expr_from)}</pre>
+                                        </div>
+                                        <div class="dax-after">
+                                            <div class="label">AFTER</div>
+                                            <pre>{self._escape(expr_to)}</pre>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        """)
+                    else:
+                        # Build change summary
+                        change_parts = []
+                        for change_key, change_val in item_changes.items():
+                            if isinstance(change_val, dict) and 'from' in change_val:
+                                from_val = change_val.get('from', '')
+                                to_val = change_val.get('to', '')
+                                change_parts.append(f"{change_key}: <span class='old'>{self._escape(str(from_val))}</span> → <span class='new'>{self._escape(str(to_val))}</span>")
+
+                        change_detail = ', '.join(change_parts) if change_parts else 'Modified'
+
+                        items.append(f"""
+                            <div class="change-item modified">
+                                <div class="change-item-name">
+                                    <span class="badge mini modified">~</span>
+                                    {self._escape(metadata + item_name)}
+                                </div>
+                                <div class="change-detail">{change_detail}</div>
+                            </div>
+                        """)
 
         # Format 2: Flat dict with from/to (for model properties)
         else:
