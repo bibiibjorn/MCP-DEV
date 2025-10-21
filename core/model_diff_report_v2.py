@@ -8,7 +8,8 @@ import json
 import html
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+import difflib
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +20,19 @@ class ModelDiffReportV2:
     Shows EVERY type of change clearly.
     """
 
-    def __init__(self, diff_result: Dict[str, Any]):
+    def __init__(self, diff_result: Dict[str, Any], tmdl1_data: Optional[Dict[str, Any]] = None, tmdl2_data: Optional[Dict[str, Any]] = None):
+        """
+        Initialize report generator.
+
+        Args:
+            diff_result: Comparison diff result
+            tmdl1_data: Full TMDL structure for model 1 (optional, for TMDL tabs)
+            tmdl2_data: Full TMDL structure for model 2 (optional, for TMDL tabs)
+        """
         self.diff = diff_result
         self.summary = diff_result.get('summary', {})
+        self.tmdl1_data = tmdl1_data
+        self.tmdl2_data = tmdl2_data
 
     def generate_html(self, output_path: str) -> str:
         """Generate complete HTML report."""
@@ -55,11 +66,22 @@ class ModelDiffReportV2:
     <div class="container">
         {self._build_header()}
         {self._build_summary()}
-        {self._build_tables_section()}
-        {self._build_measures_section()}
-        {self._build_relationships_section()}
-        {self._build_roles_section()}
-        {self._build_perspectives_section()}
+        {self._build_tabs()}
+        <div class="tab-content">
+            <div id="tab-diff" class="tab-pane active">
+                {self._build_tables_section()}
+                {self._build_measures_section()}
+                {self._build_relationships_section()}
+                {self._build_roles_section()}
+                {self._build_perspectives_section()}
+            </div>
+            <div id="tab-tmdl-full" class="tab-pane">
+                {self._build_tmdl_full_view()}
+            </div>
+            <div id="tab-tmdl-changes" class="tab-pane">
+                {self._build_tmdl_changes_view()}
+            </div>
+        </div>
     </div>
     {self._get_scripts()}
 </body>
@@ -682,6 +704,602 @@ class ModelDiffReportV2:
         </div>
         """
 
+    def _build_tabs(self) -> str:
+        """Build tab navigation."""
+        return """
+        <div class="tabs">
+            <button class="tab-button active" onclick="switchTab('tab-diff')">
+                <span class="tab-icon">📊</span>
+                Diff Summary
+            </button>
+            <button class="tab-button" onclick="switchTab('tab-tmdl-full')">
+                <span class="tab-icon">📄</span>
+                Full TMDL (Side-by-Side)
+            </button>
+            <button class="tab-button" onclick="switchTab('tab-tmdl-changes')">
+                <span class="tab-icon">🔍</span>
+                TMDL Changes Only
+            </button>
+        </div>
+        """
+
+    def _build_tmdl_full_view(self) -> str:
+        """Build side-by-side full TMDL view."""
+        if not self.tmdl1_data or not self.tmdl2_data:
+            return """
+            <div class="tmdl-section">
+                <div class="info-message">
+                    <p>TMDL data not available. This view requires full TMDL structures from both models.</p>
+                    <p>The comparison was performed but TMDL text data was not included.</p>
+                </div>
+            </div>
+            """
+
+        # Generate TMDL text from structures
+        from core.tmdl_text_generator import generate_tmdl_text
+
+        try:
+            tmdl1_text = generate_tmdl_text(self.tmdl1_data)
+            tmdl2_text = generate_tmdl_text(self.tmdl2_data)
+        except Exception as e:
+            logger.error(f"Failed to generate TMDL text: {e}")
+            return f"""
+            <div class="tmdl-section">
+                <div class="info-message error">
+                    <p>Error generating TMDL text: {self._escape(str(e))}</p>
+                </div>
+            </div>
+            """
+
+        # Split into lines for line-by-line rendering
+        lines1 = tmdl1_text.split('\n')
+        lines2 = tmdl2_text.split('\n')
+
+        # Build line-numbered HTML
+        left_html = self._build_tmdl_lines(lines1, 'model1', len(lines1))
+        right_html = self._build_tmdl_lines(lines2, 'model2', len(lines2))
+
+        model1_name = self.summary.get('model1_name', 'Model 1')
+        model2_name = self.summary.get('model2_name', 'Model 2')
+
+        return f"""
+        <div class="tmdl-section">
+            <div class="tmdl-controls">
+                <label>
+                    <input type="checkbox" id="sync-scroll" checked onchange="toggleSyncScroll()">
+                    Sync Scroll
+                </label>
+            </div>
+            <div class="tmdl-split-view">
+                <div class="tmdl-pane left">
+                    <div class="tmdl-pane-header">{self._escape(model1_name)}</div>
+                    <div class="tmdl-code-container" id="tmdl-left" onscroll="onTmdlScroll('left')">
+                        {left_html}
+                    </div>
+                </div>
+                <div class="tmdl-pane right">
+                    <div class="tmdl-pane-header">{self._escape(model2_name)}</div>
+                    <div class="tmdl-code-container" id="tmdl-right" onscroll="onTmdlScroll('right')">
+                        {right_html}
+                    </div>
+                </div>
+            </div>
+        </div>
+        """
+
+    def _build_tmdl_lines(self, lines: List[str], model_id: str, total_lines: int) -> str:
+        """Build HTML for TMDL lines with line numbers."""
+        html_parts = ['<div class="tmdl-code">']
+
+        for i, line in enumerate(lines, 1):
+            line_num = i
+            escaped_line = self._escape(line) if line else "&nbsp;"
+
+            html_parts.append(f'''
+                <div class="tmdl-line" data-line="{line_num}" data-model="{model_id}" onclick="onLineClick('{model_id}', {line_num})" onmouseenter="onLineHover('{model_id}', {line_num})" onmouseleave="onLineHoverOut('{model_id}', {line_num})">
+                    <span class="line-number">{line_num}</span>
+                    <span class="line-content">{escaped_line}</span>
+                </div>
+            ''')
+
+        html_parts.append('</div>')
+        return ''.join(html_parts)
+
+    def _build_tmdl_changes_view(self) -> str:
+        """Build TMDL changes only view (semantic + raw diff)."""
+        if not self.tmdl1_data or not self.tmdl2_data:
+            return """
+            <div class="tmdl-section">
+                <div class="info-message">
+                    <p>TMDL data not available for changes view.</p>
+                </div>
+            </div>
+            """
+
+        # Use semantic diff analyzer
+        from core.tmdl_semantic_diff import TmdlSemanticDiff
+        from core.tmdl_text_generator import generate_tmdl_text
+
+        try:
+            analyzer = TmdlSemanticDiff(self.tmdl1_data, self.tmdl2_data)
+            semantic_diff = analyzer.analyze()
+        except Exception as e:
+            logger.error(f"Failed to analyze semantic diff: {e}")
+            return f"""
+            <div class="tmdl-section">
+                <div class="info-message error">
+                    <p>Error analyzing changes: {self._escape(str(e))}</p>
+                </div>
+            </div>
+            """
+
+        if not semantic_diff.get('has_changes'):
+            return """
+            <div class="tmdl-section">
+                <div class="info-message">
+                    <p>✅ No TMDL changes detected. The models are identical.</p>
+                </div>
+            </div>
+            """
+
+        # Build categorized HTML
+        sections_html = []
+
+        # Model properties
+        if semantic_diff['model_properties']:
+            sections_html.append(self._build_semantic_section_model_props(semantic_diff['model_properties']))
+
+        # Tables
+        if any(semantic_diff['tables'].values()):
+            sections_html.append(self._build_semantic_section_tables(semantic_diff['tables']))
+
+        # Columns
+        if any(semantic_diff['columns'].values()):
+            sections_html.append(self._build_semantic_section_columns(semantic_diff['columns']))
+
+        # Measures
+        if any(semantic_diff['measures'].values()):
+            sections_html.append(self._build_semantic_section_measures(semantic_diff['measures']))
+
+        # Relationships
+        if any(semantic_diff['relationships'].values()):
+            sections_html.append(self._build_semantic_section_relationships(semantic_diff['relationships']))
+
+        # Roles
+        if any(semantic_diff['roles'].values()):
+            sections_html.append(self._build_semantic_section_roles(semantic_diff['roles']))
+
+        # Generate raw TMDL diff
+        try:
+            tmdl1_text = generate_tmdl_text(self.tmdl1_data)
+            tmdl2_text = generate_tmdl_text(self.tmdl2_data)
+
+            lines1 = tmdl1_text.split('\n')
+            lines2 = tmdl2_text.split('\n')
+
+            model1_name = self.summary.get('model1_name', 'Model 1')
+            model2_name = self.summary.get('model2_name', 'Model 2')
+
+            diff_lines = list(difflib.unified_diff(
+                lines1,
+                lines2,
+                fromfile=model1_name,
+                tofile=model2_name,
+                lineterm=''
+            ))
+
+            raw_diff_html = self._build_unified_diff_html(diff_lines) if diff_lines else ""
+        except Exception as e:
+            logger.error(f"Failed to generate raw diff: {e}")
+            raw_diff_html = f"<p>Error generating raw diff: {self._escape(str(e))}</p>"
+
+        return f"""
+        <div class="tmdl-section">
+            <div class="diff-view-toggle">
+                <button class="toggle-btn active" onclick="switchDiffView('semantic')" id="btn-semantic">
+                    <span class="toggle-icon">📋</span>
+                    Semantic View
+                </button>
+                <button class="toggle-btn" onclick="switchDiffView('raw')" id="btn-raw">
+                    <span class="toggle-icon">📝</span>
+                    Raw TMDL Diff
+                </button>
+            </div>
+
+            <div id="semantic-view" class="diff-view active">
+                <div class="semantic-diff-container">
+                    {''.join(sections_html)}
+                </div>
+            </div>
+
+            <div id="raw-view" class="diff-view">
+                <div class="tmdl-diff-container">
+                    {raw_diff_html}
+                </div>
+            </div>
+        </div>
+        """
+
+    def _build_semantic_section_model_props(self, props: Dict[str, Any]) -> str:
+        """Build model properties section."""
+        items_html = []
+        for key, change in props.items():
+            items_html.append(f"""
+                <div class="semantic-item">
+                    <span class="property-name">{self._escape(key)}</span>
+                    <div class="property-change">
+                        <span class="old-value">{self._escape(str(change.get('from', '')))}</span>
+                        <span class="arrow">→</span>
+                        <span class="new-value">{self._escape(str(change.get('to', '')))}</span>
+                    </div>
+                </div>
+            """)
+
+        return f"""
+        <div class="semantic-category">
+            <h3 class="category-header">
+                <span class="category-icon">⚙️</span>
+                Model Properties
+                <span class="category-badge">{len(props)} changed</span>
+            </h3>
+            <div class="category-items">
+                {''.join(items_html)}
+            </div>
+        </div>
+        """
+
+    def _build_semantic_section_tables(self, tables: Dict[str, List]) -> str:
+        """Build tables section."""
+        items_html = []
+
+        for table in tables.get('added', []):
+            items_html.append(f"""
+                <div class="semantic-item added">
+                    <span class="badge mini added">+</span>
+                    <strong>{self._escape(table['name'])}</strong>
+                    <span class="meta">{table['columns_count']} columns, {table['measures_count']} measures</span>
+                </div>
+            """)
+
+        for table in tables.get('removed', []):
+            items_html.append(f"""
+                <div class="semantic-item removed">
+                    <span class="badge mini removed">-</span>
+                    <strong>{self._escape(table['name'])}</strong>
+                    <span class="meta">{table['columns_count']} columns, {table['measures_count']} measures</span>
+                </div>
+            """)
+
+        for table in tables.get('modified', []):
+            changes_text = ', '.join([f"{k} changed" for k in table['changes'].keys()])
+            items_html.append(f"""
+                <div class="semantic-item modified">
+                    <span class="badge mini modified">~</span>
+                    <strong>{self._escape(table['name'])}</strong>
+                    <span class="meta">{self._escape(changes_text)}</span>
+                </div>
+            """)
+
+        total = len(tables.get('added', [])) + len(tables.get('removed', [])) + len(tables.get('modified', []))
+
+        return f"""
+        <div class="semantic-category">
+            <h3 class="category-header">
+                <span class="category-icon">📊</span>
+                Tables
+                <span class="category-badge">{total} changed</span>
+            </h3>
+            <div class="category-items">
+                {''.join(items_html)}
+            </div>
+        </div>
+        """
+
+    def _build_semantic_section_columns(self, columns: Dict[str, List]) -> str:
+        """Build columns section."""
+        items_html = []
+
+        for col in columns.get('added', []):
+            items_html.append(f"""
+                <div class="semantic-item added">
+                    <span class="badge mini added">+</span>
+                    <span class="table-ref">{self._escape(col['table'])}</span>
+                    <strong>{self._escape(col['name'])}</strong>
+                    <span class="type-badge">{self._escape(col.get('data_type', 'Unknown'))}</span>
+                    {f'<span class="calc-badge">Calculated</span>' if col.get('is_calculated') else ''}
+                    {f'<span class="source-badge">Source: {self._escape(col.get("source_column", ""))}</span>' if col.get('source_column') else ''}
+                </div>
+            """)
+
+        for col in columns.get('removed', []):
+            items_html.append(f"""
+                <div class="semantic-item removed">
+                    <span class="badge mini removed">-</span>
+                    <span class="table-ref">{self._escape(col['table'])}</span>
+                    <strong>{self._escape(col['name'])}</strong>
+                    <span class="type-badge">{self._escape(col.get('data_type', 'Unknown'))}</span>
+                </div>
+            """)
+
+        for col in columns.get('modified', []):
+            changes = col['changes']
+            changes_html = []
+
+            for key, change in changes.items():
+                if key == 'expression':
+                    # Show DAX diff for calculated columns
+                    changes_html.append(f"""
+                        <div class="property-change-block">
+                            <strong>Expression changed:</strong>
+                            <div class="dax-mini-diff">
+                                <div class="dax-before">
+                                    <div class="label">Before:</div>
+                                    <pre>{self._escape(change.get('from', ''))}</pre>
+                                </div>
+                                <div class="dax-after">
+                                    <div class="label">After:</div>
+                                    <pre>{self._escape(change.get('to', ''))}</pre>
+                                </div>
+                            </div>
+                        </div>
+                    """)
+                else:
+                    changes_html.append(f"""
+                        <div class="property-change-inline">
+                            <strong>{self._escape(key)}:</strong>
+                            <span class="old-value">{self._escape(str(change.get('from', '')))}</span>
+                            →
+                            <span class="new-value">{self._escape(str(change.get('to', '')))}</span>
+                        </div>
+                    """)
+
+            items_html.append(f"""
+                <div class="semantic-item modified expandable">
+                    <div class="item-header" onclick="this.parentElement.classList.toggle('expanded')">
+                        <span class="badge mini modified">~</span>
+                        <span class="table-ref">{self._escape(col['table'])}</span>
+                        <strong>{self._escape(col['name'])}</strong>
+                        <span class="changes-count">{len(changes)} changes</span>
+                        <span class="expand-icon">▼</span>
+                    </div>
+                    <div class="item-details">
+                        {''.join(changes_html)}
+                    </div>
+                </div>
+            """)
+
+        total = len(columns.get('added', [])) + len(columns.get('removed', [])) + len(columns.get('modified', []))
+
+        return f"""
+        <div class="semantic-category">
+            <h3 class="category-header">
+                <span class="category-icon">📝</span>
+                Columns
+                <span class="category-badge">{total} changed</span>
+            </h3>
+            <div class="category-items">
+                {''.join(items_html)}
+            </div>
+        </div>
+        """
+
+    def _build_semantic_section_measures(self, measures: Dict[str, List]) -> str:
+        """Build measures section."""
+        items_html = []
+
+        for meas in measures.get('added', []):
+            items_html.append(f"""
+                <div class="semantic-item added expandable">
+                    <div class="item-header" onclick="this.parentElement.classList.toggle('expanded')">
+                        <span class="badge mini added">+</span>
+                        <span class="table-ref">{self._escape(meas['table'])}</span>
+                        <strong>{self._escape(meas['name'])}</strong>
+                        {f'<span class="folder-ref">{self._escape(meas.get("display_folder", ""))}</span>' if meas.get('display_folder') else ''}
+                        <span class="expand-icon">▼</span>
+                    </div>
+                    <div class="item-details">
+                        <div class="dax-expression added">
+                            <pre>{self._escape(meas.get('expression', ''))}</pre>
+                        </div>
+                    </div>
+                </div>
+            """)
+
+        for meas in measures.get('removed', []):
+            items_html.append(f"""
+                <div class="semantic-item removed expandable">
+                    <div class="item-header" onclick="this.parentElement.classList.toggle('expanded')">
+                        <span class="badge mini removed">-</span>
+                        <span class="table-ref">{self._escape(meas['table'])}</span>
+                        <strong>{self._escape(meas['name'])}</strong>
+                        <span class="expand-icon">▼</span>
+                    </div>
+                    <div class="item-details">
+                        <div class="dax-expression removed">
+                            <pre>{self._escape(meas.get('expression', ''))}</pre>
+                        </div>
+                    </div>
+                </div>
+            """)
+
+        for meas in measures.get('modified', []):
+            changes = meas['changes']
+            changes_html = []
+
+            if 'expression' in changes:
+                changes_html.append(f"""
+                    <div class="dax-mini-diff">
+                        <div class="dax-before">
+                            <div class="label">Before:</div>
+                            <pre>{self._escape(changes['expression'].get('from', ''))}</pre>
+                        </div>
+                        <div class="dax-after">
+                            <div class="label">After:</div>
+                            <pre>{self._escape(changes['expression'].get('to', ''))}</pre>
+                        </div>
+                    </div>
+                """)
+
+            for key, change in changes.items():
+                if key != 'expression':
+                    changes_html.append(f"""
+                        <div class="property-change-inline">
+                            <strong>{self._escape(key)}:</strong>
+                            <span class="old-value">{self._escape(str(change.get('from', '')))}</span>
+                            →
+                            <span class="new-value">{self._escape(str(change.get('to', '')))}</span>
+                        </div>
+                    """)
+
+            items_html.append(f"""
+                <div class="semantic-item modified expandable">
+                    <div class="item-header" onclick="this.parentElement.classList.toggle('expanded')">
+                        <span class="badge mini modified">~</span>
+                        <span class="table-ref">{self._escape(meas['table'])}</span>
+                        <strong>{self._escape(meas['name'])}</strong>
+                        <span class="changes-count">{len(changes)} changes</span>
+                        <span class="expand-icon">▼</span>
+                    </div>
+                    <div class="item-details">
+                        {''.join(changes_html)}
+                    </div>
+                </div>
+            """)
+
+        total = len(measures.get('added', [])) + len(measures.get('removed', [])) + len(measures.get('modified', []))
+
+        return f"""
+        <div class="semantic-category">
+            <h3 class="category-header">
+                <span class="category-icon">📐</span>
+                Measures
+                <span class="category-badge">{total} changed</span>
+            </h3>
+            <div class="category-items">
+                {''.join(items_html)}
+            </div>
+        </div>
+        """
+
+    def _build_semantic_section_relationships(self, relationships: Dict[str, List]) -> str:
+        """Build relationships section."""
+        items_html = []
+
+        for rel in relationships.get('added', []):
+            from_col = rel.get('from_column', '')
+            to_col = rel.get('to_column', '')
+            items_html.append(f"""
+                <div class="semantic-item added">
+                    <span class="badge mini added">+</span>
+                    <strong>{self._escape(from_col)} → {self._escape(to_col)}</strong>
+                    <span class="meta">{rel.get('from_cardinality', '')}:{rel.get('to_cardinality', '')}</span>
+                    {f'<span class="inactive-badge">Inactive</span>' if not rel.get('is_active', True) else ''}
+                </div>
+            """)
+
+        for rel in relationships.get('removed', []):
+            from_col = rel.get('from_column', '')
+            to_col = rel.get('to_column', '')
+            items_html.append(f"""
+                <div class="semantic-item removed">
+                    <span class="badge mini removed">-</span>
+                    <strong>{self._escape(from_col)} → {self._escape(to_col)}</strong>
+                    <span class="meta">{rel.get('from_cardinality', '')}:{rel.get('to_cardinality', '')}</span>
+                </div>
+            """)
+
+        for rel in relationships.get('modified', []):
+            from_col = rel.get('from_column', '')
+            to_col = rel.get('to_column', '')
+            changes = rel['changes']
+            changes_text = ', '.join([f"{k}: {v.get('from', '')} → {v.get('to', '')}" for k, v in changes.items()])
+            items_html.append(f"""
+                <div class="semantic-item modified">
+                    <span class="badge mini modified">~</span>
+                    <strong>{self._escape(from_col)} → {self._escape(to_col)}</strong>
+                    <div class="changes-detail">{self._escape(changes_text)}</div>
+                </div>
+            """)
+
+        total = len(relationships.get('added', [])) + len(relationships.get('removed', [])) + len(relationships.get('modified', []))
+
+        return f"""
+        <div class="semantic-category">
+            <h3 class="category-header">
+                <span class="category-icon">🔗</span>
+                Relationships
+                <span class="category-badge">{total} changed</span>
+            </h3>
+            <div class="category-items">
+                {''.join(items_html)}
+            </div>
+        </div>
+        """
+
+    def _build_semantic_section_roles(self, roles: Dict[str, List]) -> str:
+        """Build roles section."""
+        items_html = []
+
+        for role_name in roles.get('added', []):
+            items_html.append(f"""
+                <div class="semantic-item added">
+                    <span class="badge mini added">+</span>
+                    <strong>{self._escape(role_name)}</strong>
+                </div>
+            """)
+
+        for role_name in roles.get('removed', []):
+            items_html.append(f"""
+                <div class="semantic-item removed">
+                    <span class="badge mini removed">-</span>
+                    <strong>{self._escape(role_name)}</strong>
+                </div>
+            """)
+
+        total = len(roles.get('added', [])) + len(roles.get('removed', []))
+
+        return f"""
+        <div class="semantic-category">
+            <h3 class="category-header">
+                <span class="category-icon">🔐</span>
+                Roles
+                <span class="category-badge">{total} changed</span>
+            </h3>
+            <div class="category-items">
+                {''.join(items_html)}
+            </div>
+        </div>
+        """
+
+    def _build_unified_diff_html(self, diff_lines: List[str]) -> str:
+        """Build HTML for unified diff output."""
+        html_parts = ['<div class="unified-diff">']
+
+        for line in diff_lines:
+            if not line:
+                continue
+
+            escaped_line = self._escape(line)
+
+            if line.startswith('---') or line.startswith('+++'):
+                # File headers
+                html_parts.append(f'<div class="diff-line file-header">{escaped_line}</div>')
+            elif line.startswith('@@'):
+                # Chunk headers
+                html_parts.append(f'<div class="diff-line chunk-header">{escaped_line}</div>')
+            elif line.startswith('-'):
+                # Removed line
+                html_parts.append(f'<div class="diff-line removed-line">{escaped_line}</div>')
+            elif line.startswith('+'):
+                # Added line
+                html_parts.append(f'<div class="diff-line added-line">{escaped_line}</div>')
+            else:
+                # Context line
+                html_parts.append(f'<div class="diff-line context-line">{escaped_line}</div>')
+
+        html_parts.append('</div>')
+        return ''.join(html_parts)
+
     def _get_styles(self) -> str:
         """Get CSS styles."""
         return """
@@ -1184,6 +1802,572 @@ body {
         grid-template-columns: repeat(2, 1fr);
     }
 }
+
+/* Tab Navigation */
+.tabs {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #dee2e6;
+    background: white;
+    border-radius: 12px 12px 0 0;
+    padding: 10px 10px 0;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.tab-button {
+    padding: 12px 24px;
+    border: none;
+    background: transparent;
+    color: #6c757d;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tab-button:hover {
+    color: #495057;
+    background: rgba(0,0,0,0.02);
+    border-radius: 6px 6px 0 0;
+}
+
+.tab-button.active {
+    color: #667eea;
+    border-bottom-color: #667eea;
+}
+
+.tab-icon {
+    font-size: 1.2rem;
+}
+
+.tab-content {
+    position: relative;
+}
+
+.tab-pane {
+    display: none;
+}
+
+.tab-pane.active {
+    display: block;
+}
+
+/* TMDL Section */
+.tmdl-section {
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.tmdl-controls {
+    margin-bottom: 15px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 6px;
+}
+
+.tmdl-controls label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.tmdl-split-view {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    height: calc(100vh - 350px);
+    min-height: 600px;
+}
+
+.tmdl-pane {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.tmdl-pane-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 12px 16px;
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.tmdl-code-container {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: auto;
+    background: #f8f9fa;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.tmdl-code {
+    min-width: fit-content;
+}
+
+.tmdl-line {
+    display: flex;
+    align-items: flex-start;
+    cursor: pointer;
+    transition: background 0.1s;
+    min-height: 20px;
+}
+
+.tmdl-line:hover {
+    background: rgba(255, 193, 7, 0.1);
+}
+
+.tmdl-line.highlighted {
+    background: rgba(255, 193, 7, 0.3);
+}
+
+.tmdl-line.selected {
+    background: rgba(102, 126, 234, 0.2);
+    border-left: 3px solid #667eea;
+}
+
+.line-number {
+    display: inline-block;
+    min-width: 50px;
+    padding: 2px 12px;
+    text-align: right;
+    color: #6c757d;
+    background: #e9ecef;
+    user-select: none;
+    border-right: 1px solid #dee2e6;
+}
+
+.line-content {
+    padding: 2px 12px;
+    white-space: pre;
+    flex: 1;
+}
+
+/* TMDL Diff Container */
+.tmdl-diff-container {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 20px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    overflow-x: auto;
+}
+
+.unified-diff {
+    background: white;
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+}
+
+.diff-line {
+    padding: 4px 12px;
+    white-space: pre;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+.diff-line.file-header {
+    background: #e9ecef;
+    color: #495057;
+    font-weight: bold;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.diff-line.chunk-header {
+    background: #d6e9f8;
+    color: #0056b3;
+    font-weight: 600;
+}
+
+.diff-line.added-line {
+    background: #d4edda;
+    color: #155724;
+}
+
+.diff-line.removed-line {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.diff-line.context-line {
+    background: white;
+    color: #212529;
+}
+
+.info-message {
+    padding: 40px;
+    text-align: center;
+    color: #6c757d;
+    font-size: 1.1rem;
+}
+
+.info-message.error {
+    color: #dc3545;
+}
+
+.info-message p {
+    margin: 10px 0;
+}
+
+/* Diff View Toggle */
+.diff-view-toggle {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+}
+
+.toggle-btn {
+    flex: 1;
+    padding: 12px 20px;
+    border: 2px solid #dee2e6;
+    background: white;
+    color: #6c757d;
+    border-radius: 6px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.toggle-btn:hover {
+    background: #f8f9fa;
+    border-color: #adb5bd;
+}
+
+.toggle-btn.active {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-color: #667eea;
+}
+
+.toggle-icon {
+    font-size: 1.2rem;
+}
+
+.diff-view {
+    display: none;
+}
+
+.diff-view.active {
+    display: block;
+}
+
+/* Semantic Diff Styles */
+.semantic-diff-container {
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+}
+
+.semantic-category {
+    background: white;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+    overflow: hidden;
+}
+
+.category-header {
+    background: linear-gradient(to right, #f8f9fa, white);
+    padding: 15px 20px;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 2px solid #e9ecef;
+    font-size: 1.1rem;
+    color: #495057;
+}
+
+.category-icon {
+    font-size: 1.3rem;
+}
+
+.category-badge {
+    margin-left: auto;
+    background: #6c757d;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.category-items {
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.semantic-item {
+    padding: 12px 15px;
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+    background: white;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    transition: all 0.2s;
+}
+
+.semantic-item.added {
+    background: #f8fff9;
+    border-color: #c3e6cb;
+}
+
+.semantic-item.removed {
+    background: #fff5f5;
+    border-color: #f5c6cb;
+}
+
+.semantic-item.modified {
+    background: #fffef8;
+    border-color: #ffeeba;
+}
+
+.semantic-item.expandable {
+    flex-direction: column;
+    align-items: stretch;
+    cursor: default;
+}
+
+.item-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    cursor: pointer;
+    user-select: none;
+}
+
+.item-header:hover {
+    opacity: 0.8;
+}
+
+.item-details {
+    display: none;
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #dee2e6;
+}
+
+.semantic-item.expandable.expanded .item-details {
+    display: block;
+}
+
+.semantic-item.expandable.expanded .expand-icon {
+    transform: rotate(180deg);
+}
+
+.table-ref {
+    padding: 3px 10px;
+    background: #6c757d;
+    color: white;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.type-badge {
+    padding: 3px 8px;
+    background: #17a2b8;
+    color: white;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.calc-badge {
+    padding: 3px 8px;
+    background: #ffc107;
+    color: #000;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.source-badge {
+    padding: 3px 8px;
+    background: #e9ecef;
+    color: #495057;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.folder-ref {
+    padding: 3px 8px;
+    background: #17a2b8;
+    color: white;
+    border-radius: 4px;
+    font-size: 0.75rem;
+}
+
+.inactive-badge {
+    padding: 3px 8px;
+    background: #dc3545;
+    color: white;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.changes-count {
+    padding: 3px 10px;
+    background: #e9ecef;
+    color: #495057;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.property-change {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.property-change-inline {
+    margin: 5px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.property-change-block {
+    margin: 10px 0;
+}
+
+.old-value {
+    padding: 4px 10px;
+    background: #fff5f5;
+    color: #721c24;
+    border-radius: 4px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.9rem;
+}
+
+.new-value {
+    padding: 4px 10px;
+    background: #f8fff9;
+    color: #155724;
+    border-radius: 4px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.9rem;
+}
+
+.arrow {
+    color: #6c757d;
+    font-weight: bold;
+}
+
+.dax-expression {
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border-left: 4px solid #6c757d;
+    margin-top: 10px;
+}
+
+.dax-expression.added {
+    border-left-color: #28a745;
+    background: #f8fff9;
+}
+
+.dax-expression.removed {
+    border-left-color: #dc3545;
+    background: #fff5f5;
+}
+
+.dax-expression pre {
+    margin: 0;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.dax-mini-diff {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.dax-before,
+.dax-after {
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #dee2e6;
+}
+
+.dax-before {
+    border-left: 4px solid #dc3545;
+}
+
+.dax-after {
+    border-left: 4px solid #28a745;
+}
+
+.dax-before .label,
+.dax-after .label {
+    padding: 6px 12px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.dax-before .label {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.dax-after .label {
+    background: #d4edda;
+    color: #155724;
+}
+
+.dax-before pre,
+.dax-after pre {
+    margin: 0;
+    padding: 12px;
+    background: #f8f9fa;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+@media (max-width: 1024px) {
+    .dax-mini-diff {
+        grid-template-columns: 1fr;
+    }
+}
 </style>
         """
 
@@ -1191,7 +2375,139 @@ body {
         """Get JavaScript."""
         return """
 <script>
-// Click handlers are inline in HTML
-console.log('Power BI Model Diff Report V2 loaded');
+// Tab switching
+function switchTab(tabId) {
+    // Remove active class from all tabs and panes
+    document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+
+    // Add active class to selected tab and pane
+    event.target.closest('.tab-button').classList.add('active');
+    document.getElementById(tabId).classList.add('active');
+}
+
+// Sync scroll state
+let syncScrollEnabled = true;
+let isScrolling = false;
+
+function toggleSyncScroll() {
+    syncScrollEnabled = document.getElementById('sync-scroll').checked;
+}
+
+// TMDL scroll synchronization
+function onTmdlScroll(source) {
+    if (!syncScrollEnabled || isScrolling) return;
+
+    isScrolling = true;
+
+    const sourceContainer = document.getElementById('tmdl-' + source);
+    const targetContainer = document.getElementById(source === 'left' ? 'tmdl-right' : 'tmdl-left');
+
+    if (sourceContainer && targetContainer) {
+        // Sync scroll position
+        targetContainer.scrollTop = sourceContainer.scrollTop;
+        targetContainer.scrollLeft = sourceContainer.scrollLeft;
+    }
+
+    setTimeout(() => { isScrolling = false; }, 50);
+}
+
+// Line hover highlighting
+let currentHoveredLine = null;
+
+function onLineHover(modelId, lineNum) {
+    currentHoveredLine = lineNum;
+
+    // Highlight current line in both models
+    highlightLine('model1', lineNum, true);
+    highlightLine('model2', lineNum, true);
+}
+
+function onLineHoverOut(modelId, lineNum) {
+    if (currentHoveredLine === lineNum) {
+        currentHoveredLine = null;
+        // Remove highlight from both models
+        unhighlightLine('model1', lineNum);
+        unhighlightLine('model2', lineNum);
+    }
+}
+
+function highlightLine(modelId, lineNum, isHover) {
+    const line = document.querySelector(`.tmdl-line[data-model="${modelId}"][data-line="${lineNum}"]`);
+    if (line) {
+        if (isHover) {
+            line.classList.add('highlighted');
+        } else {
+            line.classList.add('selected');
+        }
+    }
+}
+
+function unhighlightLine(modelId, lineNum) {
+    const line = document.querySelector(`.tmdl-line[data-model="${modelId}"][data-line="${lineNum}"]`);
+    if (line) {
+        line.classList.remove('highlighted');
+    }
+}
+
+// Line click - select and scroll to same line in other pane
+let selectedLines = { model1: null, model2: null };
+
+function onLineClick(modelId, lineNum) {
+    // Clear previous selections
+    document.querySelectorAll('.tmdl-line.selected').forEach(line => {
+        line.classList.remove('selected');
+    });
+
+    // Select current line in both models
+    selectedLines.model1 = lineNum;
+    selectedLines.model2 = lineNum;
+
+    const line1 = document.querySelector(`.tmdl-line[data-model="model1"][data-line="${lineNum}"]`);
+    const line2 = document.querySelector(`.tmdl-line[data-model="model2"][data-line="${lineNum}"]`);
+
+    if (line1) line1.classList.add('selected');
+    if (line2) line2.classList.add('selected');
+
+    // Scroll the other pane to this line
+    const otherModelId = modelId === 'model1' ? 'model2' : 'model1';
+    const otherContainer = document.getElementById('tmdl-' + (otherModelId === 'model1' ? 'left' : 'right'));
+    const otherLine = document.querySelector(`.tmdl-line[data-model="${otherModelId}"][data-line="${lineNum}"]`);
+
+    if (otherContainer && otherLine) {
+        // Temporarily disable sync scroll to prevent feedback loop
+        const wasSyncing = syncScrollEnabled;
+        syncScrollEnabled = false;
+
+        // Scroll to line (centered)
+        const lineTop = otherLine.offsetTop;
+        const containerHeight = otherContainer.clientHeight;
+        const lineHeight = otherLine.clientHeight;
+        const scrollTop = lineTop - (containerHeight / 2) + (lineHeight / 2);
+
+        otherContainer.scrollTop = scrollTop;
+
+        // Re-enable sync scroll after a delay
+        setTimeout(() => { syncScrollEnabled = wasSyncing; }, 100);
+    }
+}
+
+// Diff view toggle (for TMDL Changes tab)
+function switchDiffView(viewType) {
+    // Remove active class from all buttons and views
+    document.querySelectorAll('.toggle-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.diff-view').forEach(view => view.classList.remove('active'));
+
+    // Add active class to selected button and view
+    if (viewType === 'semantic') {
+        document.getElementById('btn-semantic').classList.add('active');
+        document.getElementById('semantic-view').classList.add('active');
+    } else if (viewType === 'raw') {
+        document.getElementById('btn-raw').classList.add('active');
+        document.getElementById('raw-view').classList.add('active');
+    }
+}
+
+console.log('Power BI Model Diff Report V2 with TMDL tabs loaded');
 </script>
         """

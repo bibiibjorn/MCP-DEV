@@ -103,16 +103,58 @@ class PowerBIDesktopDetector:
                             except ValueError:
                                 pass
 
-            # Match ports to msmdsrv PIDs
+            # Match ports to msmdsrv PIDs and get database names
             for port, pid in port_pid_map.items():
                 if pid in msmdsrv_pids:
+                    # Try to get the actual .pbix filename from PBIDesktop.exe command line
+                    db_name = f"Port {port}"  # Default fallback
+                    try:
+                        import psutil
+                        import os
+                        import re
+
+                        # Get the msmdsrv.exe process
+                        msmdsrv_proc = psutil.Process(pid)
+
+                        # Get parent process (should be PBIDesktop.exe)
+                        parent = msmdsrv_proc.parent()
+                        if parent and 'PBIDesktop' in parent.name():
+                            # Get command line arguments - should contain the .pbix file path
+                            cmdline = parent.cmdline()
+
+                            # Look for .pbix or .pbip file in command line arguments
+                            for arg in cmdline:
+                                if '.pbix' in arg.lower() or '.pbip' in arg.lower():
+                                    # Extract just the filename from the full path
+                                    if os.path.exists(arg):
+                                        db_name = os.path.basename(arg)
+                                    else:
+                                        # Try to extract filename even if path doesn't exist
+                                        db_name = os.path.basename(arg)
+                                    logger.info(f"Found Power BI file for port {port}: {db_name}")
+                                    break
+
+                            # If still not found, search in full command line string
+                            if db_name == f"Port {port}":
+                                cmdline_str = ' '.join(cmdline)
+                                # Look for both .pbix and .pbip files
+                                match = re.search(r'([^"\s\\\/]+\.pbi[xp])', cmdline_str, re.IGNORECASE)
+                                if match:
+                                    db_name = match.group(1)
+                                    logger.info(f"Found Power BI file for port {port}: {db_name} (regex)")
+                                else:
+                                    logger.warning(f"No .pbix or .pbip found for port {port}. Cmdline: {cmdline_str[:200]}")
+                    except Exception as e:
+                        logger.error(f"Error getting filename for port {port}: {e}", exc_info=True)
+
                     instances.append({
                         'port': port,
                         'pid': pid,
+                        'database': db_name if db_name else f'Port {port}',
                         'workspace': f'msmdsrv_pid_{pid}',
                         'path': f'localhost:{port}',
                         'connection_string': f'Data Source=localhost:{port}',
-                        'display_name': f'Power BI Desktop (Port {port})'
+                        'display_name': db_name if db_name else f'Power BI Desktop (Port {port})'
                     })
 
             # Sort by port (highest first - usually most recent)
@@ -269,15 +311,43 @@ class ConnectionManager:
             self.active_connection = AdomdConnection(conn_str)
             self.active_connection.Open()
 
-            # Get database name
-            cmd = self.active_connection.CreateCommand()
-            cmd.CommandText = "SELECT [CATALOG_NAME] FROM $SYSTEM.DBSCHEMA_CATALOGS"
-            reader = cmd.ExecuteReader()
-
+            # Get database name - try to get actual .pbix filename
             db_name = None
-            if reader.Read():
-                db_name = str(reader.GetValue(0))
-            reader.Close()
+            try:
+                # First try to find the .pbix filename from process cmdline
+                import psutil
+                import os
+                import re
+
+                # Find the msmdsrv.exe process for this port
+                for proc in psutil.process_iter(['pid', 'name', 'connections']):
+                    if proc.info['name'] == 'msmdsrv.exe':
+                        connections = proc.info.get('connections', [])
+                        for conn in connections:
+                            if hasattr(conn, 'laddr') and conn.laddr.port == port:
+                                # Found the right msmdsrv process
+                                parent = proc.parent()
+                                if parent and 'PBIDesktop' in parent.name():
+                                    cmdline = parent.cmdline()
+                                    for arg in cmdline:
+                                        if '.pbix' in arg.lower():
+                                            db_name = os.path.basename(arg)
+                                            logger.info(f"Found .pbix filename: {db_name}")
+                                            break
+                                break
+                        if db_name:
+                            break
+            except Exception as e:
+                logger.debug(f"Could not get .pbix filename from cmdline: {e}")
+
+            # Fallback to CATALOG_NAME if we couldn't get the filename
+            if not db_name:
+                cmd = self.active_connection.CreateCommand()
+                cmd.CommandText = "SELECT [CATALOG_NAME] FROM $SYSTEM.DBSCHEMA_CATALOGS"
+                reader = cmd.ExecuteReader()
+                if reader.Read():
+                    db_name = str(reader.GetValue(0))
+                reader.Close()
 
             # Store instance info
             self.active_instance = {

@@ -5,7 +5,10 @@
       "Bash(./venv/Scripts/python.exe test_file_path_fix.py)",
       "Bash(if [ -f \"exports/model_diffs/test_file_path.html\" ])",
       "Bash(else echo \"File not found\")",
-      "Bash(fi)"
+      "Bash(fi)",
+      "Bash(./venv/Scripts/python.exe -m py_compile src/pbixray_server_enhanced.py)",
+      "Bash(./venv/Scripts/python.exe -m py_compile core/connection_manager.py)",
+      "Bash(./venv/Scripts/python.exe:*)"
     ],
     "deny": [],
     "ask": []

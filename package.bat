@@ -5,7 +5,7 @@ echo ========================================
 echo.
 
 :: Read version from __version__.py (hardcoded for reliability)
-set VERSION=2.6.0
+set VERSION=2.7.1
 echo Version: %VERSION%
 echo.
 

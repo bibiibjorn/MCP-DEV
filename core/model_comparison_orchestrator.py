@@ -182,8 +182,8 @@ class ModelComparisonOrchestrator:
                 output_dir.mkdir(parents=True, exist_ok=True)
                 output_path = str(output_dir / f"model_diff_{timestamp}.html")
 
-            # Use V2 report generator (modern, clean layout)
-            report_generator = ModelDiffReportV2(diff_result)
+            # Use V2 report generator (modern, clean layout) with full TMDL data for tabs
+            report_generator = ModelDiffReportV2(diff_result, tmdl1_data=model1, tmdl2_data=model2)
             html_report_path = report_generator.generate_html(output_path)
 
             logger.info(f"HTML report generated: {html_report_path}")

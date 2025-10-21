@@ -94,6 +94,7 @@ $RECYCLE.BIN/
 
 # Test files (tests/ directory should be included)
 scripts/dev/
+dev/
 
 # Temporary
 *.tmp

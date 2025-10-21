@@ -738,7 +738,7 @@ def _handle_connection_and_instances(name: str, arguments: Any) -> Optional[dict
             try:
                 result.setdefault('summary', 'Connected to Power BI Desktop. Complete detailed guide included in response.')
                 result.setdefault('hints', [
-                    'Most useful tools: analysis: full model, comparison: compare two models, export: model explorer html',
+                    'Most useful tools: analysis: full model, Model Comparison - Review TMDL, Model Explorer - HTML',
                     'Start with: get: model summary, list: tables, list: measures',
                     'All 60+ tools are documented in the user_guide section below'
                 ])
@@ -1559,17 +1559,84 @@ def _handle_dependency_and_bulk(name: str, arguments: Any) -> Optional[dict]:
         return model_exporter.get_model_summary(connection_state.query_executor) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
     if name == "compare_models":
         return model_exporter.compare_models(arguments['reference_tmsl']) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
+    if name == "prepare_model_comparison":
+        # Step 1: Show user the files and get their confirmation
+        try:
+            # Detect instances
+            from core.connection_manager import PowerBIDesktopDetector
+            detector = PowerBIDesktopDetector()
+            instances = detector.find_powerbi_instances()
+
+            if len(instances) < 2:
+                return {
+                    'success': False,
+                    'error': f'Need at least 2 Power BI Desktop instances running. Found: {len(instances)}',
+                    'instances_found': len(instances),
+                    'help': 'Please open two .pbix files in Power BI Desktop and try again.'
+                }
+
+            # Format the response to show user
+            files_info = []
+            for idx, inst in enumerate(instances, 1):
+                files_info.append({
+                    'index': idx,
+                    'port': inst['port'],
+                    'filename': inst.get('database', 'Unknown'),
+                    'pid': inst.get('pid', 'Unknown')
+                })
+
+            return {
+                'success': True,
+                'message': '🚨 IMPORTANT: You must now ask the user which file is OLD and which is NEW!',
+                'detected_files': files_info,
+                'total_instances': len(instances),
+                'next_step': 'ASK USER: Show them the filenames above and ask: "Which file is your OLD/baseline version and which is your NEW/updated version?" Then use their answer to call compare_pbi_models with the correct confirm_direction parameter.',
+                'example_question': f'I detected these Power BI files:\n1. {files_info[0]["filename"]} (Port {files_info[0]["port"]})\n2. {files_info[1]["filename"]} (Port {files_info[1]["port"]})\n\nWhich file is your OLD/baseline version, and which is your NEW/updated version?'
+            }
+        except Exception as e:
+            logger.error(f"Preparation failed: {e}", exc_info=True)
+            return {
+                'success': False,
+                'error': str(e),
+                'error_type': 'preparation_failed'
+            }
     if name == "compare_pbi_models":
         # TMDL-based model comparison tool
         from core.model_comparison_orchestrator import compare_pbi_models
         try:
             port1 = int(arguments['port1'])
             port2 = int(arguments['port2'])
+            confirm_direction = arguments.get('confirm_direction', '')
             output_path = arguments.get('output_path')
             include_restricted = arguments.get('include_restricted', False)
             generate_json = arguments.get('generate_json', False)
             model1_label = arguments.get('model1_label')
             model2_label = arguments.get('model2_label')
+
+            # Validate confirm_direction parameter
+            if not confirm_direction:
+                return {
+                    'success': False,
+                    'error': 'Missing required parameter: confirm_direction. You must explicitly confirm which port is OLD and which is NEW.',
+                    'error_type': 'missing_confirmation',
+                    'help': 'First run "detect powerbi desktop" to see the filenames, then specify confirm_direction as either "port1=OLD, port2=NEW" or "port1=NEW, port2=OLD"'
+                }
+
+            # Swap ports if user confirmed the reverse direction
+            if confirm_direction == "port1=NEW, port2=OLD":
+                # User says port1 is NEW and port2 is OLD, so swap them
+                # so that the orchestrator receives OLD first, NEW second
+                port1, port2 = port2, port1
+                model1_label, model2_label = model2_label, model1_label
+                logger.info(f"Direction confirmed: Swapped ports so OLD={port1}, NEW={port2}")
+            elif confirm_direction == "port1=OLD, port2=NEW":
+                logger.info(f"Direction confirmed: OLD={port1}, NEW={port2}")
+            else:
+                return {
+                    'success': False,
+                    'error': f'Invalid confirm_direction: "{confirm_direction}". Must be either "port1=OLD, port2=NEW" or "port1=NEW, port2=OLD"',
+                    'error_type': 'invalid_confirmation'
+                }
 
             result = compare_pbi_models(port1, port2, output_path, include_restricted, generate_json, model1_label, model2_label)
             return result
@@ -1731,8 +1798,9 @@ FRIENDLY_TOOL_ALIASES = {
     "export: tmsl": "export_tmsl",
     "documentation: generate word": "generate_model_documentation_word",
     "documentation: update word": "update_model_documentation_word",
-    "export: model explorer html": "export_model_explorer_html",
+    "export: model explorer html": "export_model_explorer_html",  # Legacy alias
     "Export: Interactive Model Explorer - HTML": "export_model_explorer_html",  # Legacy alias
+    "Model Explorer - HTML": "export_model_explorer_html",
     # performance/run
     "run: dax": "run_dax",
     # search:
@@ -1751,6 +1819,8 @@ FRIENDLY_TOOL_ALIASES = {
     "Analyze: Propose plan": "propose_analysis",
     "get: column value distribution": "get_column_value_distribution",
     "measure: upsert": "upsert_measure",
+    "comparison: compare two models": "compare_pbi_models",  # Legacy alias
+    "Model Comparison - Review TMDL": "compare_pbi_models",
 }
 
 # Lightweight handler registry (progressive migration)
@@ -1857,7 +1927,7 @@ async def list_tools() -> List[Tool]:
         entries.append((friendly, canonical, description, schema))
 
     # Connection & run
-    add("connection: detect powerbi desktop", "detect_powerbi_desktop", "Detect local Power BI Desktop instances", {"type": "object", "properties": {}, "required": []})
+    add("connection: detect powerbi desktop", "detect_powerbi_desktop", "Detect all running Power BI Desktop instances and show their .pbix filenames with port numbers. CRITICAL: Run this BEFORE model comparison to show user which file is on which port, so they can tell you which is OLD vs NEW.", {"type": "object", "properties": {}, "required": []})
     add("connection: connect to powerbi", "connect_to_powerbi", "Connect to a detected Power BI Desktop instance", {"type": "object", "properties": {"model_index": {"type": "integer"}}, "required": ["model_index"]})
     add("run: dax", "run_dax", "Run a DAX query with safe limits (auto preview/analyze)", {"type": "object", "properties": {"query": {"type": "string"}, "mode": {"type": "string", "enum": ["auto", "preview", "analyze"], "default": "auto"}, "runs": {"type": "integer"}, "top_n": {"type": "integer"}, "verbose": {"type": "boolean", "default": False}, "include_event_counts": {"type": "boolean", "default": False}}, "required": ["query"]})
 
@@ -1922,8 +1992,9 @@ async def list_tools() -> List[Tool]:
     add("export: tmdl", "export_tmdl", "Export TMDL model structure", {"type": "object", "properties": {}, "required": []})
     add("export: model overview", "export_model_overview", "Export compact model overview (json/yaml)", {"type": "object", "properties": {"format": {"type": "string", "enum": ["json", "yaml"], "default": "json"}, "include_counts": {"type": "boolean", "default": True}}, "required": []})
 
-    # Model comparison
-    add("comparison: compare two models", "compare_pbi_models", "COMPARE TWO MODELS: Side-by-side comparison showing what changed between OLD (base) and NEW versions. Shows ADDED/REMOVED/MODIFIED items (tables/measures/columns with full DAX diffs). Requires TWO Power BI Desktop instances open. Auto-detects .pbix file names for labels. IMPORTANT: port1 = OLD/BASE model, port2 = NEW model. Report shows: items in port2 but not port1 = ADDED (green), items in port1 but not port2 = REMOVED (red).", {"type": "object", "properties": {"port1": {"type": "integer", "description": "Port of OLD/BASE model (e.g., Production_v1.pbix). This is your BEFORE/BASELINE version."}, "port2": {"type": "integer", "description": "Port of NEW model (e.g., Production_v2.pbix). This is your AFTER/UPDATED version."}, "model1_label": {"type": "string", "description": "Optional: Override auto-detected name for OLD model (e.g., 'Prod Q3' or 'v1.2'). If not specified, uses .pbix filename from port1."}, "model2_label": {"type": "string", "description": "Optional: Override auto-detected name for NEW model (e.g., 'Prod Q4' or 'v1.3'). If not specified, uses .pbix filename from port2."}, "output_path": {"type": "string", "description": "Optional: Full path for HTML report file. Defaults to exports/model_diffs/model_diff_TIMESTAMP.html"}, "generate_json": {"type": "boolean", "default": False, "description": "Also save comparison data as JSON file alongside HTML report"}}, "required": ["port1", "port2"]})
+    # Model comparison - TWO STEP PROCESS
+    add("comparison: prepare comparison", "prepare_model_comparison", "🚨 STEP 1 OF 2: Always call THIS tool first before comparing models! This detects both .pbix files, shows their names to you, and returns an example_question that you MUST ask the user. The response will include 'example_question' field - show that question to the user exactly as written. DO NOT proceed to step 2 until user answers!", {"type": "object", "properties": {}, "required": []})
+    add("Model Comparison - Review TMDL", "compare_pbi_models", "🚨 STEP 2 OF 2: Only call this AFTER running 'prepare comparison' and getting user's answer! Use the ports from step 1 and set confirm_direction based on what the user told you. NEVER call this without calling prepare_model_comparison first!", {"type": "object", "properties": {"port1": {"type": "integer", "description": "Port number from step 1 (prepare_model_comparison)"}, "port2": {"type": "integer", "description": "Port number from step 1 (prepare_model_comparison)"}, "confirm_direction": {"type": "string", "enum": ["port1=OLD, port2=NEW", "port1=NEW, port2=OLD"], "description": "Set based on user's answer from step 1. If user said file on port1 is OLD, use 'port1=OLD, port2=NEW'. If user said file on port1 is NEW, use 'port1=NEW, port2=OLD'."}, "model1_label": {"type": "string", "description": "Optional: Custom display name to override auto-detected .pbix filename for port1"}, "model2_label": {"type": "string", "description": "Optional: Custom display name to override auto-detected .pbix filename for port2"}, "output_path": {"type": "string", "description": "Optional: Custom path for HTML report file"}, "generate_json": {"type": "boolean", "default": False, "description": "Also generate JSON export alongside HTML"}}, "required": ["port1", "port2", "confirm_direction"]})
     add("export: model schema (sections)", "export_model_schema", "Export model schema by section with pagination", {"type": "object", "properties": {"section": {"type": "string", "enum": ["tables", "columns", "measures", "relationships"]}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}, "preview_size": {"type": "integer", "description": "Rows per section in compact preview (default 30)"}, "include": {"type": "array", "items": {"type": "string"}, "description": "Subset of sections to include in compact preview"}}, "required": []})
     add(
         "documentation: generate word",
@@ -1955,7 +2026,7 @@ async def list_tools() -> List[Tool]:
         },
     )
     add(
-        "export: model explorer html",
+        "Model Explorer - HTML",
         "export_model_explorer_html",
         "SINGLE MODEL EXPLORER: Generate interactive HTML documentation for ONE currently connected model. Shows tables with data previews, measures with DAX code, dependencies, and relationship graphs. Use this to explore/document a single model, NOT for comparing two models.",
         {
