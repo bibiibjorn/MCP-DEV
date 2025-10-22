@@ -93,6 +93,12 @@ class ModelComparisonOrchestrator:
             db_name1 = re.sub(r'\s*\(Port\s+\d+\)\s*$', '', db_name1)
             db_name2 = re.sub(r'\s*\(Port\s+\d+\)\s*$', '', db_name2)
 
+            # If database names are UUIDs, try to get better names
+            # (the ModelDiffer will also try to extract better names from TMDL,
+            # but we can set a better default here if available)
+            db_name1 = self._clean_model_label(db_name1, port1)
+            db_name2 = self._clean_model_label(db_name2, port2)
+
             # Use database names as default labels if not provided
             if not model1_label:
                 model1_label = db_name1
@@ -168,10 +174,24 @@ class ModelComparisonOrchestrator:
             diff_result = differ.compare()
 
             # Override model names with user-provided labels if given
+            # Otherwise, use the model names from the TMDL exports if they're better than UUIDs
             if model1_label:
-                diff_result['summary']['model1_name'] = model1_label
+                # Check if the diff result has a UUID as model name
+                if self._is_uuid(diff_result['summary']['model1_name']):
+                    # User label is better than UUID
+                    diff_result['summary']['model1_name'] = model1_label
+                elif not self._is_uuid(model1_label):
+                    # User label is not a UUID, prefer it
+                    diff_result['summary']['model1_name'] = model1_label
+
             if model2_label:
-                diff_result['summary']['model2_name'] = model2_label
+                # Check if the diff result has a UUID as model name
+                if self._is_uuid(diff_result['summary']['model2_name']):
+                    # User label is better than UUID
+                    diff_result['summary']['model2_name'] = model2_label
+                elif not self._is_uuid(model2_label):
+                    # User label is not a UUID, prefer it
+                    diff_result['summary']['model2_name'] = model2_label
 
             total_changes = diff_result['summary']['total_changes']
 
@@ -247,6 +267,29 @@ class ModelComparisonOrchestrator:
                     multi_instance_manager.disconnect_instance(port2)
             except Exception as e:
                 logger.warning(f"Error during cleanup: {e}")
+
+    def _is_uuid(self, value: str) -> bool:
+        """Check if a string looks like a UUID."""
+        import re
+        uuid_pattern = r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        return bool(re.match(uuid_pattern, value, re.IGNORECASE))
+
+    def _clean_model_label(self, label: str, port: int) -> str:
+        """
+        Clean up model label - if it's a UUID, replace with a more readable default.
+
+        Args:
+            label: The raw label (could be UUID, .pbix filename, etc.)
+            port: Port number for fallback naming
+
+        Returns:
+            Cleaned label
+        """
+        # Check if label is a UUID
+        if self._is_uuid(label):
+            return f'Model (Port {port})'
+
+        return label
 
     def _write_json_export(self, diff_result: Dict[str, Any], json_path: str) -> None:
         """Write diff result to JSON file."""

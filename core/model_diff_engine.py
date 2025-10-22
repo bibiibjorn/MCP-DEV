@@ -70,11 +70,33 @@ class ModelDiffer:
     def _get_model_name(self, model: Dict[str, Any]) -> str:
         """Extract model name from parsed model."""
         # Try different model structure formats
+        # First try model.tmdl name (most descriptive)
+        if model.get('model') and model['model'].get('name'):
+            model_name = model['model']['name']
+            # If it's a UUID, try database name instead
+            if not self._is_uuid(model_name):
+                return model_name
+
+        # Try database.tmdl name
+        if model.get('database') and model['database'].get('name'):
+            db_name = model['database']['name']
+            # If it's not a UUID, use it
+            if not self._is_uuid(db_name):
+                return db_name
+
+        # Fallback: use any available name even if it's a UUID
         if model.get('model') and model['model'].get('name'):
             return model['model']['name']
         if model.get('database') and model['database'].get('name'):
             return model['database']['name']
+
         return "Unknown Model"
+
+    def _is_uuid(self, value: str) -> bool:
+        """Check if a string looks like a UUID."""
+        import re
+        uuid_pattern = r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        return bool(re.match(uuid_pattern, value, re.IGNORECASE))
 
     def _compare_tables(self) -> Dict[str, Any]:
         """Compare tables between models."""
@@ -656,21 +678,29 @@ class ModelDiffer:
         # Added relationships
         for rel_key in rels2_keys - rels1_keys:
             rel = rels2[rel_key]
+            rel_normalized = self._normalize_relationship(rel)
+
             result['added'].append({
-                "from_column": rel.get('from_column'),
-                "to_column": rel.get('to_column'),
+                "from_table": rel_normalized['from_table'],
+                "from_column": rel_normalized['from_column'],
+                "to_table": rel_normalized['to_table'],
+                "to_column": rel_normalized['to_column'],
                 "from_cardinality": rel.get('from_cardinality'),
                 "to_cardinality": rel.get('to_cardinality'),
                 "is_active": rel.get('is_active', True),
-                "cross_filtering_behavior": rel.get('cross_filtering_behavior')
+                "cross_filtering_behavior": rel.get('cross_filtering_behavior') or rel.get('cross_filter_direction')
             })
 
         # Removed relationships
         for rel_key in rels1_keys - rels2_keys:
             rel = rels1[rel_key]
+            rel_normalized = self._normalize_relationship(rel)
+
             result['removed'].append({
-                "from_column": rel.get('from_column'),
-                "to_column": rel.get('to_column'),
+                "from_table": rel_normalized['from_table'],
+                "from_column": rel_normalized['from_column'],
+                "to_table": rel_normalized['to_table'],
+                "to_column": rel_normalized['to_column'],
                 "from_cardinality": rel.get('from_cardinality'),
                 "to_cardinality": rel.get('to_cardinality')
             })
@@ -732,9 +762,13 @@ class ModelDiffer:
                 changes['annotations'] = annot_changes
 
             if changes:
+                rel_normalized = self._normalize_relationship(rel1)
+
                 result['modified'].append({
-                    "from_column": rel1.get('from_column'),
-                    "to_column": rel1.get('to_column'),
+                    "from_table": rel_normalized['from_table'],
+                    "from_column": rel_normalized['from_column'],
+                    "to_table": rel_normalized['to_table'],
+                    "to_column": rel_normalized['to_column'],
                     "changes": changes
                 })
 
@@ -746,11 +780,85 @@ class ModelDiffer:
 
         return result
 
+    def _normalize_relationship(self, rel: Dict[str, Any]) -> Dict[str, str]:
+        """
+        Normalize relationship to a standard format with separate table and column fields.
+
+        Handles two input formats:
+        1. export_tmdl_structure format: has 'from_table', 'from_column', 'to_table', 'to_column'
+        2. TMDL file format: has 'from_column' and 'to_column' as combined references
+
+        Args:
+            rel: Relationship dict in either format
+
+        Returns:
+            Dict with 'from_table', 'from_column', 'to_table', 'to_column' keys
+        """
+        # Check if already in normalized format (has separate from_table field)
+        if 'from_table' in rel and 'to_table' in rel:
+            return {
+                'from_table': rel.get('from_table', 'Unknown'),
+                'from_column': rel.get('from_column', 'Unknown'),
+                'to_table': rel.get('to_table', 'Unknown'),
+                'to_column': rel.get('to_column', 'Unknown')
+            }
+
+        # Otherwise, parse from combined references
+        from_parts = self._parse_column_ref(rel.get('from_column', ''))
+        to_parts = self._parse_column_ref(rel.get('to_column', ''))
+
+        return {
+            'from_table': from_parts['table'],
+            'from_column': from_parts['column'],
+            'to_table': to_parts['table'],
+            'to_column': to_parts['column']
+        }
+
+    def _parse_column_ref(self, col_ref: str) -> Dict[str, str]:
+        """
+        Parse a column reference into table and column names.
+
+        Args:
+            col_ref: Column reference in format like:
+                - 'TableName'[ColumnName]
+                - TableName[ColumnName]
+                - TableName.ColumnName
+
+        Returns:
+            Dict with 'table' and 'column' keys
+        """
+        import re
+
+        if not col_ref:
+            return {'table': 'Unknown', 'column': 'Unknown'}
+
+        # Pattern: 'TableName'[ColumnName] or TableName[ColumnName]
+        match = re.match(r"^'?([^'\[]+)'?\[([^\]]+)\]$", col_ref)
+        if match:
+            return {'table': match.group(1), 'column': match.group(2)}
+
+        # Pattern: TableName.ColumnName
+        if '.' in col_ref and '[' not in col_ref:
+            parts = col_ref.split('.', 1)
+            return {'table': parts[0], 'column': parts[1]}
+
+        # Fallback: couldn't parse
+        return {'table': 'Unknown', 'column': col_ref}
+
     def _relationship_key(self, rel: Dict[str, Any]) -> str:
-        """Generate unique key for a relationship based on from/to columns."""
-        from_col = rel.get('from_column', '')
-        to_col = rel.get('to_column', '')
-        return f"{from_col}|{to_col}"
+        """
+        Generate unique key for a relationship.
+
+        Handles both export_tmdl_structure format and TMDL file format.
+        """
+        # Normalize the relationship first
+        norm = self._normalize_relationship(rel)
+
+        # Create key from table.column references
+        from_ref = f"{norm['from_table']}[{norm['from_column']}]"
+        to_ref = f"{norm['to_table']}[{norm['to_column']}]"
+
+        return f"{from_ref}|{to_ref}"
 
     def _compare_roles(self) -> Dict[str, Any]:
         """Compare roles between models."""

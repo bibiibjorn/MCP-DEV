@@ -314,31 +314,96 @@ class ConnectionManager:
             # Get database name - try to get actual .pbix filename
             db_name = None
             try:
-                # First try to find the .pbix filename from process cmdline
+                # Simpler approach: find PBIDesktop.exe process with this port
                 import psutil
                 import os
-                import re
 
-                # Find the msmdsrv.exe process for this port
-                for proc in psutil.process_iter(['pid', 'name', 'connections']):
-                    if proc.info['name'] == 'msmdsrv.exe':
-                        connections = proc.info.get('connections', [])
-                        for conn in connections:
-                            if hasattr(conn, 'laddr') and conn.laddr.port == port:
-                                # Found the right msmdsrv process
-                                parent = proc.parent()
-                                if parent and 'PBIDesktop' in parent.name():
-                                    cmdline = parent.cmdline()
-                                    for arg in cmdline:
-                                        if '.pbix' in arg.lower():
-                                            db_name = os.path.basename(arg)
-                                            logger.info(f"Found .pbix filename: {db_name}")
-                                            break
+                # First, find which msmdsrv.exe is listening on this port
+                msmdsrv_pid = None
+                for proc in psutil.process_iter(['pid', 'name']):
+                    try:
+                        if proc.info['name'] == 'msmdsrv.exe':
+                            # Get connections separately (not available in process_iter attrs)
+                            process = psutil.Process(proc.info['pid'])
+                            connections = process.net_connections()
+                            for conn in connections:
+                                if hasattr(conn, 'laddr') and conn.laddr.port == port:
+                                    msmdsrv_pid = proc.info['pid']
+                                    logger.debug(f"Found msmdsrv.exe (PID {msmdsrv_pid}) on port {port}")
+                                    break
+                            if msmdsrv_pid:
                                 break
-                        if db_name:
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        continue
+
+                # Now find the PBIDesktop.exe process that spawned this msmdsrv
+                if msmdsrv_pid:
+                    msmdsrv_proc = psutil.Process(msmdsrv_pid)
+                    parent = msmdsrv_proc.parent()
+
+                    # The parent might be PBIDesktop or might be another intermediate process
+                    # Walk up the process tree to find PBIDesktop
+                    while parent:
+                        try:
+                            parent_name = parent.name()
+                            logger.debug(f"Checking parent process: {parent_name}")
+
+                            if 'PBIDesktop' in parent_name:
+                                # Found PBIDesktop.exe, get its command line
+                                cmdline = parent.cmdline()
+                                logger.debug(f"PBIDesktop cmdline: {cmdline}")
+
+                                for arg in cmdline:
+                                    if '.pbix' in arg.lower():
+                                        db_name = os.path.basename(arg)
+                                        logger.info(f"Found .pbix filename from cmdline: {db_name}")
+                                        break
+
+                                # If we didn't find it in cmdline, try to get it from window title
+                                if not db_name:
+                                    try:
+                                        import win32gui
+                                        import win32process
+
+                                        def enum_windows_callback(hwnd, results):
+                                            if win32gui.IsWindowVisible(hwnd):
+                                                _, found_pid = win32process.GetWindowThreadProcessId(hwnd)
+                                                if found_pid == parent.pid:
+                                                    title = win32gui.GetWindowText(hwnd)
+                                                    if title and '.pbix' in title.lower():
+                                                        results.append(title)
+
+                                        windows = []
+                                        win32gui.EnumWindows(enum_windows_callback, windows)
+
+                                        if windows:
+                                            # Extract filename from title (usually "filename.pbix - Power BI Desktop")
+                                            title = windows[0]
+                                            if ' - ' in title:
+                                                db_name = title.split(' - ')[0].strip()
+                                            else:
+                                                db_name = title.strip()
+
+                                            # Ensure it ends with .pbix
+                                            if not db_name.endswith('.pbix'):
+                                                db_name += '.pbix'
+
+                                            logger.info(f"Found .pbix filename from window title: {db_name}")
+
+                                    except ImportError:
+                                        logger.debug("pywin32 not available, cannot get window title")
+                                    except Exception as e:
+                                        logger.debug(f"Could not get window title: {e}")
+
+                                break
+
+                            # Move up to next parent
+                            parent = parent.parent()
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
                             break
+
             except Exception as e:
-                logger.debug(f"Could not get .pbix filename from cmdline: {e}")
+                logger.debug(f"Could not get .pbix filename from process tree: {e}")
 
             # Fallback to CATALOG_NAME if we couldn't get the filename
             if not db_name:

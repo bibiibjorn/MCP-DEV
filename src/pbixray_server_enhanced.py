@@ -54,6 +54,13 @@ from server.handlers.relationships_graph import export_relationship_graph as _ex
 from server.handlers.full_analysis import run_full_analysis as _run_full_analysis
 from server.utils.m_practices import scan_m_practices as _scan_m_practices
 
+# PBIP Analyzer modules
+from core.pbip_project_scanner import PbipProjectScanner
+from core.pbip_model_analyzer import TmdlModelAnalyzer
+from core.pbip_report_analyzer import PbirReportAnalyzer
+from core.pbip_dependency_engine import PbipDependencyEngine
+from core.pbip_html_generator import PbipHtmlGenerator
+
 BPA_AVAILABLE = False
 BPA_STATUS = {"available": False, "reason": None}
 try:
@@ -342,6 +349,138 @@ def _note_client_filter_columns(result: Any, table: str) -> Any:
 
 def _note_client_filter_vertipaq(result: Any, table: str) -> Any:
     return _add_note(result, f"Used INFO.STORAGETABLECOLUMNS() with client-side filtering for table '{table}' for cross-version compatibility.")
+
+
+# ----------------------------
+# PBIP Repository Analyzer Handler
+# ----------------------------
+def _handle_pbip_analysis(arguments: Any) -> dict:
+    """
+    Handle PBIP repository analysis (offline, no Power BI Desktop connection required).
+
+    This tool scans a PBIP repository, parses TMDL/PBIR files, analyzes dependencies,
+    and generates an interactive HTML dashboard.
+    """
+    try:
+        repo_path = arguments.get("repository_path")
+
+        # Ensure output is always in the MCP server directory, not the analyzed repository
+        output_path = arguments.get("output_path")
+        if not output_path:
+            # Default to exports folder in MCP server directory
+            server_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            output_path = os.path.join(server_dir, "exports", "pbip_analysis")
+        elif not os.path.isabs(output_path):
+            # If relative path provided, make it relative to MCP server directory
+            server_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            output_path = os.path.join(server_dir, output_path)
+
+        exclude_folders = arguments.get("exclude_folders", [])
+
+        if not repo_path:
+            return {
+                "success": False,
+                "error": "repository_path is required",
+                "error_type": "invalid_input"
+            }
+
+        logger.info(f"Starting PBIP repository analysis: {repo_path}")
+
+        # Step 1: Scan repository
+        scanner = PbipProjectScanner()
+        projects = scanner.scan_repository(repo_path, exclude_folders)
+
+        semantic_models = projects.get("semantic_models", [])
+        reports = projects.get("reports", [])
+
+        if not semantic_models:
+            return {
+                "success": False,
+                "error": "No semantic models found in repository",
+                "repository_path": repo_path,
+                "excluded_folders": exclude_folders
+            }
+
+        # Step 2: Analyze first semantic model
+        model_name = semantic_models[0]["name"]
+        model_folder = semantic_models[0].get("model_folder")
+
+        if not model_folder:
+            return {
+                "success": False,
+                "error": f"No model folder found for {model_name}"
+            }
+
+        model_analyzer = TmdlModelAnalyzer()
+        model_data = model_analyzer.analyze_model(model_folder)
+
+        # Step 3: Analyze first report (if available)
+        report_data = None
+        if reports:
+            report_name = reports[0]["name"]
+            report_folder = reports[0].get("report_folder")
+
+            if report_folder:
+                report_analyzer = PbirReportAnalyzer()
+                report_data = report_analyzer.analyze_report(report_folder)
+
+        # Step 4: Dependency analysis
+        dep_engine = PbipDependencyEngine(model_data, report_data)
+        dependencies = dep_engine.analyze_all_dependencies()
+
+        # Step 5: Generate HTML report
+        generator = PbipHtmlGenerator()
+        html_path = generator.generate_full_report(
+            model_data,
+            report_data,
+            dependencies,
+            output_path,
+            os.path.basename(repo_path)
+        )
+
+        # Build summary
+        summary = dependencies.get("summary", {})
+
+        return {
+            "success": True,
+            "repository_path": repo_path,
+            "models_found": len(semantic_models),
+            "reports_found": len(reports),
+            "model_analyzed": model_name,
+            "report_analyzed": reports[0]["name"] if reports else None,
+            "html_report": html_path,
+            "summary": {
+                "tables": summary.get("total_tables", 0),
+                "measures": summary.get("total_measures", 0),
+                "columns": summary.get("total_columns", 0),
+                "relationships": summary.get("total_relationships", 0),
+                "pages": summary.get("total_pages", 0),
+                "visuals": summary.get("total_visuals", 0),
+                "unused_measures": summary.get("unused_measures", 0),
+                "unused_columns": summary.get("unused_columns", 0)
+            },
+            "message": f"Analysis complete! Open HTML report: {html_path}"
+        }
+
+    except FileNotFoundError as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": "file_not_found"
+        }
+    except ValueError as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": "invalid_format"
+        }
+    except Exception as e:
+        logger.error(f"PBIP analysis error: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": f"Analysis failed: {str(e)}",
+            "error_type": "unexpected_error"
+        }
 
 
 # ----------------------------
@@ -1856,6 +1995,11 @@ def _dispatch_tool(name: str, arguments: Any) -> dict:
         name = FRIENDLY_TOOL_ALIASES.get(name, name)
     except Exception:
         pass
+
+    # PBIP Repository Analysis (works offline, no connection required)
+    if name == "analyze_pbip_repository":
+        return _handle_pbip_analysis(arguments)
+
     # 1) Logs/health/server info
     res = _handle_logs_and_health(name, arguments)
     if res is not None:
@@ -2106,6 +2250,34 @@ async def list_tools() -> List[Tool]:
                 "include_event_counts": {"type": "boolean", "default": False, "description": "Include detailed event counts"}
             },
             "required": []
+        }
+    )
+
+    # PBIP Repository Analysis
+    add(
+        "pbip: analyze repository",
+        "analyze_pbip_repository",
+        "📁 PBIP REPOSITORY ANALYZER - Comprehensive offline analysis of Power BI Project repositories (TMDL/PBIR format). Scans semantic models and reports, analyzes dependencies, and generates interactive HTML dashboard. Works WITHOUT Power BI Desktop running!",
+        {
+            "type": "object",
+            "properties": {
+                "repository_path": {
+                    "type": "string",
+                    "description": "Path to the PBIP repository root directory"
+                },
+                "output_path": {
+                    "type": "string",
+                    "description": "Output directory for HTML reports. Relative paths resolve to MCP server directory (not analyzed repository). Default: exports/pbip_analysis in MCP server folder.",
+                    "default": "exports/pbip_analysis"
+                },
+                "exclude_folders": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Folders to exclude from analysis",
+                    "default": []
+                }
+            },
+            "required": ["repository_path"]
         }
     )
 
