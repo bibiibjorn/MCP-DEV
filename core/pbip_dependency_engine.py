@@ -346,9 +346,14 @@ class PbipDependencyEngine:
         # Build set of used columns
         used_columns = set()
 
-        # Used in measures
+        # Used in measures (from DAX expressions)
         for deps in self.measure_to_column.values():
             used_columns.update(deps)
+
+        # Used by other columns (calculated columns)
+        for column_key, measure_deps in self.column_to_measure.items():
+            if measure_deps:  # If this column is referenced by any measure/column
+                used_columns.add(column_key)
 
         # Used in relationships
         for rel in self.model.get("relationships", []):
@@ -362,10 +367,20 @@ class PbipDependencyEngine:
             if to_table and to_col:
                 used_columns.add(f"{to_table}[{to_col}]")
 
-        # Used in visuals
+        # Used in visuals (directly in visual fields)
         if self.report:
             for visual_deps in self.visual_dependencies.values():
                 used_columns.update(visual_deps.get("columns", []))
+
+        # Also check page filters for column usage
+        if self.report:
+            for page_deps in self.page_dependencies.values():
+                for filter_info in page_deps.get("filters", []):
+                    field = filter_info.get("field", {})
+                    table = field.get("table", "")
+                    column = field.get("name", "")
+                    if table and column:
+                        used_columns.add(f"{table}[{column}]")
 
         # Find unused
         all_measures = []
@@ -379,11 +394,11 @@ class PbipDependencyEngine:
                 all_measures.append(measure_key)
 
             for column in table.get("columns", []):
-                # Skip hidden and key columns
-                if column.get("is_hidden", False):
-                    continue
+                column_name = column.get("name", "")
+                column_key = f"{table_name}[{column_name}]"
 
-                column_key = f"{table_name}[{column.get('name', '')}]"
+                # Always include columns in the check (don't skip hidden or key columns)
+                # They may still be used in relationships or calculations
                 all_columns.append(column_key)
 
         unused_measures = [m for m in all_measures if m not in used_measures]

@@ -46,7 +46,8 @@ class DaxReferenceIndex:
     ) -> None:
         self.measure_keys: Set[str] = set()  # table|measure
         self.column_keys: Set[str] = set()  # table|column
-        self.measure_names: Dict[str, Set[str]] = {}
+        self.measure_names: Dict[str, Set[str]] = {}  # measure_name -> {table1, table2, ...}
+        self.column_names: Dict[str, Set[str]] = {}  # column_name -> {table1, table2, ...}
         self.tables: Set[str] = set()
 
         if column_rows:
@@ -93,6 +94,9 @@ class DaxReferenceIndex:
                 continue
             self.column_keys.add(self._normalize_pair(table, name))
             self.tables.add(table)
+            # Add to column name index for unqualified reference lookup
+            name_bucket = self.column_names.setdefault(name.lower(), set())
+            name_bucket.add(table)
 
 
 def _strip_comments(expression: str) -> str:
@@ -137,6 +141,7 @@ def parse_dax_references(
     measure_keys = idx.measure_keys if idx else set()
     column_keys = idx.column_keys if idx else set()
     measure_names = idx.measure_names if idx else {}
+    column_names = idx.column_names if idx else {}
 
     for table, name in _QUALIFIED_REF.findall(cleaned):
         t = table.strip()
@@ -169,12 +174,21 @@ def parse_dax_references(
         if not name or name.startswith("@"):
             continue
         identifiers.add(name)
-        candidates = measure_names.get(name.lower())
-        if candidates:
-            for table in candidates:
+
+        # Check if it's a known measure
+        measure_candidates = measure_names.get(name.lower())
+        if measure_candidates:
+            for table in measure_candidates:
                 measures.add((table, name))
         else:
-            measures.add(("", name))
+            # Check if it's a known column
+            column_candidates = column_names.get(name.lower())
+            if column_candidates:
+                for table in column_candidates:
+                    columns.add((table, name))
+            else:
+                # If not found as measure or column, default to measure (backward compatibility)
+                measures.add(("", name))
 
     return {
         "tables": sorted(tables),

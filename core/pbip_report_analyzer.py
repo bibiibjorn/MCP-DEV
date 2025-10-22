@@ -270,6 +270,9 @@ class PbirReportAnalyzer:
 
             visual["fields"] = self._extract_visual_fields(query)
 
+            # Extract visual title/name
+            visual["visual_name"] = self._extract_visual_title(data)
+
             # Extract visual-level filters
             filters = visual_data.get("filters", [])
             for filt in filters:
@@ -385,6 +388,91 @@ class PbirReportAnalyzer:
 
         except Exception as e:
             self.logger.warning(f"Error extracting field from projection: {e}")
+
+    def _extract_visual_title(self, visual_data: Dict) -> Optional[str]:
+        """
+        Extract visual title from multiple possible locations.
+
+        Visual titles can be stored in different formats:
+        0. visualGroup.displayName (visual group name)
+        1. title.text (simple string)
+        2. properties.text.expr.Literal.Value (DAX literal)
+        3. config.singleVisual.vcObjects.title[0].properties.text.expr.Literal.Value
+
+        Args:
+            visual_data: The visual JSON data
+
+        Returns:
+            The visual title/name or None if not found
+        """
+        try:
+            # Method 0: Check visualGroup.displayName (highest priority for grouped visuals)
+            visual_group = visual_data.get("visualGroup", {})
+            if visual_group:
+                display_name = visual_group.get("displayName")
+                if display_name:
+                    return display_name
+
+            # Method 1: Check title.text (simple format)
+            title = visual_data.get("title", {})
+            if isinstance(title, list) and len(title) > 0:
+                title_text = title[0].get("text")
+                if title_text:
+                    return title_text
+            elif isinstance(title, dict):
+                title_text = title.get("text")
+                if title_text:
+                    return title_text
+
+            # Method 2: Check properties.text.expr.Literal.Value
+            properties = visual_data.get("properties", {})
+            text_expr = properties.get("text", {}).get("expr", {})
+            if text_expr:
+                literal = text_expr.get("Literal", {})
+                if literal:
+                    value = literal.get("Value", "")
+                    # Remove surrounding quotes if present
+                    if value:
+                        return value.strip("'\"")
+
+            # Method 3: Check config.singleVisual.vcObjects.title
+            config = visual_data.get("config", {})
+            single_visual = config.get("singleVisual", {})
+            vc_objects = single_visual.get("vcObjects", {})
+            title_objects = vc_objects.get("title", [])
+            if isinstance(title_objects, list) and len(title_objects) > 0:
+                title_props = title_objects[0].get("properties", {})
+                text_expr = title_props.get("text", {}).get("expr", {})
+                if text_expr:
+                    literal = text_expr.get("Literal", {})
+                    if literal:
+                        value = literal.get("Value", "")
+                        if value:
+                            return value.strip("'\"")
+
+            # Method 4: Check visual.vcObjects.title
+            visual = visual_data.get("visual", {})
+            vc_objects = visual.get("vcObjects", {})
+            title_objects = vc_objects.get("title", [])
+            if isinstance(title_objects, list) and len(title_objects) > 0:
+                title_props = title_objects[0].get("properties", {})
+                text_expr = title_props.get("text", {}).get("expr", {})
+                if text_expr:
+                    literal = text_expr.get("Literal", {})
+                    if literal:
+                        value = literal.get("Value", "")
+                        if value:
+                            return value.strip("'\"")
+                # Also check for simple text property
+                text_value = title_props.get("text")
+                if text_value and isinstance(text_value, str):
+                    return text_value
+
+            return None
+
+        except Exception as e:
+            self.logger.warning(f"Error extracting visual title: {e}")
+            return None
 
     def _parse_bookmarks(self, bookmarks_path: str) -> List[Dict[str, Any]]:
         """Parse bookmark definitions."""

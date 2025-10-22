@@ -29,7 +29,13 @@
       "Bash(explorer.exe \"c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\MCP-PowerBi-Finvision\\exports\\test_pbip_html_fixes\")",
       "Bash(cat:*)",
       "Bash(explorer.exe \"c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\exports\\test_dependency_fixes\")",
-      "Bash(cmd /c start \"\" \"c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\exports\\test_dependency_fixes\\index.html\")"
+      "Bash(cmd /c start \"\" \"c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\exports\\test_dependency_fixes\\index.html\")",
+      "Bash(cmd /c start \"\" \"c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\exports\\final_complete_fixes\\index.html\")",
+      "Bash(cmd /c start \"\" \"C:\\Users\\bjorn.braet\\powerbi-mcp-servers\\exports\\test_vue3_pbip\\index.html\")",
+      "Bash(dir:*)",
+      "Read(//c/Users/bjorn.braet/powerbi-mcp-servers/exports/test_vue3_pbip/**)",
+      "Bash(cmd /c start \"\" \"c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\exports\\test_dax_parser_fix\\G01-FamillyOffices_PBIP_Analysis_20251022_130705.html\")",
+      "Bash(cmd /c start \"\" \"c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\exports\\test_all_fixes\\G01-FamillyOffices_PBIP_Analysis_20251022_131149.html\")"
     ],
     "deny": [],
     "ask": []
