@@ -270,8 +270,11 @@ class PbirReportAnalyzer:
 
             visual["fields"] = self._extract_visual_fields(query)
 
-            # Extract visual title/name
+            # Extract visual name (for Selection Pane)
             visual["visual_name"] = self._extract_visual_title(data)
+
+            # Extract visual title (the title text shown on the visual)
+            visual["title"] = self._extract_visual_title_text(data)
 
             # Extract visual-level filters
             filters = visual_data.get("filters", [])
@@ -391,67 +394,60 @@ class PbirReportAnalyzer:
 
     def _extract_visual_title(self, visual_data: Dict) -> Optional[str]:
         """
-        Extract visual title from multiple possible locations.
+        Extract visual name for Selection Pane display.
 
-        Visual titles can be stored in different formats:
-        0. visualGroup.displayName (visual group name)
-        1. title.text (simple string)
-        2. properties.text.expr.Literal.Value (DAX literal)
-        3. config.singleVisual.vcObjects.title[0].properties.text.expr.Literal.Value
+        The Selection Pane name priority order:
+        1. visualContainerObjects.title (if shown=true) - Used when title is visible
+        2. visualGroup.displayName - For grouped visuals
+        3. Visual type fallback - Last resort
 
         Args:
             visual_data: The visual JSON data
 
         Returns:
-            The visual title/name or None if not found
+            The visual name or None if not found
         """
         try:
-            # Method 0: Check visualGroup.displayName (highest priority for grouped visuals)
-            visual_group = visual_data.get("visualGroup", {})
-            if visual_group:
-                display_name = visual_group.get("displayName")
-                if display_name:
-                    return display_name
+            # Method 1: Check visual.visualContainerObjects.title (if shown)
+            # This is the PRIMARY method - used by Selection Pane when title is visible
+            visual = visual_data.get("visual", {})
+            visual_container_objects = visual.get("visualContainerObjects", {})
+            title_objects = visual_container_objects.get("title", [])
 
-            # Method 1: Check title.text (simple format)
-            title = visual_data.get("title", {})
-            if isinstance(title, list) and len(title) > 0:
-                title_text = title[0].get("text")
-                if title_text:
-                    return title_text
-            elif isinstance(title, dict):
-                title_text = title.get("text")
-                if title_text:
-                    return title_text
-
-            # Method 2: Check properties.text.expr.Literal.Value
-            properties = visual_data.get("properties", {})
-            text_expr = properties.get("text", {}).get("expr", {})
-            if text_expr:
-                literal = text_expr.get("Literal", {})
-                if literal:
-                    value = literal.get("Value", "")
-                    # Remove surrounding quotes if present
-                    if value:
-                        return value.strip("'\"")
-
-            # Method 3: Check config.singleVisual.vcObjects.title
-            config = visual_data.get("config", {})
-            single_visual = config.get("singleVisual", {})
-            vc_objects = single_visual.get("vcObjects", {})
-            title_objects = vc_objects.get("title", [])
             if isinstance(title_objects, list) and len(title_objects) > 0:
                 title_props = title_objects[0].get("properties", {})
-                text_expr = title_props.get("text", {}).get("expr", {})
-                if text_expr:
+
+                # Check if title is shown
+                show_expr = title_props.get("show", {}).get("expr", {}).get("Literal", {})
+                is_shown = show_expr.get("Value") == "true" if show_expr else False
+
+                if is_shown:
+                    text_expr = title_props.get("text", {}).get("expr", {})
+
+                    # Check for Literal value
                     literal = text_expr.get("Literal", {})
                     if literal:
                         value = literal.get("Value", "")
                         if value:
                             return value.strip("'\"")
 
-            # Method 4: Check visual.vcObjects.title
-            visual = visual_data.get("visual", {})
+                    # Check for Measure-based dynamic title
+                    measure = text_expr.get("Measure", {})
+                    if measure:
+                        measure_name = measure.get("Property", "")
+                        if measure_name:
+                            # Return the measure name as a placeholder for dynamic title
+                            # In Selection Pane, this evaluates dynamically (e.g., "Performance YTD")
+                            return f"[Dynamic: {measure_name}]"
+
+            # Method 2: Check visualGroup.displayName (for grouped visuals)
+            visual_group = visual_data.get("visualGroup", {})
+            if visual_group:
+                display_name = visual_group.get("displayName")
+                if display_name:
+                    return display_name
+
+            # Method 3: Check visual.vcObjects.title (legacy format)
             vc_objects = visual.get("vcObjects", {})
             title_objects = vc_objects.get("title", [])
             if isinstance(title_objects, list) and len(title_objects) > 0:
@@ -468,10 +464,95 @@ class PbirReportAnalyzer:
                 if text_value and isinstance(text_value, str):
                     return text_value
 
+            # Method 4: Check config.singleVisual.vcObjects.title (alternative format)
+            config = visual_data.get("config", {})
+            single_visual = config.get("singleVisual", {})
+            vc_objects = single_visual.get("vcObjects", {})
+            title_objects = vc_objects.get("title", [])
+            if isinstance(title_objects, list) and len(title_objects) > 0:
+                title_props = title_objects[0].get("properties", {})
+                text_expr = title_props.get("text", {}).get("expr", {})
+                if text_expr:
+                    literal = text_expr.get("Literal", {})
+                    if literal:
+                        value = literal.get("Value", "")
+                        if value:
+                            return value.strip("'\"")
+
+            # Method 5: Check title.text (simple format)
+            title = visual_data.get("title", {})
+            if isinstance(title, list) and len(title) > 0:
+                title_text = title[0].get("text")
+                if title_text:
+                    return title_text
+            elif isinstance(title, dict):
+                title_text = title.get("text")
+                if title_text:
+                    return title_text
+
+            # Method 6: Check properties.text.expr.Literal.Value
+            properties = visual_data.get("properties", {})
+            text_expr = properties.get("text", {}).get("expr", {})
+            if text_expr:
+                literal = text_expr.get("Literal", {})
+                if literal:
+                    value = literal.get("Value", "")
+                    if value:
+                        return value.strip("'\"")
+
             return None
 
         except Exception as e:
             self.logger.warning(f"Error extracting visual title: {e}")
+            return None
+
+    def _extract_visual_title_text(self, visual_data: Dict) -> Optional[str]:
+        """
+        Extract the visual title text (the actual title shown on the visual).
+
+        This is separate from visual_name (Selection Pane name) and specifically
+        extracts the title text property, including both static and dynamic titles.
+
+        Args:
+            visual_data: The visual JSON data
+
+        Returns:
+            The visual title text or None if not found
+        """
+        try:
+            visual = visual_data.get("visual", {})
+            visual_container_objects = visual.get("visualContainerObjects", {})
+            title_objects = visual_container_objects.get("title", [])
+
+            if isinstance(title_objects, list) and len(title_objects) > 0:
+                title_props = title_objects[0].get("properties", {})
+
+                # Check if title is shown
+                show_expr = title_props.get("show", {}).get("expr", {}).get("Literal", {})
+                is_shown = show_expr.get("Value") == "true" if show_expr else False
+
+                if is_shown:
+                    text_expr = title_props.get("text", {}).get("expr", {})
+
+                    # Check for Literal value (static title)
+                    literal = text_expr.get("Literal", {})
+                    if literal:
+                        value = literal.get("Value", "")
+                        if value:
+                            return value.strip("'\"")
+
+                    # Check for Measure-based dynamic title
+                    measure = text_expr.get("Measure", {})
+                    if measure:
+                        measure_name = measure.get("Property", "")
+                        if measure_name:
+                            # Return the measure name for dynamic titles
+                            return f"[Measure: {measure_name}]"
+
+            return None
+
+        except Exception as e:
+            self.logger.warning(f"Error extracting visual title text: {e}")
             return None
 
     def _parse_bookmarks(self, bookmarks_path: str) -> List[Dict[str, Any]]:

@@ -29,6 +29,7 @@ from core.pbip_model_analyzer import TmdlModelAnalyzer
 from core.pbip_report_analyzer import PbirReportAnalyzer
 from core.pbip_dependency_engine import PbipDependencyEngine
 from core.pbip_html_generator import PbipHtmlGenerator
+from core.pbip_enhanced_analyzer import EnhancedPbipAnalyzer
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -44,7 +45,9 @@ def analyze_pbip_repository(
     repo_path: str,
     output_path: str,
     exclude_folders: list,
-    verbose: bool = False
+    verbose: bool = False,
+    bpa_rules_path: str = None,
+    enable_enhanced: bool = True
 ) -> dict:
     """
     Analyze a PBIP repository and generate comprehensive report.
@@ -54,6 +57,8 @@ def analyze_pbip_repository(
         output_path: Output directory for reports (absolute or relative to MCP server root)
         exclude_folders: List of folders to exclude
         verbose: Enable verbose logging
+        bpa_rules_path: Optional path to BPA rules JSON file
+        enable_enhanced: Enable enhanced analysis features (lineage, quality metrics, etc.)
 
     Returns:
         Dictionary with analysis results
@@ -191,6 +196,34 @@ def analyze_pbip_repository(
             raise
         dependencies = {}
 
+    # Step 4.5: Enhanced analysis (if enabled)
+    enhanced_results = None
+    if enable_enhanced:
+        logger.info("\nStep 4.5: Running enhanced analysis...")
+        try:
+            enhanced_analyzer = EnhancedPbipAnalyzer(model_data, report_data, dependencies)
+            enhanced_results = enhanced_analyzer.run_full_analysis(bpa_rules_path)
+
+            # Log summary
+            logger.info("  Enhanced analysis complete")
+            if "column_lineage" in enhanced_results.get("analyses", {}):
+                lineage_count = len(enhanced_results["analyses"]["column_lineage"])
+                logger.info(f"    Column lineage tracked: {lineage_count} columns")
+
+            if "dax_quality" in enhanced_results.get("analyses", {}):
+                dax_summary = enhanced_results["analyses"]["dax_quality"].get("summary", {})
+                logger.info(f"    DAX quality: {dax_summary.get('high_complexity_measures', 0)} high-complexity measures")
+
+            if "relationships" in enhanced_results.get("analyses", {}):
+                rel_metrics = enhanced_results["analyses"]["relationships"].get("metrics", {})
+                logger.info(f"    Relationships: {rel_metrics.get('issues_found', 0)} issues found")
+
+        except Exception as e:
+            logger.error(f"  Enhanced analysis failed: {e}")
+            if verbose:
+                raise
+            enhanced_results = None
+
     # Step 5: Generate HTML report
     logger.info("\nStep 5: Generating HTML dashboard...")
 
@@ -201,7 +234,8 @@ def analyze_pbip_repository(
             report_data,
             dependencies,
             output_path,
-            os.path.basename(repo_path)
+            os.path.basename(repo_path),
+            enhanced_results=enhanced_results
         )
 
         logger.info(f"  HTML report generated: {html_path}")
@@ -227,6 +261,7 @@ def analyze_pbip_repository(
         "models": model_results,
         "reports": report_results,
         "dependencies": dependencies,
+        "enhanced_analysis": enhanced_results,
         "html_path": html_path
     }
 
@@ -279,6 +314,19 @@ Examples:
         help="Enable verbose logging"
     )
 
+    parser.add_argument(
+        "--bpa-rules",
+        "-b",
+        default="config/bpa_rules_comprehensive.json",
+        help="Path to BPA rules JSON file (default: comprehensive rules)"
+    )
+
+    parser.add_argument(
+        "--no-enhanced",
+        action="store_true",
+        help="Disable enhanced analysis features (use basic analysis only)"
+    )
+
     args = parser.parse_args()
 
     # Setup logging
@@ -299,7 +347,9 @@ Examples:
             args.repo_path,
             args.output,
             args.exclude,
-            args.verbose
+            args.verbose,
+            args.bpa_rules,
+            not args.no_enhanced
         )
 
         if result.get("success"):

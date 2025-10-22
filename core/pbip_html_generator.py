@@ -29,7 +29,8 @@ class PbipHtmlGenerator:
         report_data: Optional[Dict[str, Any]],
         dependencies: Dict[str, Any],
         output_path: str,
-        repository_name: str = "PBIP Repository"
+        repository_name: str = "PBIP Repository",
+        enhanced_results: Optional[Dict[str, Any]] = None
     ) -> str:
         """
         Generate comprehensive HTML report.
@@ -40,6 +41,7 @@ class PbipHtmlGenerator:
             dependencies: Dependency analysis results
             output_path: Output directory path
             repository_name: Name of the repository
+            enhanced_results: Optional enhanced analysis results (lineage, quality metrics, etc.)
 
         Returns:
             Path to generated HTML file
@@ -59,7 +61,8 @@ class PbipHtmlGenerator:
             model_data,
             report_data,
             dependencies,
-            repository_name
+            repository_name,
+            enhanced_results
         )
 
         # Generate filename from repository name and timestamp
@@ -90,7 +93,8 @@ class PbipHtmlGenerator:
         model_data: Dict,
         report_data: Optional[Dict],
         dependencies: Dict,
-        repo_name: str
+        repo_name: str,
+        enhanced_results: Optional[Dict] = None
     ) -> str:
         """Build complete HTML document with Vue 3."""
         # Prepare data for JavaScript
@@ -98,6 +102,7 @@ class PbipHtmlGenerator:
             "model": model_data,
             "report": report_data,
             "dependencies": dependencies,
+            "enhanced": enhanced_results,
             "generated": datetime.now().isoformat(),
             "repository_name": repo_name
         }
@@ -400,6 +405,11 @@ class PbipHtmlGenerator:
             border-color: #475569;
         }}
 
+        /* Vue.js cloak - hide uncompiled templates */
+        [v-cloak] {{
+            display: none !important;
+        }}
+
         /* Command Palette */
         .command-palette {{
             position: fixed;
@@ -427,6 +437,16 @@ class PbipHtmlGenerator:
 
         .dark-mode .command-palette-content {{
             background: #1e293b;
+        }}
+
+        /* Highlight flash animation */
+        @keyframes highlight-flash {{
+            0%, 100% {{ background-color: transparent; }}
+            50% {{ background-color: #fef3c7; }}
+        }}
+
+        .highlight-flash {{
+            animation: highlight-flash 2s ease-in-out;
         }}
     </style>
 </head>
@@ -525,6 +545,46 @@ class PbipHtmlGenerator:
                         class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition"
                     >
                         📈 Usage
+                    </button>
+                    <button
+                        v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.bpa"
+                        @click="activeTab = 'best-practices'"
+                        :class="tabClass('best-practices')"
+                        class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition"
+                    >
+                        ✨ Best Practices ({{{{ bpaViolationsCount }}}})
+                    </button>
+                    <button
+                        v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.data_types"
+                        @click="activeTab = 'data-quality'"
+                        :class="tabClass('data-quality')"
+                        class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition"
+                    >
+                        🔍 Data Quality ({{{{ dataQualityIssuesCount }}}})
+                    </button>
+                    <button
+                        v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.dax_quality"
+                        @click="activeTab = 'code-quality'"
+                        :class="tabClass('code-quality')"
+                        class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition"
+                    >
+                        💎 Code Quality ({{{{ daxQualityIssuesCount }}}})
+                    </button>
+                    <button
+                        v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.column_lineage"
+                        @click="activeTab = 'lineage'"
+                        :class="tabClass('lineage')"
+                        class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition"
+                    >
+                        🔗 Lineage ({{{{ Object.keys(columnLineage).length }}}})
+                    </button>
+                    <button
+                        v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.perspectives && enhancedData.analyses.perspectives.has_perspectives"
+                        @click="activeTab = 'perspectives'"
+                        :class="tabClass('perspectives')"
+                        class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition"
+                    >
+                        👁️ Perspectives ({{{{ perspectivesCount }}}})
                     </button>
                 </nav>
             </div>
@@ -783,9 +843,16 @@ class PbipHtmlGenerator:
                                 <div v-show="modelDetailTab === 'columns'">
                                     <div v-if="selectedTable.columns?.length > 0" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div v-for="col in selectedTable.columns" :key="col.name" class="border border-gray-200 rounded p-3">
-                                            <div class="font-semibold text-gray-900 mb-1">
-                                                {{{{ col.name }}}}
-                                                <span v-if="col.is_hidden" class="badge badge-warning ml-2">Hidden</span>
+                                            <div class="font-semibold text-gray-900 mb-1 flex items-center gap-2">
+                                                <span>{{{{ col.name }}}}</span>
+                                                <span v-if="isColumnInRelationship(selectedTable.name, col.name)" class="badge badge-info flex items-center gap-1">
+                                                    <svg class="lucide-key-round w-3 h-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18v3c0 .6.4 1 1 1h4v-3h3v-3h2l1.4-1.4a6.5 6.5 0 1 0-4-4Z"></path><circle cx="16.5" cy="7.5" r=".5"></circle></svg>
+                                                    Key
+                                                </span>
+                                                <span v-if="col.is_hidden" class="badge badge-warning flex items-center gap-1">
+                                                    <svg class="lucide-eye-off w-3 h-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path><line x1="2" x2="22" y1="2" y2="22"></line></svg>
+                                                    Hidden
+                                                </span>
                                             </div>
                                             <div class="text-sm text-gray-600">
                                                 <span class="badge badge-gray">{{{{ col.data_type }}}}</span>
@@ -801,14 +868,23 @@ class PbipHtmlGenerator:
                                 <!-- Measures -->
                                 <div v-show="modelDetailTab === 'measures'">
                                     <div v-if="selectedTable.measures?.length > 0" class="space-y-4">
-                                        <div v-for="measure in selectedTable.measures" :key="measure.name" class="border border-gray-200 rounded p-4">
-                                            <div class="flex items-center gap-2 mb-2">
-                                                <div class="font-semibold text-gray-900">{{{{ measure.name }}}}</div>
-                                                <span class="badge badge-primary text-xs">m Measure</span>
-                                                <span v-if="measure.display_folder" class="badge badge-warning text-xs">📁 {{{{ measure.display_folder }}}}</span>
-                                                <span v-if="measure.is_hidden" class="badge badge-gray text-xs">Hidden</span>
+                                        <div v-for="measure in selectedTable.measures" :key="measure.name" class="border border-gray-200 rounded p-4" :data-measure="measure.name">
+                                            <div class="flex items-center justify-between gap-2 mb-2">
+                                                <div class="flex items-center gap-2">
+                                                    <div class="font-semibold text-gray-900">{{{{ measure.name }}}}</div>
+                                                    <span class="badge badge-primary text-xs">m Measure</span>
+                                                    <span v-if="measure.display_folder" class="badge badge-warning text-xs">📁 {{{{ measure.display_folder }}}}</span>
+                                                    <span v-if="measure.is_hidden" class="badge badge-gray text-xs">Hidden</span>
+                                                </div>
+                                                <button
+                                                    v-if="measure.expression"
+                                                    @click="toggleMeasureExpansion(measure.name)"
+                                                    class="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                                >
+                                                    {{{{ expandedMeasures[measure.name] ? 'Hide DAX' : 'Show DAX' }}}}
+                                                </button>
                                             </div>
-                                            <div class="code-block" v-if="measure.expression" v-html="highlightDAX(measure.expression)"></div>
+                                            <div v-if="measure.expression && expandedMeasures[measure.name]" class="code-block mt-2" v-html="highlightDAX(measure.expression)"></div>
                                         </div>
                                     </div>
                                     <div v-else class="text-gray-500 italic">No measures in this table</div>
@@ -851,13 +927,33 @@ class PbipHtmlGenerator:
 
                                 <!-- Usage -->
                                 <div v-show="modelDetailTab === 'usage'">
-                                    <div v-if="getTableVisualUsage(selectedTable.name).length > 0" class="space-y-2">
-                                        <div v-for="usage in getTableVisualUsage(selectedTable.name)" :key="usage.visualId" class="border border-gray-200 rounded p-3">
-                                            <div class="font-semibold text-sm text-gray-900">{{{{ usage.pageName }}}}</div>
-                                            <div class="text-xs text-gray-600">{{{{ usage.visualType }}}} - {{{{ usage.visualId.substring(0, 8) }}}}...</div>
+                                    <h3 class="font-semibold text-gray-900 mb-3">Column Usage by Page</h3>
+                                    <div v-if="selectedTable.columns?.length > 0" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div v-for="col in selectedTable.columns" :key="col.name" class="border border-gray-200 rounded">
+                                            <div class="font-semibold text-gray-900 p-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                                                <span>{{{{ col.name }}}}</span>
+                                                <span class="badge badge-gray text-xs">{{{{ getColumnVisualUsage(selectedTable.name, col.name).length }}}} visual(s)</span>
+                                            </div>
+                                            <div class="p-3">
+                                                <div v-if="getColumnVisualUsage(selectedTable.name, col.name).length > 0" class="space-y-2">
+                                                    <div v-for="(visuals, pageName) in groupColumnUsageByPage(selectedTable.name, col.name)" :key="pageName" class="border border-gray-100 rounded p-2">
+                                                        <div class="font-medium text-gray-800 text-sm mb-1 flex items-center gap-1">
+                                                            <span>📄</span>
+                                                            <span>{{{{ pageName }}}}</span>
+                                                            <span class="text-xs text-gray-500">({{{{ visuals.length }}}})</span>
+                                                        </div>
+                                                        <div class="space-y-1 ml-5">
+                                                            <div v-for="usage in visuals" :key="usage.visualId" class="text-xs text-gray-600 flex items-center gap-2">
+                                                                <span class="badge badge-primary" style="font-size: 10px; padding: 2px 6px;">{{{{ usage.visualType }}}}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div v-else class="text-xs text-gray-500 italic">Not used in any visuals</div>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div v-else class="text-gray-500 italic">This table is not used in any visuals</div>
+                                    <div v-else class="text-gray-500 italic">No columns in this table</div>
                                 </div>
                             </div>
                         </div>
@@ -889,10 +985,13 @@ class PbipHtmlGenerator:
                                 </div>
                                 <div v-show="!collapsedFolders[folderName]" class="folder-content space-y-3">
                                     <div v-for="measure in folder" :key="measure.key" class="border border-gray-200 rounded p-4 bg-white">
-                                        <div class="font-semibold text-gray-900 mb-1">
-                                            {{{{ measure.name }}}}
-                                            <span class="badge badge-primary ml-2">{{{{ measure.table }}}}</span>
-                                            <span v-if="measure.is_hidden" class="badge badge-warning ml-2">Hidden</span>
+                                        <div class="font-semibold text-gray-900 mb-1 flex items-center gap-2">
+                                            <span>{{{{ measure.name }}}}</span>
+                                            <span class="badge badge-primary">{{{{ measure.table }}}}</span>
+                                            <span v-if="measure.is_hidden" class="badge badge-warning flex items-center gap-1">
+                                                <svg class="lucide-key-round w-3 h-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18v3c0 .6.4 1 1 1h4v-3h3v-3h2l1.4-1.4a6.5 6.5 0 1 0-4-4Z"></path><circle cx="16.5" cy="7.5" r=".5"></circle></svg>
+                                                Hidden
+                                            </span>
                                         </div>
                                         <div class="code-block mt-2" v-if="measure.expression" v-html="highlightDAX(measure.expression)"></div>
                                     </div>
@@ -951,7 +1050,7 @@ class PbipHtmlGenerator:
                                 >
                                     <div class="font-semibold text-gray-900">{{{{ page.display_name || page.name }}}}</div>
                                     <div class="text-sm text-gray-600">
-                                        {{{{ page.visuals?.length || 0 }}}} visuals
+                                        {{{{ getVisibleVisualCount(page.visuals) }}}} visuals
                                     </div>
                                 </div>
                             </div>
@@ -1113,10 +1212,22 @@ class PbipHtmlGenerator:
                                 <h3 class="text-lg font-semibold text-gray-900 mb-3">
                                     Used By ({{{{ currentDependencyDetails.usedBy.length }}}})
                                 </h3>
-                                <div v-if="currentDependencyDetails.usedBy.length > 0" class="space-y-2">
-                                    <div v-for="user in currentDependencyDetails.usedBy" :key="user" class="flex items-center gap-2 p-2 bg-gray-50 rounded">
-                                        <span class="badge badge-success">Measure</span>
-                                        <span class="text-sm text-gray-700">{{{{ user }}}}</span>
+                                <div v-if="currentDependencyDetails.usedBy.length > 0" class="space-y-3">
+                                    <div v-for="(measures, folderName) in groupMeasuresByFolder(currentDependencyDetails.usedBy)" :key="folderName" class="border border-gray-200 rounded">
+                                        <div class="folder-header cursor-pointer" :class="{{collapsed: collapsedUsedByFolders[folderName]}}" @click="toggleUsedByFolder(folderName)">
+                                            <div class="flex items-center gap-2">
+                                                <span>📁</span>
+                                                <span class="font-semibold">{{{{ folderName }}}}</span>
+                                                <span class="text-sm text-gray-500">({{{{ measures.length }}}})</span>
+                                            </div>
+                                            <span class="expand-icon">▼</span>
+                                        </div>
+                                        <div v-show="!collapsedUsedByFolders[folderName]" class="folder-content space-y-1 p-3">
+                                            <div v-for="measure in measures" :key="measure" class="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                                                <span class="badge badge-success">Measure</span>
+                                                <span class="text-sm text-gray-700">{{{{ measure }}}}</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                                 <div v-else class="text-gray-500 italic">Not used by other measures</div>
@@ -1127,10 +1238,19 @@ class PbipHtmlGenerator:
                                 <h3 class="text-lg font-semibold text-gray-900 mb-3">
                                     Used In Visuals ({{{{ currentDependencyDetails.visualUsage.length }}}})
                                 </h3>
-                                <div v-if="currentDependencyDetails.visualUsage.length > 0" class="space-y-2">
-                                    <div v-for="usage in currentDependencyDetails.visualUsage" :key="usage.visualId" class="flex items-center gap-2 p-2 bg-gray-50 rounded">
-                                        <span class="badge badge-warning">Visual</span>
-                                        <span class="text-sm text-gray-700">{{{{ usage.pageName }}}} - {{{{ usage.visualType }}}}</span>
+                                <div v-if="currentDependencyDetails.visualUsage.length > 0" class="space-y-3">
+                                    <div v-for="(visuals, pageName) in groupVisualUsageByPage(currentDependencyDetails.visualUsage)" :key="pageName" class="border border-gray-200 rounded p-3">
+                                        <div class="font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                                            <span>📄</span>
+                                            <span>{{{{ pageName }}}}</span>
+                                            <span class="text-sm text-gray-500">({{{{ visuals.length }}}})</span>
+                                        </div>
+                                        <div class="space-y-1 ml-6">
+                                            <div v-for="usage in visuals" :key="usage.visualId" class="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                                                <span class="badge badge-warning">{{{{ usage.visualType }}}}</span>
+                                                <span class="text-sm text-gray-700">{{{{ usage.visualName || 'Unnamed Visual' }}}}</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                                 <div v-else class="text-gray-500 italic">Not used in any visuals</div>
@@ -1190,10 +1310,19 @@ class PbipHtmlGenerator:
                                 <h3 class="text-lg font-semibold text-gray-900 mb-3">
                                     Used By Measures ({{{{ currentColumnDependencies.usedByMeasures.length }}}})
                                 </h3>
-                                <div v-if="currentColumnDependencies.usedByMeasures.length > 0" class="space-y-2">
-                                    <div v-for="measure in currentColumnDependencies.usedByMeasures" :key="measure" class="flex items-center gap-2 p-2 bg-gray-50 rounded">
-                                        <span class="badge badge-success">Measure</span>
-                                        <span class="text-sm text-gray-700">{{{{ measure }}}}</span>
+                                <div v-if="currentColumnDependencies.usedByMeasures.length > 0" class="space-y-3">
+                                    <div v-for="(measures, folderName) in groupMeasuresByFolder(currentColumnDependencies.usedByMeasures)" :key="folderName" class="border border-gray-200 rounded p-3">
+                                        <div class="font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                                            <span>📁</span>
+                                            <span>{{{{ folderName }}}}</span>
+                                            <span class="text-sm text-gray-500">({{{{ measures.length }}}})</span>
+                                        </div>
+                                        <div class="space-y-1 ml-6">
+                                            <div v-for="measure in measures" :key="measure" class="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                                                <span class="badge badge-success">Measure</span>
+                                                <span class="text-sm text-gray-700">{{{{ measure }}}}</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                                 <div v-else class="text-gray-500 italic">Not used by any measures</div>
@@ -1204,10 +1333,19 @@ class PbipHtmlGenerator:
                                 <h3 class="text-lg font-semibold text-gray-900 mb-3">
                                     Used In Visuals ({{{{ currentColumnDependencies.visualUsage.length }}}})
                                 </h3>
-                                <div v-if="currentColumnDependencies.visualUsage.length > 0" class="space-y-2">
-                                    <div v-for="usage in currentColumnDependencies.visualUsage" :key="usage.visualId" class="flex items-center gap-2 p-2 bg-gray-50 rounded">
-                                        <span class="badge badge-warning">Visual</span>
-                                        <span class="text-sm text-gray-700">{{{{ usage.pageName }}}} - {{{{ usage.visualType }}}}</span>
+                                <div v-if="currentColumnDependencies.visualUsage.length > 0" class="space-y-3">
+                                    <div v-for="(visuals, pageName) in groupVisualUsageByPage(currentColumnDependencies.visualUsage)" :key="pageName" class="border border-gray-200 rounded p-3">
+                                        <div class="font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                                            <span>📄</span>
+                                            <span>{{{{ pageName }}}}</span>
+                                            <span class="text-sm text-gray-500">({{{{ visuals.length }}}})</span>
+                                        </div>
+                                        <div class="space-y-1 ml-6">
+                                            <div v-for="usage in visuals" :key="usage.visualId" class="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                                                <span class="badge badge-warning">{{{{ usage.visualType }}}}</span>
+                                                <span class="text-sm text-gray-700">{{{{ usage.visualName || 'Unnamed Visual' }}}}</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                                 <div v-else class="text-gray-500 italic">Not used in any visuals</div>
@@ -1223,41 +1361,676 @@ class PbipHtmlGenerator:
             <!-- Usage Tab -->
             <div v-show="activeTab === 'usage'" class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div class="stat-card">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-4">Unused Measures</h2>
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-2xl font-bold text-gray-900">Unused Measures</h2>
+                        <div v-if="dependencies.unused_measures?.length > 0" class="flex gap-2">
+                            <button @click="expandAllUnusedMeasures" class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600">Expand All</button>
+                            <button @click="collapseAllUnusedMeasures" class="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600">Collapse All</button>
+                        </div>
+                    </div>
                     <div v-if="dependencies.unused_measures?.length > 0" class="bg-yellow-50 p-4 rounded mb-4">
                         <strong>Warning:</strong> Found {{{{ dependencies.unused_measures.length }}}} measures not used anywhere.
                     </div>
-                    <div v-if="dependencies.unused_measures?.length > 0" class="space-y-2 max-h-96 overflow-y-auto">
-                        <div v-for="measure in dependencies.unused_measures.slice(0, 50)" :key="measure" class="p-2 border border-gray-200 rounded text-sm">
-                            {{{{ measure }}}}
-                        </div>
-                        <div v-if="dependencies.unused_measures.length > 50" class="text-gray-500 italic text-sm">
-                            ... and {{{{ dependencies.unused_measures.length - 50 }}}} more
+                    <div v-if="dependencies.unused_measures?.length > 0" class="space-y-4 max-h-96 overflow-y-auto">
+                        <!-- Grouped by folder -->
+                        <div v-for="(measures, folderName) in unusedMeasuresByFolder" :key="folderName">
+                            <div class="list-group-header" :class="{{collapsed: collapsedUnusedMeasureFolders[folderName]}}" @click="toggleUnusedMeasureFolder(folderName)">
+                                <div>
+                                    <strong>{{{{ folderName }}}}</strong>
+                                    <span class="ml-2 text-sm opacity-75">({{{{ measures.length }}}})</span>
+                                </div>
+                                <span class="expand-icon">▼</span>
+                            </div>
+                            <div v-show="!collapsedUnusedMeasureFolders[folderName]" class="folder-content space-y-2 mt-2">
+                                <div v-for="measure in measures" :key="measure" class="p-2 border border-gray-200 rounded text-sm bg-white">
+                                    {{{{ measure }}}}
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div v-else class="text-green-600 font-semibold">✓ All measures are in use!</div>
                 </div>
 
                 <div class="stat-card">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-4">Unused Columns</h2>
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-2xl font-bold text-gray-900">Unused Columns</h2>
+                        <div v-if="dependencies.unused_columns?.length > 0" class="flex gap-2">
+                            <button @click="expandAllUnusedColumns" class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600">Expand All</button>
+                            <button @click="collapseAllUnusedColumns" class="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600">Collapse All</button>
+                        </div>
+                    </div>
                     <div v-if="dependencies.unused_columns?.length > 0" class="bg-yellow-50 p-4 rounded mb-4">
                         <strong>Warning:</strong> Found {{{{ dependencies.unused_columns.length }}}} columns not used anywhere.
                     </div>
-                    <div v-if="dependencies.unused_columns?.length > 0" class="space-y-2 max-h-96 overflow-y-auto">
-                        <div v-for="column in dependencies.unused_columns.slice(0, 50)" :key="column" class="p-2 border border-gray-200 rounded text-sm">
-                            {{{{ column }}}}
-                        </div>
-                        <div v-if="dependencies.unused_columns.length > 50" class="text-gray-500 italic text-sm">
-                            ... and {{{{ dependencies.unused_columns.length - 50 }}}} more
+                    <div v-if="dependencies.unused_columns?.length > 0" class="space-y-4 max-h-96 overflow-y-auto">
+                        <!-- Grouped by table -->
+                        <div v-for="(columns, tableName) in unusedColumnsByTable" :key="tableName">
+                            <div class="list-group-header" :class="{{collapsed: collapsedUnusedColumnTables[tableName]}}" @click="toggleUnusedColumnTable(tableName)">
+                                <div>
+                                    <strong>{{{{ tableName }}}}</strong>
+                                    <span class="ml-2 text-sm opacity-75">({{{{ columns.length }}}})</span>
+                                </div>
+                                <span class="expand-icon">▼</span>
+                            </div>
+                            <div v-show="!collapsedUnusedColumnTables[tableName]" class="folder-content space-y-2 mt-2">
+                                <div v-for="column in columns" :key="column" class="p-2 border border-gray-200 rounded text-sm bg-white">
+                                    {{{{ column }}}}
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div v-else class="text-green-600 font-semibold">✓ All columns are in use!</div>
                 </div>
             </div>
+
+            <!-- Best Practices Tab -->
+            <div v-show="activeTab === 'best-practices'" v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.bpa">
+                <div class="mb-6">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-2">Best Practice Analysis</h1>
+                    <p class="text-gray-600">Analysis based on Microsoft Power BI Best Practices</p>
+                </div>
+
+                <!-- BPA Summary Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+                    <div class="kpi-card">
+                        <h3>Total Violations</h3>
+                        <p class="text-4xl font-bold text-gray-900">{{{{ bpaTotalViolations }}}}</p>
+                    </div>
+                    <div class="kpi-card">
+                        <h3>Errors</h3>
+                        <p class="text-4xl font-bold text-red-600">{{{{ bpaErrorCount }}}}</p>
+                    </div>
+                    <div class="kpi-card">
+                        <h3>Warnings</h3>
+                        <p class="text-4xl font-bold text-yellow-600">{{{{ bpaWarningCount }}}}</p>
+                    </div>
+                    <div class="kpi-card">
+                        <h3>Info</h3>
+                        <p class="text-4xl font-bold text-blue-600">{{{{ bpaInfoCount }}}}</p>
+                    </div>
+                </div>
+
+                <!-- Category Breakdown -->
+                <div class="stat-card mb-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-4">Violations by Category</h2>
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                        <div v-for="(count, category) in bpaCategoryBreakdown" :key="category" class="p-4 bg-gray-50 rounded-lg">
+                            <div class="text-sm text-gray-600 mb-1">{{{{ category }}}}</div>
+                            <div class="text-2xl font-bold">{{{{ count }}}}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Violations by Object Type -->
+                <div class="stat-card">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-2xl font-bold text-gray-900">Violations by Object Type</h2>
+                        <div class="flex gap-2">
+                            <select v-model="bpaSeverityFilter" class="px-3 py-1 text-sm border border-gray-300 rounded">
+                                <option value="all">All Severities</option>
+                                <option value="ERROR">Errors</option>
+                                <option value="WARNING">Warnings</option>
+                                <option value="INFO">Info</option>
+                            </select>
+                            <select v-model="bpaCategoryFilter" class="px-3 py-1 text-sm border border-gray-300 rounded">
+                                <option value="all">All Categories</option>
+                                <option v-for="category in bpaCategories" :key="category" :value="category">{{{{ category }}}}</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Group by Object Type, then by Category (with Maintenance last) -->
+                    <div v-for="objectType in bpaObjectTypes" :key="objectType" class="mb-4">
+                        <div
+                            @click="toggleBpaObjectGroup(objectType)"
+                            class="flex items-center justify-between p-3 bg-gray-100 hover:bg-gray-200 cursor-pointer rounded-t"
+                        >
+                            <div class="flex items-center gap-2">
+                                <svg class="w-5 h-5 transition-transform" :class="{{'rotate-90': !collapsedBpaObjectGroups[objectType]}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                </svg>
+                                <span class="font-semibold text-lg text-gray-900">
+                                    {{{{ objectType }}}} ({{{{ bpaViolationsByObjectType[objectType].length }}}})
+                                </span>
+                            </div>
+                        </div>
+
+                        <div v-show="!collapsedBpaObjectGroups[objectType]" class="border border-gray-200 border-t-0 rounded-b">
+                            <!-- Violations grouped by category within this object type -->
+                            <div v-for="category in bpaOrderedCategories" :key="category">
+                                <template v-if="bpaViolationsByObjectAndCategory[objectType] && bpaViolationsByObjectAndCategory[objectType][category]">
+                                    <div class="bg-gray-50 px-4 py-2 border-b border-gray-200">
+                                        <span class="font-medium text-gray-700">{{{{ category }}}} ({{{{ bpaViolationsByObjectAndCategory[objectType][category].length }}}})</span>
+                                    </div>
+                                    <div class="overflow-x-auto">
+                                        <table class="min-w-full divide-y divide-gray-200">
+                                            <thead class="bg-gray-50">
+                                                <tr>
+                                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Severity</th>
+                                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Rule</th>
+                                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Object</th>
+                                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="bg-white divide-y divide-gray-200">
+                                                <tr v-for="violation in bpaViolationsByObjectAndCategory[objectType][category]" :key="violation.rule_id + violation.object_name" class="hover:bg-gray-50">
+                                                    <td class="px-4 py-2 whitespace-nowrap">
+                                                        <span :class="bpaSeverityClass(violation.severity)" class="px-2 py-1 text-xs font-semibold rounded">
+                                                            {{{{ violation.severity }}}}
+                                                        </span>
+                                                    </td>
+                                                    <td class="px-4 py-2 text-sm text-gray-900">{{{{ violation.rule_name }}}}</td>
+                                                    <td class="px-4 py-2 text-sm">
+                                                        <div class="font-medium text-gray-900">{{{{ violation.object_name }}}}</div>
+                                                        <div v-if="violation.table_name" class="text-xs text-gray-500">Table: {{{{ violation.table_name }}}}</div>
+                                                    </td>
+                                                    <td class="px-4 py-2 text-sm text-gray-600">
+                                                        <div>{{{{ violation.description }}}}</div>
+                                                        <div v-if="violation.details" class="mt-1 text-xs text-gray-500">{{{{ violation.details }}}}</div>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="filteredBpaViolations.length === 0" class="text-center py-8 text-gray-500">
+                        No violations found matching your filters
+                    </div>
+                </div>
+
+                <!-- Naming Conventions Section -->
+                <div v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.naming_conventions" class="stat-card mt-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-4">Naming Convention Violations</h2>
+
+                    <div v-if="namingViolationsCount === 0" class="text-center py-8">
+                        <div class="text-6xl mb-4">✅</div>
+                        <h3 class="text-xl font-semibold text-green-700 mb-2">All naming conventions followed!</h3>
+                        <p class="text-gray-600">No violations found</p>
+                    </div>
+
+                    <div v-else>
+                        <!-- Naming Summary -->
+                        <div class="grid grid-cols-3 gap-4 mb-6">
+                            <div class="text-center p-4 bg-red-50 rounded">
+                                <p class="text-sm text-gray-600 mb-1">Total Violations</p>
+                                <p class="text-3xl font-bold text-red-600">{{{{ namingViolationsCount }}}}</p>
+                            </div>
+                            <div class="text-center p-4 bg-yellow-50 rounded">
+                                <p class="text-sm text-gray-600 mb-1">Warnings</p>
+                                <p class="text-3xl font-bold text-yellow-600">{{{{ namingSummary.by_severity?.WARNING || 0 }}}}</p>
+                            </div>
+                            <div class="text-center p-4 bg-blue-50 rounded">
+                                <p class="text-sm text-gray-600 mb-1">Info</p>
+                                <p class="text-3xl font-bold text-blue-600">{{{{ namingSummary.by_severity?.INFO || 0 }}}}</p>
+                            </div>
+                        </div>
+
+                        <!-- Filters -->
+                        <div class="flex gap-2 mb-4">
+                            <select v-model="namingSeverityFilter" class="px-3 py-2 text-sm border border-gray-300 rounded">
+                                <option value="all">All Severities</option>
+                                <option value="WARNING">Warnings</option>
+                                <option value="INFO">Info</option>
+                            </select>
+                            <select v-model="namingTypeFilter" class="px-3 py-2 text-sm border border-gray-300 rounded">
+                                <option value="all">All Types</option>
+                                <option value="missing_prefix">Missing Prefix</option>
+                                <option value="contains_spaces">Contains Spaces</option>
+                                <option value="name_too_long">Name Too Long</option>
+                                <option value="special_characters">Special Characters</option>
+                            </select>
+                        </div>
+
+                        <!-- Violations Table -->
+                        <div class="overflow-x-auto max-h-[400px] overflow-y-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50 sticky top-0">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Severity</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Object Type</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Table</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Object</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Issue</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Current Name</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white divide-y divide-gray-200">
+                                    <tr v-for="(violation, idx) in filteredNamingViolations" :key="idx" class="hover:bg-gray-50">
+                                        <td class="px-4 py-3 whitespace-nowrap">
+                                            <span :class="severityBadgeClass(violation.severity)" class="px-2 py-1 text-xs font-semibold rounded">
+                                                {{{{ violation.severity }}}}
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-3 text-sm text-gray-600">{{{{ violation.type }}}}</td>
+                                        <td class="px-4 py-3 text-sm text-gray-700">{{{{ violation.object_type }}}}</td>
+                                        <td class="px-4 py-3 text-sm font-medium text-gray-900">{{{{ violation.table }}}}</td>
+                                        <td class="px-4 py-3 text-sm text-gray-900">{{{{ violation.object }}}}</td>
+                                        <td class="px-4 py-3 text-sm text-gray-600">{{{{ violation.issue }}}}</td>
+                                        <td class="px-4 py-3 text-sm font-mono text-gray-700">{{{{ violation.current_name }}}}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <div v-if="filteredNamingViolations.length === 0" class="text-center py-8 text-gray-500">
+                                No violations match your filters
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Quality Tab -->
+            <div v-show="activeTab === 'data-quality'" v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.data_types">
+                <div class="mb-6">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-2">Data Quality Analysis</h1>
+                    <p class="text-gray-600">Data type optimization and cardinality warnings</p>
+                </div>
+
+                <!-- Data Type Summary -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div class="stat-card">
+                        <h2 class="text-2xl font-bold text-gray-900 mb-4">Data Type Distribution</h2>
+                        <div class="space-y-2">
+                            <div v-for="(count, type) in dataTypeSummary" :key="type" class="flex justify-between items-center p-2 bg-gray-50 rounded">
+                                <span class="font-medium">{{{{ type }}}}</span>
+                                <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-semibold">{{{{ count }}}}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <h2 class="text-2xl font-bold text-gray-900 mb-4">Quality Metrics</h2>
+                        <div class="space-y-4">
+                            <div class="kpi-card">
+                                <h3>Data Type Issues</h3>
+                                <p class="text-4xl font-bold text-yellow-600">{{{{ dataTypeIssues.length }}}}</p>
+                            </div>
+                            <div class="kpi-card">
+                                <h3>High-Impact Issues</h3>
+                                <p class="text-4xl font-bold text-red-600">{{{{ dataTypeHighImpactCount }}}}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Data Type Issues Table -->
+                <div class="stat-card mb-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-2xl font-bold text-gray-900">Data Type Optimization Opportunities</h2>
+                        <select v-model="dataTypeImpactFilter" class="px-3 py-1 text-sm border border-gray-300 rounded">
+                            <option value="all">All Impact Levels</option>
+                            <option value="HIGH">High Impact</option>
+                            <option value="MEDIUM">Medium Impact</option>
+                            <option value="LOW">Low Impact</option>
+                        </select>
+                    </div>
+                    <div class="overflow-x-auto max-h-[500px] overflow-y-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50 sticky top-0">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Table</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Column</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Current Type</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Issue</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Recommendation</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Impact</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <tr v-for="issue in filteredDataTypeIssues" :key="issue.table + issue.column" class="hover:bg-gray-50">
+                                    <td class="px-4 py-3 text-sm font-medium text-gray-900">{{{{ issue.table }}}}</td>
+                                    <td class="px-4 py-3 text-sm text-gray-900">{{{{ issue.column }}}}</td>
+                                    <td class="px-4 py-3 text-sm">
+                                        <code class="px-2 py-1 bg-gray-100 rounded text-xs">{{{{ issue.current_type }}}}</code>
+                                    </td>
+                                    <td class="px-4 py-3 text-sm text-gray-600">{{{{ issue.issue }}}}</td>
+                                    <td class="px-4 py-3 text-sm text-blue-600">{{{{ issue.recommendation }}}}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        <span :class="impactBadgeClass(issue.impact)" class="px-2 py-1 text-xs font-semibold rounded">
+                                            {{{{ issue.impact }}}}
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <div v-if="filteredDataTypeIssues.length === 0" class="text-center py-8 text-gray-500">
+                            No data type issues found
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cardinality Warnings -->
+                <div class="stat-card" v-if="cardinalityWarnings.length > 0">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-4">High Cardinality Warnings</h2>
+                    <div class="bg-yellow-50 p-4 rounded mb-4">
+                        <strong>Note:</strong> High cardinality columns can impact performance and memory usage. Consider hiding or pre-aggregating these columns.
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Table</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Column</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reason</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Is Hidden</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Recommendation</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <tr v-for="warning in cardinalityWarnings" :key="warning.table + warning.column" class="hover:bg-gray-50">
+                                    <td class="px-4 py-3 text-sm font-medium text-gray-900">{{{{ warning.table }}}}</td>
+                                    <td class="px-4 py-3 text-sm text-gray-900">{{{{ warning.column }}}}</td>
+                                    <td class="px-4 py-3 text-sm text-gray-600">{{{{ warning.reason }}}}</td>
+                                    <td class="px-4 py-3 text-sm">
+                                        <span :class="warning.is_hidden ? 'text-green-600' : 'text-red-600'" class="font-semibold">
+                                            {{{{ warning.is_hidden ? '✓ Yes' : '✗ No' }}}}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 text-sm text-blue-600">{{{{ warning.recommendation }}}}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Code Quality Tab -->
+            <div v-show="activeTab === 'code-quality'" v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.dax_quality">
+                <div class="mb-6">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-2">DAX Code Quality Analysis</h1>
+                    <p class="text-gray-600">Complexity metrics and anti-pattern detection</p>
+                </div>
+
+                <!-- DAX Quality Summary -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+                    <div class="kpi-card">
+                        <h3>Total Measures</h3>
+                        <p class="text-4xl font-bold text-gray-900">{{{{ daxSummary.total_measures || 0 }}}}</p>
+                    </div>
+                    <div class="kpi-card">
+                        <h3>Avg Complexity</h3>
+                        <p class="text-4xl font-bold text-blue-600">{{{{ daxSummary.avg_complexity || 0 }}}}</p>
+                    </div>
+                    <div class="kpi-card">
+                        <h3>High Complexity</h3>
+                        <p class="text-4xl font-bold text-red-600">{{{{ daxSummary.high_complexity_measures || 0 }}}}</p>
+                    </div>
+                    <div class="kpi-card">
+                        <h3>Total Issues</h3>
+                        <p class="text-4xl font-bold text-yellow-600">{{{{ daxQualityIssues.length }}}}</p>
+                    </div>
+                </div>
+
+                <!-- DAX Quality Issues Table -->
+                <div class="stat-card">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-2xl font-bold text-gray-900">Code Quality Issues</h2>
+                        <div class="flex gap-2">
+                            <select v-model="daxSeverityFilter" class="px-3 py-1 text-sm border border-gray-300 rounded">
+                                <option value="all">All Severities</option>
+                                <option value="WARNING">Warnings</option>
+                                <option value="INFO">Info</option>
+                            </select>
+                            <select v-model="daxTypeFilter" class="px-3 py-1 text-sm border border-gray-300 rounded">
+                                <option value="all">All Types</option>
+                                <option value="high_complexity">High Complexity</option>
+                                <option value="deep_nesting">Deep Nesting</option>
+                                <option value="excessive_calculate">Excessive CALCULATE</option>
+                                <option value="no_variables">No Variables</option>
+                                <option value="sumx_filter">SUMX(FILTER) Pattern</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto max-h-[600px] overflow-y-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50 sticky top-0">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Severity</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortDaxQuality('type')">
+                                        Type
+                                        <span v-if="daxQualitySortBy === 'type'">{{{{ daxQualitySortDesc ? '▼' : '▲' }}}}</span>
+                                    </th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortDaxQuality('table')">
+                                        Table
+                                        <span v-if="daxQualitySortBy === 'table'">{{{{ daxQualitySortDesc ? '▼' : '▲' }}}}</span>
+                                    </th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortDaxQuality('measure')">
+                                        Measure
+                                        <span v-if="daxQualitySortBy === 'measure'">{{{{ daxQualitySortDesc ? '▼' : '▲' }}}}</span>
+                                    </th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Issue</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Recommendation</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortDaxQuality('complexity')">
+                                        Complexity
+                                        <span v-if="daxQualitySortBy === 'complexity'">{{{{ daxQualitySortDesc ? '▼' : '▲' }}}}</span>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <tr v-for="(issue, idx) in sortedDaxQualityIssues" :key="idx" class="hover:bg-gray-50">
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        <span :class="severityBadgeClass(issue.severity)" class="px-2 py-1 text-xs font-semibold rounded">
+                                            {{{{ issue.severity }}}}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 text-sm text-gray-600">{{{{ issue.type }}}}</td>
+                                    <td class="px-4 py-3 text-sm font-medium text-gray-900">{{{{ issue.table }}}}</td>
+                                    <td class="px-4 py-3 text-sm">
+                                        <button
+                                            @click="jumpToMeasureInModel(issue.table, issue.measure)"
+                                            class="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                                            title="Go to measure in Model tab"
+                                        >
+                                            {{{{ issue.measure }}}}
+                                        </button>
+                                    </td>
+                                    <td class="px-4 py-3 text-sm text-gray-600">{{{{ issue.issue }}}}</td>
+                                    <td class="px-4 py-3 text-sm text-blue-600">{{{{ issue.recommendation }}}}</td>
+                                    <td class="px-4 py-3 text-sm">
+                                        <span v-if="issue.complexity_score" :class="complexityBadgeClass(issue.complexity_score)" class="px-2 py-1 text-xs font-semibold rounded">
+                                            {{{{ issue.complexity_score }}}}
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <div v-if="sortedDaxQualityIssues.length === 0" class="text-center py-8 text-gray-500">
+                            No code quality issues found
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Column Lineage Tab -->
+            <div v-show="activeTab === 'lineage'" v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.column_lineage">
+                <div class="mb-6">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-2">Column Lineage & Impact Analysis</h1>
+                    <p class="text-gray-600">Track column usage and impact across the model</p>
+                </div>
+
+                <!-- Lineage Summary -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+                    <div class="kpi-card">
+                        <h3>Total Columns</h3>
+                        <p class="text-4xl font-bold text-gray-900">{{{{ Object.keys(columnLineage).length }}}}</p>
+                    </div>
+                    <div class="kpi-card">
+                        <h3>Orphan Columns</h3>
+                        <p class="text-4xl font-bold text-red-600">{{{{ orphanColumnsCount }}}}</p>
+                    </div>
+                    <div class="kpi-card">
+                        <h3>Calculated Columns</h3>
+                        <p class="text-4xl font-bold text-blue-600">{{{{ calculatedColumnsCount }}}}</p>
+                    </div>
+                    <div class="kpi-card">
+                        <h3>High Usage</h3>
+                        <p class="text-4xl font-bold text-green-600">{{{{ highUsageColumnsCount }}}}</p>
+                    </div>
+                </div>
+
+                <!-- Search and Filter -->
+                <div class="stat-card mb-6">
+                    <div class="flex items-center gap-4">
+                        <input
+                            v-model="lineageSearchQuery"
+                            type="text"
+                            placeholder="Search columns..."
+                            class="flex-1 px-4 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                        />
+                        <select v-model="lineageUsageFilter" class="px-3 py-2 border border-gray-300 rounded">
+                            <option value="all">All Columns</option>
+                            <option value="orphan">Orphan Only</option>
+                            <option value="calculated">Calculated Only</option>
+                            <option value="high-usage">High Usage (3+)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Column Lineage Table -->
+                <div class="stat-card">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-4">Column Impact Analysis</h2>
+                    <div class="overflow-x-auto max-h-[600px] overflow-y-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50 sticky top-0">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Table</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Column</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Data Type</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">In Measures</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">In Relationships</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">In Visuals</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usage Score</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <tr v-for="(lineage, colKey) in filteredColumnLineage" :key="colKey" class="hover:bg-gray-50">
+                                    <td class="px-4 py-3 text-sm font-medium text-gray-900">{{{{ lineage.table }}}}</td>
+                                    <td class="px-4 py-3 text-sm text-gray-900">{{{{ lineage.column }}}}</td>
+                                    <td class="px-4 py-3 text-sm">
+                                        <span v-if="lineage.is_calculated" class="px-2 py-1 text-xs font-semibold rounded bg-purple-100 text-purple-800">
+                                            Calculated
+                                        </span>
+                                        <span v-else class="px-2 py-1 text-xs font-semibold rounded bg-gray-100 text-gray-800">
+                                            Physical
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 text-sm text-gray-600 font-mono">{{{{ lineage.data_type }}}}</td>
+                                    <td class="px-4 py-3 text-sm text-center">
+                                        <span class="px-2 py-1 text-xs font-semibold rounded bg-blue-100 text-blue-800">
+                                            {{{{ lineage.used_in_measures?.length || 0 }}}}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 text-sm text-center">
+                                        <span class="px-2 py-1 text-xs font-semibold rounded bg-green-100 text-green-800">
+                                            {{{{ lineage.used_in_relationships?.length || 0 }}}}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 text-sm text-center">
+                                        <span class="px-2 py-1 text-xs font-semibold rounded bg-yellow-100 text-yellow-800">
+                                            {{{{ lineage.used_in_visuals?.length || 0 }}}}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 text-sm text-center">
+                                        <span :class="usageScoreBadgeClass(lineage.usage_score)" class="px-2 py-1 text-xs font-semibold rounded">
+                                            {{{{ lineage.usage_score }}}}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        <span v-if="lineage.is_orphan" class="px-2 py-1 text-xs font-semibold rounded bg-red-100 text-red-800">
+                                            Orphan
+                                        </span>
+                                        <span v-else class="px-2 py-1 text-xs font-semibold rounded bg-green-100 text-green-800">
+                                            In Use
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <div v-if="Object.keys(filteredColumnLineage).length === 0" class="text-center py-8 text-gray-500">
+                            No columns match the current filter
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Perspectives Tab -->
+            <div v-show="activeTab === 'perspectives'" v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.perspectives">
+                <div class="mb-6">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-2">Perspectives Analysis</h1>
+                    <p class="text-gray-600">Object visibility and perspective usage</p>
+                </div>
+
+                <div v-if="!perspectivesData.has_perspectives" class="stat-card">
+                    <div class="text-center py-12">
+                        <div class="text-6xl mb-4">👁️</div>
+                        <h3 class="text-xl font-semibold text-gray-700 mb-2">No Perspectives Defined</h3>
+                        <p class="text-gray-600">{{{{ perspectivesData.message }}}}</p>
+                    </div>
+                </div>
+
+                <div v-else>
+                    <!-- Perspectives Summary -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                        <div class="kpi-card">
+                            <h3>Total Perspectives</h3>
+                            <p class="text-4xl font-bold text-gray-900">{{{{ perspectivesCount }}}}</p>
+                        </div>
+                        <div class="kpi-card">
+                            <h3>Unused Perspectives</h3>
+                            <p class="text-4xl font-bold text-yellow-600">{{{{ perspectivesData.unused_perspectives?.length || 0 }}}}</p>
+                        </div>
+                        <div class="kpi-card">
+                            <h3>Active Perspectives</h3>
+                            <p class="text-4xl font-bold text-green-600">{{{{ perspectivesCount - (perspectivesData.unused_perspectives?.length || 0) }}}}</p>
+                        </div>
+                    </div>
+
+                    <!-- Perspectives Details -->
+                    <div class="stat-card">
+                        <h2 class="text-2xl font-bold text-gray-900 mb-4">Perspective Details</h2>
+                        <div class="space-y-4">
+                            <div v-for="perspective in perspectivesData.perspectives" :key="perspective.name" class="border border-gray-200 rounded-lg p-4">
+                                <div class="flex items-center justify-between mb-3">
+                                    <h3 class="text-lg font-semibold text-gray-900">{{{{ perspective.name }}}}</h3>
+                                    <span v-if="perspective.total_objects === 0" class="px-3 py-1 text-xs font-semibold rounded bg-yellow-100 text-yellow-800">
+                                        UNUSED
+                                    </span>
+                                    <span v-else class="px-3 py-1 text-xs font-semibold rounded bg-green-100 text-green-800">
+                                        ACTIVE
+                                    </span>
+                                </div>
+                                <div class="grid grid-cols-4 gap-4 text-sm">
+                                    <div class="text-center p-3 bg-blue-50 rounded">
+                                        <p class="text-gray-600 mb-1">Tables</p>
+                                        <p class="text-2xl font-bold text-blue-600">{{{{ perspective.table_count }}}}</p>
+                                    </div>
+                                    <div class="text-center p-3 bg-green-50 rounded">
+                                        <p class="text-gray-600 mb-1">Columns</p>
+                                        <p class="text-2xl font-bold text-green-600">{{{{ perspective.column_count }}}}</p>
+                                    </div>
+                                    <div class="text-center p-3 bg-purple-50 rounded">
+                                        <p class="text-gray-600 mb-1">Measures</p>
+                                        <p class="text-2xl font-bold text-purple-600">{{{{ perspective.measure_count }}}}</p>
+                                    </div>
+                                    <div class="text-center p-3 bg-gray-50 rounded">
+                                        <p class="text-gray-600 mb-1">Total Objects</p>
+                                        <p class="text-2xl font-bold text-gray-900">{{{{ perspective.total_objects }}}}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Command Palette -->
-        <div v-if="showCommandPalette" class="command-palette" @click.self="showCommandPalette = false">
+        <div v-if="showCommandPalette" v-cloak class="command-palette" @click.self="showCommandPalette = false">
             <div class="command-palette-content">
                 <div class="p-4 border-b border-gray-200">
                     <input
@@ -1295,6 +2068,7 @@ class PbipHtmlGenerator:
                     modelData: pbipData.model || {{}},
                     reportData: pbipData.report || null,
                     dependencies: pbipData.dependencies || {{}},
+                    enhancedData: pbipData.enhanced || null,
                     repositoryName: pbipData.repository_name || 'PBIP Repository',
 
                     activeTab: 'summary',
@@ -1310,10 +2084,15 @@ class PbipHtmlGenerator:
                     modelSubTab: 'tables',
                     measuresSearchQuery: '',
                     collapsedFolders: {{}},
+                    expandedMeasures: {{}},
 
                     // Report tab
                     selectedPage: null,
                     collapsedVisualGroups: {{}},
+
+                    // Usage tab
+                    collapsedUnusedMeasureFolders: {{}},
+                    collapsedUnusedColumnTables: {{}},
 
                     // Dependencies tab
                     selectedDependencyKey: null,
@@ -1322,6 +2101,25 @@ class PbipHtmlGenerator:
                     selectedColumnKey: null,
                     columnSearchQuery: '',
                     collapsedDependencyFolders: {{}},
+                    collapsedUsedByFolders: {{}},
+
+                    // Enhanced analysis tabs
+                    bpaSeverityFilter: 'all',
+                    bpaCategoryFilter: 'all',
+                    collapsedBpaObjectGroups: {{}},
+                    dataTypeImpactFilter: 'all',
+                    daxSeverityFilter: 'all',
+                    daxTypeFilter: 'all',
+                    daxQualitySortBy: 'complexity',
+                    daxQualitySortDesc: true,
+
+                    // Naming conventions
+                    namingSeverityFilter: 'all',
+                    namingTypeFilter: 'all',
+
+                    // Column lineage
+                    lineageSearchQuery: '',
+                    lineageUsageFilter: 'all',
 
                     commands: [
                         {{ name: 'Go to Summary', description: 'View summary and insights', action: () => this.activeTab = 'summary' }},
@@ -1329,6 +2127,9 @@ class PbipHtmlGenerator:
                         {{ name: 'Go to Report', description: 'View report visuals', action: () => this.activeTab = 'report' }},
                         {{ name: 'Go to Dependencies', description: 'Analyze dependencies', action: () => this.activeTab = 'dependencies' }},
                         {{ name: 'Go to Usage', description: 'View unused objects', action: () => this.activeTab = 'usage' }},
+                        {{ name: 'Go to Best Practices', description: 'View BPA violations', action: () => this.activeTab = 'best-practices' }},
+                        {{ name: 'Go to Data Quality', description: 'View data type and cardinality analysis', action: () => this.activeTab = 'data-quality' }},
+                        {{ name: 'Go to Code Quality', description: 'View DAX quality metrics', action: () => this.activeTab = 'code-quality' }},
                         {{ name: 'Export to CSV', description: 'Export model data to CSV', action: () => this.exportToCSV() }},
                         {{ name: 'Export to JSON', description: 'Export all data to JSON', action: () => this.exportToJSON() }},
                         {{ name: 'Toggle Dark Mode', description: 'Switch light/dark theme', action: () => this.toggleDarkMode() }}
@@ -1339,13 +2140,22 @@ class PbipHtmlGenerator:
             computed: {{
                 statistics() {{
                     const summary = this.dependencies.summary || {{}};
+
+                    // Calculate actual visible visual count (excluding filtered types)
+                    let visibleVisualCount = 0;
+                    if (this.reportData && this.reportData.pages) {{
+                        this.reportData.pages.forEach(page => {{
+                            visibleVisualCount += this.getVisibleVisualCount(page.visuals || []);
+                        }});
+                    }}
+
                     return {{
                         total_tables: summary.total_tables || 0,
                         total_measures: summary.total_measures || 0,
                         total_columns: summary.total_columns || 0,
                         total_relationships: summary.total_relationships || 0,
                         total_pages: summary.total_pages || 0,
-                        total_visuals: summary.total_visuals || 0,
+                        total_visuals: visibleVisualCount || summary.total_visuals || 0,
                         unused_measures: summary.unused_measures || 0,
                         unused_columns: summary.unused_columns || 0
                     }};
@@ -1623,6 +2433,314 @@ class PbipHtmlGenerator:
                         cmd.name.toLowerCase().includes(query) ||
                         cmd.description.toLowerCase().includes(query)
                     );
+                }},
+
+                unusedMeasuresByFolder() {{
+                    const folders = {{}};
+                    const tables = this.modelData.tables || [];
+                    const unusedSet = new Set(this.dependencies.unused_measures || []);
+
+                    tables.forEach(table => {{
+                        (table.measures || []).forEach(measure => {{
+                            const fullName = `${{table.name}}[${{measure.name}}]`;
+                            if (unusedSet.has(fullName)) {{
+                                const folder = measure.display_folder || 'No Folder';
+                                if (!folders[folder]) {{
+                                    folders[folder] = [];
+                                }}
+                                folders[folder].push(fullName);
+                            }}
+                        }});
+                    }});
+
+                    // Sort folders alphabetically
+                    const sortedFolders = {{}};
+                    Object.keys(folders).sort((a, b) => a.localeCompare(b)).forEach(key => {{
+                        sortedFolders[key] = folders[key];
+                    }});
+
+                    return sortedFolders;
+                }},
+
+                unusedColumnsByTable() {{
+                    const tables = {{}};
+                    const unusedSet = new Set(this.dependencies.unused_columns || []);
+
+                    (this.modelData.tables || []).forEach(table => {{
+                        (table.columns || []).forEach(column => {{
+                            const fullName = `${{table.name}}[${{column.name}}]`;
+                            if (unusedSet.has(fullName)) {{
+                                if (!tables[table.name]) {{
+                                    tables[table.name] = [];
+                                }}
+                                tables[table.name].push(fullName);
+                            }}
+                        }});
+                    }});
+
+                    // Sort tables alphabetically
+                    const sortedTables = {{}};
+                    Object.keys(tables).sort((a, b) => a.localeCompare(b)).forEach(key => {{
+                        sortedTables[key] = tables[key];
+                    }});
+
+                    return sortedTables;
+                }},
+
+                // Enhanced Analysis - BPA
+                bpaViolations() {{
+                    return this.enhancedData?.analyses?.bpa?.violations || [];
+                }},
+
+                bpaViolationsCount() {{
+                    return this.bpaViolations.length;
+                }},
+
+                bpaTotalViolations() {{
+                    return this.bpaViolations.length;
+                }},
+
+                bpaErrorCount() {{
+                    return this.bpaViolations.filter(v => v.severity === 'ERROR').length;
+                }},
+
+                bpaWarningCount() {{
+                    return this.bpaViolations.filter(v => v.severity === 'WARNING').length;
+                }},
+
+                bpaInfoCount() {{
+                    return this.bpaViolations.filter(v => v.severity === 'INFO').length;
+                }},
+
+                bpaCategoryBreakdown() {{
+                    const counts = {{}};
+                    this.bpaViolations.forEach(v => {{
+                        counts[v.category] = (counts[v.category] || 0) + 1;
+                    }});
+                    return counts;
+                }},
+
+                bpaCategories() {{
+                    return [...new Set(this.bpaViolations.map(v => v.category))];
+                }},
+
+                filteredBpaViolations() {{
+                    return this.bpaViolations.filter(v => {{
+                        const severityMatch = this.bpaSeverityFilter === 'all' || v.severity === this.bpaSeverityFilter;
+                        const categoryMatch = this.bpaCategoryFilter === 'all' || v.category === this.bpaCategoryFilter;
+                        return severityMatch && categoryMatch;
+                    }});
+                }},
+
+                // Group violations by object type
+                bpaObjectTypes() {{
+                    const types = [...new Set(this.filteredBpaViolations.map(v => v.object_type || 'Unknown'))];
+                    // Sort with common types first
+                    const order = ['Measure', 'Column', 'Table', 'Relationship', 'Model', 'Unknown'];
+                    return types.sort((a, b) => {{
+                        const aIndex = order.indexOf(a);
+                        const bIndex = order.indexOf(b);
+                        if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
+                        if (aIndex === -1) return 1;
+                        if (bIndex === -1) return -1;
+                        return aIndex - bIndex;
+                    }});
+                }},
+
+                // Group violations by object type and category
+                bpaViolationsByObjectType() {{
+                    const groups = {{}};
+                    this.filteredBpaViolations.forEach(v => {{
+                        const type = v.object_type || 'Unknown';
+                        if (!groups[type]) groups[type] = [];
+                        groups[type].push(v);
+                    }});
+                    return groups;
+                }},
+
+                // Ordered categories with Maintenance last
+                bpaOrderedCategories() {{
+                    const categories = [...new Set(this.filteredBpaViolations.map(v => v.category))];
+                    const maintenanceIndex = categories.indexOf('Maintenance');
+                    if (maintenanceIndex > -1) {{
+                        categories.splice(maintenanceIndex, 1);
+                        categories.push('Maintenance');
+                    }}
+                    return categories;
+                }},
+
+                // Group violations by object type and category
+                bpaViolationsByObjectAndCategory() {{
+                    const groups = {{}};
+                    this.filteredBpaViolations.forEach(v => {{
+                        const type = v.object_type || 'Unknown';
+                        const category = v.category;
+                        if (!groups[type]) groups[type] = {{}};
+                        if (!groups[type][category]) groups[type][category] = [];
+                        groups[type][category].push(v);
+                    }});
+                    return groups;
+                }},
+
+                // Enhanced Analysis - Data Quality
+                dataTypeIssues() {{
+                    return this.enhancedData?.analyses?.data_types?.type_issues || [];
+                }},
+
+                dataQualityIssuesCount() {{
+                    return this.dataTypeIssues.length + this.cardinalityWarnings.length;
+                }},
+
+                dataTypeHighImpactCount() {{
+                    return this.dataTypeIssues.filter(i => i.impact === 'HIGH').length;
+                }},
+
+                dataTypeSummary() {{
+                    const summary = this.enhancedData?.analyses?.data_types?.type_summary || {{}};
+                    // Filter out empty or null type names
+                    const filtered = {{}};
+                    Object.keys(summary).forEach(key => {{
+                        if (key && key.trim() !== '') {{
+                            filtered[key] = summary[key];
+                        }}
+                    }});
+                    return filtered;
+                }},
+
+                cardinalityWarnings() {{
+                    return this.enhancedData?.analyses?.cardinality?.cardinality_warnings || [];
+                }},
+
+                filteredDataTypeIssues() {{
+                    return this.dataTypeIssues.filter(issue => {{
+                        return this.dataTypeImpactFilter === 'all' || issue.impact === this.dataTypeImpactFilter;
+                    }});
+                }},
+
+                // Enhanced Analysis - DAX Quality
+                daxQualityIssues() {{
+                    return this.enhancedData?.analyses?.dax_quality?.quality_issues || [];
+                }},
+
+                daxQualityIssuesCount() {{
+                    return this.daxQualityIssues.length;
+                }},
+
+                daxSummary() {{
+                    return this.enhancedData?.analyses?.dax_quality?.summary || {{}};
+                }},
+
+                filteredDaxQualityIssues() {{
+                    return this.daxQualityIssues.filter(issue => {{
+                        const severityMatch = this.daxSeverityFilter === 'all' || issue.severity === this.daxSeverityFilter;
+                        const typeMatch = this.daxTypeFilter === 'all' || issue.type === this.daxTypeFilter;
+                        return severityMatch && typeMatch;
+                    }});
+                }},
+
+                sortedDaxQualityIssues() {{
+                    const issues = [...this.filteredDaxQualityIssues];
+                    const sortBy = this.daxQualitySortBy;
+                    const desc = this.daxQualitySortDesc;
+
+                    issues.sort((a, b) => {{
+                        let aVal, bVal;
+
+                        if (sortBy === 'complexity') {{
+                            aVal = a.complexity_score || 0;
+                            bVal = b.complexity_score || 0;
+                            return desc ? bVal - aVal : aVal - bVal;
+                        }} else if (sortBy === 'type') {{
+                            aVal = a.type || '';
+                            bVal = b.type || '';
+                        }} else if (sortBy === 'table') {{
+                            aVal = a.table || '';
+                            bVal = b.table || '';
+                        }} else if (sortBy === 'measure') {{
+                            aVal = a.measure || '';
+                            bVal = b.measure || '';
+                        }}
+
+                        if (typeof aVal === 'string') {{
+                            return desc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
+                        }}
+                        return 0;
+                    }});
+
+                    return issues;
+                }},
+
+                // Naming Conventions
+                namingViolations() {{
+                    return this.enhancedData?.analyses?.naming_conventions?.violations || [];
+                }},
+
+                namingViolationsCount() {{
+                    return this.namingViolations.length;
+                }},
+
+                namingSummary() {{
+                    return this.enhancedData?.analyses?.naming_conventions?.summary || {{}};
+                }},
+
+                filteredNamingViolations() {{
+                    return this.namingViolations.filter(violation => {{
+                        const severityMatch = this.namingSeverityFilter === 'all' || violation.severity === this.namingSeverityFilter;
+                        const typeMatch = this.namingTypeFilter === 'all' || violation.type === this.namingTypeFilter;
+                        return severityMatch && typeMatch;
+                    }});
+                }},
+
+                // Column Lineage
+                columnLineage() {{
+                    return this.enhancedData?.analyses?.column_lineage || {{}};
+                }},
+
+                filteredColumnLineage() {{
+                    const allColumns = this.columnLineage;
+                    const query = this.lineageSearchQuery.toLowerCase();
+
+                    return Object.fromEntries(
+                        Object.entries(allColumns).filter(([key, lineage]) => {{
+                            // Search filter
+                            const searchMatch = !query ||
+                                lineage.table.toLowerCase().includes(query) ||
+                                lineage.column.toLowerCase().includes(query);
+
+                            // Usage filter
+                            let usageMatch = true;
+                            if (this.lineageUsageFilter === 'orphan') {{
+                                usageMatch = lineage.is_orphan;
+                            }} else if (this.lineageUsageFilter === 'calculated') {{
+                                usageMatch = lineage.is_calculated;
+                            }} else if (this.lineageUsageFilter === 'high-usage') {{
+                                usageMatch = lineage.usage_score >= 3;
+                            }}
+
+                            return searchMatch && usageMatch;
+                        }})
+                    );
+                }},
+
+                orphanColumnsCount() {{
+                    return Object.values(this.columnLineage).filter(l => l.is_orphan).length;
+                }},
+
+                calculatedColumnsCount() {{
+                    return Object.values(this.columnLineage).filter(l => l.is_calculated).length;
+                }},
+
+                highUsageColumnsCount() {{
+                    return Object.values(this.columnLineage).filter(l => l.usage_score >= 3).length;
+                }},
+
+                // Perspectives
+                perspectivesData() {{
+                    return this.enhancedData?.analyses?.perspectives || {{ has_perspectives: false }};
+                }},
+
+                perspectivesCount() {{
+                    return this.perspectivesData.perspective_count || 0;
                 }}
             }},
 
@@ -1669,6 +2787,42 @@ class PbipHtmlGenerator:
                     a.click();
                 }},
 
+                // Enhanced Analysis - Helper Methods
+                bpaSeverityClass(severity) {{
+                    if (severity === 'ERROR') return 'bg-red-100 text-red-800';
+                    if (severity === 'WARNING') return 'bg-yellow-100 text-yellow-800';
+                    if (severity === 'INFO') return 'bg-blue-100 text-blue-800';
+                    return 'bg-gray-100 text-gray-800';
+                }},
+
+                severityBadgeClass(severity) {{
+                    if (severity === 'ERROR') return 'bg-red-100 text-red-800';
+                    if (severity === 'WARNING') return 'bg-yellow-100 text-yellow-800';
+                    if (severity === 'INFO') return 'bg-blue-100 text-blue-800';
+                    return 'bg-gray-100 text-gray-800';
+                }},
+
+                impactBadgeClass(impact) {{
+                    if (impact === 'HIGH') return 'bg-red-100 text-red-800';
+                    if (impact === 'MEDIUM') return 'bg-yellow-100 text-yellow-800';
+                    if (impact === 'LOW') return 'bg-green-100 text-green-800';
+                    return 'bg-gray-100 text-gray-800';
+                }},
+
+                complexityBadgeClass(score) {{
+                    if (score > 20) return 'bg-red-100 text-red-800';
+                    if (score > 15) return 'bg-orange-100 text-orange-800';
+                    if (score > 10) return 'bg-yellow-100 text-yellow-800';
+                    return 'bg-green-100 text-green-800';
+                }},
+
+                usageScoreBadgeClass(score) {{
+                    if (score === 0) return 'bg-red-100 text-red-800';
+                    if (score <= 2) return 'bg-yellow-100 text-yellow-800';
+                    if (score <= 5) return 'bg-blue-100 text-blue-800';
+                    return 'bg-green-100 text-green-800';
+                }},
+
                 selectDependencyObject(key) {{
                     this.selectedDependencyKey = key;
                 }},
@@ -1687,10 +2841,13 @@ class PbipHtmlGenerator:
                             const measures = visual.fields?.measures || [];
                             measures.forEach(m => {{
                                 if (m.table === tableName && m.measure === measureName) {{
+                                    const visualType = visual.visual_type || 'Unknown';
+                                    const visualName = visual.visual_name || visual.title || visualType || 'Unnamed Visual';
                                     usage.push({{
                                         pageName: page.display_name || page.name,
-                                        visualType: visual.visual_type || 'Unknown',
-                                        visualId: visual.id
+                                        visualType: visualType,
+                                        visualId: visual.id,
+                                        visualName: visualName
                                     }});
                                 }}
                             }});
@@ -1705,25 +2862,34 @@ class PbipHtmlGenerator:
 
                     const usage = [];
                     const match = columnKey.match(/(.+?)\\[(.+?)\\]/);
-                    if (!match) return usage;
+                    if (!match) {{
+                        console.log('No match for columnKey:', columnKey);
+                        return usage;
+                    }}
 
                     const [, tableName, columnName] = match;
+                    console.log('Searching for column:', tableName, columnName);
 
                     this.reportData.pages.forEach(page => {{
                         (page.visuals || []).forEach(visual => {{
                             const columns = visual.fields?.columns || [];
                             columns.forEach(c => {{
                                 if (c.table === tableName && c.column === columnName) {{
+                                    const visualType = visual.visual_type || 'Unknown';
+                                    const visualName = visual.visual_name || visual.title || visualType || 'Unnamed Visual';
+                                    console.log('Found match in visual:', visualType, page.name);
                                     usage.push({{
                                         pageName: page.display_name || page.name,
-                                        visualType: visual.visual_type || 'Unknown',
-                                        visualId: visual.id
+                                        visualType: visualType,
+                                        visualId: visual.id,
+                                        visualName: visualName
                                     }});
                                 }}
                             }});
                         }});
                     }});
 
+                    console.log('Total usage found:', usage.length);
                     return usage;
                 }},
 
@@ -1741,6 +2907,89 @@ class PbipHtmlGenerator:
 
                 toggleVisualGroup(visualType) {{
                     this.collapsedVisualGroups[visualType] = !this.collapsedVisualGroups[visualType];
+                }},
+
+                toggleMeasureExpansion(measureName) {{
+                    this.expandedMeasures[measureName] = !this.expandedMeasures[measureName];
+                }},
+
+                toggleUnusedMeasureFolder(folderName) {{
+                    this.collapsedUnusedMeasureFolders[folderName] = !this.collapsedUnusedMeasureFolders[folderName];
+                }},
+
+                toggleBpaObjectGroup(objectType) {{
+                    this.collapsedBpaObjectGroups[objectType] = !this.collapsedBpaObjectGroups[objectType];
+                }},
+
+                sortDaxQuality(column) {{
+                    if (this.daxQualitySortBy === column) {{
+                        this.daxQualitySortDesc = !this.daxQualitySortDesc;
+                    }} else {{
+                        this.daxQualitySortBy = column;
+                        this.daxQualitySortDesc = column === 'complexity'; // Default descending for complexity
+                    }}
+                }},
+
+                jumpToMeasureInModel(tableName, measureName) {{
+                    // Switch to Model tab
+                    this.activeTab = 'model';
+
+                    // Wait for next tick to ensure DOM is updated
+                    this.$nextTick(() => {{
+                        // Select the table in the model view
+                        const table = this.filteredTables.find(t => t.name === tableName);
+                        if (table) {{
+                            this.selectedTable = table;
+                            this.modelDetailTab = 'measures'; // Switch to measures sub-tab
+
+                            // Find the measure and expand it
+                            this.$nextTick(() => {{
+                                this.expandedMeasures[measureName] = true;
+
+                                // Scroll to the measure
+                                setTimeout(() => {{
+                                    const measureElement = document.querySelector(`[data-measure="${{measureName}}"]`);
+                                    if (measureElement) {{
+                                        measureElement.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+                                        measureElement.classList.add('highlight-flash');
+                                        setTimeout(() => measureElement.classList.remove('highlight-flash'), 2000);
+                                    }}
+                                }}, 100);
+                            }});
+                        }}
+                    }});
+                }},
+
+                toggleUnusedColumnTable(tableName) {{
+                    this.collapsedUnusedColumnTables[tableName] = !this.collapsedUnusedColumnTables[tableName];
+                }},
+
+                toggleUsedByFolder(folderName) {{
+                    this.collapsedUsedByFolders[folderName] = !this.collapsedUsedByFolders[folderName];
+                }},
+
+                expandAllUnusedMeasures() {{
+                    Object.keys(this.unusedMeasuresByFolder).forEach(folderName => {{
+                        this.collapsedUnusedMeasureFolders[folderName] = false;
+                    }});
+                }},
+
+                collapseAllUnusedMeasures() {{
+                    Object.keys(this.unusedMeasuresByFolder).forEach(folderName => {{
+                        this.collapsedUnusedMeasureFolders[folderName] = true;
+                    }});
+                }},
+
+                expandAllUnusedColumns() {{
+                    Object.keys(this.unusedColumnsByTable).forEach(tableName => {{
+                        this.collapsedUnusedColumnTables[tableName] = false;
+                    }});
+                }},
+
+                collapseAllUnusedColumns() {{
+                    Object.keys(this.unusedColumnsByTable).forEach(tableName => {{
+                        this.collapsedUnusedColumnTables[tableName] = true;
+                    }});
                 }},
 
                 getTableType(tableName) {{
@@ -1771,6 +3020,26 @@ class PbipHtmlGenerator:
                 getTableRelationshipCount(tableName) {{
                     const rels = this.modelData.relationships || [];
                     return rels.filter(r => r.from_table === tableName || r.to_table === tableName).length;
+                }},
+
+                isColumnInRelationship(tableName, columnName) {{
+                    const rels = this.modelData.relationships || [];
+
+                    // Helper to extract column name from format like "'TableName'.'ColumnName'" or "'TableName'.ColumnName"
+                    const extractColumnName = (colRef) => {{
+                        if (!colRef) return '';
+                        // Match patterns: 'Table'.'Column' or 'Table'.Column
+                        const match = colRef.match(/['\"]([^'\"]+)['\"]\.['\"]*([^'\"]+)['\"]*$/);
+                        if (match) return match[2];
+                        return colRef;
+                    }};
+
+                    return rels.some(r => {{
+                        const fromCol = extractColumnName(r.from_column);
+                        const toCol = extractColumnName(r.to_column);
+                        return (r.from_table === tableName && fromCol === columnName) ||
+                               (r.to_table === tableName && toCol === columnName);
+                    }});
                 }},
 
                 getTableUsageCount(tableName) {{
@@ -1816,12 +3085,81 @@ class PbipHtmlGenerator:
                     const groups = {{}};
                     (visuals || []).forEach(visual => {{
                         const type = visual.visual_type || 'Unknown';
+                        // Filter out unwanted visual types
+                        if (type === 'Unknown' || type === 'shape' || type === 'image' || type === 'actionButton') {{
+                            return; // Skip these types
+                        }}
                         if (!groups[type]) {{
                             groups[type] = [];
                         }}
                         groups[type].push(visual);
                     }});
                     return groups;
+                }},
+
+                getVisibleVisualCount(visuals) {{
+                    if (!visuals) return 0;
+                    return visuals.filter(visual => {{
+                        const type = visual.visual_type || 'Unknown';
+                        return !(type === 'Unknown' || type === 'shape' || type === 'image' || type === 'actionButton');
+                    }}).length;
+                }},
+
+                groupVisualUsageByPage(visualUsage) {{
+                    const grouped = {{}};
+                    (visualUsage || []).forEach(usage => {{
+                        const pageName = usage.pageName || 'Unknown Page';
+                        if (!grouped[pageName]) {{
+                            grouped[pageName] = [];
+                        }}
+                        grouped[pageName].push(usage);
+                    }});
+                    return grouped;
+                }},
+
+                groupMeasuresByFolder(measureNames) {{
+                    const grouped = {{}};
+                    (measureNames || []).forEach(measureName => {{
+                        // Parse measure name: Table[Measure]
+                        const match = measureName.match(/^(.+?)\[(.+?)\]$/);
+                        if (!match) {{
+                            const folder = 'No Folder';
+                            if (!grouped[folder]) grouped[folder] = [];
+                            grouped[folder].push(measureName);
+                            return;
+                        }}
+
+                        const [, tableName, measureSimpleName] = match;
+
+                        // Find the measure in model data to get its folder
+                        let measureFolder = 'No Folder';
+                        const table = (this.modelData.tables || []).find(t => t.name === tableName);
+                        if (table) {{
+                            const measure = (table.measures || []).find(m => m.name === measureSimpleName);
+                            if (measure && measure.display_folder) {{
+                                measureFolder = measure.display_folder;
+                            }}
+                        }}
+
+                        if (!grouped[measureFolder]) {{
+                            grouped[measureFolder] = [];
+                        }}
+                        grouped[measureFolder].push(measureName);
+                    }});
+                    return grouped;
+                }},
+
+                groupColumnUsageByPage(tableName, columnName) {{
+                    const usage = this.getColumnVisualUsage(tableName, columnName);
+                    const grouped = {{}};
+                    usage.forEach(visual => {{
+                        const pageName = visual.pageName || 'Unknown Page';
+                        if (!grouped[pageName]) {{
+                            grouped[pageName] = [];
+                        }}
+                        grouped[pageName].push(visual);
+                    }});
+                    return grouped;
                 }},
 
                 getVisualIcon(visualType) {{
@@ -1887,11 +3225,35 @@ class PbipHtmlGenerator:
                             const measures = fields.measures || [];
                             const columns = fields.columns || [];
                             if (measures.some(m => m.table === tableName) || columns.some(c => c.table === tableName)) {{
+                                const visualType = visual.visual_type || 'Unknown';
+                                const visualName = visual.visual_name || visual.title || visualType || 'Unnamed Visual';
                                 usage.push({{
                                     pageName: page.display_name || page.name,
-                                    visualType: visual.visual_type || 'Unknown',
+                                    visualType: visualType,
                                     visualId: visual.id,
-                                    visualName: visual.visual_name || 'Unnamed'
+                                    visualName: visualName
+                                }});
+                            }}
+                        }});
+                    }});
+                    return usage;
+                }},
+
+                getColumnVisualUsage(tableName, columnName) {{
+                    if (!this.reportData || !this.reportData.pages) return [];
+                    const usage = [];
+                    this.reportData.pages.forEach(page => {{
+                        (page.visuals || []).forEach(visual => {{
+                            const fields = visual.fields || {{}};
+                            const columns = fields.columns || [];
+                            if (columns.some(c => c.table === tableName && c.column === columnName)) {{
+                                const visualType = visual.visual_type || 'Unknown';
+                                const visualName = visual.visual_name || visual.title || visualType || 'Unnamed Visual';
+                                usage.push({{
+                                    pageName: page.display_name || page.name,
+                                    visualType: visualType,
+                                    visualId: visual.id,
+                                    visualName: visualName
                                 }});
                             }}
                         }});
@@ -1914,12 +3276,12 @@ class PbipHtmlGenerator:
                 // Initialize all folders as collapsed
                 // Collapse measure folders
                 Object.keys(this.measuresByFolder).forEach(folderName => {{
-                    this.$set(this.collapsedFolders, folderName, true);
+                    this.collapsedFolders[folderName] = true;
                 }});
 
                 // Collapse dependency folders (columns grouped by table)
                 Object.keys(this.filteredColumnsForDependency).forEach(tableName => {{
-                    this.$set(this.collapsedDependencyFolders, tableName, true);
+                    this.collapsedDependencyFolders[tableName] = true;
                 }});
 
                 // Collapse visual type groups
@@ -1927,10 +3289,20 @@ class PbipHtmlGenerator:
                     this.reportData.pages.forEach(page => {{
                         const visualGroups = this.visualsByType(page.visuals || []);
                         Object.keys(visualGroups).forEach(visualType => {{
-                            this.$set(this.collapsedVisualGroups, visualType, true);
+                            this.collapsedVisualGroups[visualType] = true;
                         }});
                     }});
                 }}
+
+                // Start with unused measure folders expanded (set to false)
+                Object.keys(this.unusedMeasuresByFolder).forEach(folderName => {{
+                    this.collapsedUnusedMeasureFolders[folderName] = false;
+                }});
+
+                // Start with unused column tables expanded (set to false)
+                Object.keys(this.unusedColumnsByTable).forEach(tableName => {{
+                    this.collapsedUnusedColumnTables[tableName] = false;
+                }});
 
                 // Keyboard shortcuts
                 document.addEventListener('keydown', (e) => {{

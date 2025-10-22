@@ -334,14 +334,28 @@ class PbipDependencyEngine:
         # Build set of used measures
         used_measures = set()
 
-        # Used in other measures
-        for deps in self.measure_to_measure.values():
-            used_measures.update(deps)
-
-        # Used in visuals
+        # First, find measures directly used in visuals
+        measures_in_visuals = set()
         if self.report:
             for visual_deps in self.visual_dependencies.values():
-                used_measures.update(visual_deps.get("measures", []))
+                measures_in_visuals.update(visual_deps.get("measures", []))
+
+        # Now recursively find all measures that these depend on (transitive closure)
+        # If measure A is used in a visual and depends on measure B, then both A and B are used
+        def add_dependencies_recursively(measure_key: str):
+            """Recursively add a measure and all its dependencies to used_measures."""
+            if measure_key in used_measures:
+                return  # Already processed
+            used_measures.add(measure_key)
+
+            # Get dependencies of this measure (measures it depends on)
+            deps = self.measure_to_measure.get(measure_key, [])
+            for dep_key in deps:
+                add_dependencies_recursively(dep_key)
+
+        # Process all measures that are directly used in visuals
+        for measure_key in measures_in_visuals:
+            add_dependencies_recursively(measure_key)
 
         # Build set of used columns
         used_columns = set()
@@ -358,9 +372,9 @@ class PbipDependencyEngine:
         # Used in relationships
         for rel in self.model.get("relationships", []):
             from_table = rel.get("from_table", "")
-            from_col = rel.get("from_column_name", "")
+            from_col = rel.get("from_column", "") or rel.get("from_column_name", "")
             to_table = rel.get("to_table", "")
-            to_col = rel.get("to_column_name", "")
+            to_col = rel.get("to_column", "") or rel.get("to_column_name", "")
 
             if from_table and from_col:
                 used_columns.add(f"{from_table}[{from_col}]")

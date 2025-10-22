@@ -60,6 +60,7 @@ from core.pbip_model_analyzer import TmdlModelAnalyzer
 from core.pbip_report_analyzer import PbirReportAnalyzer
 from core.pbip_dependency_engine import PbipDependencyEngine
 from core.pbip_html_generator import PbipHtmlGenerator
+from core.pbip_enhanced_analyzer import EnhancedPbipAnalyzer
 
 BPA_AVAILABLE = False
 BPA_STATUS = {"available": False, "reason": None}
@@ -428,6 +429,22 @@ def _handle_pbip_analysis(arguments: Any) -> dict:
         dep_engine = PbipDependencyEngine(model_data, report_data)
         dependencies = dep_engine.analyze_all_dependencies()
 
+        # Step 4.5: Enhanced analysis (BPA, lineage, quality metrics)
+        enhanced_results = None
+        try:
+            logger.info("Running enhanced analysis with BPA rules...")
+            enhanced_analyzer = EnhancedPbipAnalyzer(model_data, report_data, dependencies)
+            # Use comprehensive BPA rules by default
+            bpa_rules_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "config", "bpa_rules_comprehensive.json"
+            )
+            enhanced_results = enhanced_analyzer.run_full_analysis(bpa_rules_path)
+            logger.info("Enhanced analysis complete")
+        except Exception as e:
+            logger.warning(f"Enhanced analysis failed, continuing with basic report: {e}")
+            enhanced_results = None
+
         # Step 5: Generate HTML report
         generator = PbipHtmlGenerator()
         html_path = generator.generate_full_report(
@@ -435,11 +452,23 @@ def _handle_pbip_analysis(arguments: Any) -> dict:
             report_data,
             dependencies,
             output_path,
-            os.path.basename(repo_path)
+            os.path.basename(repo_path),
+            enhanced_results=enhanced_results
         )
 
         # Build summary
         summary = dependencies.get("summary", {})
+
+        # Add enhanced analysis summary
+        enhanced_summary = {}
+        if enhanced_results:
+            bpa_violations = 0
+            if "analyses" in enhanced_results and "bpa_violations" in enhanced_results["analyses"]:
+                bpa_violations = len(enhanced_results["analyses"]["bpa_violations"].get("violations", []))
+            enhanced_summary = {
+                "bpa_violations": bpa_violations,
+                "enhanced_analysis_included": True
+            }
 
         return {
             "success": True,
@@ -457,7 +486,8 @@ def _handle_pbip_analysis(arguments: Any) -> dict:
                 "pages": summary.get("total_pages", 0),
                 "visuals": summary.get("total_visuals", 0),
                 "unused_measures": summary.get("unused_measures", 0),
-                "unused_columns": summary.get("unused_columns", 0)
+                "unused_columns": summary.get("unused_columns", 0),
+                **enhanced_summary
             },
             "message": f"Analysis complete! Open HTML report: {html_path}"
         }

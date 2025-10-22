@@ -84,7 +84,9 @@ class TmdlParser:
             if self._is_object_declaration(content_line):
                 # First extract inline expression if present (before _parse_object_declaration modifies it)
                 inline_expression = None
-                if '=' in content_line:
+                has_equals = '=' in content_line
+
+                if has_equals:
                     # Split on first '=' to separate declaration from expression
                     # e.g., "measure Period = SELECTEDVALUE(...)" -> ["measure Period ", " SELECTEDVALUE(...)"]
                     parts = content_line.split('=', 1)
@@ -97,9 +99,49 @@ class TmdlParser:
                 obj_type, obj_name = self._parse_object_declaration(content_line)
                 new_obj = {"_type": obj_type, "_name": obj_name}
 
-                # Add inline expression if found
-                if inline_expression:
-                    new_obj["expression"] = inline_expression
+                # Handle multi-line expressions for measures/columns with '='
+                # But DON'T advance i - let the normal loop process properties that follow
+                if has_equals and (obj_type == 'measure' or obj_type == 'column'):
+                    expr_lines = [inline_expression] if inline_expression else []
+                    peek_idx = i + 1
+
+                    while peek_idx < len(lines):
+                        peek_line = lines[peek_idx]
+                        peek_indent = self._get_indent_level(peek_line)
+                        peek_stripped = peek_line.strip()
+
+                        # Skip completely empty lines but continue checking
+                        if not peek_stripped:
+                            # If line has more indentation than declaration, include it as blank line
+                            if peek_indent > indent:
+                                expr_lines.append(peek_line.rstrip())
+                                peek_idx += 1
+                                continue
+                            else:
+                                # Empty line at same or less indent means end of expression
+                                break
+
+                        # Check if this is a property line (displayFolder:, formatString:, etc.)
+                        # Properties come AFTER the expression
+                        if ':' in peek_stripped and peek_indent == indent + 1:
+                            # This is a property, stop collecting expression
+                            break
+
+                        # If next line is indented more than parent level (indent + 1), it's part of the expression
+                        if peek_indent > indent + 1:
+                            expr_lines.append(peek_line.rstrip())
+                            peek_idx += 1
+                        # If next line is at child level (indent + 1) but not a property, include it
+                        elif peek_indent == indent + 1 and not self._is_new_property(peek_stripped):
+                            expr_lines.append(peek_line.rstrip())
+                            peek_idx += 1
+                        else:
+                            break
+
+                    # Set expression if we found any lines
+                    if expr_lines:
+                        new_obj["expression"] = '\n'.join(expr_lines)
+                    # DON'T advance i here - let the loop process properties
 
                 # Add to parent
                 if obj_type not in current_parent:

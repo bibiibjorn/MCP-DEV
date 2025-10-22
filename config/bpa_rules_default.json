@@ -1,0 +1,207 @@
+{
+  "name": "Power BI Best Practices - Default Rules",
+  "description": "Comprehensive best practice rules for Power BI models based on Microsoft and community standards",
+  "version": "1.0",
+  "rules": [
+    {
+      "ID": "AVOID_BIDIRECTIONAL_RELATIONSHIPS",
+      "Name": "Avoid bi-directional relationships",
+      "Category": "Performance",
+      "Description": "Bi-directional cross-filtering can create ambiguous query paths and impact performance. Use single-direction relationships whenever possible.",
+      "Severity": 2,
+      "Scope": "Relationship",
+      "Expression": "crossFilteringBehavior == \"BothDirections\"",
+      "CompatibilityLevel": 1200
+    },
+    {
+      "ID": "AVOID_MANY_TO_MANY",
+      "Name": "Avoid many-to-many relationships",
+      "Category": "Performance",
+      "Description": "Many-to-many relationships can cause performance issues and unexpected results. Use bridge tables instead.",
+      "Severity": 3,
+      "Scope": "Relationship",
+      "Expression": "multiplicity == \"ManyToMany\" or cardinality == \"ManyToMany\"",
+      "CompatibilityLevel": 1200
+    },
+    {
+      "ID": "REMOVE_UNUSED_COLUMNS",
+      "Name": "Remove unused columns",
+      "Category": "Maintenance",
+      "Description": "Columns that are not used in any relationships, measures, or visuals should be removed to reduce model size.",
+      "Severity": 1,
+      "Scope": "DataColumn",
+      "Expression": "Model.AllMeasures.Any(current.Name in Expression) == false and Model.AllRelationships.Any(FromColumn == current.Name or ToColumn == current.Name) == false",
+      "CompatibilityLevel": 1200
+    },
+    {
+      "ID": "USE_DIVIDE_FUNCTION",
+      "Name": "Use DIVIDE function instead of division operator",
+      "Category": "DAX Expressions",
+      "Description": "The DIVIDE function is safer than the / operator as it handles division by zero automatically.",
+      "Severity": 2,
+      "Scope": "Measure",
+      "Expression": "RegEx.IsMatch(Expression, \"\\\\s/\\\\s\") and not RegEx.IsMatch(Expression, \"DIVIDE\")",
+      "CompatibilityLevel": 1200
+    },
+    {
+      "ID": "AVOID_EXCESSIVE_CALCULATE",
+      "Name": "Avoid excessive use of CALCULATE",
+      "Category": "DAX Expressions",
+      "Description": "Multiple nested CALCULATE functions can be simplified and may impact performance.",
+      "Severity": 1,
+      "Scope": "Measure",
+      "Expression": "Convert.ToInt64(RegEx.Matches(Expression, \"CALCULATE\").Count) > 3",
+      "CompatibilityLevel": 1200
+    },
+    {
+      "ID": "AVOID_SUMX_FILTER",
+      "Name": "Avoid SUMX(FILTER(...)) pattern",
+      "Category": "Performance",
+      "Description": "SUMX(FILTER(...)) is inefficient. Use CALCULATE with filters instead for better performance.",
+      "Severity": 2,
+      "Scope": "Measure",
+      "Expression": "RegEx.IsMatch(Expression, \"SUMX\\\\s*\\\\(\\\\s*FILTER\", \"(?i)\")",
+      "CompatibilityLevel": 1200
+    },
+    {
+      "ID": "SET_IS_AVAILABLE_IN_MDX_FALSE",
+      "Name": "Set IsAvailableInMdx to false on non-attribute columns",
+      "Category": "Metadata",
+      "Description": "Columns that are not attributes should have IsAvailableInMdx set to false to improve processing and query performance.",
+      "Severity": 1,
+      "Scope": "DataColumn, CalculatedColumn",
+      "Expression": "IsAvailableInMdx == true and not IsKey and not RegEx.IsMatch(Name, \"(ID|Key)$\")",
+      "CompatibilityLevel": 1200
+    },
+    {
+      "ID": "PROVIDE_FORMAT_STRING",
+      "Name": "Provide format string for measures",
+      "Category": "Formatting",
+      "Description": "All measures should have a format string defined for consistent display across visuals.",
+      "Severity": 1,
+      "Scope": "Measure",
+      "Expression": "string.IsNullOrWhiteSpace(FormatString)",
+      "CompatibilityLevel": 1200
+    },
+    {
+      "ID": "ADD_MEASURE_DESCRIPTIONS",
+      "Name": "Add descriptions to measures",
+      "Category": "Maintenance",
+      "Description": "Measures should have descriptions to help users understand their purpose and calculation logic.",
+      "Severity": 1,
+      "Scope": "Measure",
+      "Expression": "string.IsNullOrWhiteSpace(Description) and not Name.ToUpper().Contains(\"TEST\")",
+      "CompatibilityLevel": 1200
+    },
+    {
+      "ID": "HIDE_FOREIGN_KEYS",
+      "Name": "Hide foreign key columns",
+      "Category": "Metadata",
+      "Description": "Foreign key columns used only in relationships should be hidden from report view.",
+      "Severity": 1,
+      "Scope": "DataColumn",
+      "Expression": "not IsHidden and Model.AllRelationships.Any(FromColumn == current.Name or ToColumn == current.Name) and not RegEx.IsMatch(Name, \"Date|Time|Year|Month|Quarter\")",
+      "CompatibilityLevel": 1200
+    },
+    {
+      "ID": "MARK_DATE_TABLE",
+      "Name": "Mark date tables",
+      "Category": "Time Intelligence",
+      "Description": "Tables containing date columns should be marked as date tables for proper time intelligence functionality.",
+      "Severity": 2,
+      "Scope": "Table",
+      "Expression": "not DataCategory == \"Time\" and RegEx.IsMatch(Name, \"(Date|Calendar|Time)\", \"(?i)\") and Columns.Any(DataType == \"DateTime\")",
+      "CompatibilityLevel": 1200
+    },
+    {
+      "ID": "AVOID_CALCULATED_COLUMNS_IN_RELATIONSHIPS",
+      "Name": "Avoid using calculated columns in relationships",
+      "Category": "Performance",
+      "Description": "Calculated columns in relationships can cause performance issues. Use source data columns instead.",
+      "Severity": 2,
+      "Scope": "CalculatedColumn",
+      "Expression": "Model.AllRelationships.Any(FromColumn == current.Name or ToColumn == current.Name)",
+      "CompatibilityLevel": 1200
+    },
+    {
+      "ID": "REDUCE_CARDINALITY",
+      "Name": "Reduce usage of high cardinality columns",
+      "Category": "Performance",
+      "Description": "High cardinality columns (ID, GUID, timestamps) should be hidden if not needed for filtering to reduce memory usage.",
+      "Severity": 1,
+      "Scope": "DataColumn",
+      "Expression": "not IsHidden and (DataType == \"String\" and RegEx.IsMatch(Name, \"(ID|GUID|Key)$\", \"(?i)\") or DataType == \"DateTime\")",
+      "CompatibilityLevel": 1200
+    },
+    {
+      "ID": "USE_VAR_FOR_COMPLEX_EXPRESSIONS",
+      "Name": "Use variables for complex expressions",
+      "Category": "DAX Expressions",
+      "Description": "Complex measures should use VAR for better readability and potentially better performance.",
+      "Severity": 1,
+      "Scope": "Measure",
+      "Expression": "not RegEx.IsMatch(Expression, \"\\\\bVAR\\\\b\") and (Expression.Length > 300 or Convert.ToInt64(RegEx.Matches(Expression, \"\\\\(\").Count) > 5)",
+      "CompatibilityLevel": 1200
+    },
+    {
+      "ID": "AVOID_FLOAT_DATA_TYPE",
+      "Name": "Avoid Float data type",
+      "Category": "Data Types",
+      "Description": "Float (Double) data type can cause precision issues. Use Decimal for financial calculations.",
+      "Severity": 1,
+      "Scope": "DataColumn",
+      "Expression": "DataType == \"Double\" and RegEx.IsMatch(Name, \"(Amount|Price|Cost|Revenue|Profit)\", \"(?i)\")",
+      "CompatibilityLevel": 1200
+    },
+    {
+      "ID": "NO_EMPTY_PARTITIONS",
+      "Name": "Remove empty partitions",
+      "Category": "Maintenance",
+      "Description": "Tables should not have empty partitions as they serve no purpose and can cause confusion.",
+      "Severity": 2,
+      "Scope": "Partition",
+      "Expression": "string.IsNullOrWhiteSpace(Source.Expression) and Source.Type <> \"Calculated\"",
+      "CompatibilityLevel": 1200
+    },
+    {
+      "ID": "SET_DATA_CATEGORY",
+      "Name": "Set data category for geographic columns",
+      "Category": "Metadata",
+      "Description": "Geographic columns should have appropriate data categories set (City, Country, Continent, etc.) for map visuals.",
+      "Severity": 1,
+      "Scope": "DataColumn",
+      "Expression": "string.IsNullOrWhiteSpace(DataCategory) and RegEx.IsMatch(Name, \"(City|Country|State|Region|Continent|Latitude|Longitude)\", \"(?i)\")",
+      "CompatibilityLevel": 1200
+    },
+    {
+      "ID": "ORGANIZE_DISPLAY_FOLDERS",
+      "Name": "Organize measures in display folders",
+      "Category": "Metadata",
+      "Description": "Measures should be organized in display folders for better discoverability. Tables with more than 10 measures should use folders.",
+      "Severity": 1,
+      "Scope": "Measure",
+      "Expression": "string.IsNullOrWhiteSpace(DisplayFolder) and Table.Measures.Count > 10",
+      "CompatibilityLevel": 1200
+    },
+    {
+      "ID": "AVOID_ITERATORS_IF_NOT_NEEDED",
+      "Name": "Avoid unnecessary iterator functions",
+      "Category": "Performance",
+      "Description": "Use aggregation functions (SUM, AVERAGE, etc.) instead of iterators (SUMX, AVERAGEX) when not needed for better performance.",
+      "Severity": 1,
+      "Scope": "Measure",
+      "Expression": "RegEx.IsMatch(Expression, \"(SUMX|AVERAGEX|MINX|MAXX)\\\\s*\\\\(\\\\s*'?[A-Za-z0-9_]+\\s*'?\\\\s*,\\\\s*\\\\[[A-Za-z0-9_]+\\\\]\\\\s*\\\\)\", \"(?i)\")",
+      "CompatibilityLevel": 1200
+    },
+    {
+      "ID": "AVOID_UNNECESSARY_COLUMNS",
+      "Name": "Avoid unnecessary columns",
+      "Category": "Performance",
+      "Description": "Remove columns that are not used in measures, relationships, hierarchies, or visuals to reduce model size.",
+      "Severity": 1,
+      "Scope": "DataColumn, CalculatedColumn",
+      "Expression": "not IsHidden and Model.AllMeasures.Where(RegEx.IsMatch(Expression, \"\\\\['?\" + current.Table.Name + \"'?\\\\]\\\\[\" + current.Name + \"\\\\]\")).Count == 0",
+      "CompatibilityLevel": 1200
+    }
+  ]
+}
