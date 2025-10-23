@@ -1219,59 +1219,8 @@ class PbipHtmlGenerator:
                     <div class="stat-card">
                         <h2 class="text-2xl font-bold text-gray-900 mb-4">Relationships ({{{{ sortedRelationships.length }}}})</h2>
 
-                        <!-- Graph Layout Controls -->
-                        <div class="graph-controls">
-                            <button
-                                @click="relationshipGraphLayout = 'list'"
-                                :class="['graph-control-btn', relationshipGraphLayout === 'list' ? 'active' : '']"
-                            >
-                                📋 List View
-                            </button>
-                            <button
-                                @click="relationshipGraphLayout = 'tree'"
-                                :class="['graph-control-btn', relationshipGraphLayout === 'tree' ? 'active' : '']"
-                            >
-                                🌳 Hierarchical Tree
-                            </button>
-                            <button
-                                @click="relationshipGraphLayout = 'force'"
-                                :class="['graph-control-btn', relationshipGraphLayout === 'force' ? 'active' : '']"
-                            >
-                                🔗 Force-Directed
-                            </button>
-                        </div>
-
-                        <!-- Legend -->
-                        <div v-if="relationshipGraphLayout !== 'list' && sortedRelationships.length > 0" class="graph-legend">
-                            <div class="legend-item">
-                                <div class="legend-color" style="background: #3b82f6;"></div>
-                                <span>Fact Tables</span>
-                            </div>
-                            <div class="legend-item">
-                                <div class="legend-color" style="background: #10b981;"></div>
-                                <span>Dimension Tables</span>
-                            </div>
-                            <div class="legend-item">
-                                <div class="legend-color" style="background: #94a3b8;"></div>
-                                <span>Other Tables</span>
-                            </div>
-                            <div class="legend-item">
-                                <div class="legend-color" style="background: none; border: 2px solid #10b981;"></div>
-                                <span>Active</span>
-                            </div>
-                            <div class="legend-item">
-                                <div class="legend-color" style="background: none; border: 2px dashed #ef4444;"></div>
-                                <span>Inactive</span>
-                            </div>
-                        </div>
-
-                        <!-- Graph Container -->
-                        <div v-if="relationshipGraphLayout !== 'list' && sortedRelationships.length > 0">
-                            <div id="graph-container"></div>
-                        </div>
-
                         <!-- List View -->
-                        <div v-if="relationshipGraphLayout === 'list' && sortedRelationships.length > 0" class="space-y-4">
+                        <div v-if="sortedRelationships.length > 0" class="space-y-4">
                             <!-- Group by Type -->
                             <div class="mb-4">
                                 <h3 class="text-lg font-semibold text-gray-900 mb-2">Fact-to-Dimension Relationships</h3>
@@ -1349,7 +1298,7 @@ class PbipHtmlGenerator:
                             </div>
                         </div>
 
-                        <div v-else-if="sortedRelationships.length === 0" class="text-gray-500 italic">No relationships found in model</div>
+                        <div v-else class="text-gray-500 italic">No relationships found in model</div>
                     </div>
                 </div>
             </div>
@@ -1465,6 +1414,24 @@ class PbipHtmlGenerator:
                             ]"
                         >
                             📊 Columns
+                        </button>
+                        <button
+                            @click="dependencySubTab = 'chains'"
+                            :class="[
+                                'whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition',
+                                dependencySubTab === 'chains' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                            ]"
+                        >
+                            🔗 Measure Chains
+                        </button>
+                        <button
+                            @click="dependencySubTab = 'visuals'"
+                            :class="[
+                                'whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition',
+                                dependencySubTab === 'visuals' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                            ]"
+                        >
+                            📈 Visuals
                         </button>
                     </nav>
                 </div>
@@ -1687,6 +1654,281 @@ class PbipHtmlGenerator:
                         </div>
                         <div v-else class="stat-card">
                             <p class="text-gray-500 italic">Select a column from the left to view usage</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Measure Chains Tab -->
+                <div v-show="dependencySubTab === 'chains'" class="grid grid-cols-12 gap-6">
+                    <!-- Left: Measure List with Folders -->
+                    <div class="col-span-12 md:col-span-4">
+                        <div class="stat-card">
+                            <h3 class="text-xl font-bold text-gray-900 mb-4">Select Measure</h3>
+                            <input
+                                v-model="chainSearchQuery"
+                                type="search"
+                                placeholder="Search measures..."
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-blue-500"
+                            />
+                            <div class="space-y-2 max-h-[600px] overflow-y-auto">
+                                <!-- Folder-based structure -->
+                                <div v-for="(measures, folderName) in filteredChainMeasuresByFolder" :key="folderName">
+                                    <div class="list-group-header" :class="{{collapsed: collapsedChainFolders[folderName]}}" @click="toggleChainFolder(folderName)">
+                                        <div>
+                                            <strong>{{{{ folderName }}}}</strong>
+                                            <span class="ml-2 text-sm opacity-75">({{{{ measures.length }}}})</span>
+                                        </div>
+                                        <span class="expand-icon">▼</span>
+                                    </div>
+                                    <div v-show="!collapsedChainFolders[folderName]" class="folder-content space-y-2 mt-2">
+                                        <div v-for="measure in measures" :key="measure.fullName"
+                                            @click="selectedChainMeasure = measure.fullName"
+                                            :class="[
+                                                'p-3 rounded border cursor-pointer transition',
+                                                selectedChainMeasure === measure.fullName ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                                            ]"
+                                        >
+                                            <div class="font-semibold text-gray-900 text-sm">{{{{ measure.name }}}}</div>
+                                            <div class="text-xs text-gray-500 mt-1">{{{{ measure.table }}}}</div>
+                                            <div class="flex gap-1 mt-2 flex-wrap">
+                                                <span v-if="measure.isBase" class="badge badge-success" style="font-size: 10px;">Base</span>
+                                                <span v-if="measure.chainDepth > 0" class="badge badge-primary" style="font-size: 10px;">Chain: {{{{ measure.chainDepth }}}}</span>
+                                                <span v-if="measure.usedByCount > 0" class="badge badge-info" style="font-size: 10px;">Used by {{{{ measure.usedByCount }}}}</span>
+                                                <span v-if="measure.usedInVisuals" class="badge badge-warning" style="font-size: 10px;">{{{{ measure.visualCount }}}} visual(s)</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Chain Visualization -->
+                    <div class="col-span-12 md:col-span-8">
+                        <div v-if="selectedChainMeasure" class="stat-card">
+                            <h2 class="text-2xl font-bold text-gray-900 mb-4">Complete Measure Chain</h2>
+
+                            <!-- Selected Measure - Center -->
+                            <div class="p-4 bg-purple-100 border-2 border-purple-600 rounded-lg mb-6">
+                                <div class="text-center">
+                                    <div class="text-sm text-purple-700 font-semibold mb-1">SELECTED MEASURE</div>
+                                    <div class="text-xl font-bold text-gray-900">{{{{ selectedChainMeasure }}}}</div>
+                                </div>
+                            </div>
+
+                            <div class="space-y-8">
+                                <!-- UPWARD: Used By (What uses this measure) - HIERARCHICAL -->
+                                <div v-if="currentChain.usedByChain && currentChain.usedByChain.length > 0">
+                                    <div class="flex items-center gap-2 mb-3">
+                                        <span class="text-lg font-bold text-blue-600">⬆️ USED BY CHAIN</span>
+                                        <span class="text-sm text-gray-500">({{{{ currentChain.usedByCount }}}} total measure(s) in chain)</span>
+                                    </div>
+
+                                    <!-- Recursive Used By Tree -->
+                                    <div class="pl-4 border-l-4 border-blue-500">
+                                        <div v-for="(item, idx) in currentChain.usedByChain" :key="idx">
+                                            <div class="measure-chain-item">
+                                                <div class="p-3 bg-blue-50 border-l-4 border-blue-400 rounded mb-2">
+                                                    <div class="flex items-center gap-2">
+                                                        <span class="text-blue-600 font-bold">→</span>
+                                                        <div class="font-medium text-gray-900">{{{{ item.measure }}}}</div>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Nested Used By (recursive) -->
+                                                <div v-if="item.usedBy && item.usedBy.length > 0" class="ml-8 pl-4 border-l-2 border-blue-300">
+                                                    <div v-for="(child, cidx) in item.usedBy" :key="cidx">
+                                                        <div class="p-2 bg-blue-100 border-l-4 border-blue-500 rounded mb-2">
+                                                            <div class="flex items-center gap-2">
+                                                                <span class="text-blue-700 font-bold">⇒</span>
+                                                                <div class="text-sm font-medium text-gray-800">{{{{ child.measure }}}}</div>
+                                                            </div>
+                                                        </div>
+
+                                                        <!-- Level 3 -->
+                                                        <div v-if="child.usedBy && child.usedBy.length > 0" class="ml-8 pl-4 border-l-2 border-blue-200">
+                                                            <div v-for="(grandchild, gidx) in child.usedBy" :key="gidx" class="p-2 bg-blue-200 border-l-4 border-blue-600 rounded mb-2">
+                                                                <div class="flex items-center gap-2">
+                                                                    <span class="text-blue-800 font-bold">⇛</span>
+                                                                    <div class="text-xs font-medium text-gray-800">{{{{ grandchild.measure }}}}</div>
+                                                                </div>
+
+                                                                <!-- Level 4+ indicator -->
+                                                                <div v-if="grandchild.usedBy && grandchild.usedBy.length > 0" class="ml-6 text-xs text-blue-600 italic">
+                                                                    ... and {{{{ grandchild.usedBy.length }}}} more level(s)
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-else>
+                                    <div class="flex items-center gap-2 mb-3">
+                                        <span class="text-lg font-bold text-gray-400">⬆️ USED BY</span>
+                                    </div>
+                                    <div class="text-gray-500 italic text-sm p-3 bg-gray-50 rounded">
+                                        No other measures depend on this measure
+                                    </div>
+                                </div>
+
+                                <div class="border-t-2 border-dashed border-gray-300"></div>
+
+                                <!-- DOWNWARD: Dependencies (What this measure uses) -->
+                                <div v-if="currentChain.dependencies && currentChain.dependencies.length > 0">
+                                    <div class="flex items-center gap-2 mb-3">
+                                        <span class="text-lg font-bold text-green-600">⬇️ DEPENDS ON</span>
+                                        <span class="text-sm text-gray-500">(This measure uses {{{{ currentChain.dependencies.length }}}} measure(s))</span>
+                                    </div>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pl-4 border-l-4 border-green-500">
+                                        <div v-for="dep in currentChain.dependencies" :key="dep" class="p-3 bg-green-50 border border-green-300 rounded">
+                                            <div class="font-medium text-gray-900">{{{{ dep }}}}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-else>
+                                    <div class="flex items-center gap-2 mb-3">
+                                        <span class="text-lg font-bold text-green-600">⬇️ DEPENDS ON</span>
+                                    </div>
+                                    <div class="p-3 bg-green-50 border border-green-300 rounded">
+                                        <div class="font-medium text-green-700">🟢 BASE MEASURE</div>
+                                        <div class="text-sm text-gray-600 mt-1">This measure doesn't depend on any other measures</div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                        <div v-else class="stat-card">
+                            <p class="text-gray-500 italic">Select a measure from the left to view its complete dependency chain</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Visuals Tab -->
+                <div v-show="dependencySubTab === 'visuals'" class="grid grid-cols-12 gap-6">
+                    <!-- Left: Page & Visual Selection -->
+                    <div class="col-span-12 md:col-span-4">
+                        <div class="stat-card">
+                            <h3 class="text-xl font-bold text-gray-900 mb-4">Select Page & Visual</h3>
+
+                            <!-- Page Selection -->
+                            <div class="mb-6">
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Page</label>
+                                <select
+                                    v-model="selectedVisualPage"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    @change="selectedVisualId = null"
+                                >
+                                    <option :value="null">-- Select a page --</option>
+                                    <option v-for="page in visualAnalysisPages" :key="page.name" :value="page.name">
+                                        {{{{ page.name }}}} ({{{{ page.visualCount }}}} visuals)
+                                    </option>
+                                </select>
+                            </div>
+
+                            <!-- Visual Selection -->
+                            <div v-if="selectedVisualPage">
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Visual</label>
+                                <div class="space-y-2 max-h-[500px] overflow-y-auto">
+                                    <div v-for="visual in visualsOnSelectedPage" :key="visual.visualId"
+                                        @click="selectedVisualId = visual.visualId"
+                                        :class="[
+                                            'p-3 rounded border cursor-pointer transition',
+                                            selectedVisualId === visual.visualId ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                                        ]"
+                                    >
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <span class="badge badge-primary" style="font-size: 10px;">{{{{ visual.visualType }}}}</span>
+                                        </div>
+                                        <div class="text-sm text-gray-700">{{{{ visual.visualName || 'Unnamed Visual' }}}}</div>
+                                        <div class="text-xs text-gray-500 mt-1">{{{{ visual.measureCount }}}} measure(s)</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-else class="text-gray-500 italic text-sm">Select a page to view its visuals</div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Measure Backward Trace -->
+                    <div class="col-span-12 md:col-span-8">
+                        <div v-if="selectedVisualId && currentVisualAnalysis" class="stat-card">
+                            <h2 class="text-2xl font-bold text-gray-900 mb-4">Visual Measure Trace</h2>
+                            <div class="mb-4">
+                                <div class="flex items-center gap-2">
+                                    <span class="badge badge-primary">{{{{ currentVisualAnalysis.visualType }}}}</span>
+                                    <span class="font-semibold text-gray-800">{{{{ currentVisualAnalysis.visualName || 'Unnamed Visual' }}}}</span>
+                                </div>
+                                <div class="text-sm text-gray-500 mt-1">Page: {{{{ selectedVisualPage }}}}</div>
+                            </div>
+
+                            <!-- Backward Trace -->
+                            <div class="space-y-6">
+                                <!-- Top-Level Measures (Used Directly in Visual) -->
+                                <div v-if="currentVisualAnalysis.topMeasures && currentVisualAnalysis.topMeasures.length > 0">
+                                    <div class="flex items-center gap-2 mb-3">
+                                        <span class="text-lg font-bold text-orange-600">📊 Measures Used in Visual</span>
+                                        <span class="text-sm text-gray-500">({{{{ currentVisualAnalysis.topMeasures.length }}}})</span>
+                                    </div>
+                                    <div class="grid grid-cols-1 gap-3 pl-4 border-l-4 border-orange-500">
+                                        <div v-for="measure in currentVisualAnalysis.topMeasures" :key="measure.fullName" class="p-3 bg-orange-50 border border-orange-200 rounded">
+                                            <div class="font-semibold text-gray-900">{{{{ measure.name }}}}</div>
+                                            <div class="text-xs text-gray-500 mt-1">{{{{ measure.table }}}}</div>
+
+                                            <!-- Show Dependencies -->
+                                            <div v-if="measure.dependencies && measure.dependencies.length > 0" class="mt-3">
+                                                <div class="text-xs font-semibold text-gray-700 mb-2">⬇️ Depends on:</div>
+                                                <div class="space-y-2 ml-4 pl-3 border-l-2 border-blue-300">
+                                                    <div v-for="dep in measure.dependencies" :key="dep.fullName" class="p-2 bg-blue-50 border border-blue-200 rounded">
+                                                        <div class="font-medium text-sm text-gray-800">{{{{ dep.name }}}}</div>
+                                                        <div class="text-xs text-gray-500">{{{{ dep.table }}}}</div>
+
+                                                        <!-- Nested Dependencies (Base Measures) -->
+                                                        <div v-if="dep.dependencies && dep.dependencies.length > 0" class="mt-2 ml-3 pl-3 border-l-2 border-green-300">
+                                                            <div class="text-xs font-semibold text-gray-600 mb-1">⬇️ Base:</div>
+                                                            <div class="space-y-1">
+                                                                <div v-for="baseDep in dep.dependencies" :key="baseDep.fullName" class="p-2 bg-green-50 border border-green-200 rounded text-xs">
+                                                                    <div class="font-medium text-gray-800">{{{{ baseDep.name }}}}</div>
+                                                                    <div class="text-gray-500">{{{{ baseDep.table }}}}</div>
+                                                                    <span class="badge badge-success mt-1" style="font-size: 9px;">Base Measure</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Base Measure Indicator -->
+                                            <div v-else class="mt-2">
+                                                <span class="badge badge-success" style="font-size: 10px;">🟢 Base Measure</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Summary -->
+                                <div v-if="currentVisualAnalysis.summary" class="p-4 bg-gray-50 border border-gray-200 rounded">
+                                    <h4 class="font-semibold text-gray-800 mb-2">📋 Summary</h4>
+                                    <div class="grid grid-cols-3 gap-4 text-sm">
+                                        <div>
+                                            <div class="text-gray-600">Total Measures</div>
+                                            <div class="font-bold text-gray-900">{{{{ currentVisualAnalysis.summary.totalMeasures }}}}</div>
+                                        </div>
+                                        <div>
+                                            <div class="text-gray-600">Direct Dependencies</div>
+                                            <div class="font-bold text-gray-900">{{{{ currentVisualAnalysis.summary.directDeps }}}}</div>
+                                        </div>
+                                        <div>
+                                            <div class="text-gray-600">Base Measures</div>
+                                            <div class="font-bold text-gray-900">{{{{ currentVisualAnalysis.summary.baseMeasures }}}}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-else class="stat-card">
+                            <p class="text-gray-500 italic">Select a page and visual from the left to trace measure dependencies</p>
                         </div>
                     </div>
                 </div>
@@ -2474,6 +2716,15 @@ class PbipHtmlGenerator:
                     collapsedDependencyFolders: {{}},
                     collapsedUsedByFolders: {{}},
 
+                    // Measure Chains tab
+                    selectedChainMeasure: null,
+                    chainSearchQuery: '',
+                    collapsedChainFolders: {{}},
+
+                    // Visuals tab
+                    selectedVisualPage: null,
+                    selectedVisualId: null,
+
                     // Enhanced analysis tabs
                     bpaSeverityFilter: 'all',
                     bpaCategoryFilter: 'all',
@@ -2926,6 +3177,309 @@ class PbipHtmlGenerator:
                         }}
                         return a.name.localeCompare(b.name);
                     }});
+                }},
+
+                // Measure Chains - Get all measures with chain info
+                allMeasuresWithChainInfo() {{
+                    const measures = [];
+                    const tables = this.modelData.tables || [];
+                    const measureToMeasure = this.dependencies.measure_to_measure || {{}};
+
+                    // Build reverse lookup: which measures USE this measure
+                    const usedByMap = {{}};
+                    Object.keys(measureToMeasure).forEach(measureName => {{
+                        const deps = measureToMeasure[measureName];
+                        deps.forEach(dep => {{
+                            if (!usedByMap[dep]) usedByMap[dep] = [];
+                            usedByMap[dep].push(measureName);
+                        }});
+                    }});
+
+                    tables.forEach(table => {{
+                        (table.measures || []).forEach(measure => {{
+                            const fullName = `${{table.name}}[${{measure.name}}]`;
+                            const deps = measureToMeasure[fullName] || [];
+                            const usedBy = usedByMap[fullName] || [];
+
+                            // Calculate chain depth
+                            const chainDepth = this.calculateChainDepth(fullName, measureToMeasure, new Set());
+
+                            // Check if used in visuals
+                            const visualUsage = this.getMeasureVisualUsage(fullName);
+
+                            measures.push({{
+                                name: measure.name,
+                                table: table.name,
+                                fullName: fullName,
+                                displayFolder: measure.display_folder || 'No Folder',
+                                isBase: deps.length === 0,
+                                chainDepth: chainDepth,
+                                usedByCount: usedBy.length,
+                                usedInVisuals: visualUsage.length > 0,
+                                visualCount: visualUsage.length
+                            }});
+                        }});
+                    }});
+
+                    return measures;
+                }},
+
+                filteredChainMeasuresByFolder() {{
+                    const query = this.chainSearchQuery.toLowerCase();
+                    let filtered = this.allMeasuresWithChainInfo;
+
+                    if (query) {{
+                        filtered = filtered.filter(m =>
+                            m.name.toLowerCase().includes(query) ||
+                            m.table.toLowerCase().includes(query) ||
+                            m.displayFolder.toLowerCase().includes(query)
+                        );
+                    }}
+
+                    // Group by folder
+                    const grouped = {{}};
+                    filtered.forEach(measure => {{
+                        const folder = measure.displayFolder;
+                        if (!grouped[folder]) {{
+                            grouped[folder] = [];
+                        }}
+                        grouped[folder].push(measure);
+                    }});
+
+                    // Sort folders and measures within folders
+                    const sortedFolders = {{}};
+                    Object.keys(grouped).sort((a, b) => a.localeCompare(b)).forEach(key => {{
+                        sortedFolders[key] = grouped[key].sort((a, b) => a.name.localeCompare(b.name));
+                    }});
+
+                    return sortedFolders;
+                }},
+
+                filteredChainMeasures() {{
+                    const query = this.chainSearchQuery.toLowerCase();
+                    if (!query) return this.allMeasuresWithChainInfo;
+                    return this.allMeasuresWithChainInfo.filter(m =>
+                        m.name.toLowerCase().includes(query) ||
+                        m.table.toLowerCase().includes(query)
+                    );
+                }},
+
+                currentChain() {{
+                    if (!this.selectedChainMeasure) return {{}};
+
+                    const measureToMeasure = this.dependencies.measure_to_measure || {{}};
+                    const visualUsage = this.getMeasureVisualUsage(this.selectedChainMeasure);
+
+                    // Get dependencies (what this measure uses)
+                    const dependencies = measureToMeasure[this.selectedChainMeasure] || [];
+
+                    // Build complete UPWARD chain (who uses this measure, and who uses those, etc.)
+                    const buildUsedByChain = (measureName, visited = new Set()) => {{
+                        if (visited.has(measureName)) return []; // Prevent circular references
+                        visited.add(measureName);
+
+                        const directUsers = [];
+                        Object.keys(measureToMeasure).forEach(otherMeasure => {{
+                            const deps = measureToMeasure[otherMeasure];
+                            if (deps.includes(measureName)) {{
+                                // This measure uses our target measure
+                                const childChain = buildUsedByChain(otherMeasure, new Set(visited));
+                                directUsers.push({{
+                                    measure: otherMeasure,
+                                    usedBy: childChain
+                                }});
+                            }}
+                        }});
+
+                        return directUsers;
+                    }};
+
+                    const usedByChain = buildUsedByChain(this.selectedChainMeasure);
+
+                    // Also get flat list for count
+                    const getAllUsedBy = (chain) => {{
+                        const all = [];
+                        chain.forEach(item => {{
+                            all.push(item.measure);
+                            if (item.usedBy && item.usedBy.length > 0) {{
+                                all.push(...getAllUsedBy(item.usedBy));
+                            }}
+                        }});
+                        return all;
+                    }};
+
+                    const allUsedBy = getAllUsedBy(usedByChain);
+
+                    return {{
+                        dependencies: dependencies,
+                        usedByChain: usedByChain,
+                        usedByCount: allUsedBy.length,
+                        visualUsage: visualUsage
+                    }};
+                }},
+
+                // Visuals Analysis - Get pages with visuals
+                visualAnalysisPages() {{
+                    if (!this.reportData || !this.reportData.pages) return [];
+
+                    return this.reportData.pages.map(page => ({{
+                        name: page.name || page.display_name,
+                        visualCount: (page.visuals || []).filter(v => {{
+                            const type = v.visual_type || v.type;
+                            return !this.isVisualTypeFiltered(type);
+                        }}).length
+                    }})).filter(p => p.visualCount > 0)
+                      .sort((a, b) => a.name.localeCompare(b.name));
+                }},
+
+                visualsOnSelectedPage() {{
+                    if (!this.selectedVisualPage || !this.reportData || !this.reportData.pages) return [];
+
+                    const page = this.reportData.pages.find(p =>
+                        (p.name || p.display_name) === this.selectedVisualPage
+                    );
+
+                    if (!page || !page.visuals) return [];
+
+                    const visuals = [];
+                    page.visuals.forEach((visual, idx) => {{
+                        const type = visual.visual_type || visual.type || 'Unknown';
+                        if (this.isVisualTypeFiltered(type)) return;
+
+                        // Get visual ID and name with better fallbacks
+                        const vId = visual.visualId || visual.visual_id || visual.id || `visual-${{idx}}`;
+                        const vName = visual.name || visual.visual_name || visual.title || `Visual ${{idx + 1}}`;
+
+                        // Count measures in this visual
+                        let measureCount = 0;
+                        const measureUsage = this.dependencies.measure_to_visual || {{}};
+
+                        // Method 1: Use mapping
+                        Object.keys(measureUsage).forEach(measureName => {{
+                            const visualIds = measureUsage[measureName] || [];
+                            if (visualIds.includes(vId)) {{
+                                measureCount++;
+                            }}
+                        }});
+
+                        // Method 2: If no measures found, search visual JSON
+                        if (measureCount === 0) {{
+                            const visualJson = JSON.stringify(visual);
+                            (this.modelData.tables || []).forEach(table => {{
+                                (table.measures || []).forEach(measure => {{
+                                    if (visualJson.includes(measure.name)) {{
+                                        measureCount++;
+                                    }}
+                                }});
+                            }});
+                        }}
+
+                        visuals.push({{
+                            visualId: vId,
+                            visualType: type,
+                            visualName: vName,
+                            measureCount: measureCount
+                        }});
+                    }});
+
+                    return visuals;
+                }},
+
+                currentVisualAnalysis() {{
+                    if (!this.selectedVisualId || !this.selectedVisualPage) return null;
+
+                    const page = this.reportData.pages.find(p =>
+                        (p.name || p.display_name) === this.selectedVisualPage
+                    );
+                    if (!page) return null;
+
+                    const visual = (page.visuals || []).find(v =>
+                        (v.visualId || v.visual_id || v.id) === this.selectedVisualId
+                    );
+                    if (!visual) return null;
+
+                    // Find which measures are used in this visual
+                    const measureUsage = this.dependencies.measure_to_visual || {{}};
+                    const measureToMeasure = this.dependencies.measure_to_measure || {{}};
+
+                    let usedMeasures = [];
+
+                    // Method 1: Use measure_to_visual mapping
+                    Object.keys(measureUsage).forEach(measureName => {{
+                        const visualIds = measureUsage[measureName] || [];
+                        if (visualIds.includes(this.selectedVisualId)) {{
+                            usedMeasures.push(measureName);
+                        }}
+                    }});
+
+                    // Method 2: If no measures found, search visual JSON for measure references
+                    if (usedMeasures.length === 0) {{
+                        const visualJson = JSON.stringify(visual);
+                        const allMeasures = [];
+
+                        // Get all measures from model
+                        (this.modelData.tables || []).forEach(table => {{
+                            (table.measures || []).forEach(measure => {{
+                                allMeasures.push({{
+                                    name: measure.name,
+                                    fullName: `${{table.name}}[${{measure.name}}]`
+                                }});
+                            }});
+                        }});
+
+                        // Check which measures appear in the visual JSON
+                        allMeasures.forEach(m => {{
+                            if (visualJson.includes(m.name)) {{
+                                usedMeasures.push(m.fullName);
+                            }}
+                        }});
+                    }}
+
+                    // Analyze each measure's dependencies
+                    const topMeasures = usedMeasures.map(measureName => {{
+                        const match = measureName.match(/^(.+?)\[(.+?)\]$/);
+                        if (!match) return null;
+
+                        const [, table, name] = match;
+                        const deps = measureToMeasure[measureName] || [];
+
+                        return {{
+                            name: name,
+                            table: table,
+                            fullName: measureName,
+                            dependencies: deps.map(depName => {{
+                                const depMatch = depName.match(/^(.+?)\[(.+?)\]$/);
+                                if (!depMatch) return null;
+                                const [, depTable, depMeasureName] = depMatch;
+                                const depDeps = measureToMeasure[depName] || [];
+                                return {{
+                                    name: depMeasureName,
+                                    table: depTable,
+                                    fullName: depName,
+                                    dependencies: depDeps.length > 0 ? depDeps.map(d => ({{
+                                        fullName: d,
+                                        name: d.match(/\[([^\]]+)\]$/)?.[1] || d,
+                                        table: d.match(/^(.+?)\[/)?.[1] || ''
+                                    }})) : []
+                                }};
+                            }}).filter(Boolean)
+                        }};
+                    }}).filter(Boolean);
+
+                    const totalMeasures = topMeasures.length;
+                    const directDeps = topMeasures.reduce((sum, m) => sum + m.dependencies.length, 0);
+                    const baseMeasures = topMeasures.filter(m => m.dependencies.length === 0).length;
+
+                    return {{
+                        visualType: visual.visual_type || visual.type || 'Unknown',
+                        visualName: visual.name || visual.visual_name || visual.title || 'Unnamed Visual',
+                        topMeasures: topMeasures,
+                        summary: {{
+                            totalMeasures: totalMeasures,
+                            directDeps: directDeps,
+                            baseMeasures: baseMeasures
+                        }}
+                    }};
                 }},
 
                 // Enhanced Analysis - BPA
@@ -4069,6 +4623,10 @@ class PbipHtmlGenerator:
                     this.collapsedUnusedMeasureFolders[folderName] = !this.collapsedUnusedMeasureFolders[folderName];
                 }},
 
+                toggleChainFolder(folderName) {{
+                    this.collapsedChainFolders[folderName] = !this.collapsedChainFolders[folderName];
+                }},
+
                 toggleBpaObjectGroup(objectType) {{
                     this.collapsedBpaObjectGroups[objectType] = !this.collapsedBpaObjectGroups[objectType];
                 }},
@@ -4269,6 +4827,18 @@ class PbipHtmlGenerator:
                     }}).length;
                 }},
 
+                isVisualTypeFiltered(visualType) {{
+                    const type = (visualType || 'Unknown').toLowerCase();
+                    return type === 'unknown' ||
+                           type === 'shape' ||
+                           type === 'image' ||
+                           type === 'actionbutton' ||
+                           type === 'slicer' ||
+                           type.includes('slicer') ||
+                           type === 'bookmarknavigator' ||
+                           type.includes('bookmark');
+                }},
+
                 groupVisualUsageByPage(visualUsage) {{
                     const grouped = {{}};
                     (visualUsage || []).forEach(usage => {{
@@ -4324,6 +4894,210 @@ class PbipHtmlGenerator:
                         grouped[pageName].push(visual);
                     }});
                     return grouped;
+                }},
+
+                // Helper for Measure Chains: Group visuals by page
+                groupVisualsByPage(visualUsage) {{
+                    const grouped = {{}};
+                    visualUsage.forEach(visual => {{
+                        const pageName = visual.pageName || 'Unknown Page';
+                        if (!grouped[pageName]) {{
+                            grouped[pageName] = [];
+                        }}
+                        grouped[pageName].push(visual);
+                    }});
+                    return grouped;
+                }},
+
+                // Calculate chain depth for a measure
+                calculateChainDepth(measureName, measureToMeasure, visited) {{
+                    if (visited.has(measureName)) return 0; // Circular dependency
+                    visited.add(measureName);
+
+                    const deps = measureToMeasure[measureName] || [];
+                    if (deps.length === 0) return 0; // Base measure
+
+                    let maxDepth = 0;
+                    deps.forEach(dep => {{
+                        const depth = this.calculateChainDepth(dep, measureToMeasure, new Set(visited));
+                        maxDepth = Math.max(maxDepth, depth);
+                    }});
+
+                    return maxDepth + 1;
+                }},
+
+                // Build complete measure chain
+                buildMeasureChain(measureName, measureToMeasure) {{
+                    const deps = measureToMeasure[measureName] || [];
+
+                    // If base measure
+                    if (deps.length === 0) {{
+                        return {{
+                            baseMeasures: [measureName],
+                            levels: [],
+                            topMeasure: null
+                        }};
+                    }}
+
+                    // Build dependency tree
+                    const allBaseMeasures = new Set();
+                    const levels = [];
+
+                    const buildLevel = (measures, depth = 0) => {{
+                        const levelMeasures = [];
+
+                        measures.forEach(m => {{
+                            const mDeps = measureToMeasure[m] || [];
+
+                            if (mDeps.length === 0) {{
+                                allBaseMeasures.add(m);
+                            }} else {{
+                                levelMeasures.push({{
+                                    name: m,
+                                    dependsOn: mDeps
+                                }});
+                            }}
+                        }});
+
+                        if (levelMeasures.length > 0) {{
+                            levels.push({{ measures: levelMeasures }});
+
+                            // Recursively build next level
+                            const nextLevelMeasures = [];
+                            levelMeasures.forEach(lm => {{
+                                nextLevelMeasures.push(...lm.dependsOn);
+                            }});
+
+                            if (nextLevelMeasures.length > 0) {{
+                                buildLevel(nextLevelMeasures, depth + 1);
+                            }}
+                        }}
+                    }};
+
+                    buildLevel(deps);
+
+                    // Reverse levels to show base -> top
+                    levels.reverse();
+
+                    return {{
+                        baseMeasures: Array.from(allBaseMeasures),
+                        levels: levels,
+                        topMeasure: {{
+                            name: measureName,
+                            dependsOn: deps
+                        }}
+                    }};
+                }},
+
+                // Get visual usage for a measure
+                getMeasureVisualUsage(measureName) {{
+                    if (!this.reportData || !this.reportData.pages) return [];
+
+                    const usage = [];
+                    const measureUsage = this.dependencies.measure_to_visual || {{}};
+
+                    // Use pre-computed measure_to_visual mapping if available
+                    const visualIds = measureUsage[measureName] || [];
+
+                    if (visualIds.length > 0) {{
+                        this.reportData.pages.forEach(page => {{
+                            (page.visuals || []).forEach(visual => {{
+                                const vId = visual.visualId || visual.visual_id;
+                                if (visualIds.includes(vId)) {{
+                                    const type = visual.visual_type || visual.type;
+                                    if (!this.isVisualTypeFiltered(type)) {{
+                                        usage.push({{
+                                            pageName: page.name || page.display_name,
+                                            visualId: vId,
+                                            visualType: type,
+                                            visualName: visual.name || visual.visual_name || 'Unnamed'
+                                        }});
+                                    }}
+                                }}
+                            }});
+                        }});
+                    }}
+
+                    return usage;
+                }},
+
+                // Get all measures used in a visual
+                getVisualMeasures(visual) {{
+                    const measures = new Set();
+
+                    const extractMeasures = (obj) => {{
+                        if (!obj) return;
+
+                        if (typeof obj === 'string') {{
+                            // Match measure references like [MeasureName]
+                            const matches = obj.match(/\[([^\]]+)\]/g);
+                            if (matches) {{
+                                matches.forEach(m => measures.add(m));
+                            }}
+                        }} else if (Array.isArray(obj)) {{
+                            obj.forEach(item => extractMeasures(item));
+                        }} else if (typeof obj === 'object') {{
+                            Object.values(obj).forEach(value => extractMeasures(value));
+                        }}
+                    }};
+
+                    extractMeasures(visual);
+                    return Array.from(measures);
+                }},
+
+                // Analyze measures in a visual (backward trace)
+                analyzeVisualMeasures(visual) {{
+                    const topMeasures = this.getVisualMeasures(visual);
+                    const measureToMeasure = this.dependencies.measure_to_measure || {{}};
+
+                    const analyzeMeasure = (measureName, depth = 0) => {{
+                        const match = measureName.match(/^(.+?)\[(.+?)\]$/);
+                        if (!match) return null;
+
+                        const [, table, name] = match;
+                        const deps = measureToMeasure[measureName] || [];
+
+                        return {{
+                            name: name,
+                            table: table,
+                            fullName: measureName,
+                            dependencies: deps.length > 0 ? deps.map(d => analyzeMeasure(d, depth + 1)).filter(Boolean) : []
+                        }};
+                    }};
+
+                    const analyzedMeasures = topMeasures.map(m => analyzeMeasure(m)).filter(Boolean);
+
+                    // Count totals
+                    const countMeasures = (measure) => {{
+                        let count = 1;
+                        if (measure.dependencies) {{
+                            measure.dependencies.forEach(dep => {{
+                                count += countMeasures(dep);
+                            }});
+                        }}
+                        return count;
+                    }};
+
+                    const totalMeasures = analyzedMeasures.reduce((sum, m) => sum + countMeasures(m), 0);
+
+                    const countDirectDeps = analyzedMeasures.reduce((sum, m) =>
+                        sum + (m.dependencies ? m.dependencies.length : 0), 0);
+
+                    const countBaseMeasures = (measure) => {{
+                        if (!measure.dependencies || measure.dependencies.length === 0) return 1;
+                        return measure.dependencies.reduce((sum, dep) => sum + countBaseMeasures(dep), 0);
+                    }};
+
+                    const baseMeasures = analyzedMeasures.reduce((sum, m) => sum + countBaseMeasures(m), 0);
+
+                    return {{
+                        topMeasures: analyzedMeasures,
+                        summary: {{
+                            totalMeasures: totalMeasures,
+                            directDeps: countDirectDeps,
+                            baseMeasures: baseMeasures
+                        }}
+                    }};
                 }},
 
                 getVisualIcon(visualType) {{
