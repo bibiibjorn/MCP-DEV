@@ -13,8 +13,6 @@ from core.documentation import (
     compare_snapshots,
     compute_diff,
     convert_to_pdf,
-    generate_interactive_relationship_graph,
-    generate_relationship_graph,
     load_snapshot,
     render_word_report,
     save_snapshot,
@@ -34,9 +32,6 @@ __all__ = [
     "collect_model_documentation",
     "render_word_report",
     "convert_to_pdf",
-    # Graph generation
-    "generate_relationship_graph",
-    "generate_interactive_relationship_graph",
     # Snapshot management
     "snapshot_from_context",
     "save_snapshot",

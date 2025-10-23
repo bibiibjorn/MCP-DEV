@@ -17,7 +17,6 @@ from core.policies.query_policy import QueryPolicy
 from core.documentation_builder import (
     collect_model_documentation,
     compute_diff,
-    generate_relationship_graph,
     load_snapshot,
     render_word_report,
     save_snapshot,
@@ -506,7 +505,8 @@ class AgentPolicy:
         if not context.get('success'):
             return context
 
-        graph_path, graph_notes = generate_relationship_graph(context.get('relationships', []), output_dir)
+        # graph_path, graph_notes = generate_relationship_graph(context.get('relationships', [])  # Visualization removed, output_dir)
+        graph_path = None  # Visualization removed
 
         doc_result = render_word_report(
             context,
@@ -579,7 +579,8 @@ class AgentPolicy:
         new_snapshot = snapshot_from_context(context)
         diff = compute_diff(previous_snapshot, new_snapshot)
 
-        graph_path, graph_notes = generate_relationship_graph(context.get('relationships', []), output_dir)
+        # graph_path, graph_notes = generate_relationship_graph(context.get('relationships', [])  # Visualization removed, output_dir)
+        graph_path = None  # Visualization removed
 
         doc_result = render_word_report(
             context,
@@ -755,87 +756,6 @@ class AgentPolicy:
                 'notes': graph_notes
             }
 
-    def export_compact_schema(self, connection_state, include_hidden: bool = True) -> Dict[str, Any]:
-        """Export expression-free schema (tables/columns/measures/relationships) via exporter.
-
-        Useful for quick, diff-friendly structure snapshots without large DAX expressions.
-        """
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
-        exporter = connection_state.model_exporter
-        if not exporter:
-            return ErrorHandler.handle_manager_unavailable('model_exporter')
-        try:
-            return exporter.export_compact_schema(bool(include_hidden))
-        except Exception as e:
-            return {'success': False, 'error': str(e)}
-
-    def export_compact_schema_xlsx(self, connection_state, include_hidden: bool = True, output_dir: Optional[str] = None) -> Dict[str, Any]:
-        """Export compact schema to an Excel workbook with separate sheets for tables, columns, measures, relationships."""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
-        exporter = connection_state.model_exporter
-        if not exporter:
-            return ErrorHandler.handle_manager_unavailable('model_exporter')
-        try:
-            data = exporter.export_compact_schema(bool(include_hidden))
-            if not data.get('success'):
-                return data
-            schema = (data or {}).get('schema') or {}
-            # Prepare output directory
-            root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            if output_dir and isinstance(output_dir, str) and output_dir.strip():
-                out_dir = output_dir.strip()
-            else:
-                out_dir = os.path.join(root_dir, 'exports')
-            try:
-                os.makedirs(out_dir, exist_ok=True)
-            except Exception:
-                out_dir = os.path.join(root_dir, 'exports')
-                os.makedirs(out_dir, exist_ok=True)
-            # Build workbook
-            try:
-                from openpyxl import Workbook  # type: ignore
-            except Exception as e:
-                return {'success': False, 'error': f'openpyxl not available: {e}'}
-            wb = Workbook()
-            ws_tables = getattr(wb, 'active', None)
-            if ws_tables is None:
-                raise RuntimeError('openpyxl workbook has no active worksheet')
-            try:
-                ws_tables.title = 'Tables'
-            except Exception:
-                pass
-            ws_columns = wb.create_sheet('Columns')
-            ws_measures = wb.create_sheet('Measures')
-            ws_relationships = wb.create_sheet('Relationships')
-            # Tables sheet
-            ws_tables.append(['Table', 'Hidden'])
-            for t in schema.get('tables', []) or []:
-                ws_tables.append([t.get('name'), t.get('hidden')])
-            # Columns sheet
-            ws_columns.append(['Table', 'Column', 'Data Type', 'Hidden', 'Summarize By'])
-            for t in schema.get('tables', []) or []:
-                for c in t.get('columns', []) or []:
-                    ws_columns.append([t.get('name'), c.get('name'), c.get('data_type'), c.get('hidden'), c.get('summarize_by')])
-            # Measures sheet
-            ws_measures.append(['Table', 'Measure', 'Format String', 'Display Folder', 'Hidden'])
-            for t in schema.get('tables', []) or []:
-                for m in t.get('measures', []) or []:
-                    ws_measures.append([t.get('name'), m.get('name'), m.get('format_string'), m.get('display_folder'), m.get('hidden')])
-            # Relationships sheet
-            ws_relationships.append(['From Table', 'From Column', 'To Table', 'To Column', 'Active', 'Direction', 'Cardinality'])
-            for r in schema.get('relationships', []) or []:
-                f = r.get('from') or {}
-                to = r.get('to') or {}
-                ws_relationships.append([f.get('table'), f.get('column'), to.get('table'), to.get('column'), r.get('active'), r.get('direction'), r.get('cardinality')])
-            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-            path = os.path.join(out_dir, f"compact_schema_{ts}.xlsx")
-            wb.save(path)
-            return {'success': True, 'format': 'xlsx', 'file': path, 'statistics': data.get('statistics'), 'database_name': data.get('database_name')}
-        except Exception as e:
-            return {'success': False, 'error': str(e)}
-
     def relationship_overview(self, connection_state) -> Dict[str, Any]:
         """Return relationships list plus optional cardinality checks.
 
@@ -941,437 +861,6 @@ class AgentPolicy:
             text = text.replace('  ', ' ')
         return {'success': True, 'formatted': text}
 
-    def export_model_overview(self, connection_state, format: str = 'json', include_counts: bool = True) -> Dict[str, Any]:
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
-        exporter = connection_state.model_exporter
-        executor = connection_state.query_executor
-        if not exporter:
-            return ErrorHandler.handle_manager_unavailable('model_exporter')
-        if not executor:
-            return ErrorHandler.handle_manager_unavailable('query_executor')
-        summary = exporter.get_model_summary(executor)
-        if not summary.get('success'):
-            return summary
-        return {'success': True, 'format': format, 'overview': summary}
-
-    def export_flat_schema_samples(self, connection_state, format: str = 'csv', rows: int = 3, extras: Optional[List[str]] = None, output_dir: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Export a flat list of all tables and columns with up to N sample values per column.
-
-        Columns: Table Name, Column Name, Data Type Column, Sample Row 1 Value, Sample Row 2 Value, Sample Row 3 Value
-        """
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
-        executor = connection_state.query_executor
-        if not executor:
-            return ErrorHandler.handle_manager_unavailable('query_executor')
-
-        # Sanitize inputs
-        try:
-            n = int(rows)
-        except Exception:
-            n = 3
-        n = max(1, min(n, 10))  # safety cap
-
-        # Normalize and validate extras list (extensible but safe by default)
-        extras = extras or []
-        try:
-            extras = [str(x).strip() for x in extras if str(x).strip()]
-        except Exception:
-            extras = []
-        # Cheap, model-metadata-based extras we can pull from DMV rows without extra queries
-        # Keep Description out as requested; can be re-added later if needed
-        ALLOWED_DMV_EXTRAS = {
-            'IsHidden', 'IsNullable', 'IsKey', 'SummarizeBy'
-        }
-        extras_dmv = [e for e in extras if e in ALLOWED_DMV_EXTRAS]
-
-        # Helpers for DAX quoting
-        def dq_table(name: str) -> str:
-            return f"'{str(name).replace("'", "''")}'"
-
-        def dq_col(name: str) -> str:
-            return f"[{str(name).replace(']', ']]')}]"
-
-        try:
-            # 1) Get all columns and table map for robust name resolution
-            # Exclude hidden technical RowNumber-style columns and hidden columns by default
-            cols_res = executor.execute_info_query("COLUMNS", filter_expr='[IsHidden] = FALSE')
-            if not cols_res.get('success'):
-                return cols_res
-            cols = cols_res.get('rows', []) or []
-
-            # Attempt to get authoritative data types via TOM when available
-            tom_types_map: Dict[str, Dict[str, Any]] = {}
-            try:
-                ttypes = executor.get_column_datatypes_tom()  # type: ignore[attr-defined]
-                if isinstance(ttypes, dict) and ttypes.get('success'):
-                    tom_types_map = ttypes.get('map', {}) or {}
-            except Exception:
-                tom_types_map = {}
-
-            # Build a map of TableID -> Name using INFO.TABLES()
-            table_map: Dict[str, str] = {}
-            try:
-                t_res = executor.execute_info_query("TABLES")
-                if t_res.get('success'):
-                    for tr in t_res.get('rows', []) or []:
-                        tid = tr.get('ID') or tr.get('[ID]') or tr.get('TableID') or tr.get('[TableID]')
-                        tname = tr.get('Name') or tr.get('[Name]')
-                        if tid is not None and tname:
-                            table_map[str(tid)] = str(tname)
-            except Exception:
-                pass
-
-            # Group by table and capture data type per column
-            by_table: Dict[str, List[Dict[str, Any]]] = {}
-            for r in cols:
-                # Resolve table name using direct fields or TableID mapping
-                t = (
-                    r.get('Table')
-                    or r.get('TableName')
-                    or r.get('TABLE_NAME')
-                    or r.get('[Table]')
-                    or r.get('[TableName]')
-                    or r.get('[TABLE_NAME]')
-                )
-                if not t:
-                    tid = r.get('TableID') or r.get('[TableID]') or r.get('TABLE_ID') or r.get('[TABLE_ID]')
-                    if tid is not None:
-                        # Prefer local table_map; only fall back to executor mapping if missing
-                        t = table_map.get(str(tid))
-                        if not t:
-                            try:
-                                t_name = executor._get_table_name_from_id(tid)  # type: ignore[attr-defined]
-                                t = t_name
-                            except Exception:
-                                t = None
-                # Determine display name (for DAX) and technical name (do not use technical for DAX references)
-                display_name = (
-                    r.get('Name')
-                    or r.get('[Name]')
-                    or r.get('COLUMN_NAME')
-                    or r.get('[COLUMN_NAME]')
-                )
-                technical_name = (
-                    r.get('ExplicitName')
-                    or r.get('[ExplicitName]')
-                    or r.get('InferredName')
-                    or r.get('[InferredName]')
-                )
-                if not t:
-                    continue
-                # DataType may appear as text or numeric; capture broadly and normalize later
-                # Prefer TOM-derived type when available
-                dt = None
-                try:
-                    if t in tom_types_map:
-                        disp_for_type = (display_name or technical_name)
-                        if disp_for_type and disp_for_type in tom_types_map[t]:
-                            dt = tom_types_map[t][disp_for_type]
-                except Exception:
-                    dt = None
-                # Fallback to DMV-provided datatype
-                if dt is None:
-                    dt = (
-                        r.get('DataType')
-                        or r.get('[DataType]')
-                        or r.get('ExplicitDataType')
-                        or r.get('[ExplicitDataType]')
-                    )
-                # Exclude technical RowNumber columns
-                name_check = str(display_name or technical_name or '')
-                if name_check.startswith('RowNumber-'):
-                    continue
-                # Skip binary columns from sampling
-                try:
-                    _dt_lower = str(dt).lower() if dt is not None else ''
-                except Exception:
-                    _dt_lower = ''
-                sampleable_type = ("binary" not in _dt_lower)
-                sampleable = bool(
-                    (display_name is not None and str(display_name).strip() != '') or
-                    (technical_name is not None and str(technical_name).strip() != '')
-                ) and sampleable_type
-                name_out = str(display_name or technical_name or '')
-                if not name_out:
-                    # If we truly don't have any name, skip this row
-                    continue
-                by_table.setdefault(str(t), []).append({
-                    'name': name_out,
-                    'datatype': dt,
-                    'sampleable': sampleable,
-                    'display': display_name,
-                    'technical': technical_name,
-                    'dmv': r,  # preserve original DMV row for extras
-                })
-
-            # Normalize datatype to friendly names favoring TOM text values
-            TEXT_DTYPE_MAP = {
-                'int64': 'Integer',
-                'wholenumber': 'Integer',
-                'integer': 'Integer',
-                'double': 'Double',
-                'decimal': 'Decimal',
-                'currency': 'Currency',
-                'boolean': 'Boolean',
-                'string': 'String',
-                'datetime': 'DateTime',
-                'date': 'Date',
-                'time': 'Time',
-                'binary': 'Binary',
-                'variant': 'Variant',
-            }
-            def map_dtype(dt_val: Any) -> Any:
-                try:
-                    if dt_val is None:
-                        return None
-                    if isinstance(dt_val, (int, float)):
-                        # Avoid guessing; surface the numeric code if engines emit one
-                        return int(dt_val)
-                    if isinstance(dt_val, str):
-                        key = dt_val.strip()
-                        low = key.lower()
-                        # Some enums stringify as 'DataType.Int64' -> take last token
-                        if '.' in low:
-                            low = low.split('.')[-1]
-                        return TEXT_DTYPE_MAP.get(low, key)
-                    return dt_val
-                except Exception:
-                    return dt_val
-
-            # 2) For each table, fetch top N rows across all columns once
-            result_rows: List[List[Any]] = []
-            total_tables = 0
-            def _norm_key(s: Optional[str]) -> str:
-                raw = (s or '').strip()
-                low = raw.lower()
-                # If in the form Table[Column], prefer the bracketed token
-                if '[' in low and ']' in low:
-                    lbi = low.rfind('[')
-                    rbi = low.rfind(']')
-                    if rbi > lbi >= 0:
-                        low = low[lbi + 1:rbi]
-                # If still qualified with dots, take the last segment
-                if '.' in low:
-                    low = low.split('.')[-1]
-                # Strip quotes, brackets, spaces, underscores
-                low = low.replace("'", "").replace("[", "").replace("]", "")
-                low = low.replace(" ", "").replace("_", "")
-                return low
-
-            for table_name, col_list in by_table.items():
-                if not col_list:
-                    continue
-                total_tables += 1
-                # 3) Emit one row per column with up to n sample values
-                for col in col_list:
-                    col_name = col['name']
-                    # Resolve data type: prefer TOM map with normalized lookup
-                    dt_raw = col.get('datatype')
-                    dt_resolved = None
-                    try:
-                        if table_name in tom_types_map:
-                            # exact match
-                            disp = str(col.get('display') or col_name)
-                            if disp in tom_types_map[table_name]:
-                                dt_resolved = tom_types_map[table_name][disp]
-                            else:
-                                # try case-insensitive/normalized match
-                                norm_target = _norm_key(disp)
-                                for k, v in tom_types_map[table_name].items():
-                                    if _norm_key(str(k)) == norm_target:
-                                        dt_resolved = v
-                                        break
-                            if dt_resolved is None and col.get('technical'):
-                                tech = str(col.get('technical'))
-                                if tech in tom_types_map[table_name]:
-                                    dt_resolved = tom_types_map[table_name][tech]
-                                else:
-                                    norm_target = _norm_key(tech)
-                                    for k, v in tom_types_map[table_name].items():
-                                        if _norm_key(str(k)) == norm_target:
-                                            dt_resolved = v
-                                            break
-                    except Exception:
-                        dt_resolved = None
-                    dt = map_dtype(dt_resolved if dt_resolved is not None else dt_raw)
-
-                    # Per-column sampling using a fixed alias to guarantee value extraction
-                    values: List[Any] = []
-                    if col.get('sampleable'):
-                        base_name = str(col.get('display') or col_name)
-                        # Build alias table once for robust filtering on [V]
-                        val_ref = f"{dq_table(table_name)}{dq_col(base_name)}"
-                        alias_tbl = f"SELECTCOLUMNS({dq_table(table_name)}, \"V\", {val_ref})"
-                        # Strict non-blank, non-empty/whitespace filter
-                        qcol = (
-                            f"EVALUATE TOPN({n}, "
-                            f"FILTER({alias_tbl}, NOT(ISBLANK([V])) && COALESCE(LEN(TRIM([V] & \"\")), 0) > 0))"
-                        )
-                        data_col = executor.validate_and_execute_dax(qcol, n)
-                        # If failed or returned no rows, try simpler filter (exclude only BLANK())
-                        rows_col = data_col.get('rows', []) if data_col.get('success') else []
-                        if (not data_col.get('success') or not rows_col) and col.get('technical'):
-                            # Retry using technical name if display name failed
-                            tech = str(col.get('technical'))
-                            val_ref = f"{dq_table(table_name)}{dq_col(tech)}"
-                            alias_tbl = f"SELECTCOLUMNS({dq_table(table_name)}, \"V\", {val_ref})"
-                            qcol = (
-                                f"EVALUATE TOPN({n}, "
-                                f"FILTER({alias_tbl}, NOT(ISBLANK([V])) && COALESCE(LEN(TRIM([V] & \"\")), 0) > 0))"
-                            )
-                            data_col = executor.validate_and_execute_dax(qcol, n)
-                            rows_col = data_col.get('rows', []) if data_col.get('success') else []
-                        if data_col.get('success') and not rows_col:
-                            # Relax: exclude only BLANK() to recover values
-                            qcol_relax = f"EVALUATE TOPN({n}, FILTER({alias_tbl}, NOT(ISBLANK([V]))))"
-                            data_col = executor.validate_and_execute_dax(qcol_relax, n)
-                            rows_col = data_col.get('rows', []) if data_col.get('success') else []
-                        if data_col.get('success') and not rows_col:
-                            # Final fallback: unfiltered alias table to at least return something if available
-                            qcol_any = f"EVALUATE TOPN({n}, {alias_tbl})"
-                            data_col = executor.validate_and_execute_dax(qcol_any, n)
-                            rows_col = data_col.get('rows', []) if data_col.get('success') else []
-                        rows_col = data_col.get('rows', []) if data_col.get('success') else []
-                        for i in range(n):
-                            if i < len(rows_col) and isinstance(rows_col[i], dict):
-                                rowi = rows_col[i]
-                                # Prefer alias 'V', else take the first available value
-                                v = rowi.get('V')
-                                if v is None and rowi:
-                                    try:
-                                        v = next(iter(rowi.values()))
-                                    except Exception:
-                                        v = None
-                                values.append(v)
-                            else:
-                                values.append(None)
-                    else:
-                        values = [None, None, None]
-                    # Compute requested extras values from DMV row (cheap extras only)
-                    extra_vals: List[Any] = []
-                    if extras_dmv:
-                        dmv_row = col.get('dmv') or {}
-                        for ex in extras_dmv:
-                            # Use common variants of field names from TMSCHEMA/CSDL
-                            if ex == 'Description':
-                                extra_vals.append(dmv_row.get('Description') or dmv_row.get('[Description]'))
-                            elif ex == 'IsHidden':
-                                extra_vals.append(dmv_row.get('IsHidden') if 'IsHidden' in dmv_row else dmv_row.get('[IsHidden]'))
-                            elif ex == 'IsNullable':
-                                extra_vals.append(dmv_row.get('IsNullable') if 'IsNullable' in dmv_row else dmv_row.get('[IsNullable]'))
-                            elif ex == 'IsKey':
-                                extra_vals.append(dmv_row.get('IsKey') if 'IsKey' in dmv_row else dmv_row.get('[IsKey]'))
-                            elif ex == 'SummarizeBy':
-                                extra_vals.append(dmv_row.get('SummarizeBy') or dmv_row.get('[SummarizeBy]'))
-                            else:
-                                extra_vals.append(None)
-
-                    # Pad to 3 for consistent headers
-                    while len(values) < 3:
-                        values.append(None)
-                    core_row = [table_name, col_name, dt]
-                    # Insert extras between datatype and sample values
-                    core_row.extend(extra_vals)
-                    core_row.extend([values[0], values[1], values[2]])
-                    result_rows.append(core_row)
-
-            # 4) Write to file (user-selected folder or exports/)
-            root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            if output_dir and isinstance(output_dir, str) and output_dir.strip():
-                out_dir = output_dir.strip()
-            else:
-                out_dir = os.path.join(root_dir, "exports")
-            try:
-                os.makedirs(out_dir, exist_ok=True)
-            except Exception:
-                # Fallback to default exports folder if user path invalid
-                out_dir = os.path.join(root_dir, "exports")
-                os.makedirs(out_dir, exist_ok=True)
-
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            fmt = (format or 'csv').strip().lower()
-            headers = [
-                "Table Name",
-                "Column Name",
-                "Data Type Column",
-            ]
-            # Add any requested extras to headers in the same order
-            if extras_dmv:
-                headers.extend(extras_dmv)
-            headers.extend([
-                "Sample Row 1 Value",
-                "Sample Row 2 Value",
-                "Sample Row 3 Value",
-            ])
-
-            notes: List[str] = []
-            path: str
-
-            # Guard: XLSX can be slow on large exports; auto-switch to CSV for speed
-            try:
-                if fmt == 'xlsx' and len(result_rows) > 1000:
-                    notes.append(f"Result has {len(result_rows)} rows; switched to CSV for faster write")
-                    fmt = 'csv'
-            except Exception:
-                pass
-
-            if fmt == 'txt':
-                path = os.path.join(out_dir, f"flat_schema_samples_{ts}.txt")
-                with open(path, "w", encoding="utf-8") as f:
-                    f.write("\t".join(headers) + "\n")
-                    for r in result_rows:
-                        f.write("\t".join("" if v is None else str(v) for v in r) + "\n")
-            elif fmt == 'xlsx':
-                try:
-                    from openpyxl import Workbook  # type: ignore
-                    wb = Workbook()
-                    ws = getattr(wb, 'active', None)
-                    if ws is None:
-                        raise RuntimeError('openpyxl workbook has no active worksheet')
-                    try:
-                        ws.title = "SchemaSamples"  # type: ignore[attr-defined]
-                    except Exception:
-                        pass
-                    ws.append(headers)  # type: ignore[attr-defined]
-                    for r in result_rows:
-                        ws.append(r)  # type: ignore[attr-defined]
-                    path = os.path.join(out_dir, f"flat_schema_samples_{ts}.xlsx")
-                    wb.save(path)
-                except Exception as _e:
-                    # Fallback to CSV if openpyxl not available
-                    notes.append(f"openpyxl not available or failed ({_e}); fell back to CSV.")
-                    fmt = 'csv'
-                    path = os.path.join(out_dir, f"flat_schema_samples_{ts}.csv")
-                    with open(path, "w", encoding="utf-8", newline="") as f:
-                        f.write("sep=,\n")
-                        w = csv.writer(f, delimiter=',')
-                        w.writerow(headers)
-                        w.writerows(result_rows)
-            else:
-                # csv with Excel-friendly hint (sep=,)
-                path = os.path.join(out_dir, f"flat_schema_samples_{ts}.csv")
-                with open(path, "w", encoding="utf-8", newline="") as f:
-                    # Excel locale hint to ensure comma separation even in locales using ;
-                    f.write("sep=,\n")
-                    w = csv.writer(f, delimiter=',')
-                    w.writerow(headers)
-                    w.writerows(result_rows)
-
-            return {
-                'success': True,
-                'format': fmt,
-                'file': path,
-                'tables': total_tables,
-                'columns': len(result_rows),
-                'rows_per_column': n,
-                'notes': notes,
-            }
-        except Exception as e:
-            return {'success': False, 'error': str(e)}
-
     # -------- NL intent executor --------
     def execute_intent(
         self,
@@ -1417,18 +906,7 @@ class AgentPolicy:
                 if m:
                     rows = max(1, min(10, int(m.group(1))))
             except Exception:
-                rows = 3
-            res = self.export_flat_schema_samples(connection_state, fmt, rows)
-            return {"success": res.get("success", False), "actions": [{"action": "export_flat_schema_samples", "result": res}], "final": res}
-
-        # Compact/expression-free schema intent
-        if any(k in text for k in [
-            "compact schema", "expression-free schema", "schema only", "diff-friendly schema", "structure only"
-        ]):
-            inc_hidden = not ("visible only" in text or "hide hidden" in text)
-            cmp_res = self.export_compact_schema(connection_state, include_hidden=inc_hidden)
-            actions.append({"action": "export_compact_schema", "result": cmp_res})
-            return {"success": cmp_res.get("success", False), "actions": actions, "final": cmp_res}
+                pass
 
         # Relationship-focused intents: return list and analysis directly
         if any(k in text for k in ["relationship", "relationships", "rels", "cardinality", "relations"]):
@@ -1454,10 +932,6 @@ class AgentPolicy:
             if any(k in text for k in ["document", "documentation", "docs"]):
                 doc = self.generate_docs_safe(connection_state)
                 actions.append({"action": "generate_docs_safe", "result": doc})
-                # If the user also signaled compact schema, attach it as a side artifact
-                if any(k in text for k in ["compact", "expression-free", "schema only", "diff-friendly"]):
-                    cmp_res = self.export_compact_schema(connection_state)
-                    actions.append({"action": "export_compact_schema", "result": cmp_res})
                 return {"success": doc.get("success", False), "actions": actions, "final": doc}
             return {"success": True, "actions": actions, "final": summary}
 
@@ -1705,17 +1179,6 @@ class AgentPolicy:
                 }
             }
         ]
-        # Offer a zero-risk, diff-friendly option
-        options.insert(0, {
-            'name': 'Compact schema export',
-            'id': 'compact',
-            'description': 'Export expression-free schema (tables/columns/measures/relationships) for documentation or diffs.',
-            'estimated_time': 'seconds',
-            'call': {
-                'tool': 'export_compact_schema',
-                'arguments': {'include_hidden': True}
-            }
-        })
         return {
             'success': True,
             'decision': 'propose_analysis',

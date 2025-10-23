@@ -50,7 +50,6 @@ from core.connection_state import connection_state
 from core.user_guide_generator import generate_comprehensive_user_guide
 
 # Delegated handlers & utils (modularized)
-from server.handlers.relationships_graph import export_relationship_graph as _export_relationship_graph
 from server.handlers.full_analysis import run_full_analysis as _run_full_analysis
 from server.utils.m_practices import scan_m_practices as _scan_m_practices
 
@@ -976,8 +975,7 @@ def _generate_quickstart_markdown() -> str:
         "- list: tables | list: columns | list: measures | describe: table | preview: table",
         "- search: objects | search: text in measures | get: data sources | get: m expressions",
         "- analysis: full model | analysis: best practices | analysis: performance",
-        "- usage: find unused objects",
-        "- export: compact schema | export: tmsl | export: tmdl | documentation: generate word",
+        "- export: tmsl | export: tmdl | documentation: generate word",
         "",
         "Tips:",
         "- Large results are paged; use page_size + next_token",
@@ -1179,22 +1177,6 @@ def _handle_agent_tools(name: str, arguments: Any) -> Optional[dict]:
         return agent_policy.set_performance_trace(connection_state, bool(arguments.get('enabled')))
     if name == "format_dax":
         return agent_policy.format_dax(arguments.get('expression', ''))
-    if name == "export_model_overview":
-        ensured = agent_policy.ensure_connected(connection_manager, connection_state, None)
-        if not ensured.get('success'):
-            return ensured
-        return agent_policy.export_model_overview(connection_state, arguments.get('format', 'json'), arguments.get('include_counts', True))
-    if name == "export_columns_with_samples":
-        ensured = agent_policy.ensure_connected(connection_manager, connection_state, None)
-        if not ensured.get('success'):
-            return ensured
-        return agent_policy.export_flat_schema_samples(
-            connection_state,
-            arguments.get('format', 'csv'),
-            arguments.get('rows', 3),
-            arguments.get('extras', []),
-            arguments.get('output_dir'),
-        )
     if name == "auto_route":
         return agent_policy.auto_analyze_or_preview(connection_manager, connection_state, arguments.get('query', ''), arguments.get('runs'), arguments.get('max_rows'), arguments.get('priority', 'depth'))
     return None
@@ -1675,10 +1657,6 @@ def _handle_dependency_and_bulk(name: str, arguments: Any) -> Optional[dict]:
             arguments['measure'],
             arguments.get('depth', 3)
         ) if dependency_analyzer else ErrorHandler.handle_manager_unavailable('dependency_analyzer')
-    if name == "find_unused_objects":
-        return dependency_analyzer.find_unused_objects() if dependency_analyzer else ErrorHandler.handle_manager_unavailable('dependency_analyzer')
-    if name == "analyze_column_usage":
-        return dependency_analyzer.analyze_column_usage(arguments['table'], arguments['column']) if dependency_analyzer else ErrorHandler.handle_manager_unavailable('dependency_analyzer')
     if name == "bulk_create_measures":
         return bulk_operations.bulk_create_measures(arguments['measures']) if bulk_operations else ErrorHandler.handle_manager_unavailable('bulk_operations')
     if name == "bulk_delete_measures":
@@ -1716,12 +1694,6 @@ def _handle_dependency_and_bulk(name: str, arguments: Any) -> Optional[dict]:
         return model_exporter.export_tmsl(arguments.get('include_full_model', False)) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
     if name == "export_tmdl":
         return model_exporter.export_tmdl_structure() if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
-    if name == "export_compact_schema":
-        fmt = (arguments.get('format') or 'json').lower()
-        include_hidden = arguments.get('include_hidden', True)
-        if fmt == 'xlsx':
-            return agent_policy.export_compact_schema_xlsx(connection_state, include_hidden, arguments.get('output_dir'))
-        return model_exporter.export_compact_schema(include_hidden) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
     if name == "generate_documentation":
         return model_exporter.generate_documentation(connection_state.query_executor) if model_exporter else ErrorHandler.handle_manager_unavailable('model_exporter')
     if name == "get_model_summary":
@@ -1888,8 +1860,6 @@ FRIENDLY_TOOL_ALIASES = {
     "Dependencies: Measure": "analyze_measure_dependencies",
     "Impact: Measure": "get_measure_impact",
     # heatmap removed from public surface
-    "Dependencies: Column usage": "analyze_column_usage",
-    "Find unused objects": "find_unused_objects",
     # Model management
     "Measure: Upsert": "upsert_measure",
     "Measure: Delete": "delete_measure",
@@ -1909,14 +1879,11 @@ FRIENDLY_TOOL_ALIASES = {
     "Analysis: Best practices": "analyze_best_practices_unified",
     "Analysis: Performance": "analyze_performance_unified",
     # Docs & export
-    "Export: Columns with samples": "export_columns_with_samples",
-    "Export: Compact schema": "export_compact_schema",
     "Export: TMSL": "export_tmsl",
     "Export: TMDL": "export_tmdl",
     "Docs: Generate": "generate_documentation",
     "Docs: Generate Word": "generate_model_documentation_word",
     "Docs: Update Word": "update_model_documentation_word",
-    "Docs: Overview": "export_model_overview",
     "Model: Summary": "get_model_summary",
     "Compare: Models": "compare_models",
     "Schema: Relationships": "relationships",
@@ -1959,9 +1926,6 @@ FRIENDLY_TOOL_ALIASES = {
     # Friendlier name for Power BI users
     "measure: create or update": "upsert_measure",
     # export/docs:
-    "export: columns with samples": "export_columns_with_samples",
-    "export: compact schema": "export_compact_schema",
-    "export: model overview": "export_model_overview",
     "export: schema (paged)": "export_model_schema",
     "export: tmdl": "export_tmdl",
     "export: tmsl": "export_tmsl",
@@ -2143,8 +2107,6 @@ async def list_tools() -> List[Tool]:
         add("server: performance metrics", "get_performance_metrics", "Get performance metrics for operations", {"type": "object", "properties": {"operation_name": {"type": "string", "description": "Specific operation name (optional)"}}, "required": []})
         add("server: performance summary", "get_performance_summary", "Get overall performance summary", {"type": "object", "properties": {}, "required": []})
         add("server: slow operations", "get_slow_operations", "Get operations running slower than threshold", {"type": "object", "properties": {"threshold": {"type": "number", "default": 1.0, "description": "Time threshold in seconds"}}, "required": []})
-    add("usage: analyze column", "analyze_column_usage", "Analyze how a column is used", {"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}}, "required": ["table", "column"]})
-    add("usage: find unused objects", "find_unused_objects", "Find unused tables/columns/measures", {"type": "object", "properties": {}, "required": []})
 
     # Model management
     add("measure: create or update", "upsert_measure", "Create or update a measure", {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "expression": {"type": "string"}, "display_folder": {"type": "string"}, "description": {"type": "string"}, "format_string": {"type": "string"}}, "required": ["table", "measure", "expression"]})
@@ -2160,11 +2122,8 @@ async def list_tools() -> List[Tool]:
     add("validate: model integrity", "validate_model_integrity", "Validate model integrity", {"type": "object", "properties": {}, "required": []})
 
     # Docs & export
-    add("export: columns with samples", "export_columns_with_samples", "Export flat list of columns with sample values (csv/txt/xlsx)", {"type": "object", "properties": {"format": {"type": "string", "enum": ["csv", "txt", "xlsx"], "default": "csv"}, "rows": {"type": "integer", "default": 3}, "extras": {"type": "array", "items": {"type": "string"}, "default": []}, "output_dir": {"type": "string", "description": "Directory to write export files; defaults to exports/"}}, "required": []})
-    add("export: compact schema", "export_compact_schema", "Export compact model schema for diffs (json/xlsx)", {"type": "object", "properties": {"include_hidden": {"type": "boolean", "default": True}, "format": {"type": "string", "enum": ["json", "xlsx"], "default": "json"}, "output_dir": {"type": "string", "description": "Directory to write XLSX (or other files) to; defaults to exports/"}}, "required": []})
     add("export: tmsl", "export_tmsl", "Export TMSL (summary by default)", {"type": "object", "properties": {"include_full_model": {"type": "boolean", "default": False}}, "required": []})
     add("export: tmdl", "export_tmdl", "Export TMDL model structure", {"type": "object", "properties": {}, "required": []})
-    add("export: model overview", "export_model_overview", "Export compact model overview (json/yaml)", {"type": "object", "properties": {"format": {"type": "string", "enum": ["json", "yaml"], "default": "json"}, "include_counts": {"type": "boolean", "default": True}}, "required": []})
 
     # Model comparison - TWO STEP PROCESS
     add("comparison: prepare comparison", "prepare_model_comparison", "🚨 STEP 1 OF 2: Always call THIS tool first before comparing models! This detects both .pbix files, shows their names to you, and returns an example_question that you MUST ask the user. The response will include 'example_question' field - show that question to the user exactly as written. DO NOT proceed to step 2 until user answers!", {"type": "object", "properties": {}, "required": []})

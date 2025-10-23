@@ -6,6 +6,7 @@ a complete dependency graph for the Power BI model and report.
 """
 
 import logging
+import re
 from typing import Dict, List, Set, Tuple, Optional, Any
 
 # Import existing DAX parser
@@ -39,6 +40,7 @@ class PbipDependencyEngine:
         self.measure_to_measure_reverse: Dict[str, List[str]] = {}  # Reverse: measure -> measures that depend on it
         self.measure_to_column: Dict[str, List[str]] = {}
         self.column_to_measure: Dict[str, List[str]] = {}
+        self.column_to_field_params: Dict[str, List[str]] = {}  # Column -> field parameter tables that reference it
         self.visual_dependencies: Dict[str, Dict[str, List[str]]] = {}
         self.page_dependencies: Dict[str, Dict[str, Any]] = {}
 
@@ -85,6 +87,7 @@ class PbipDependencyEngine:
         # Analyze model dependencies
         self._analyze_measure_dependencies()
         self._analyze_column_usage()
+        self._analyze_field_parameters()
         self._build_reverse_indices()
 
         # Analyze report dependencies (if report data available)
@@ -100,6 +103,7 @@ class PbipDependencyEngine:
             "measure_to_measure_reverse": self.measure_to_measure_reverse,
             "measure_to_column": self.measure_to_column,
             "column_to_measure": self.column_to_measure,
+            "column_to_field_params": self.column_to_field_params,
             "visual_dependencies": self.visual_dependencies,
             "page_dependencies": self.page_dependencies,
             "unused_measures": unused["measures"],
@@ -206,6 +210,32 @@ class PbipDependencyEngine:
                                 self.column_to_measure[ref_key] = []
                             if column_key not in self.column_to_measure[ref_key]:
                                 self.column_to_measure[ref_key].append(column_key)
+
+    def _analyze_field_parameters(self) -> None:
+        """Analyze field parameter tables and track which columns they reference."""
+        for table in self.model.get("tables", []):
+            table_name = table.get("name", "")
+            partitions = table.get("partitions", [])
+
+            for partition in partitions:
+                source = partition.get("source", "")
+                # Field parameters use NAMEOF('Table'[Column]) in their calculated table expression
+                if source and "NAMEOF" in source:
+                    # Parse NAMEOF references: NAMEOF('Table'[Column]) or NAMEOF("Table"[Column])
+                    nameof_pattern = r"NAMEOF\(['\"]?([^'\"\[]+)['\"]?\[([^\]]+)\]\)"
+                    matches = re.findall(nameof_pattern, source)
+
+                    for table_ref, col_ref in matches:
+                        column_key = f"{table_ref}[{col_ref}]"
+
+                        # Add to column_to_field_params mapping
+                        if column_key not in self.column_to_field_params:
+                            self.column_to_field_params[column_key] = []
+                        if table_name not in self.column_to_field_params[column_key]:
+                            self.column_to_field_params[column_key].append(table_name)
+                            self.logger.debug(
+                                f"Field parameter '{table_name}' references column '{column_key}'"
+                            )
 
     def _build_reverse_indices(self) -> None:
         """Build reverse indices for dependency lookups."""
@@ -357,6 +387,14 @@ class PbipDependencyEngine:
         for measure_key in measures_in_visuals:
             add_dependencies_recursively(measure_key)
 
+        # ALSO mark as used any measure that is referenced by another measure
+        # (even if that other measure is not in visuals - it might be used in other reports or for testing)
+        # This ensures that base measures aren't incorrectly marked as unused
+        for measure_key in self.measure_to_measure_reverse.keys():
+            # This measure is referenced by at least one other measure
+            if measure_key not in used_measures:
+                used_measures.add(measure_key)
+
         # Build set of used columns
         used_columns = set()
 
@@ -395,6 +433,20 @@ class PbipDependencyEngine:
                     column = field.get("name", "")
                     if table and column:
                         used_columns.add(f"{table}[{column}]")
+
+        # Check field parameter tables (they reference columns via NAMEOF in partition source)
+        for table in self.model.get("tables", []):
+            partitions = table.get("partitions", [])
+            for partition in partitions:
+                source = partition.get("source", "")
+                # Field parameters use NAMEOF('Table'[Column]) in their calculated table expression
+                if source and "NAMEOF" in source:
+                    # Parse NAMEOF references: NAMEOF('Table'[Column]) or NAMEOF("Table"[Column])
+                    nameof_pattern = r"NAMEOF\(['\"]?([^'\"\[]+)['\"]?\[([^\]]+)\]\)"
+                    matches = re.findall(nameof_pattern, source)
+                    for table_ref, col_ref in matches:
+                        column_key = f"{table_ref}[{col_ref}]"
+                        used_columns.add(column_key)
 
         # Find unused
         all_measures = []

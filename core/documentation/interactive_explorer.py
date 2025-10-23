@@ -1492,6 +1492,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </script>
     <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         // Check if libraries loaded
@@ -1852,16 +1853,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition"
                     >
                         🔗 Relationships ({{{{ modelData.relationships?.edges?.length || 0 }}}})
-                    </button>
-                    <button
-                        @click="activeTab = 'dependencies'"
-                        :class="{{
-                            'border-blue-500 text-blue-600': activeTab === 'dependencies',
-                            'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300': activeTab !== 'dependencies'
-                       }}"
-                        class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition"
-                    >
-                        🔀 Dependencies ({{{{ modelData.dependency_graph?.nodes?.length || 0 }}}})
                     </button>
                     <button
                         @click="activeTab = 'statistics'"
@@ -2654,8 +2645,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             </select>
                             <label class="text-sm font-medium text-gray-700 ml-4">Layout:</label>
                             <select v-model="graphLayout" @change="changeGraphLayout(graphLayout)" class="px-3 py-1 border rounded text-sm">
-                                <option value="force">Force Directed</option>
-                                <option value="hierarchical">Hierarchical (Recommended)</option>
+                                <option value="tree">🌳 D3 Tree (Recommended)</option>
+                                <option value="dagre">📊 Dagre (Layered)</option>
+                                <option value="force">🔗 Force Directed</option>
+                                <option value="hierarchical">Hierarchical (Old)</option>
                                 <option value="radial">Radial (Tiered)</option>
                             </select>
                             <label class="flex items-center space-x-2 ml-4">
@@ -2692,222 +2685,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <h3 class="font-semibold text-lg mb-2">Selected: {{{{ selectedNode }}}}</h3>
                         <div class="text-sm text-gray-700">
                             Click on a table to highlight its relationships
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Dependency Graph View -->
-            <div v-if="activeTab === 'dependencies'">
-                <div class="bg-white rounded-lg shadow p-6">
-                    <!-- Header and Controls -->
-                    <div class="mb-4">
-                        <div class="flex justify-between items-center mb-3">
-                            <h2 class="text-2xl font-bold text-gray-900">Dependency Graph</h2>
-                            <div class="flex items-center space-x-2">
-                                <!-- Layout Selector -->
-                                <label class="text-sm font-medium text-gray-700">Layout:</label>
-                                <select v-model="dependencyLayout" @change="changeDependencyLayout" class="px-3 py-1 border rounded text-sm">
-                                    <option value="force">Force Directed</option>
-                                    <option value="hierarchical">Hierarchical (Recommended)</option>
-                                    <option value="radial">Radial (Tiered)</option>
-                                </select>
-
-                                <!-- Reset Button -->
-                                <button
-                                    @click="resetDependencyGraph"
-                                    class="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm"
-                                    title="Reset Graph"
-                                >
-                                    🔄 Reset
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Filter Controls Row -->
-                        <div class="grid grid-cols-12 gap-3 p-3 bg-gray-50 rounded border border-gray-200">
-                            <!-- Focus on Measure -->
-                            <div class="col-span-4">
-                                <label class="text-xs font-medium text-gray-700 block mb-1">Focus on Measure:</label>
-                                <select
-                                    v-model="dependencyFocusMeasure"
-                                    @change="handleMeasureFocus"
-                                    class="w-full px-2 py-1 border rounded text-sm"
-                                >
-                                    <option value="">-- All Measures --</option>
-                                    <optgroup
-                                        v-for="(measures, folder) in dependencyMeasuresByFolder"
-                                        :key="folder"
-                                        :label="folder || '(No Folder)'"
-                                    >
-                                        <option
-                                            v-for="measure in measures"
-                                            :key="measure.id"
-                                            :value="measure.id"
-                                        >
-                                            {{{{ measure.table }}}} | {{{{ measure.label }}}}
-                                        </option>
-                                    </optgroup>
-                                </select>
-                            </div>
-
-                            <!-- Focus on Table -->
-                            <div class="col-span-3">
-                                <label class="text-xs font-medium text-gray-700 block mb-1">Focus on Table:</label>
-                                <select
-                                    v-model="dependencyFocusTable"
-                                    @change="handleTableFocus"
-                                    class="w-full px-2 py-1 border rounded text-sm"
-                                >
-                                    <option value="">-- All Tables --</option>
-                                    <option
-                                        v-for="table in dependencyTables"
-                                        :key="table.id"
-                                        :value="table.id"
-                                    >
-                                        {{{{ table.label }}}}
-                                    </option>
-                                </select>
-                            </div>
-
-                            <!-- Object Type Filter -->
-                            <div class="col-span-3">
-                                <label class="text-xs font-medium text-gray-700 block mb-1">Show Objects:</label>
-                                <select v-model="dependencyFilter" @change="initDependencyGraph" class="w-full px-2 py-1 border rounded text-sm">
-                                    <option value="all">All Objects</option>
-                                    <option value="measures-context">Measure Dependencies</option>
-                                    <option value="tables-context">Table Dependencies</option>
-                                    <option value="columns-context">Column Usage</option>
-                                </select>
-                            </div>
-
-                            <!-- Direction Filter -->
-                            <div class="col-span-2">
-                                <label class="text-xs font-medium text-gray-700 block mb-1">Direction:</label>
-                                <select v-model="dependencyDirection" @change="initDependencyGraph" class="w-full px-2 py-1 border rounded text-sm">
-                                    <option value="both">Both</option>
-                                    <option value="upstream">Upstream</option>
-                                    <option value="downstream">Downstream</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <!-- Depth Control (only shown when a focus is active) -->
-                        <div v-if="dependencyFocusMeasure || dependencyFocusTable" class="mt-3 p-3 bg-blue-50 rounded border border-blue-200">
-                            <div class="flex items-center gap-4">
-                                <label class="text-xs font-medium text-gray-700">Dependency Depth:</label>
-                                <input
-                                    v-model.number="dependencyDepth"
-                                    @change="initDependencyGraph"
-                                    type="range"
-                                    min="1"
-                                    max="10"
-                                    class="flex-1"
-                                />
-                                <span class="text-sm font-semibold text-blue-700 w-8 text-center">{{{{ dependencyDepth }}}}</span>
-                                <span class="text-xs text-gray-600">levels</span>
-                            </div>
-                            <div class="text-xs text-gray-600 mt-1">
-                                Showing dependencies up to {{{{ dependencyDepth }}}} {{{{ dependencyDepth === 1 ? 'level' : 'levels' }}}} from the focused node
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Legend and Info -->
-                    <div class="flex items-center justify-between gap-6 mb-4 p-3 bg-gray-50 rounded">
-                        <div class="flex items-center gap-6">
-                            <div class="flex items-center gap-2">
-                                <div class="w-4 h-4 rounded" style="background: linear-gradient(180deg, #B794F6 0%, #9F7AEA 100%);"></div>
-                                <span class="text-gray-600 text-sm">Table</span>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <div class="w-4 h-4 rotate-45" style="background: linear-gradient(135deg, #7D9AFF 0%, #5B7FFF 100%);"></div>
-                                <span class="text-gray-600 text-sm">Measure</span>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <div class="w-4 h-4" style="background: linear-gradient(180deg, #10B981 0%, #059669 100%);"></div>
-                                <span class="text-gray-600 text-sm">Column</span>
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-4">
-                            <div class="text-xs text-gray-500 border-l pl-4">
-                                Click a node to highlight | Drag to reposition | Scroll to zoom
-                            </div>
-                            <div v-if="modelData.dependency_graph" class="text-xs font-semibold text-blue-600 bg-blue-50 px-3 py-1 rounded">
-                                {{{{ modelData.dependency_graph.nodes?.length || 0 }}}} nodes | {{{{ modelData.dependency_graph.edges?.length || 0 }}}} edges
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Graph Container -->
-                    <div id="dependency-graph-container" style="height: 700px; position: relative; border: 1px solid #e2e8f0; border-radius: 0.5rem; background: white; overflow: hidden;">
-                        <svg id="dependency-graph-svg" width="100%" height="100%"></svg>
-                    </div>
-
-                    <!-- Selected Node Info -->
-                    <div v-if="selectedDependencyNode" class="mt-4 p-4 bg-blue-50 border border-blue-200 rounded">
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <h3 class="font-semibold text-lg mb-2">{{{{ selectedDependencyNode.label }}}}</h3>
-                                <div class="text-sm text-gray-700 space-y-1">
-                                    <div><strong>Type:</strong> {{{{ selectedDependencyNode.type }}}}</div>
-                                    <div><strong>Table:</strong> {{{{ selectedDependencyNode.table }}}}</div>
-                                    <div v-if="selectedDependencyNode.type === 'measure'">
-                                        <strong>Complexity:</strong>
-                                        <span :class="{{
-                                            'text-green-600': selectedDependencyNode.complexity === 'low',
-                                            'text-yellow-600': selectedDependencyNode.complexity === 'medium',
-                                            'text-red-600': selectedDependencyNode.complexity === 'high'
-                                        }}">
-                                            {{{{ selectedDependencyNode.complexity }}}}
-                                        </span>
-                                    </div>
-                                    <div v-if="selectedDependencyNode.type === 'column'">
-                                        <strong>Data Type:</strong> {{{{ selectedDependencyNode.data_type }}}}
-                                        <span class="ml-2"><strong>Used in:</strong> {{{{ selectedDependencyNode.used_in_count }}}} measure(s)</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <button
-                                @click="selectedDependencyNode = null; resetDependencyGraph()"
-                                class="text-gray-500 hover:text-gray-700"
-                            >
-                                ✕
-                            </button>
-                        </div>
-
-                        <!-- DAX Expression for Measures -->
-                        <div v-if="selectedDependencyNode.type === 'measure' && selectedDependencyNode.expression" class="mt-3">
-                            <strong class="text-sm">DAX Expression:</strong>
-                            <div class="code-block mt-2 text-xs" style="max-height: 150px; overflow-y: auto; white-space: pre-wrap; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; line-height: 1.5;" v-html="formatDAX(selectedDependencyNode.expression)"></div>
-                        </div>
-                    </div>
-
-                    <!-- Graph Statistics -->
-                    <div v-if="modelData.dependency_graph?.statistics" class="mt-4 grid grid-cols-4 gap-4">
-                        <div class="text-center p-3 bg-purple-50 rounded">
-                            <div class="text-2xl font-bold text-purple-600">{{{{ modelData.dependency_graph.statistics.measure_count }}}}</div>
-                            <div class="text-xs text-gray-600">Measures</div>
-                        </div>
-                        <div class="text-center p-3 bg-green-50 rounded">
-                            <div class="text-2xl font-bold text-green-600">{{{{ modelData.dependency_graph.statistics.column_count }}}}</div>
-                            <div class="text-xs text-gray-600">Columns</div>
-                        </div>
-                        <div class="text-center p-3 bg-blue-50 rounded">
-                            <div class="text-2xl font-bold text-blue-600">{{{{ modelData.dependency_graph.statistics.table_count }}}}</div>
-                            <div class="text-xs text-gray-600">Tables</div>
-                        </div>
-                        <div class="text-center p-3 bg-orange-50 rounded">
-                            <div class="text-2xl font-bold text-orange-600">{{{{ modelData.dependency_graph.statistics.total_edges }}}}</div>
-                            <div class="text-xs text-gray-600">Dependencies</div>
-                        </div>
-                    </div>
-
-                    <!-- Circular Dependencies Warning -->
-                    <div v-if="modelData.dependency_graph?.statistics?.circular_references?.length > 0" class="mt-4 p-4 bg-red-50 border border-red-200 rounded">
-                        <h4 class="font-semibold text-red-800 mb-2">⚠️ Circular Dependencies Detected</h4>
-                        <div class="text-sm text-red-700">
-                            Found {{{{ modelData.dependency_graph.statistics.circular_references.length }}}} circular dependency path(s). These can cause calculation errors.
                         </div>
                     </div>
                 </div>
@@ -3127,19 +2904,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     graphFilterTable: '',
                     darkMode: false,
                     showInactiveRelationships: true,
-                    graphLayout: 'hierarchical',
+                    graphLayout: 'tree',  // Default to new D3 tree layout
                     showColumnModal: false,
                     showRelationshipModal: false,
                     showCommandPalette: false,
                     modelData: {model_json},
                     graphSimulation: null,
                     graphSvg: null,
-                    // Dependency Graph properties
-                    dependencyFilter: 'all',
-                    dependencyDirection: 'both',
-                    dependencyLayout: 'hierarchical',
-                    selectedDependencyNode: null,
-                    dependencySimulation: null,
+                                                            dependencyLayout: 'hierarchical',
+                                        dependencySimulation: null,
                     dependencyFocusMeasure: '',
                     dependencyFocusTable: '',
                     dependencyDepth: 3,
@@ -3273,11 +3046,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     const nodes = this.modelData.relationships?.nodes || [];
                     return nodes.map(n => n.id).sort();
                 }},
-                // Dependency Graph computed properties
-                dependencyMeasuresByFolder() {{
-                    const measures = (this.modelData.dependency_graph?.nodes || [])
-                        .filter(n => n.type === 'measure')
-                        .sort((a, b) => {{
+                
                             // Sort by folder first, then by label
                             const folderA = a.folder || '';
                             const folderB = b.folder || '';
@@ -3299,23 +3068,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
                     return byFolder;
                 }},
-                dependencyTables() {{
-                    return (this.modelData.dependency_graph?.nodes || [])
-                        .filter(n => n.type === 'table')
-                        .sort((a, b) => a.label.localeCompare(b.label));
-                }},
-                dependencyColumns() {{
-                    return (this.modelData.dependency_graph?.nodes || [])
-                        .filter(n => n.type === 'column')
-                        .sort((a, b) => {{
-                            // Sort by table first, then by column name
-                            if (a.table !== b.table) {{
-                                return a.table.localeCompare(b.table);
-                            }}
-                            return a.label.localeCompare(b.label);
-                        }});
-                }}
-            }},
+                
+                
             methods: {{
                 selectTableFromOverview(table) {{
                     this.activeTab = 'tables';
@@ -3686,6 +3440,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             .force('link', d3.forceLink(edges).id(d => d.id).distance(120))
                             .force('charge', d3.forceManyBody().strength(-80))
                             .force('collision', d3.forceCollide().radius(40));
+                    }} else if (this.graphLayout === 'tree') {{
+                        // D3 Tree Layout (NEW - Hierarchical tree structure)
+                        this.renderTreeGraph(g, nodes, edges, width, height);
+                        return; // Exit early - tree uses different rendering
+                    }} else if (this.graphLayout === 'dagre') {{
+                        // Dagre Layout (NEW - DAG layered layout)
+                        this.renderDagreGraph(g, svg, nodes, edges, width, height);
+                        return; // Exit early - dagre uses different rendering
                     }} else if (this.graphLayout === 'hierarchical') {{
                         // True hierarchical layout based on relationship depth
                         // Calculate depths for each node using BFS from fact tables
@@ -3933,6 +3695,180 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         d.from === nodeId || d.to === nodeId
                     ).attr('opacity', 1).classed('highlighted', true);
                 }},
+
+                // NEW: D3 Tree Layout Renderer
+                renderTreeGraph(g, nodes, edges, width, height) {{
+                    const treeData = this.buildHierarchyForTree(nodes, edges);
+                    const treeLayout = d3.tree()
+                        .size([height - 100, width - 200])
+                        .separation((a, b) => (a.parent === b.parent ? 1 : 1.5));
+
+                    const root = d3.hierarchy(treeData);
+                    const tree = treeLayout(root);
+
+                    const treeG = g.append('g').attr('transform', 'translate(100, 50)');
+
+                    // Draw links
+                    treeG.selectAll('.link')
+                        .data(tree.links())
+                        .join('path')
+                        .attr('class', 'tree-link')
+                        .attr('d', d3.linkHorizontal().x(d => d.y).y(d => d.x))
+                        .attr('fill', 'none')
+                        .attr('stroke', '#10b981')
+                        .attr('stroke-width', 2)
+                        .attr('opacity', 0.6);
+
+                    // Draw nodes
+                    const nodeGroup = treeG.selectAll('.node')
+                        .data(tree.descendants())
+                        .join('g')
+                        .attr('class', 'graph-node')
+                        .attr('transform', d => `translate(${{d.y}},${{d.x}})`)
+                        .style('cursor', 'pointer')
+                        .on('click', (event, d) => {{
+                            this.selectedNode = d.data.id;
+                            this.highlightConnections(d.data.id);
+                        }});
+
+                    nodeGroup.append('circle')
+                        .attr('r', 8)
+                        .attr('fill', d => {{
+                            const node = nodes.find(n => n.id === d.data.id);
+                            return node && node.tableType === 'fact' ? '#FF8C42' :
+                                   node && node.tableType === 'slicer' ? '#9F7AEA' : '#5B7FFF';
+                        }})
+                        .attr('stroke', '#1f2937')
+                        .attr('stroke-width', 2);
+
+                    nodeGroup.append('text')
+                        .attr('dy', -15)
+                        .attr('text-anchor', 'middle')
+                        .attr('fill', '#1f2937')
+                        .style('font-size', '12px')
+                        .style('font-weight', 'bold')
+                        .text(d => d.data.label || d.data.id);
+                }},
+
+                buildHierarchyForTree(nodes, edges) {{
+                    const hasIncoming = new Set(edges.map(e => e.to));
+                    const roots = nodes.filter(n => !hasIncoming.has(n.id) || n.tableType === 'fact');
+
+                    if (roots.length === 0 && nodes.length > 0) roots.push(nodes[0]);
+
+                    const buildNode = (nodeId, visited = new Set()) => {{
+                        if (visited.has(nodeId)) return null;
+                        visited.add(nodeId);
+
+                        const node = nodes.find(n => n.id === nodeId);
+                        if (!node) return null;
+
+                        const children = edges
+                            .filter(e => e.from === nodeId)
+                            .map(e => buildNode(e.to, visited))
+                            .filter(c => c !== null);
+
+                        return {{
+                            id: nodeId,
+                            label: node.label || nodeId,
+                            children: children.length > 0 ? children : undefined
+                        }};
+                    }};
+
+                    if (roots.length === 1) {{
+                        return buildNode(roots[0].id);
+                    }} else {{
+                        return {{
+                            id: '__root__',
+                            label: 'Model',
+                            children: roots.map(r => buildNode(r.id)).filter(c => c !== null)
+                        }};
+                    }}
+                }},
+
+                // NEW: Dagre Layout Renderer
+                renderDagreGraph(g, svg, nodes, edges, width, height) {{
+                    const dagreG = new dagre.graphlib.Graph();
+                    dagreG.setGraph({{ rankdir: 'LR', nodesep: 70, ranksep: 100 }});
+                    dagreG.setDefaultEdgeLabel(() => ({{}}));
+
+                    nodes.forEach(node => {{
+                        dagreG.setNode(node.id, {{ label: node.label || node.id, width: 120, height: 40 }});
+                    }});
+
+                    edges.forEach(edge => {{
+                        dagreG.setEdge(edge.from, edge.to);
+                    }});
+
+                    dagre.layout(dagreG);
+
+                    const dagreGroup = g.append('g').attr('transform', 'translate(20,20)');
+
+                    // Add arrow marker
+                    svg.select('defs').append('marker')
+                        .attr('id', 'dagre-arrow')
+                        .attr('viewBox', '-0 -5 10 10')
+                        .attr('refX', 8)
+                        .attr('refY', 0)
+                        .attr('orient', 'auto')
+                        .attr('markerWidth', 6)
+                        .attr('markerHeight', 6)
+                        .append('path')
+                        .attr('d', 'M 0,-5 L 10,0 L 0,5')
+                        .attr('fill', '#94a3b8');
+
+                    // Draw edges
+                    edges.forEach(edge => {{
+                        const edgeData = dagreG.edge(edge.from, edge.to);
+                        if (edgeData && edgeData.points) {{
+                            dagreGroup.append('path')
+                                .attr('d', d3.line()
+                                    .x(d => d.x)
+                                    .y(d => d.y)
+                                    (edgeData.points))
+                                .attr('fill', 'none')
+                                .attr('stroke', edge.active ? '#10b981' : '#ef4444')
+                                .attr('stroke-width', edge.active ? 3 : 2)
+                                .attr('opacity', 0.6)
+                                .attr('marker-end', 'url(#dagre-arrow)');
+                        }}
+                    }});
+
+                    // Draw nodes
+                    dagreG.nodes().forEach(v => {{
+                        const node = dagreG.node(v);
+                        const nodeData = nodes.find(n => n.id === v);
+
+                        const nodeGroup = dagreGroup.append('g')
+                            .attr('class', 'graph-node')
+                            .attr('transform', `translate(${{node.x}},${{node.y}})`)
+                            .style('cursor', 'pointer')
+                            .on('click', () => {{
+                                this.selectedNode = v;
+                                this.highlightConnections(v);
+                            }});
+
+                        nodeGroup.append('rect')
+                            .attr('x', -60)
+                            .attr('y', -20)
+                            .attr('width', 120)
+                            .attr('height', 40)
+                            .attr('rx', 5)
+                            .attr('fill', nodeData && nodeData.tableType === 'fact' ? '#FF8C42' :
+                                          nodeData && nodeData.tableType === 'slicer' ? '#9F7AEA' : '#5B7FFF')
+                            .attr('stroke', '#1f2937')
+                            .attr('stroke-width', 2);
+
+                        nodeGroup.append('text')
+                            .attr('text-anchor', 'middle')
+                            .attr('dy', 5)
+                            .attr('fill', 'white')
+                            .style('font-size', '12px')
+                            .style('font-weight', 'bold')
+                            .text(node.label);
+                    }});
+                }},
+
                 resetGraph() {{
                     this.selectedNode = null;
                     const svg = d3.select('#graph-svg');
@@ -4055,580 +3991,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         }});
                     }}
                 }},
-                // Dependency Graph Methods
-                initDependencyGraph() {{
-                    if (!this.modelData.dependency_graph) return;
-
-                    const svg = d3.select('#dependency-graph-svg');
-                    const container = document.getElementById('dependency-graph-container');
-                    if (!container) return;
-
-                    const width = container.clientWidth;
-                    const height = container.clientHeight;
-
-                    svg.selectAll('*').remove();
-
-                    // Add gradient definitions for node types
-                    const defs = svg.append('defs');
-
-                    // Table gradient (purple)
-                    const tableGradient = defs.append('linearGradient')
-                        .attr('id', 'depTableGradient')
-                        .attr('x1', '0%').attr('y1', '0%')
-                        .attr('x2', '0%').attr('y2', '100%');
-                    tableGradient.append('stop').attr('offset', '0%').attr('style', 'stop-color:#B794F6;stop-opacity:1');
-                    tableGradient.append('stop').attr('offset', '100%').attr('style', 'stop-color:#9F7AEA;stop-opacity:1');
-
-                    // Measure gradient (blue)
-                    const measureGradient = defs.append('linearGradient')
-                        .attr('id', 'depMeasureGradient')
-                        .attr('x1', '0%').attr('y1', '0%')
-                        .attr('x2', '100%').attr('y2', '100%');
-                    measureGradient.append('stop').attr('offset', '0%').attr('style', 'stop-color:#7D9AFF;stop-opacity:1');
-                    measureGradient.append('stop').attr('offset', '100%').attr('style', 'stop-color:#5B7FFF;stop-opacity:1');
-
-                    // Column gradient (green)
-                    const columnGradient = defs.append('linearGradient')
-                        .attr('id', 'depColumnGradient')
-                        .attr('x1', '0%').attr('y1', '0%')
-                        .attr('x2', '0%').attr('y2', '100%');
-                    columnGradient.append('stop').attr('offset', '0%').attr('style', 'stop-color:#10B981;stop-opacity:1');
-                    columnGradient.append('stop').attr('offset', '100%').attr('style', 'stop-color:#059669;stop-opacity:1');
-
-                    // Arrow markers
-                    const arrowColors = [
-                        {{ id: 'arrow-measure', color: '#5B7FFF' }},
-                        {{ id: 'arrow-column', color: '#10B981' }},
-                        {{ id: 'arrow-table', color: '#9F7AEA' }},
-                        {{ id: 'arrow-column-table', color: '#94A3B8' }}
-                    ];
-
-                    arrowColors.forEach(arrow => {{
-                        defs.append('marker')
-                            .attr('id', arrow.id)
-                            .attr('viewBox', '0 -5 10 10')
-                            .attr('refX', 25)
-                            .attr('refY', 0)
-                            .attr('markerWidth', 6)
-                            .attr('markerHeight', 6)
-                            .attr('orient', 'auto')
-                            .append('path')
-                            .attr('d', 'M0,-5L10,0L0,5')
-                            .attr('fill', arrow.color);
-                    }});
-
-                    const g = svg.append('g');
-
-                    // Zoom behavior
-                    const zoom = d3.zoom()
-                        .scaleExtent([0.1, 4])
-                        .on('zoom', (event) => {{
-                            g.attr('transform', event.transform);
-                        }});
-
-                    svg.call(zoom);
-
-                    // Prepare data
-                    let allNodes = (this.modelData.dependency_graph.nodes || []);
-                    let allEdges = (this.modelData.dependency_graph.edges || []);
-
-                    // Apply focus filter (measure or table)
-                    const focusNode = this.dependencyFocusMeasure || this.dependencyFocusTable;
-                    if (focusNode) {{
-                        // Build adjacency lists based on direction
-                        const upstreamAdj = {{}};   // node -> nodes it depends on
-                        const downstreamAdj = {{}}; // node -> nodes that depend on it
-
-                        allEdges.forEach(edge => {{
-                            // Edge goes FROM source TO target (source depends on target)
-                            if (!upstreamAdj[edge.from]) upstreamAdj[edge.from] = [];
-                            if (!downstreamAdj[edge.to]) downstreamAdj[edge.to] = [];
-                            upstreamAdj[edge.from].push(edge.to);
-                            downstreamAdj[edge.to].push(edge.from);
-                        }});
-
-                        const visited = new Set([focusNode]);
-                        const queue = [[focusNode, 0]];
-
-                        // BFS respecting direction filter
-                        while (queue.length > 0) {{
-                            const [currentId, depth] = queue.shift();
-                            if (depth >= this.dependencyDepth) continue;
-
-                            let neighbors = [];
-
-                            if (this.dependencyDirection === 'upstream') {{
-                                // Show what this node depends on
-                                neighbors = upstreamAdj[currentId] || [];
-                            }} else if (this.dependencyDirection === 'downstream') {{
-                                // Show what depends on this node
-                                neighbors = downstreamAdj[currentId] || [];
-                            }} else {{
-                                // Both directions
-                                neighbors = [
-                                    ...(upstreamAdj[currentId] || []),
-                                    ...(downstreamAdj[currentId] || [])
-                                ];
-                            }}
-
-                            neighbors.forEach(neighborId => {{
-                                if (!visited.has(neighborId)) {{
-                                    visited.add(neighborId);
-                                    queue.push([neighborId, depth + 1]);
-                                }}
-                            }});
-                        }}
-
-                        // Filter to only visited nodes
-                        allNodes = allNodes.filter(n => visited.has(n.id));
-                        allEdges = allEdges.filter(e => visited.has(e.from) && visited.has(e.to));
-                    }}
-
-                    // Filter by object type with context
-                    if (this.dependencyFilter !== 'all') {{
-                        const nodeIds = new Set();
-
-                        if (this.dependencyFilter === 'measures-context') {{
-                            // Show measures + tables/columns they depend on
-                            const measureNodes = allNodes.filter(n => n.type === 'measure');
-                            measureNodes.forEach(m => nodeIds.add(m.id));
-
-                            // Add dependencies (upstream)
-                            allEdges.forEach(edge => {{
-                                if (nodeIds.has(edge.from)) {{
-                                    const target = allNodes.find(n => n.id === edge.to);
-                                    if (target && (target.type === 'table' || target.type === 'column')) {{
-                                        nodeIds.add(edge.to);
-                                    }}
-                                }}
-                            }});
-
-                            // Add dependents (downstream) - other measures that use this measure
-                            allEdges.forEach(edge => {{
-                                if (edge.type === 'measure_to_measure') {{
-                                    if (nodeIds.has(edge.to)) {{
-                                        nodeIds.add(edge.from);
-                                    }}
-                                }}
-                            }});
-
-                        }} else if (this.dependencyFilter === 'tables-context') {{
-                            // Show tables + measures that use them
-                            const tableNodes = allNodes.filter(n => n.type === 'table');
-                            tableNodes.forEach(t => nodeIds.add(t.id));
-
-                            // Add measures that depend on these tables
-                            allEdges.forEach(edge => {{
-                                if (nodeIds.has(edge.to)) {{
-                                    const source = allNodes.find(n => n.id === edge.from);
-                                    if (source && source.type === 'measure') {{
-                                        nodeIds.add(edge.from);
-                                    }}
-                                }}
-                            }});
-
-                        }} else if (this.dependencyFilter === 'columns-context') {{
-                            // Show columns + measures that use them
-                            const columnNodes = allNodes.filter(n => n.type === 'column');
-                            columnNodes.forEach(c => nodeIds.add(c.id));
-
-                            // Add measures that depend on these columns
-                            allEdges.forEach(edge => {{
-                                if (nodeIds.has(edge.to) && edge.type === 'measure_to_column') {{
-                                    nodeIds.add(edge.from);
-                                }}
-                            }});
-                        }}
-
-                        // Filter nodes and edges
-                        allNodes = allNodes.filter(n => nodeIds.has(n.id));
-                        allEdges = allEdges.filter(e => nodeIds.has(e.from) && nodeIds.has(e.to));
-                    }}
-
-                    // Clone nodes to avoid modifying original data
-                    const nodes = allNodes.map(n => ({{
-                        ...n,
-                        x: width / 2 + (Math.random() - 0.5) * 200,
-                        y: height / 2 + (Math.random() - 0.5) * 200
-                    }}));
-
-                    const edges = allEdges.map(e => ({{
-                        ...e,
-                        source: e.from,
-                        target: e.to
-                    }}));
-
-                    // Apply layout
-                    let simulation;
-                    if (this.dependencyLayout === 'radial') {{
-                        // Improved tiered radial - group by node type in concentric circles
-                        const measureNodes = nodes.filter(n => n.type === 'measure');
-                        const columnNodes = nodes.filter(n => n.type === 'column');
-                        const tableNodes = nodes.filter(n => n.type === 'table');
-
-                        const tiers = [
-                            {{ nodes: measureNodes, radius: Math.min(width, height) / 5, type: 'measure' }},
-                            {{ nodes: columnNodes, radius: Math.min(width, height) / 3.2, type: 'column' }},
-                            {{ nodes: tableNodes, radius: Math.min(width, height) / 2.3, type: 'table' }}
-                        ].filter(tier => tier.nodes.length > 0);
-
-                        tiers.forEach(tier => {{
-                            const angleStep = (2 * Math.PI) / Math.max(tier.nodes.length, 1);
-                            tier.nodes.forEach((node, i) => {{
-                                const angle = i * angleStep;
-                                node.x = width / 2 + tier.radius * Math.cos(angle);
-                                node.y = height / 2 + tier.radius * Math.sin(angle);
-                                node.fx = node.x;
-                                node.fy = node.y;
-                            }});
-                        }});
-
-                        simulation = d3.forceSimulation(nodes)
-                            .force('link', d3.forceLink(edges).id(d => d.id).distance(100))
-                            .force('charge', d3.forceManyBody().strength(-80))
-                            .force('collision', d3.forceCollide().radius(45));
-                    }} else if (this.dependencyLayout === 'hierarchical') {{
-                        // True dependency-based hierarchical layout using BFS
-                        const nodeDepths = new Map();
-                        const focusNodeId = this.dependencyFocusMeasure || this.dependencyFocusTable;
-
-                        // Start from focus node if available, otherwise start from leaf measures
-                        let startNodes = [];
-                        if (focusNodeId) {{
-                            const focusNode = nodes.find(n => n.id === focusNodeId);
-                            if (focusNode) {{
-                                startNodes = [focusNode];
-                            }}
-                        }}
-
-                        // If no focus, start from measures with no outgoing measure dependencies
-                        if (startNodes.length === 0) {{
-                            const hasOutgoing = new Set();
-                            edges.forEach(e => {{
-                                if (e.type === 'measure_to_measure') {{
-                                    hasOutgoing.add(e.from);
-                                }}
-                            }});
-                            startNodes = nodes.filter(n => n.type === 'measure' && !hasOutgoing.has(n.id));
-                            if (startNodes.length === 0) {{
-                                startNodes = nodes.filter(n => n.type === 'measure');
-                            }}
-                            if (startNodes.length === 0) startNodes = [nodes[0]];
-                        }}
-
-                        // BFS to assign depths following dependency flow
-                        const queue = startNodes.map(n => ({{ id: n.id, depth: 0 }}));
-                        const visited = new Set(startNodes.map(n => n.id));
-                        startNodes.forEach(n => nodeDepths.set(n.id, 0));
-
-                        while (queue.length > 0) {{
-                            const {{ id, depth }} = queue.shift();
-
-                            // Follow edges to dependent nodes (reverse direction for measures)
-                            edges.forEach(e => {{
-                                let nextNode = null;
-                                if (e.from === id && !visited.has(e.to)) {{
-                                    nextNode = e.to;
-                                }} else if (e.to === id && !visited.has(e.from) && e.type !== 'measure_to_measure') {{
-                                    // For non-measure edges, follow in both directions
-                                    nextNode = e.from;
-                                }}
-
-                                if (nextNode) {{
-                                    visited.add(nextNode);
-                                    nodeDepths.set(nextNode, depth + 1);
-                                    queue.push({{ id: nextNode, depth: depth + 1 }});
-                                }}
-                            }});
-                        }}
-
-                        // Assign depth to unvisited nodes (disconnected components)
-                        nodes.forEach(n => {{
-                            if (!nodeDepths.has(n.id)) {{
-                                nodeDepths.set(n.id, 99);
-                            }}
-                        }});
-
-                        // Group nodes by depth, then by type within each depth
-                        const depthGroups = new Map();
-                        nodes.forEach(n => {{
-                            const depth = nodeDepths.get(n.id);
-                            if (!depthGroups.has(depth)) {{
-                                depthGroups.set(depth, {{ measure: [], column: [], table: [] }});
-                            }}
-                            const typeGroup = depthGroups.get(depth);
-                            if (typeGroup[n.type]) {{
-                                typeGroup[n.type].push(n);
-                            }} else {{
-                                typeGroup.measure.push(n);
-                            }}
-                        }});
-
-                        // Position nodes in structured layers
-                        const depths = Array.from(depthGroups.keys()).sort((a, b) => a - b);
-                        const layerHeight = height / (depths.length + 1);
-
-                        depths.forEach((depth, layerIdx) => {{
-                            const typeGroups = depthGroups.get(depth);
-                            const allNodesInLayer = [...typeGroups.measure, ...typeGroups.column, ...typeGroups.table];
-
-                            // Arrange by type groups within the layer
-                            let xOffset = 0;
-                            const totalNodes = allNodesInLayer.length;
-                            const baseWidth = width / (totalNodes + 1);
-
-                            ['measure', 'column', 'table'].forEach(type => {{
-                                const nodesOfType = typeGroups[type];
-                                nodesOfType.forEach((node, idx) => {{
-                                    node.x = baseWidth * (xOffset + idx + 1);
-                                    node.y = layerHeight * (layerIdx + 1);
-                                }});
-                                xOffset += nodesOfType.length;
-                            }});
-                        }});
-
-                        simulation = d3.forceSimulation(nodes)
-                            .force('link', d3.forceLink(edges).id(d => d.id).distance(120))
-                            .force('charge', d3.forceManyBody().strength(-400))
-                            .force('collision', d3.forceCollide().radius(60))
-                            .force('y', d3.forceY(d => {{
-                                const depth = nodeDepths.get(d.id);
-                                const layerIdx = depths.indexOf(depth);
-                                return layerHeight * (layerIdx + 1);
-                            }}).strength(0.9))
-                            .force('x', d3.forceX(d => d.x).strength(0.3));
-                    }} else {{
-                        // Enhanced force-directed layout with better parameters for large graphs
-                        const linkDistance = nodes.length > 50 ? 100 : 150;
-                        const chargeStrength = nodes.length > 50 ? -1000 : -600;
-                        const collisionRadius = nodes.length > 50 ? 55 : 60;
-
-                        simulation = d3.forceSimulation(nodes)
-                            .force('link', d3.forceLink(edges).id(d => d.id).distance(linkDistance))
-                            .force('charge', d3.forceManyBody().strength(chargeStrength))
-                            .force('center', d3.forceCenter(width / 2, height / 2))
-                            .force('collision', d3.forceCollide().radius(collisionRadius))
-                            .force('x', d3.forceX(width / 2).strength(0.05))
-                            .force('y', d3.forceY(height / 2).strength(0.05));
-                    }}
-
-                    this.dependencySimulation = simulation;
-
-                    // Create links
-                    const link = g.append('g')
-                        .selectAll('path')
-                        .data(edges)
-                        .join('path')
-                        .attr('class', 'dep-link')
-                        .attr('stroke', d => {{
-                            if (d.type === 'measure_to_measure') return '#5B7FFF';
-                            if (d.type === 'measure_to_column') return '#10B981';
-                            if (d.type === 'column_to_table') return '#94A3B8';
-                            return '#9F7AEA';
-                        }})
-                        .attr('stroke-width', d => {{
-                            if (d.type === 'column_to_table') return 1.5;
-                            return 2;
-                        }})
-                        .attr('fill', 'none')
-                        .attr('marker-end', d => {{
-                            if (d.type === 'measure_to_measure') return 'url(#arrow-measure)';
-                            if (d.type === 'measure_to_column') return 'url(#arrow-column)';
-                            if (d.type === 'column_to_table') return 'url(#arrow-column-table)';
-                            return 'url(#arrow-table)';
-                        }})
-                        .attr('opacity', d => {{
-                            if (d.type === 'column_to_table') return 0.4;
-                            return 0.6;
-                        }})
-                        .attr('stroke-dasharray', d => {{
-                            if (d.type === 'column_to_table') return '3,3';
-                            return 'none';
-                        }});
-
-                    // Create node groups
-                    const nodeGroup = g.append('g')
-                        .selectAll('g')
-                        .data(nodes)
-                        .join('g')
-                        .attr('class', 'dep-node-group')
-                        .style('cursor', 'pointer')
-                        .call(d3.drag()
-                            .on('start', (event, d) => {{
-                                if (!event.active) simulation.alphaTarget(0.3).restart();
-                                d.fx = d.x;
-                                d.fy = d.y;
-                            }})
-                            .on('drag', (event, d) => {{
-                                d.fx = event.x;
-                                d.fy = event.y;
-                            }})
-                            .on('end', (event, d) => {{
-                                if (!event.active) simulation.alphaTarget(0);
-                                d.fx = null;
-                                d.fy = null;
-                            }})
-                        )
-                        .on('click', (event, d) => {{
-                            this.selectedDependencyNode = d;
-                            this.highlightDependencies(d.id);
-                        }});
-
-                    // Draw nodes based on type
-                    const focusNodeId = this.dependencyFocusMeasure || this.dependencyFocusTable;
-                    nodeGroup.each(function(d) {{
-                        const selection = d3.select(this);
-                        const isFocusNode = focusNodeId && d.id === focusNodeId;
-                        const baseSize = d.type === 'table' ? 30 : (d.type === 'measure' ? 25 : 20);
-                        const size = isFocusNode ? baseSize * 1.3 : baseSize;
-
-                        if (d.type === 'measure') {{
-                            // Diamond shape for measures
-                            selection.append('path')
-                                .attr('d', `M 0,-${{size}} L ${{size}},0 L 0,${{size}} L -${{size}},0 Z`)
-                                .attr('fill', 'url(#depMeasureGradient)')
-                                .attr('stroke', isFocusNode ? '#FF6B00' : '#4A6BEE')
-                                .attr('stroke-width', isFocusNode ? 4 : 2)
-                                .attr('filter', isFocusNode ? 'drop-shadow(0 0 8px rgba(255, 107, 0, 0.6))' : 'none');
-                        }} else if (d.type === 'column') {{
-                            // Square for columns
-                            selection.append('rect')
-                                .attr('x', -size / 2)
-                                .attr('y', -size / 2)
-                                .attr('width', size)
-                                .attr('height', size)
-                                .attr('fill', 'url(#depColumnGradient)')
-                                .attr('stroke', isFocusNode ? '#FF6B00' : '#059669')
-                                .attr('stroke-width', isFocusNode ? 4 : 2)
-                                .attr('rx', 3)
-                                .attr('filter', isFocusNode ? 'drop-shadow(0 0 8px rgba(255, 107, 0, 0.6))' : 'none');
-                        }} else {{
-                            // Circle for tables
-                            selection.append('circle')
-                                .attr('r', size)
-                                .attr('fill', 'url(#depTableGradient)')
-                                .attr('stroke', isFocusNode ? '#FF6B00' : '#8B5CF6')
-                                .attr('stroke-width', isFocusNode ? 4 : 2)
-                                .attr('filter', isFocusNode ? 'drop-shadow(0 0 8px rgba(255, 107, 0, 0.6))' : 'none');
-                        }}
-                    }});
-
-                    // Add labels
-                    const label = g.append('g')
-                        .selectAll('text')
-                        .data(nodes)
-                        .join('text')
-                        .text(d => d.label)
-                        .attr('font-size', 11)
-                        .attr('font-weight', 'bold')
-                        .attr('text-anchor', 'middle')
-                        .attr('dy', -35)
-                        .style('pointer-events', 'none')
-                        .style('fill', '#1e293b');
-
-                    // Update positions
-                    simulation.on('tick', () => {{
-                        link.attr('d', d => {{
-                            const dx = d.target.x - d.source.x;
-                            const dy = d.target.y - d.source.y;
-                            return `M${{d.source.x}},${{d.source.y}} L${{d.target.x}},${{d.target.y}}`;
-                        }});
-
-                        nodeGroup.attr('transform', d => `translate(${{d.x}},${{d.y}})`);
-                        label.attr('x', d => d.x).attr('y', d => d.y);
-                    }});
-                }},
-                highlightDependencies(nodeId) {{
-                    const svg = d3.select('#dependency-graph-svg');
-
-                    // Reset all
-                    svg.selectAll('.dep-node-group').attr('opacity', 0.3);
-                    svg.selectAll('.dep-link').attr('opacity', 0.1);
-
-                    // Highlight selected node
-                    svg.selectAll('.dep-node-group').filter(d => d.id === nodeId).attr('opacity', 1);
-
-                    // Find connected nodes and edges
-                    const edges = this.modelData.dependency_graph.edges || [];
-                    const connectedNodes = new Set([nodeId]);
-
-                    edges.forEach(edge => {{
-                        if (edge.from === nodeId || edge.to === nodeId) {{
-                            connectedNodes.add(edge.from);
-                            connectedNodes.add(edge.to);
-                        }}
-                    }});
-
-                    // Highlight connected nodes
-                    svg.selectAll('.dep-node-group')
-                        .filter(d => connectedNodes.has(d.id))
-                        .attr('opacity', 1);
-
-                    // Highlight connected edges
-                    svg.selectAll('.dep-link')
-                        .filter(d => d.from === nodeId || d.to === nodeId)
-                        .attr('opacity', 1)
-                        .attr('stroke-width', 3);
-                }},
-                resetDependencyGraph() {{
-                    this.selectedDependencyNode = null;
-                    this.dependencyFocusMeasure = '';
-                    this.dependencyFocusTable = '';
-                    this.dependencyFilter = 'all';
-
-                    const svg = d3.select('#dependency-graph-svg');
-                    svg.selectAll('.dep-node-group').attr('opacity', 1);
-                    svg.selectAll('.dep-link').attr('opacity', 0.6).attr('stroke-width', 2);
-
-                    if (this.dependencySimulation) {{
-                        this.dependencySimulation.alpha(1).restart();
-                    }}
-
-                    // Re-initialize graph with reset filters
-                    this.initDependencyGraph();
-                }},
-                changeDependencyLayout() {{
-                    if (this.activeTab === 'dependencies') {{
-                        this.$nextTick(() => {{
-                            this.initDependencyGraph();
-                        }});
-                    }}
-                }},
-                handleMeasureFocus() {{
-                    // Clear table focus when measure is selected
-                    if (this.dependencyFocusMeasure) {{
-                        this.dependencyFocusTable = '';
-                    }}
-                    this.initDependencyGraph();
-                }},
-                handleTableFocus() {{
-                    // Clear measure focus when table is selected
-                    if (this.dependencyFocusTable) {{
-                        this.dependencyFocusMeasure = '';
-                    }}
-                    this.initDependencyGraph();
-                }}
-            }},
-            watch: {{
-                activeTab(newTab) {{
-                    if (newTab === 'relationships') {{
-                        this.$nextTick(() => {{
-                            this.initGraph();
-                        }});
-                    }} else if (newTab === 'dependencies') {{
-                        this.$nextTick(() => {{
-                            this.initDependencyGraph();
-                        }});
-                    }}
-                }},
-                showInactiveRelationships() {{
-                    if (this.activeTab === 'relationships') {{
-                        this.$nextTick(() => {{
-                            this.initGraph();
-                        }});
-                    }}
-                }}
-            }},
+                
             mounted() {{
                 console.log('Power BI Model Explorer loaded');
                 console.log('Model data:', this.modelData);

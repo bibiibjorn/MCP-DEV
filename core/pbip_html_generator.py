@@ -115,23 +115,22 @@ class PbipHtmlGenerator:
 
         return html_content
 
-    def _get_vue3_template(self, data_json_str: str, repo_name: str) -> str:
-        """Get the complete Vue 3 HTML template."""
-        escaped_repo_name = html.escape(repo_name)
-
-        return f'''<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
+    def _get_head_section(self, escaped_repo_name: str) -> str:
+        """Get HTML head with meta tags and CDN imports."""
+        return f"""    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{escaped_repo_name} - PBIP Analysis</title>
 
-    <!-- Vue 3 and D3.js -->
+    <!-- Vue 3, D3.js, and Dagre for graph layouts -->
     <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+"""
 
-    <style>
+    def _get_styles(self) -> str:
+        """Get all CSS styles."""
+        return f"""    <style>
         :root {{
             --primary: #5B7FFF;
             --primary-dark: #4A6BEE;
@@ -398,6 +397,155 @@ class PbipHtmlGenerator:
             border-radius: 0.5rem;
             background: white;
             min-height: 600px;
+            position: relative;
+            overflow: hidden;
+        }}
+
+        #dependency-tree-container {{
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            background: white;
+            max-height: 600px;
+            overflow-y: auto;
+        }}
+
+        .graph-controls {{
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }}
+
+        .graph-control-btn {{
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            border: 2px solid #e2e8f0;
+            background: white;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }}
+
+        .graph-control-btn:hover {{
+            border-color: var(--primary);
+            background: #f0f4ff;
+        }}
+
+        .graph-control-btn.active {{
+            border-color: var(--primary);
+            background: var(--primary);
+            color: white;
+        }}
+
+        .tree-node {{
+            margin-left: 20px;
+            border-left: 2px solid #e2e8f0;
+            padding-left: 12px;
+        }}
+
+        .tree-node-header {{
+            padding: 8px 12px;
+            margin: 4px 0;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }}
+
+        .tree-node-header:hover {{
+            background: #f3f4f6;
+        }}
+
+        .tree-node-header.expanded {{
+            background: #e8ecff;
+            font-weight: 600;
+        }}
+
+        .tree-expand-icon {{
+            transition: transform 0.2s;
+            display: inline-block;
+            width: 16px;
+            text-align: center;
+        }}
+
+        .tree-expand-icon.expanded {{
+            transform: rotate(90deg);
+        }}
+
+        .relationship-link {{
+            stroke: #94a3b8;
+            stroke-width: 2px;
+            fill: none;
+        }}
+
+        .relationship-link.active {{
+            stroke: #10b981;
+            stroke-width: 3px;
+        }}
+
+        .relationship-link.inactive {{
+            stroke: #ef4444;
+            stroke-width: 2px;
+            stroke-dasharray: 5,5;
+        }}
+
+        .relationship-link.fact-to-dim {{
+            stroke: #3b82f6;
+        }}
+
+        .relationship-link.dim-to-dim {{
+            stroke: #8b5cf6;
+        }}
+
+        .graph-node {{
+            cursor: pointer;
+            transition: all 0.2s;
+        }}
+
+        .graph-node:hover circle {{
+            stroke-width: 3px;
+        }}
+
+        .graph-node.fact-table circle {{
+            fill: #3b82f6;
+        }}
+
+        .graph-node.dim-table circle {{
+            fill: #10b981;
+        }}
+
+        .graph-node.other-table circle {{
+            fill: #94a3b8;
+        }}
+
+        .graph-legend {{
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            font-size: 0.875rem;
+        }}
+
+        .legend-item {{
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }}
+
+        .legend-color {{
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            border: 2px solid #1f2937;
+        }}
+
+        .dark-mode #graph-container,
+        .dark-mode #dependency-tree-container {{
+            background: #0f172a;
+            border-color: #475569;
+            min-height: 600px;
         }}
 
         .dark-mode #graph-container {{
@@ -448,10 +596,17 @@ class PbipHtmlGenerator:
         .highlight-flash {{
             animation: highlight-flash 2s ease-in-out;
         }}
+
+        /* v-cloak: Hide uncompiled Vue templates until Vue is ready */
+        [v-cloak] {{
+            display: none !important;
+        }}
     </style>
-</head>
-<body>
-    <div id="app">
+"""
+
+    def _get_body_content(self) -> str:
+        """Get the Vue app container and HTML structure."""
+        return f"""    <div id="app" v-cloak>
         <!-- Header -->
         <div class="shadow-sm border-b" style="background: linear-gradient(135deg, #5B7FFF 0%, #7D9AFF 100%); border: none;">
             <div class="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
@@ -934,22 +1089,61 @@ class PbipHtmlGenerator:
                                                 <span>{{{{ col.name }}}}</span>
                                                 <span class="badge badge-gray text-xs">{{{{ getColumnVisualUsage(selectedTable.name, col.name).length }}}} visual(s)</span>
                                             </div>
-                                            <div class="p-3">
-                                                <div v-if="getColumnVisualUsage(selectedTable.name, col.name).length > 0" class="space-y-2">
-                                                    <div v-for="(visuals, pageName) in groupColumnUsageByPage(selectedTable.name, col.name)" :key="pageName" class="border border-gray-100 rounded p-2">
-                                                        <div class="font-medium text-gray-800 text-sm mb-1 flex items-center gap-1">
-                                                            <span>📄</span>
-                                                            <span>{{{{ pageName }}}}</span>
-                                                            <span class="text-xs text-gray-500">({{{{ visuals.length }}}})</span>
+                                            <div class="p-3 space-y-3">
+                                                <!-- Measure Usage -->
+                                                <div v-if="getColumnUsedByMeasures(selectedTable.name, col.name).length > 0">
+                                                    <div class="font-medium text-gray-700 text-sm mb-2 flex items-center gap-1">
+                                                        <span>📐</span>
+                                                        <span>Used in Measures</span>
+                                                    </div>
+                                                    <div class="space-y-1 ml-5">
+                                                        <div v-for="measure in getColumnUsedByMeasures(selectedTable.name, col.name)" :key="measure" class="text-xs p-2 bg-blue-50 border border-blue-200 rounded flex items-center gap-2">
+                                                            <span class="badge badge-primary" style="font-size: 10px; padding: 2px 6px;">Measure</span>
+                                                            <span class="text-gray-700">{{{{ measure }}}}</span>
                                                         </div>
-                                                        <div class="space-y-1 ml-5">
-                                                            <div v-for="usage in visuals" :key="usage.visualId" class="text-xs text-gray-600 flex items-center gap-2">
-                                                                <span class="badge badge-primary" style="font-size: 10px; padding: 2px 6px;">{{{{ usage.visualType }}}}</span>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Field Parameter Usage -->
+                                                <div v-if="getColumnFieldParams(selectedTable.name, col.name).length > 0">
+                                                    <div class="font-medium text-gray-700 text-sm mb-2 flex items-center gap-1">
+                                                        <span>📊</span>
+                                                        <span>Used in Field Parameters</span>
+                                                    </div>
+                                                    <div class="space-y-1 ml-5">
+                                                        <div v-for="fp in getColumnFieldParams(selectedTable.name, col.name)" :key="fp" class="text-xs p-2 bg-green-50 border border-green-200 rounded flex items-center gap-2">
+                                                            <span class="badge badge-success" style="font-size: 10px; padding: 2px 6px;">Field Param</span>
+                                                            <span class="text-gray-700">{{{{ fp }}}}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Visual Usage -->
+                                                <div v-if="getColumnVisualUsage(selectedTable.name, col.name).length > 0">
+                                                    <div class="font-medium text-gray-700 text-sm mb-2 flex items-center gap-1">
+                                                        <span>📈</span>
+                                                        <span>Used in Visuals</span>
+                                                    </div>
+                                                    <div class="space-y-2">
+                                                        <div v-for="(visuals, pageName) in groupColumnUsageByPage(selectedTable.name, col.name)" :key="pageName" class="border border-gray-100 rounded p-2">
+                                                            <div class="font-medium text-gray-800 text-sm mb-1 flex items-center gap-1">
+                                                                <span>📄</span>
+                                                                <span>{{{{ pageName }}}}</span>
+                                                                <span class="text-xs text-gray-500">({{{{ visuals.length }}}})</span>
+                                                            </div>
+                                                            <div class="space-y-1 ml-5">
+                                                                <div v-for="usage in visuals" :key="usage.visualId" class="text-xs text-gray-600 flex items-center gap-2">
+                                                                    <span class="badge badge-primary" style="font-size: 10px; padding: 2px 6px;">{{{{ usage.visualType }}}}</span>
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div v-else class="text-xs text-gray-500 italic">Not used in any visuals</div>
+
+                                                <!-- No Usage Message -->
+                                                <div v-if="getColumnVisualUsage(selectedTable.name, col.name).length === 0 && getColumnFieldParams(selectedTable.name, col.name).length === 0 && getColumnUsedByMeasures(selectedTable.name, col.name).length === 0" class="text-xs text-gray-500 italic">
+                                                    Not used in any measures, visuals, or field parameters
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -967,34 +1161,53 @@ class PbipHtmlGenerator:
                 <div v-show="modelSubTab === 'measures'">
                     <div class="stat-card">
                         <h2 class="text-2xl font-bold text-gray-900 mb-4">All Measures by Folder</h2>
-                        <input
-                            v-model="measuresSearchQuery"
-                            type="search"
-                            placeholder="Search measures..."
-                            class="w-full px-3 py-2 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-blue-500"
-                        />
-                        <div class="scrollable">
-                            <div v-for="(folder, folderName) in measuresByFolder" :key="folderName" class="folder-item">
-                                <div class="folder-header" @click="toggleFolder(folderName)">
-                                    <div>
-                                        <span class="mr-2">📁</span>
-                                        <strong>{{{{ folderName || 'No Folder' }}}}</strong>
-                                        <span class="ml-2 text-sm opacity-75">({{{{ folder.length }}}})</span>
-                                    </div>
-                                    <span class="expand-icon">▼</span>
-                                </div>
-                                <div v-show="!collapsedFolders[folderName]" class="folder-content space-y-3">
-                                    <div v-for="measure in folder" :key="measure.key" class="border border-gray-200 rounded p-4 bg-white">
-                                        <div class="font-semibold text-gray-900 mb-1 flex items-center gap-2">
-                                            <span>{{{{ measure.name }}}}</span>
-                                            <span class="badge badge-primary">{{{{ measure.table }}}}</span>
-                                            <span v-if="measure.is_hidden" class="badge badge-warning flex items-center gap-1">
-                                                <svg class="lucide-key-round w-3 h-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18v3c0 .6.4 1 1 1h4v-3h3v-3h2l1.4-1.4a6.5 6.5 0 1 0-4-4Z"></path><circle cx="16.5" cy="7.5" r=".5"></circle></svg>
-                                                Hidden
-                                            </span>
+                        <div class="grid grid-cols-12 gap-4" style="height: 600px;">
+                            <!-- Left: Folder list -->
+                            <div class="col-span-4 overflow-y-auto border-r pr-4">
+                                <input
+                                    v-model="measuresSearchQuery"
+                                    type="search"
+                                    placeholder="Search measures..."
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-blue-500"
+                                />
+                                <div v-for="(folder, folderName) in measuresByFolder" :key="folderName" class="mb-2">
+                                    <div class="folder-header cursor-pointer" @click="toggleFolder(folderName)">
+                                        <div>
+                                            <span class="mr-2">📁</span>
+                                            <strong>{{{{ folderName || 'No Folder' }}}}</strong>
+                                            <span class="ml-2 text-sm opacity-75">({{{{ folder.length }}}})</span>
                                         </div>
-                                        <div class="code-block mt-2" v-if="measure.expression" v-html="highlightDAX(measure.expression)"></div>
+                                        <span class="expand-icon">▼</span>
                                     </div>
+                                    <div v-show="!collapsedFolders[folderName]" class="ml-6 mt-2 space-y-1">
+                                        <div
+                                            v-for="measure in folder"
+                                            :key="measure.key"
+                                            @click="selectedMeasure = measure"
+                                            :class="['p-2 rounded cursor-pointer hover:bg-blue-50', selectedMeasure?.key === measure.key ? 'bg-blue-100 font-semibold' : '']"
+                                        >
+                                            <div class="text-sm">{{{{ measure.name }}}}</div>
+                                            <div class="text-xs text-gray-500">{{{{ measure.table }}}}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Right: DAX viewer -->
+                            <div class="col-span-8 overflow-y-auto">
+                                <div v-if="selectedMeasure">
+                                    <div class="mb-4">
+                                        <h3 class="text-xl font-bold text-gray-900 mb-2">{{{{ selectedMeasure.name }}}}</h3>
+                                        <div class="flex gap-2 mb-2">
+                                            <span class="badge badge-primary">{{{{ selectedMeasure.table }}}}</span>
+                                            <span v-if="selectedMeasure.is_hidden" class="badge badge-warning">Hidden</span>
+                                            <span v-if="selectedMeasure.displayFolder" class="badge badge-gray">{{{{ selectedMeasure.displayFolder }}}}</span>
+                                        </div>
+                                    </div>
+                                    <div class="code-block" v-if="selectedMeasure.expression" v-html="highlightDAX(selectedMeasure.expression)"></div>
+                                </div>
+                                <div v-else class="text-center text-gray-500 mt-20">
+                                    <p>Select a measure from the left to view its DAX code</p>
                                 </div>
                             </div>
                         </div>
@@ -1005,31 +1218,138 @@ class PbipHtmlGenerator:
                 <div v-show="modelSubTab === 'relationships'">
                     <div class="stat-card">
                         <h2 class="text-2xl font-bold text-gray-900 mb-4">Relationships ({{{{ sortedRelationships.length }}}})</h2>
-                        <div v-if="sortedRelationships.length > 0" class="space-y-4">
-                            <div v-for="(rel, idx) in sortedRelationships" :key="idx" class="border border-gray-200 rounded p-4 bg-gray-50">
-                                <div class="flex items-center justify-between mb-2">
-                                    <div class="font-semibold text-gray-900">
-                                        {{{{ rel.from_table }}}} → {{{{ rel.to_table }}}}
-                                    </div>
-                                    <span :class="['badge', rel.is_active !== false ? 'badge-success' : 'badge-gray']">
-                                        {{{{ rel.is_active !== false ? 'Active' : 'Inactive' }}}}
-                                    </span>
-                                </div>
-                                <div class="text-sm text-gray-600">
-                                    <div>
-                                        <strong>From:</strong> {{{{ rel.from_table }}}}[{{{{ rel.from_column }}}}]
-                                    </div>
-                                    <div>
-                                        <strong>To:</strong> {{{{ rel.to_table }}}}[{{{{ rel.to_column }}}}]
-                                    </div>
-                                    <div class="mt-2">
-                                        <span class="badge badge-primary mr-2">{{{{ formatCardinality(rel) }}}}</span>
-                                        <span class="badge badge-gray">{{{{ formatCrossFilterDirection(rel) }}}}</span>
-                                    </div>
-                                </div>
+
+                        <!-- Graph Layout Controls -->
+                        <div class="graph-controls">
+                            <button
+                                @click="relationshipGraphLayout = 'list'"
+                                :class="['graph-control-btn', relationshipGraphLayout === 'list' ? 'active' : '']"
+                            >
+                                📋 List View
+                            </button>
+                            <button
+                                @click="relationshipGraphLayout = 'tree'"
+                                :class="['graph-control-btn', relationshipGraphLayout === 'tree' ? 'active' : '']"
+                            >
+                                🌳 Hierarchical Tree
+                            </button>
+                            <button
+                                @click="relationshipGraphLayout = 'force'"
+                                :class="['graph-control-btn', relationshipGraphLayout === 'force' ? 'active' : '']"
+                            >
+                                🔗 Force-Directed
+                            </button>
+                        </div>
+
+                        <!-- Legend -->
+                        <div v-if="relationshipGraphLayout !== 'list' && sortedRelationships.length > 0" class="graph-legend">
+                            <div class="legend-item">
+                                <div class="legend-color" style="background: #3b82f6;"></div>
+                                <span>Fact Tables</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-color" style="background: #10b981;"></div>
+                                <span>Dimension Tables</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-color" style="background: #94a3b8;"></div>
+                                <span>Other Tables</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-color" style="background: none; border: 2px solid #10b981;"></div>
+                                <span>Active</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-color" style="background: none; border: 2px dashed #ef4444;"></div>
+                                <span>Inactive</span>
                             </div>
                         </div>
-                        <div v-else class="text-gray-500 italic">No relationships found in model</div>
+
+                        <!-- Graph Container -->
+                        <div v-if="relationshipGraphLayout !== 'list' && sortedRelationships.length > 0">
+                            <div id="graph-container"></div>
+                        </div>
+
+                        <!-- List View -->
+                        <div v-if="relationshipGraphLayout === 'list' && sortedRelationships.length > 0" class="space-y-4">
+                            <!-- Group by Type -->
+                            <div class="mb-4">
+                                <h3 class="text-lg font-semibold text-gray-900 mb-2">Fact-to-Dimension Relationships</h3>
+                                <div class="space-y-2">
+                                    <div v-for="(rel, idx) in factToDimRelationships" :key="'f2d-' + idx" class="border border-blue-200 rounded p-3 bg-blue-50">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <div class="font-semibold text-gray-900">
+                                                {{{{ rel.from_table }}}} → {{{{ rel.to_table }}}}
+                                            </div>
+                                            <span :class="['badge', rel.is_active !== false ? 'badge-success' : 'badge-gray']">
+                                                {{{{ rel.is_active !== false ? 'Active' : 'Inactive' }}}}
+                                            </span>
+                                        </div>
+                                        <div class="text-sm text-gray-600">
+                                            <div><strong>From:</strong> {{{{ rel.from_table }}}}[{{{{ rel.from_column }}}}]</div>
+                                            <div><strong>To:</strong> {{{{ rel.to_table }}}}[{{{{ rel.to_column }}}}]</div>
+                                            <div class="mt-2">
+                                                <span class="badge badge-primary mr-2">{{{{ formatCardinality(rel) }}}}</span>
+                                                <span class="badge badge-gray">{{{{ formatCrossFilterDirection(rel) }}}}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-if="factToDimRelationships.length === 0" class="text-gray-500 italic text-sm">No fact-to-dimension relationships</div>
+                            </div>
+
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900 mb-2">Dimension-to-Dimension Relationships</h3>
+                                <div class="space-y-2">
+                                    <div v-for="(rel, idx) in dimToDimRelationships" :key="'d2d-' + idx" class="border border-purple-200 rounded p-3 bg-purple-50">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <div class="font-semibold text-gray-900">
+                                                {{{{ rel.from_table }}}} → {{{{ rel.to_table }}}}
+                                            </div>
+                                            <span :class="['badge', rel.is_active !== false ? 'badge-success' : 'badge-gray']">
+                                                {{{{ rel.is_active !== false ? 'Active' : 'Inactive' }}}}
+                                            </span>
+                                        </div>
+                                        <div class="text-sm text-gray-600">
+                                            <div><strong>From:</strong> {{{{ rel.from_table }}}}[{{{{ rel.from_column }}}}]</div>
+                                            <div><strong>To:</strong> {{{{ rel.to_table }}}}[{{{{ rel.to_column }}}}]</div>
+                                            <div class="mt-2">
+                                                <span class="badge badge-primary mr-2">{{{{ formatCardinality(rel) }}}}</span>
+                                                <span class="badge badge-gray">{{{{ formatCrossFilterDirection(rel) }}}}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-if="dimToDimRelationships.length === 0" class="text-gray-500 italic text-sm">No dimension-to-dimension relationships</div>
+                            </div>
+
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900 mb-2">Other Relationships</h3>
+                                <div class="space-y-2">
+                                    <div v-for="(rel, idx) in otherRelationships" :key="'other-' + idx" class="border border-gray-200 rounded p-3 bg-gray-50">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <div class="font-semibold text-gray-900">
+                                                {{{{ rel.from_table }}}} → {{{{ rel.to_table }}}}
+                                            </div>
+                                            <span :class="['badge', rel.is_active !== false ? 'badge-success' : 'badge-gray']">
+                                                {{{{ rel.is_active !== false ? 'Active' : 'Inactive' }}}}
+                                            </span>
+                                        </div>
+                                        <div class="text-sm text-gray-600">
+                                            <div><strong>From:</strong> {{{{ rel.from_table }}}}[{{{{ rel.from_column }}}}]</div>
+                                            <div><strong>To:</strong> {{{{ rel.to_table }}}}[{{{{ rel.to_column }}}}]</div>
+                                            <div class="mt-2">
+                                                <span class="badge badge-primary mr-2">{{{{ formatCardinality(rel) }}}}</span>
+                                                <span class="badge badge-gray">{{{{ formatCrossFilterDirection(rel) }}}}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-if="otherRelationships.length === 0" class="text-gray-500 italic text-sm">No other relationships</div>
+                            </div>
+                        </div>
+
+                        <div v-else-if="sortedRelationships.length === 0" class="text-gray-500 italic">No relationships found in model</div>
                     </div>
                 </div>
             </div>
@@ -1043,7 +1363,7 @@ class PbipHtmlGenerator:
                             <h3 class="text-xl font-bold text-gray-900 mb-4">Pages ({{{{ reportData.pages?.length || 0 }}}})</h3>
                             <div class="space-y-2">
                                 <div
-                                    v-for="(page, idx) in reportData.pages"
+                                    v-for="(page, idx) in sortedPages"
                                     :key="idx"
                                     @click="selectedPage = page"
                                     :class="['list-item border-l-4 p-3 cursor-pointer rounded', selectedPage === page ? 'selected' : 'border-gray-300']"
@@ -1305,6 +1625,20 @@ class PbipHtmlGenerator:
                         <div v-if="selectedColumnKey" class="stat-card">
                             <h2 class="text-2xl font-bold text-gray-900 mb-4">{{{{ selectedColumnKey }}}}</h2>
 
+                            <!-- Used By Field Parameters -->
+                            <div class="mb-6">
+                                <h3 class="text-lg font-semibold text-gray-900 mb-3">
+                                    Used By Field Parameters ({{{{ currentColumnDependencies.usedByFieldParams.length }}}})
+                                </h3>
+                                <div v-if="currentColumnDependencies.usedByFieldParams.length > 0" class="space-y-2">
+                                    <div v-for="fieldParam in currentColumnDependencies.usedByFieldParams" :key="fieldParam" class="flex items-center gap-2 p-2 bg-green-50 rounded border border-green-200">
+                                        <span class="badge badge-success">Field Parameter</span>
+                                        <span class="text-sm text-gray-700">{{{{ fieldParam }}}}</span>
+                                    </div>
+                                </div>
+                                <div v-else class="text-gray-500 italic">Not used by any field parameters</div>
+                            </div>
+
                             <!-- Used By Measures -->
                             <div class="mb-6">
                                 <h3 class="text-lg font-semibold text-gray-900 mb-3">
@@ -1359,67 +1693,96 @@ class PbipHtmlGenerator:
             </div>
 
             <!-- Usage Tab -->
-            <div v-show="activeTab === 'usage'" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div v-show="activeTab === 'usage'" class="space-y-6">
+                <!-- Field Parameters Section (Full Width) -->
                 <div class="stat-card">
-                    <div class="flex items-center justify-between mb-4">
-                        <h2 class="text-2xl font-bold text-gray-900">Unused Measures</h2>
-                        <div v-if="dependencies.unused_measures?.length > 0" class="flex gap-2">
-                            <button @click="expandAllUnusedMeasures" class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600">Expand All</button>
-                            <button @click="collapseAllUnusedMeasures" class="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600">Collapse All</button>
-                        </div>
+                    <h2 class="text-2xl font-bold text-gray-900 mb-4">Field Parameters</h2>
+                    <div v-if="fieldParametersList.length > 0" class="bg-blue-50 p-4 rounded mb-4">
+                        <strong>Info:</strong> Found {{{{ fieldParametersList.length }}}} field parameter(s) in the model.
                     </div>
-                    <div v-if="dependencies.unused_measures?.length > 0" class="bg-yellow-50 p-4 rounded mb-4">
-                        <strong>Warning:</strong> Found {{{{ dependencies.unused_measures.length }}}} measures not used anywhere.
-                    </div>
-                    <div v-if="dependencies.unused_measures?.length > 0" class="space-y-4 max-h-96 overflow-y-auto">
-                        <!-- Grouped by folder -->
-                        <div v-for="(measures, folderName) in unusedMeasuresByFolder" :key="folderName">
-                            <div class="list-group-header" :class="{{collapsed: collapsedUnusedMeasureFolders[folderName]}}" @click="toggleUnusedMeasureFolder(folderName)">
-                                <div>
-                                    <strong>{{{{ folderName }}}}</strong>
-                                    <span class="ml-2 text-sm opacity-75">({{{{ measures.length }}}})</span>
-                                </div>
-                                <span class="expand-icon">▼</span>
+                    <div v-if="fieldParametersList.length > 0" class="space-y-4">
+                        <div v-for="fp in fieldParametersList" :key="fp.name" class="border border-blue-200 rounded p-4 bg-white">
+                            <div class="flex items-center gap-2 mb-3">
+                                <span class="badge badge-success text-base">{{{{ fp.name }}}}</span>
+                                <span class="text-sm text-gray-500">{{{{ fp.table }}}}</span>
                             </div>
-                            <div v-show="!collapsedUnusedMeasureFolders[folderName]" class="folder-content space-y-2 mt-2">
-                                <div v-for="measure in measures" :key="measure" class="p-2 border border-gray-200 rounded text-sm bg-white">
-                                    {{{{ measure }}}}
+                            <div v-if="fp.columns && fp.columns.length > 0">
+                                <h4 class="font-semibold text-gray-700 mb-2">Referenced Columns ({{{{ fp.columns.length }}}}):</h4>
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                    <div v-for="col in fp.columns" :key="col" class="text-sm p-2 bg-gray-50 rounded border border-gray-200">
+                                        {{{{ col }}}}
+                                    </div>
                                 </div>
                             </div>
+                            <div v-else class="text-gray-500 italic text-sm">No columns referenced</div>
                         </div>
                     </div>
-                    <div v-else class="text-green-600 font-semibold">✓ All measures are in use!</div>
+                    <div v-else class="text-gray-500 italic">No field parameters found in the model.</div>
                 </div>
 
-                <div class="stat-card">
-                    <div class="flex items-center justify-between mb-4">
-                        <h2 class="text-2xl font-bold text-gray-900">Unused Columns</h2>
-                        <div v-if="dependencies.unused_columns?.length > 0" class="flex gap-2">
-                            <button @click="expandAllUnusedColumns" class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600">Expand All</button>
-                            <button @click="collapseAllUnusedColumns" class="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600">Collapse All</button>
-                        </div>
-                    </div>
-                    <div v-if="dependencies.unused_columns?.length > 0" class="bg-yellow-50 p-4 rounded mb-4">
-                        <strong>Warning:</strong> Found {{{{ dependencies.unused_columns.length }}}} columns not used anywhere.
-                    </div>
-                    <div v-if="dependencies.unused_columns?.length > 0" class="space-y-4 max-h-96 overflow-y-auto">
-                        <!-- Grouped by table -->
-                        <div v-for="(columns, tableName) in unusedColumnsByTable" :key="tableName">
-                            <div class="list-group-header" :class="{{collapsed: collapsedUnusedColumnTables[tableName]}}" @click="toggleUnusedColumnTable(tableName)">
-                                <div>
-                                    <strong>{{{{ tableName }}}}</strong>
-                                    <span class="ml-2 text-sm opacity-75">({{{{ columns.length }}}})</span>
-                                </div>
-                                <span class="expand-icon">▼</span>
-                            </div>
-                            <div v-show="!collapsedUnusedColumnTables[tableName]" class="folder-content space-y-2 mt-2">
-                                <div v-for="column in columns" :key="column" class="p-2 border border-gray-200 rounded text-sm bg-white">
-                                    {{{{ column }}}}
-                                </div>
+                <!-- Unused Measures and Columns Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="stat-card">
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-2xl font-bold text-gray-900">Unused Measures</h2>
+                            <div v-if="dependencies.unused_measures?.length > 0" class="flex gap-2">
+                                <button @click="expandAllUnusedMeasures" class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600">Expand All</button>
+                                <button @click="collapseAllUnusedMeasures" class="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600">Collapse All</button>
                             </div>
                         </div>
+                        <div v-if="dependencies.unused_measures?.length > 0" class="bg-yellow-50 p-4 rounded mb-4">
+                            <strong>Warning:</strong> Found {{{{ dependencies.unused_measures.length }}}} measures not used anywhere.
+                        </div>
+                        <div v-if="dependencies.unused_measures?.length > 0" class="space-y-4 max-h-96 overflow-y-auto">
+                            <!-- Grouped by folder -->
+                            <div v-for="(measures, folderName) in unusedMeasuresByFolder" :key="folderName">
+                                <div class="list-group-header" :class="{{collapsed: collapsedUnusedMeasureFolders[folderName]}}" @click="toggleUnusedMeasureFolder(folderName)">
+                                    <div>
+                                        <strong>{{{{ folderName }}}}</strong>
+                                        <span class="ml-2 text-sm opacity-75">({{{{ measures.length }}}})</span>
+                                    </div>
+                                    <span class="expand-icon">▼</span>
+                                </div>
+                                <div v-show="!collapsedUnusedMeasureFolders[folderName]" class="folder-content space-y-2 mt-2">
+                                    <div v-for="measure in measures" :key="measure" class="p-2 border border-gray-200 rounded text-sm bg-white">
+                                        {{{{ measure }}}}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-else class="text-green-600 font-semibold">✓ All measures are in use!</div>
                     </div>
-                    <div v-else class="text-green-600 font-semibold">✓ All columns are in use!</div>
+
+                    <div class="stat-card">
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-2xl font-bold text-gray-900">Unused Columns</h2>
+                            <div v-if="dependencies.unused_columns?.length > 0" class="flex gap-2">
+                                <button @click="expandAllUnusedColumns" class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600">Expand All</button>
+                                <button @click="collapseAllUnusedColumns" class="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600">Collapse All</button>
+                            </div>
+                        </div>
+                        <div v-if="dependencies.unused_columns?.length > 0" class="bg-yellow-50 p-4 rounded mb-4">
+                            <strong>Warning:</strong> Found {{{{ dependencies.unused_columns.length }}}} columns not used anywhere.
+                        </div>
+                        <div v-if="dependencies.unused_columns?.length > 0" class="space-y-4 max-h-96 overflow-y-auto">
+                            <!-- Grouped by table -->
+                            <div v-for="(columns, tableName) in unusedColumnsByTable" :key="tableName">
+                                <div class="list-group-header" :class="{{collapsed: collapsedUnusedColumnTables[tableName]}}" @click="toggleUnusedColumnTable(tableName)">
+                                    <div>
+                                        <strong>{{{{ tableName }}}}</strong>
+                                        <span class="ml-2 text-sm opacity-75">({{{{ columns.length }}}})</span>
+                                    </div>
+                                    <span class="expand-icon">▼</span>
+                                </div>
+                                <div v-show="!collapsedUnusedColumnTables[tableName]" class="folder-content space-y-2 mt-2">
+                                    <div v-for="column in columns" :key="column" class="p-2 border border-gray-200 rounded text-sm bg-white">
+                                        {{{{ column }}}}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-else class="text-green-600 font-semibold">✓ All columns are in use!</div>
+                    </div>
                 </div>
             </div>
 
@@ -2056,8 +2419,11 @@ class PbipHtmlGenerator:
             </div>
         </div>
     </div>
+"""
 
-    <script>
+    def _get_vue_app_script(self, data_json_str: str) -> str:
+        """Get the Vue 3 application JavaScript."""
+        return f"""    <script>
         const {{ createApp }} = Vue;
 
         const pbipData = {data_json_str};
@@ -2079,12 +2445,17 @@ class PbipHtmlGenerator:
 
                     // Model tab
                     selectedTable: null,
+                    selectedMeasure: null,
                     modelDetailTab: 'columns',
                     modelSearchQuery: '',
                     modelSubTab: 'tables',
                     measuresSearchQuery: '',
                     collapsedFolders: {{}},
                     expandedMeasures: {{}},
+
+                    // Relationship Graph
+                    relationshipGraphLayout: 'list',  // 'tree', 'dagre', 'force', 'list'
+                    expandedDependencyNodes: {{}},
 
                     // Report tab
                     selectedPage: null,
@@ -2385,6 +2756,37 @@ class PbipHtmlGenerator:
                     }});
                 }},
 
+                // Group relationships by schema pattern
+                factToDimRelationships() {{
+                    return this.sortedRelationships.filter(rel => {{
+                        const from = (rel.from_table || '').toLowerCase();
+                        const to = (rel.to_table || '').toLowerCase();
+                        const isFactFrom = from.startsWith('f ') || from.startsWith('fact');
+                        const isDimTo = to.startsWith('d ') || to.startsWith('dim');
+                        return isFactFrom && isDimTo;
+                    }});
+                }},
+
+                dimToDimRelationships() {{
+                    return this.sortedRelationships.filter(rel => {{
+                        const from = (rel.from_table || '').toLowerCase();
+                        const to = (rel.to_table || '').toLowerCase();
+                        const isDimFrom = from.startsWith('d ') || from.startsWith('dim');
+                        const isDimTo = to.startsWith('d ') || to.startsWith('dim');
+                        return isDimFrom && isDimTo;
+                    }});
+                }},
+
+                otherRelationships() {{
+                    const factToDim = new Set(this.factToDimRelationships.map(r => `${{r.from_table}}-${{r.to_table}}`));
+                    const dimToDim = new Set(this.dimToDimRelationships.map(r => `${{r.from_table}}-${{r.to_table}}`));
+
+                    return this.sortedRelationships.filter(rel => {{
+                        const key = `${{rel.from_table}}-${{rel.to_table}}`;
+                        return !factToDim.has(key) && !dimToDim.has(key);
+                    }});
+                }},
+
                 filteredColumnsForDependency() {{
                     const columnsByTable = {{}};
                     const tables = this.modelData.tables || [];
@@ -2413,16 +2815,17 @@ class PbipHtmlGenerator:
 
                 currentColumnDependencies() {{
                     if (!this.selectedColumnKey) {{
-                        return {{ usedByMeasures: [], visualUsage: [] }};
+                        return {{ usedByMeasures: [], usedByFieldParams: [], visualUsage: [] }};
                     }}
 
                     const deps = this.dependencies;
                     const key = this.selectedColumnKey;
 
                     const usedByMeasures = deps.column_to_measure?.[key] || [];
+                    const usedByFieldParams = deps.column_to_field_params?.[key] || [];
                     const visualUsage = this.findColumnInVisuals(key);
 
-                    return {{ usedByMeasures, visualUsage }};
+                    return {{ usedByMeasures, usedByFieldParams, visualUsage }};
                 }},
 
                 filteredCommands() {{
@@ -2485,6 +2888,44 @@ class PbipHtmlGenerator:
                     }});
 
                     return sortedTables;
+                }},
+
+                fieldParametersList() {{
+                    const fieldParams = [];
+                    const fieldParamMap = this.dependencies.field_param_to_columns || {{}};
+
+                    // Iterate through field parameters and build the list
+                    Object.keys(fieldParamMap).forEach(fpKey => {{
+                        const columns = fieldParamMap[fpKey] || [];
+
+                        // Parse the field parameter key to get table and name
+                        // Format is typically: TableName[FieldParamName]
+                        const match = fpKey.match(/^(.+?)\[(.+?)\]$/);
+                        if (match) {{
+                            fieldParams.push({{
+                                name: match[2],
+                                table: match[1],
+                                fullName: fpKey,
+                                columns: columns
+                            }});
+                        }} else {{
+                            // Fallback if format doesn't match
+                            fieldParams.push({{
+                                name: fpKey,
+                                table: '',
+                                fullName: fpKey,
+                                columns: columns
+                            }});
+                        }}
+                    }});
+
+                    // Sort by table name, then by field parameter name
+                    return fieldParams.sort((a, b) => {{
+                        if (a.table !== b.table) {{
+                            return a.table.localeCompare(b.table);
+                        }}
+                        return a.name.localeCompare(b.name);
+                    }});
                 }},
 
                 // Enhanced Analysis - BPA
@@ -2741,6 +3182,36 @@ class PbipHtmlGenerator:
 
                 perspectivesCount() {{
                     return this.perspectivesData.perspective_count || 0;
+                }},
+
+                sortedPages() {{
+                    if (!this.reportData || !this.reportData.pages) {{
+                        return [];
+                    }}
+                    // Sort pages by display_name or ordinal
+                    return [...this.reportData.pages].sort((a, b) => {{
+                        const nameA = a.display_name || a.name || '';
+                        const nameB = b.display_name || b.name || '';
+                        return nameA.localeCompare(nameB);
+                    }});
+                }}
+            }},
+
+            watch: {{
+                relationshipGraphLayout(newLayout) {{
+                    if (newLayout !== 'list') {{
+                        this.$nextTick(() => {{
+                            this.renderRelationshipGraph();
+                        }});
+                    }}
+                }},
+
+                modelSubTab(newTab) {{
+                    if (newTab === 'relationships' && this.relationshipGraphLayout !== 'list') {{
+                        this.$nextTick(() => {{
+                            this.renderRelationshipGraph();
+                        }});
+                    }}
                 }}
             }},
 
@@ -2786,6 +3257,687 @@ class PbipHtmlGenerator:
                     a.download = 'pbip_full_export.json';
                     a.click();
                 }},
+
+                // Relationship Graph Rendering Methods
+                // Add these methods to the Vue app's methods section
+                
+                renderRelationshipGraph() {{
+                    const container = document.getElementById('graph-container');
+                    if (!container) return;
+                
+                    // Clear previous graph
+                    container.innerHTML = '';
+                
+                    const relationships = this.sortedRelationships;
+                    if (!relationships || relationships.length === 0) return;
+                
+                    // Build node and link data
+                    const tables = new Set();
+                    relationships.forEach(rel => {{
+                        tables.add(rel.from_table);
+                        tables.add(rel.to_table);
+                    }});
+                
+                    const nodes = Array.from(tables).map(name => ({{
+                        id: name,
+                        type: this.getTableType(name)
+                    }}));
+                
+                    const links = relationships.map(rel => ({{
+                        source: rel.from_table,
+                        target: rel.to_table,
+                        active: rel.is_active !== false,
+                        from_column: rel.from_column,
+                        to_column: rel.to_column,
+                        cardinality: this.formatCardinality(rel),
+                        direction: this.formatCrossFilterDirection(rel),
+                        relType: this.getRelationshipType(rel)
+                    }}));
+                
+                    // Render based on selected layout
+                    if (this.relationshipGraphLayout === 'tree') {{
+                        this.renderTreeLayout(container, nodes, links);
+                    }} else if (this.relationshipGraphLayout === 'dagre') {{
+                        this.renderDagreLayout(container, nodes, links);
+                    }} else if (this.relationshipGraphLayout === 'force') {{
+                        this.renderForceLayout(container, nodes, links);
+                    }}
+                }},
+                
+                getTableType(tableName) {{
+                    const lower = tableName.toLowerCase();
+                    if (lower.startsWith('f ') || lower.startsWith('fact')) return 'fact';
+                    if (lower.startsWith('d ') || lower.startsWith('dim')) return 'dim';
+                    return 'other';
+                }},
+                
+                getRelationshipType(rel) {{
+                    const fromType = this.getTableType(rel.from_table);
+                    const toType = this.getTableType(rel.to_table);
+                    if (fromType === 'fact' && toType === 'dim') return 'fact-to-dim';
+                    if (fromType === 'dim' && toType === 'dim') return 'dim-to-dim';
+                    return 'other';
+                }},
+                
+                renderTreeLayout(container, nodes, links) {{
+                    const width = container.clientWidth || 800;
+                    const height = 600;
+                
+                    // Build hierarchy from relationships
+                    const root = this.buildHierarchy(nodes, links);
+                
+                    const treeLayout = d3.tree()
+                        .size([height - 100, width - 200])
+                        .separation((a, b) => (a.parent === b.parent ? 1 : 1.5));
+                
+                    const hierarchy = d3.hierarchy(root);
+                    const treeData = treeLayout(hierarchy);
+                
+                    const svg = d3.select(container)
+                        .append('svg')
+                        .attr('width', width)
+                        .attr('height', height);
+                
+                    const g = svg.append('g')
+                        .attr('transform', 'translate(100,50)');
+                
+                    // Links
+                    g.selectAll('.link')
+                        .data(treeData.links())
+                        .join('path')
+                        .attr('class', 'relationship-link')
+                        .attr('d', d3.linkHorizontal()
+                            .x(d => d.y)
+                            .y(d => d.x))
+                        .attr('stroke', '#94a3b8')
+                        .attr('stroke-width', 2)
+                        .attr('fill', 'none');
+                
+                    // Nodes
+                    const node = g.selectAll('.node')
+                        .data(treeData.descendants())
+                        .join('g')
+                        .attr('class', d => `graph-node ${{d.data.type}}-table`)
+                        .attr('transform', d => `translate(${{d.y}},${{d.x}})`);
+                
+                    node.append('circle')
+                        .attr('r', 8)
+                        .attr('fill', d => {{
+                            if (d.data.type === 'fact') return '#3b82f6';
+                            if (d.data.type === 'dim') return '#10b981';
+                            return '#94a3b8';
+                        }})
+                        .attr('stroke', '#1f2937')
+                        .attr('stroke-width', 2);
+                
+                    node.append('text')
+                        .attr('dy', -15)
+                        .attr('text-anchor', 'middle')
+                        .attr('fill', '#1f2937')
+                        .style('font-size', '12px')
+                        .style('font-weight', 'bold')
+                        .text(d => d.data.name || d.data.id);
+                }},
+                
+                buildHierarchy(nodes, links) {{
+                    // Find root nodes (fact tables or tables with no incoming links)
+                    const incoming = new Set();
+                    links.forEach(l => incoming.add(l.target));
+                
+                    const roots = nodes.filter(n => !incoming.has(n.id) || n.type === 'fact');
+                    if (roots.length === 0 && nodes.length > 0) roots.push(nodes[0]);
+                
+                    const buildTree = (nodeId, visited = new Set()) => {{
+                        if (visited.has(nodeId)) return null;
+                        visited.add(nodeId);
+                
+                        const node = nodes.find(n => n.id === nodeId);
+                        const children = links
+                            .filter(l => l.source === nodeId)
+                            .map(l => buildTree(l.target, visited))
+                            .filter(c => c !== null);
+                
+                        return {{
+                            name: nodeId,
+                            id: nodeId,
+                            type: node?.type || 'other',
+                            children: children.length > 0 ? children : null
+                        }};
+                    }};
+                
+                    if (roots.length === 1) {{
+                        return buildTree(roots[0].id);
+                    }} else {{
+                        return {{
+                            name: 'Model',
+                            id: '__root__',
+                            type: 'root',
+                            children: roots.map(r => buildTree(r.id))
+                        }};
+                    }}
+                }},
+                
+                renderDagreLayout(container, nodes, links) {{
+                    const width = container.clientWidth || 800;
+                    const height = 600;
+                
+                    // Create dagre graph
+                    const g = new dagre.graphlib.Graph();
+                    g.setGraph({{ rankdir: 'LR', nodesep: 70, ranksep: 100 }});
+                    g.setDefaultEdgeLabel(() => ({{}}));
+                
+                    // Add nodes
+                    nodes.forEach(node => {{
+                        g.setNode(node.id, {{ label: node.id, width: 120, height: 40 }});
+                    }});
+                
+                    // Add edges
+                    links.forEach(link => {{
+                        g.setEdge(link.source, link.target);
+                    }});
+                
+                    // Compute layout
+                    dagre.layout(g);
+                
+                    const svg = d3.select(container)
+                        .append('svg')
+                        .attr('width', width)
+                        .attr('height', height);
+                
+                    const svgGroup = svg.append('g')
+                        .attr('transform', 'translate(20,20)');
+                
+                    // Draw edges
+                    g.edges().forEach(e => {{
+                        const edge = g.edge(e);
+                        const link = links.find(l => l.source === e.v && l.target === e.w);
+                
+                        svgGroup.append('path')
+                            .attr('class', `relationship-link ${{link?.active ? 'active' : 'inactive'}} ${{link?.relType}}`)
+                            .attr('d', () => {{
+                                const points = edge.points;
+                                return d3.line()
+                                    .x(d => d.x)
+                                    .y(d => d.y)
+                                    (points);
+                            }})
+                            .attr('marker-end', 'url(#arrowhead)');
+                    }});
+                
+                    // Define arrow marker
+                    svg.append('defs').append('marker')
+                        .attr('id', 'arrowhead')
+                        .attr('viewBox', '-0 -5 10 10')
+                        .attr('refX', 8)
+                        .attr('refY', 0)
+                        .attr('orient', 'auto')
+                        .attr('markerWidth', 6)
+                        .attr('markerHeight', 6)
+                        .append('svg:path')
+                        .attr('d', 'M 0,-5 L 10,0 L 0,5')
+                        .attr('fill', '#94a3b8');
+                
+                    // Draw nodes
+                    g.nodes().forEach(v => {{
+                        const node = g.node(v);
+                        const nodeData = nodes.find(n => n.id === v);
+                
+                        const nodeGroup = svgGroup.append('g')
+                            .attr('class', `graph-node ${{nodeData.type}}-table`)
+                            .attr('transform', `translate(${{node.x}},${{node.y}})`);
+                
+                        nodeGroup.append('rect')
+                            .attr('x', -60)
+                            .attr('y', -20)
+                            .attr('width', 120)
+                            .attr('height', 40)
+                            .attr('rx', 5)
+                            .attr('fill', () => {{
+                                if (nodeData.type === 'fact') return '#3b82f6';
+                                if (nodeData.type === 'dim') return '#10b981';
+                                return '#94a3b8';
+                            }})
+                            .attr('stroke', '#1f2937')
+                            .attr('stroke-width', 2);
+                
+                        nodeGroup.append('text')
+                            .attr('text-anchor', 'middle')
+                            .attr('dy', 5)
+                            .attr('fill', 'white')
+                            .style('font-size', '12px')
+                            .style('font-weight', 'bold')
+                            .text(node.label);
+                    }});
+                }},
+                
+                renderForceLayout(container, nodes, links) {{
+                    const width = container.clientWidth || 800;
+                    const height = 600;
+                
+                    // Convert links to use node objects
+                    const nodeMap = new Map(nodes.map(n => [n.id, {{ ...n }}]));
+                    const forceLinks = links.map(l => ({{
+                        source: nodeMap.get(l.source),
+                        target: nodeMap.get(l.target),
+                        ...l
+                    }}));
+                
+                    const svg = d3.select(container)
+                        .append('svg')
+                        .attr('width', width)
+                        .attr('height', height);
+                
+                    const simulation = d3.forceSimulation(Array.from(nodeMap.values()))
+                        .force('link', d3.forceLink(forceLinks).id(d => d.id).distance(100))
+                        .force('charge', d3.forceManyBody().strength(-300))
+                        .force('center', d3.forceCenter(width / 2, height / 2))
+                        .force('collision', d3.forceCollide().radius(50));
+                
+                    // Links
+                    const link = svg.append('g')
+                        .selectAll('line')
+                        .data(forceLinks)
+                        .join('line')
+                        .attr('class', d => `relationship-link ${{d.active ? 'active' : 'inactive'}} ${{d.relType}}`)
+                        .attr('stroke-width', d => d.active ? 3 : 2);
+                
+                    // Nodes
+                    const node = svg.append('g')
+                        .selectAll('g')
+                        .data(Array.from(nodeMap.values()))
+                        .join('g')
+                        .attr('class', d => `graph-node ${{d.type}}-table`)
+                        .call(d3.drag()
+                            .on('start', dragstarted)
+                            .on('drag', dragged)
+                            .on('end', dragended));
+                
+                    node.append('circle')
+                        .attr('r', 20)
+                        .attr('fill', d => {{
+                            if (d.type === 'fact') return '#3b82f6';
+                            if (d.type === 'dim') return '#10b981';
+                            return '#94a3b8';
+                        }})
+                        .attr('stroke', '#1f2937')
+                        .attr('stroke-width', 2);
+                
+                    node.append('text')
+                        .attr('dy', -25)
+                        .attr('text-anchor', 'middle')
+                        .attr('fill', '#1f2937')
+                        .style('font-size', '12px')
+                        .style('font-weight', 'bold')
+                        .text(d => d.id);
+                
+                    simulation.on('tick', () => {{
+                        link
+                            .attr('x1', d => d.source.x)
+                            .attr('y1', d => d.source.y)
+                            .attr('x2', d => d.target.x)
+                            .attr('y2', d => d.target.y);
+                
+                        node.attr('transform', d => `translate(${{d.x}},${{d.y}})`);
+                    }});
+                
+                    function dragstarted(event) {{
+                        if (!event.active) simulation.alphaTarget(0.3).restart();
+                        event.subject.fx = event.subject.x;
+                        event.subject.fy = event.subject.y;
+                    }}
+                
+                    function dragged(event) {{
+                        event.subject.fx = event.x;
+                        event.subject.fy = event.y;
+                    }}
+                
+                    function dragended(event) {{
+                        if (!event.active) simulation.alphaTarget(0);
+                        event.subject.fx = null;
+                        event.subject.fy = null;
+                    }}
+                }},
+
+                // Relationship Graph Rendering Methods
+                // Add these methods to the Vue app's methods section
+                
+                renderRelationshipGraph() {{
+                    const container = document.getElementById('graph-container');
+                    if (!container) return;
+                
+                    // Clear previous graph
+                    container.innerHTML = '';
+                
+                    const relationships = this.sortedRelationships;
+                    if (!relationships || relationships.length === 0) return;
+                
+                    // Build node and link data
+                    const tables = new Set();
+                    relationships.forEach(rel => {{
+                        tables.add(rel.from_table);
+                        tables.add(rel.to_table);
+                    }});
+                
+                    const nodes = Array.from(tables).map(name => ({{
+                        id: name,
+                        type: this.getTableType(name)
+                    }}));
+                
+                    const links = relationships.map(rel => ({{
+                        source: rel.from_table,
+                        target: rel.to_table,
+                        active: rel.is_active !== false,
+                        from_column: rel.from_column,
+                        to_column: rel.to_column,
+                        cardinality: this.formatCardinality(rel),
+                        direction: this.formatCrossFilterDirection(rel),
+                        relType: this.getRelationshipType(rel)
+                    }}));
+                
+                    // Render based on selected layout
+                    if (this.relationshipGraphLayout === 'tree') {{
+                        this.renderTreeLayout(container, nodes, links);
+                    }} else if (this.relationshipGraphLayout === 'dagre') {{
+                        this.renderDagreLayout(container, nodes, links);
+                    }} else if (this.relationshipGraphLayout === 'force') {{
+                        this.renderForceLayout(container, nodes, links);
+                    }}
+                }},
+                
+                getTableType(tableName) {{
+                    const lower = tableName.toLowerCase();
+                    if (lower.startsWith('f ') || lower.startsWith('fact')) return 'fact';
+                    if (lower.startsWith('d ') || lower.startsWith('dim')) return 'dim';
+                    return 'other';
+                }},
+                
+                getRelationshipType(rel) {{
+                    const fromType = this.getTableType(rel.from_table);
+                    const toType = this.getTableType(rel.to_table);
+                    if (fromType === 'fact' && toType === 'dim') return 'fact-to-dim';
+                    if (fromType === 'dim' && toType === 'dim') return 'dim-to-dim';
+                    return 'other';
+                }},
+                
+                renderTreeLayout(container, nodes, links) {{
+                    const width = container.clientWidth || 800;
+                    const height = 600;
+                
+                    // Build hierarchy from relationships
+                    const root = this.buildHierarchy(nodes, links);
+                
+                    const treeLayout = d3.tree()
+                        .size([height - 100, width - 200])
+                        .separation((a, b) => (a.parent === b.parent ? 1 : 1.5));
+                
+                    const hierarchy = d3.hierarchy(root);
+                    const treeData = treeLayout(hierarchy);
+                
+                    const svg = d3.select(container)
+                        .append('svg')
+                        .attr('width', width)
+                        .attr('height', height);
+                
+                    const g = svg.append('g')
+                        .attr('transform', 'translate(100,50)');
+                
+                    // Links
+                    g.selectAll('.link')
+                        .data(treeData.links())
+                        .join('path')
+                        .attr('class', 'relationship-link')
+                        .attr('d', d3.linkHorizontal()
+                            .x(d => d.y)
+                            .y(d => d.x))
+                        .attr('stroke', '#94a3b8')
+                        .attr('stroke-width', 2)
+                        .attr('fill', 'none');
+                
+                    // Nodes
+                    const node = g.selectAll('.node')
+                        .data(treeData.descendants())
+                        .join('g')
+                        .attr('class', d => `graph-node ${{d.data.type}}-table`)
+                        .attr('transform', d => `translate(${{d.y}},${{d.x}})`);
+                
+                    node.append('circle')
+                        .attr('r', 8)
+                        .attr('fill', d => {{
+                            if (d.data.type === 'fact') return '#3b82f6';
+                            if (d.data.type === 'dim') return '#10b981';
+                            return '#94a3b8';
+                        }})
+                        .attr('stroke', '#1f2937')
+                        .attr('stroke-width', 2);
+                
+                    node.append('text')
+                        .attr('dy', -15)
+                        .attr('text-anchor', 'middle')
+                        .attr('fill', '#1f2937')
+                        .style('font-size', '12px')
+                        .style('font-weight', 'bold')
+                        .text(d => d.data.name || d.data.id);
+                }},
+                
+                buildHierarchy(nodes, links) {{
+                    // Find root nodes (fact tables or tables with no incoming links)
+                    const incoming = new Set();
+                    links.forEach(l => incoming.add(l.target));
+                
+                    const roots = nodes.filter(n => !incoming.has(n.id) || n.type === 'fact');
+                    if (roots.length === 0 && nodes.length > 0) roots.push(nodes[0]);
+                
+                    const buildTree = (nodeId, visited = new Set()) => {{
+                        if (visited.has(nodeId)) return null;
+                        visited.add(nodeId);
+                
+                        const node = nodes.find(n => n.id === nodeId);
+                        const children = links
+                            .filter(l => l.source === nodeId)
+                            .map(l => buildTree(l.target, visited))
+                            .filter(c => c !== null);
+                
+                        return {{
+                            name: nodeId,
+                            id: nodeId,
+                            type: node?.type || 'other',
+                            children: children.length > 0 ? children : null
+                        }};
+                    }};
+                
+                    if (roots.length === 1) {{
+                        return buildTree(roots[0].id);
+                    }} else {{
+                        return {{
+                            name: 'Model',
+                            id: '__root__',
+                            type: 'root',
+                            children: roots.map(r => buildTree(r.id))
+                        }};
+                    }}
+                }},
+                
+                renderDagreLayout(container, nodes, links) {{
+                    const width = container.clientWidth || 800;
+                    const height = 600;
+                
+                    // Create dagre graph
+                    const g = new dagre.graphlib.Graph();
+                    g.setGraph({{ rankdir: 'LR', nodesep: 70, ranksep: 100 }});
+                    g.setDefaultEdgeLabel(() => ({{}}));
+                
+                    // Add nodes
+                    nodes.forEach(node => {{
+                        g.setNode(node.id, {{ label: node.id, width: 120, height: 40 }});
+                    }});
+                
+                    // Add edges
+                    links.forEach(link => {{
+                        g.setEdge(link.source, link.target);
+                    }});
+                
+                    // Compute layout
+                    dagre.layout(g);
+                
+                    const svg = d3.select(container)
+                        .append('svg')
+                        .attr('width', width)
+                        .attr('height', height);
+                
+                    const svgGroup = svg.append('g')
+                        .attr('transform', 'translate(20,20)');
+                
+                    // Draw edges
+                    g.edges().forEach(e => {{
+                        const edge = g.edge(e);
+                        const link = links.find(l => l.source === e.v && l.target === e.w);
+                
+                        svgGroup.append('path')
+                            .attr('class', `relationship-link ${{link?.active ? 'active' : 'inactive'}} ${{link?.relType}}`)
+                            .attr('d', () => {{
+                                const points = edge.points;
+                                return d3.line()
+                                    .x(d => d.x)
+                                    .y(d => d.y)
+                                    (points);
+                            }})
+                            .attr('marker-end', 'url(#arrowhead)');
+                    }});
+                
+                    // Define arrow marker
+                    svg.append('defs').append('marker')
+                        .attr('id', 'arrowhead')
+                        .attr('viewBox', '-0 -5 10 10')
+                        .attr('refX', 8)
+                        .attr('refY', 0)
+                        .attr('orient', 'auto')
+                        .attr('markerWidth', 6)
+                        .attr('markerHeight', 6)
+                        .append('svg:path')
+                        .attr('d', 'M 0,-5 L 10,0 L 0,5')
+                        .attr('fill', '#94a3b8');
+                
+                    // Draw nodes
+                    g.nodes().forEach(v => {{
+                        const node = g.node(v);
+                        const nodeData = nodes.find(n => n.id === v);
+                
+                        const nodeGroup = svgGroup.append('g')
+                            .attr('class', `graph-node ${{nodeData.type}}-table`)
+                            .attr('transform', `translate(${{node.x}},${{node.y}})`);
+                
+                        nodeGroup.append('rect')
+                            .attr('x', -60)
+                            .attr('y', -20)
+                            .attr('width', 120)
+                            .attr('height', 40)
+                            .attr('rx', 5)
+                            .attr('fill', () => {{
+                                if (nodeData.type === 'fact') return '#3b82f6';
+                                if (nodeData.type === 'dim') return '#10b981';
+                                return '#94a3b8';
+                            }})
+                            .attr('stroke', '#1f2937')
+                            .attr('stroke-width', 2);
+                
+                        nodeGroup.append('text')
+                            .attr('text-anchor', 'middle')
+                            .attr('dy', 5)
+                            .attr('fill', 'white')
+                            .style('font-size', '12px')
+                            .style('font-weight', 'bold')
+                            .text(node.label);
+                    }});
+                }},
+                
+                renderForceLayout(container, nodes, links) {{
+                    const width = container.clientWidth || 800;
+                    const height = 600;
+                
+                    // Convert links to use node objects
+                    const nodeMap = new Map(nodes.map(n => [n.id, {{ ...n }}]));
+                    const forceLinks = links.map(l => ({{
+                        source: nodeMap.get(l.source),
+                        target: nodeMap.get(l.target),
+                        ...l
+                    }}));
+                
+                    const svg = d3.select(container)
+                        .append('svg')
+                        .attr('width', width)
+                        .attr('height', height);
+                
+                    const simulation = d3.forceSimulation(Array.from(nodeMap.values()))
+                        .force('link', d3.forceLink(forceLinks).id(d => d.id).distance(100))
+                        .force('charge', d3.forceManyBody().strength(-300))
+                        .force('center', d3.forceCenter(width / 2, height / 2))
+                        .force('collision', d3.forceCollide().radius(50));
+                
+                    // Links
+                    const link = svg.append('g')
+                        .selectAll('line')
+                        .data(forceLinks)
+                        .join('line')
+                        .attr('class', d => `relationship-link ${{d.active ? 'active' : 'inactive'}} ${{d.relType}}`)
+                        .attr('stroke-width', d => d.active ? 3 : 2);
+                
+                    // Nodes
+                    const node = svg.append('g')
+                        .selectAll('g')
+                        .data(Array.from(nodeMap.values()))
+                        .join('g')
+                        .attr('class', d => `graph-node ${{d.type}}-table`)
+                        .call(d3.drag()
+                            .on('start', dragstarted)
+                            .on('drag', dragged)
+                            .on('end', dragended));
+                
+                    node.append('circle')
+                        .attr('r', 20)
+                        .attr('fill', d => {{
+                            if (d.type === 'fact') return '#3b82f6';
+                            if (d.type === 'dim') return '#10b981';
+                            return '#94a3b8';
+                        }})
+                        .attr('stroke', '#1f2937')
+                        .attr('stroke-width', 2);
+                
+                    node.append('text')
+                        .attr('dy', -25)
+                        .attr('text-anchor', 'middle')
+                        .attr('fill', '#1f2937')
+                        .style('font-size', '12px')
+                        .style('font-weight', 'bold')
+                        .text(d => d.id);
+                
+                    simulation.on('tick', () => {{
+                        link
+                            .attr('x1', d => d.source.x)
+                            .attr('y1', d => d.source.y)
+                            .attr('x2', d => d.target.x)
+                            .attr('y2', d => d.target.y);
+                
+                        node.attr('transform', d => `translate(${{d.x}},${{d.y}})`);
+                    }});
+                
+                    function dragstarted(event) {{
+                        if (!event.active) simulation.alphaTarget(0.3).restart();
+                        event.subject.fx = event.subject.x;
+                        event.subject.fy = event.subject.y;
+                    }}
+                
+                    function dragged(event) {{
+                        event.subject.fx = event.x;
+                        event.subject.fy = event.y;
+                    }}
+                
+                    function dragended(event) {{
+                        if (!event.active) simulation.alphaTarget(0);
+                        event.subject.fx = null;
+                        event.subject.fy = null;
+                    }}
+                }},
+                
 
                 // Enhanced Analysis - Helper Methods
                 bpaSeverityClass(severity) {{
@@ -3042,6 +4194,18 @@ class PbipHtmlGenerator:
                     }});
                 }},
 
+                getColumnFieldParams(tableName, columnName) {{
+                    const columnKey = tableName + '[' + columnName + ']';
+                    const fieldParams = this.dependencies.column_to_field_params || {{}};
+                    return fieldParams[columnKey] || [];
+                }},
+
+                getColumnUsedByMeasures(tableName, columnName) {{
+                    const columnKey = tableName + '[' + columnName + ']';
+                    const columnToMeasure = this.dependencies.column_to_measure || {{}};
+                    return columnToMeasure[columnKey] || [];
+                }},
+
                 getTableUsageCount(tableName) {{
                     if (!this.reportData || !this.reportData.pages) return 0;
                     let count = 0;
@@ -3269,8 +4433,8 @@ class PbipHtmlGenerator:
                 }}
 
                 // Set first page as selected
-                if (this.reportData && this.reportData.pages && this.reportData.pages.length > 0) {{
-                    this.selectedPage = this.reportData.pages[0];
+                if (this.sortedPages && this.sortedPages.length > 0) {{
+                    this.selectedPage = this.sortedPages[0];
                 }}
 
                 // Initialize all folders as collapsed
@@ -3329,7 +4493,21 @@ class PbipHtmlGenerator:
             }}
         }}).mount('#app');
     </script>
-</body>
-</html>'''
+"""
+
+    def _get_vue3_template(self, data_json_str: str, repo_name: str) -> str:
+        """Get the complete Vue 3 HTML template."""
+        escaped_repo_name = html.escape(repo_name)
+
+        return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+{self._get_head_section(escaped_repo_name)}
+{self._get_styles()}
+</head>
+{self._get_body_content()}
+{self._get_vue_app_script(data_json_str)}
+</html>"""
+
 
         return html_content

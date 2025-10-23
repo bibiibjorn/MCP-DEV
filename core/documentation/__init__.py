@@ -7,10 +7,6 @@ and complexity analysis.
 """
 
 from .word_generator import render_word_report, convert_to_pdf
-from .relationship_graphs import (
-    generate_relationship_graph,
-    generate_interactive_relationship_graph,
-)
 from .snapshot_manager import (
     save_snapshot,
     load_snapshot,
@@ -25,8 +21,6 @@ from .interactive_explorer import generate_interactive_dependency_explorer
 __all__ = [
     "render_word_report",
     "convert_to_pdf",
-    "generate_relationship_graph",
-    "generate_interactive_relationship_graph",
     "save_snapshot",
     "load_snapshot",
     "compute_diff",
