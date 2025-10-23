@@ -2104,10 +2104,16 @@ class PbipHtmlGenerator:
                             <!-- Violations grouped by category within this object type -->
                             <div v-for="category in bpaOrderedCategories" :key="category">
                                 <template v-if="bpaViolationsByObjectAndCategory[objectType] && bpaViolationsByObjectAndCategory[objectType][category]">
-                                    <div class="bg-gray-50 px-4 py-2 border-b border-gray-200">
+                                    <div
+                                        @click="toggleBpaCategory(objectType, category)"
+                                        class="bg-gray-50 px-4 py-2 border-b border-gray-200 cursor-pointer hover:bg-gray-100 flex items-center gap-2"
+                                    >
+                                        <svg class="w-4 h-4 transition-transform" :class="{{'rotate-90': !collapsedBpaCategories[`${{objectType}}|${{category}}`]}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                        </svg>
                                         <span class="font-medium text-gray-700">{{{{ category }}}} ({{{{ bpaViolationsByObjectAndCategory[objectType][category].length }}}})</span>
                                     </div>
-                                    <div class="overflow-x-auto">
+                                    <div v-show="!collapsedBpaCategories[`${{objectType}}|${{category}}`]" class="overflow-x-auto">
                                         <table class="min-w-full divide-y divide-gray-200">
                                             <thead class="bg-gray-50">
                                                 <tr>
@@ -2501,19 +2507,46 @@ class PbipHtmlGenerator:
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50 sticky top-0">
                                 <tr>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Table</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Column</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Data Type</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">In Measures</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">In Relationships</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">In Visuals</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usage Score</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortLineage('table')">
+                                        Table
+                                        <span v-if="lineageSortBy === 'table'">{{{{ lineageSortDesc ? '▼' : '▲' }}}}</span>
+                                    </th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortLineage('column')">
+                                        Column
+                                        <span v-if="lineageSortBy === 'column'">{{{{ lineageSortDesc ? '▼' : '▲' }}}}</span>
+                                    </th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortLineage('type')">
+                                        Type
+                                        <span v-if="lineageSortBy === 'type'">{{{{ lineageSortDesc ? '▼' : '▲' }}}}</span>
+                                    </th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortLineage('data_type')">
+                                        Data Type
+                                        <span v-if="lineageSortBy === 'data_type'">{{{{ lineageSortDesc ? '▼' : '▲' }}}}</span>
+                                    </th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortLineage('measures')">
+                                        In Measures
+                                        <span v-if="lineageSortBy === 'measures'">{{{{ lineageSortDesc ? '▼' : '▲' }}}}</span>
+                                    </th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortLineage('relationships')">
+                                        In Relationships
+                                        <span v-if="lineageSortBy === 'relationships'">{{{{ lineageSortDesc ? '▼' : '▲' }}}}</span>
+                                    </th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortLineage('visuals')">
+                                        In Visuals
+                                        <span v-if="lineageSortBy === 'visuals'">{{{{ lineageSortDesc ? '▼' : '▲' }}}}</span>
+                                    </th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortLineage('usage_score')">
+                                        Usage Score
+                                        <span v-if="lineageSortBy === 'usage_score'">{{{{ lineageSortDesc ? '▼' : '▲' }}}}</span>
+                                    </th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortLineage('status')">
+                                        Status
+                                        <span v-if="lineageSortBy === 'status'">{{{{ lineageSortDesc ? '▼' : '▲' }}}}</span>
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
-                                <tr v-for="(lineage, colKey) in filteredColumnLineage" :key="colKey" class="hover:bg-gray-50">
+                                <tr v-for="(lineage, colKey) in sortedColumnLineage" :key="colKey" class="hover:bg-gray-50">
                                     <td class="px-4 py-3 text-sm font-medium text-gray-900">{{{{ lineage.table }}}}</td>
                                     <td class="px-4 py-3 text-sm text-gray-900">{{{{ lineage.column }}}}</td>
                                     <td class="px-4 py-3 text-sm">
@@ -2556,7 +2589,7 @@ class PbipHtmlGenerator:
                                 </tr>
                             </tbody>
                         </table>
-                        <div v-if="Object.keys(filteredColumnLineage).length === 0" class="text-center py-8 text-gray-500">
+                        <div v-if="Object.keys(sortedColumnLineage).length === 0" class="text-center py-8 text-gray-500">
                             No columns match the current filter
                         </div>
                     </div>
@@ -2729,6 +2762,7 @@ class PbipHtmlGenerator:
                     bpaSeverityFilter: 'all',
                     bpaCategoryFilter: 'all',
                     collapsedBpaObjectGroups: {{}},
+                    collapsedBpaCategories: {{}},
                     dataTypeImpactFilter: 'all',
                     daxSeverityFilter: 'all',
                     daxTypeFilter: 'all',
@@ -2742,6 +2776,8 @@ class PbipHtmlGenerator:
                     // Column lineage
                     lineageSearchQuery: '',
                     lineageUsageFilter: 'all',
+                    lineageSortBy: 'usage_score',
+                    lineageSortDesc: true,
 
                     commands: [
                         {{ name: 'Go to Summary', description: 'View summary and insights', action: () => this.activeTab = 'summary' }},
@@ -3717,6 +3753,59 @@ class PbipHtmlGenerator:
                     );
                 }},
 
+                sortedColumnLineage() {{
+                    const filtered = this.filteredColumnLineage;
+                    const entries = Object.entries(filtered);
+                    const sortBy = this.lineageSortBy;
+                    const desc = this.lineageSortDesc;
+
+                    entries.sort(([keyA, a], [keyB, b]) => {{
+                        let aVal, bVal;
+
+                        if (sortBy === 'table') {{
+                            aVal = (a.table || '').toLowerCase();
+                            bVal = (b.table || '').toLowerCase();
+                            return desc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
+                        }} else if (sortBy === 'column') {{
+                            aVal = (a.column || '').toLowerCase();
+                            bVal = (b.column || '').toLowerCase();
+                            return desc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
+                        }} else if (sortBy === 'type') {{
+                            aVal = a.is_calculated ? 'calculated' : 'physical';
+                            bVal = b.is_calculated ? 'calculated' : 'physical';
+                            return desc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
+                        }} else if (sortBy === 'data_type') {{
+                            aVal = (a.data_type || '').toLowerCase();
+                            bVal = (b.data_type || '').toLowerCase();
+                            return desc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
+                        }} else if (sortBy === 'measures') {{
+                            aVal = (a.used_in_measures || []).length;
+                            bVal = (b.used_in_measures || []).length;
+                            return desc ? bVal - aVal : aVal - bVal;
+                        }} else if (sortBy === 'relationships') {{
+                            aVal = (a.used_in_relationships || []).length;
+                            bVal = (b.used_in_relationships || []).length;
+                            return desc ? bVal - aVal : aVal - bVal;
+                        }} else if (sortBy === 'visuals') {{
+                            aVal = (a.used_in_visuals || []).length;
+                            bVal = (b.used_in_visuals || []).length;
+                            return desc ? bVal - aVal : aVal - bVal;
+                        }} else if (sortBy === 'usage_score') {{
+                            aVal = a.usage_score || 0;
+                            bVal = b.usage_score || 0;
+                            return desc ? bVal - aVal : aVal - bVal;
+                        }} else if (sortBy === 'status') {{
+                            aVal = a.is_orphan ? 'orphan' : 'in use';
+                            bVal = b.is_orphan ? 'orphan' : 'in use';
+                            return desc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
+                        }}
+
+                        return 0;
+                    }});
+
+                    return Object.fromEntries(entries);
+                }},
+
                 orphanColumnsCount() {{
                     return Object.values(this.columnLineage).filter(l => l.is_orphan).length;
                 }},
@@ -4631,12 +4720,27 @@ class PbipHtmlGenerator:
                     this.collapsedBpaObjectGroups[objectType] = !this.collapsedBpaObjectGroups[objectType];
                 }},
 
+                toggleBpaCategory(objectType, category) {{
+                    const key = `${{objectType}}|${{category}}`;
+                    this.collapsedBpaCategories[key] = !this.collapsedBpaCategories[key];
+                }},
+
                 sortDaxQuality(column) {{
                     if (this.daxQualitySortBy === column) {{
                         this.daxQualitySortDesc = !this.daxQualitySortDesc;
                     }} else {{
                         this.daxQualitySortBy = column;
                         this.daxQualitySortDesc = column === 'complexity'; // Default descending for complexity
+                    }}
+                }},
+
+                sortLineage(column) {{
+                    if (this.lineageSortBy === column) {{
+                        this.lineageSortDesc = !this.lineageSortDesc;
+                    }} else {{
+                        this.lineageSortBy = column;
+                        // Default descending for numeric columns
+                        this.lineageSortDesc = ['measures', 'relationships', 'visuals', 'usage_score'].includes(column);
                     }}
                 }},
 
