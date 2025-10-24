@@ -664,7 +664,7 @@ class PbipHtmlGenerator:
         <!-- Tabs -->
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
             <div class="border-b border-gray-200">
-                <nav class="-mb-px flex space-x-8 overflow-x-auto">
+                <nav class="-mb-px flex flex-wrap gap-x-8 gap-y-2">
                     <button
                         @click="activeTab = 'summary'"
                         :class="tabClass('summary')"
@@ -860,7 +860,7 @@ class PbipHtmlGenerator:
             <div v-show="activeTab === 'model'">
                 <!-- Model Sub-Tabs -->
                 <div class="mb-6 border-b border-gray-200">
-                    <nav class="-mb-px flex space-x-8">
+                    <nav class="-mb-px flex flex-wrap gap-x-8 gap-y-2">
                         <button
                             @click="modelSubTab = 'tables'"
                             :class="[
@@ -906,6 +906,7 @@ class PbipHtmlGenerator:
                             <div class="scrollable space-y-2">
                                 <div
                                     v-for="table in filteredTables"
+                                    v-memo="[table, selectedTable?.name === table.name]"
                                     :key="table.name"
                                     @click="selectedTable = table"
                                     :class="['list-item border-l-4 p-3 cursor-pointer rounded', selectedTable?.name === table.name ? 'selected' : 'border-gray-300']"
@@ -1396,7 +1397,7 @@ class PbipHtmlGenerator:
             <div v-show="activeTab === 'dependencies'">
                 <!-- Dependency Sub-Tabs -->
                 <div class="mb-6 border-b border-gray-200">
-                    <nav class="-mb-px flex space-x-8">
+                    <nav class="-mb-px flex flex-wrap gap-x-8 gap-y-2">
                         <button
                             @click="dependencySubTab = 'measures'"
                             :class="[
@@ -2124,7 +2125,7 @@ class PbipHtmlGenerator:
                                                 </tr>
                                             </thead>
                                             <tbody class="bg-white divide-y divide-gray-200">
-                                                <tr v-for="violation in bpaViolationsByObjectAndCategory[objectType][category]" :key="violation.rule_id + violation.object_name" class="hover:bg-gray-50">
+                                                <tr v-for="violation in bpaViolationsByObjectAndCategory[objectType][category]" v-memo="[violation]" :key="violation.rule_id + violation.object_name" class="hover:bg-gray-50">
                                                     <td class="px-4 py-2 whitespace-nowrap">
                                                         <span :class="bpaSeverityClass(violation.severity)" class="px-2 py-1 text-xs font-semibold rounded">
                                                             {{{{ violation.severity }}}}
@@ -2211,7 +2212,7 @@ class PbipHtmlGenerator:
                                     </tr>
                                 </thead>
                                 <tbody class="bg-white divide-y divide-gray-200">
-                                    <tr v-for="(violation, idx) in filteredNamingViolations" :key="idx" class="hover:bg-gray-50">
+                                    <tr v-for="(violation, idx) in filteredNamingViolations" v-memo="[violation]" :key="idx" class="hover:bg-gray-50">
                                         <td class="px-4 py-3 whitespace-nowrap">
                                             <span :class="severityBadgeClass(violation.severity)" class="px-2 py-1 text-xs font-semibold rounded">
                                                 {{{{ violation.severity }}}}
@@ -2291,7 +2292,7 @@ class PbipHtmlGenerator:
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
-                                <tr v-for="issue in filteredDataTypeIssues" :key="issue.table + issue.column" class="hover:bg-gray-50">
+                                <tr v-for="issue in filteredDataTypeIssues" v-memo="[issue]" :key="issue.table + issue.column" class="hover:bg-gray-50">
                                     <td class="px-4 py-3 text-sm font-medium text-gray-900">{{{{ issue.table }}}}</td>
                                     <td class="px-4 py-3 text-sm text-gray-900">{{{{ issue.column }}}}</td>
                                     <td class="px-4 py-3 text-sm">
@@ -2421,31 +2422,61 @@ class PbipHtmlGenerator:
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
-                                <tr v-for="(issue, idx) in sortedDaxQualityIssues" :key="idx" class="hover:bg-gray-50">
-                                    <td class="px-4 py-3 whitespace-nowrap">
-                                        <span :class="severityBadgeClass(issue.severity)" class="px-2 py-1 text-xs font-semibold rounded">
-                                            {{{{ issue.severity }}}}
-                                        </span>
-                                    </td>
-                                    <td class="px-4 py-3 text-sm text-gray-600">{{{{ issue.type }}}}</td>
-                                    <td class="px-4 py-3 text-sm font-medium text-gray-900">{{{{ issue.table }}}}</td>
-                                    <td class="px-4 py-3 text-sm">
-                                        <button
-                                            @click="jumpToMeasureInModel(issue.table, issue.measure)"
-                                            class="text-blue-600 hover:text-blue-800 hover:underline font-medium"
-                                            title="Go to measure in Model tab"
-                                        >
-                                            {{{{ issue.measure }}}}
-                                        </button>
-                                    </td>
-                                    <td class="px-4 py-3 text-sm text-gray-600">{{{{ issue.issue }}}}</td>
-                                    <td class="px-4 py-3 text-sm text-blue-600">{{{{ issue.recommendation }}}}</td>
-                                    <td class="px-4 py-3 text-sm">
-                                        <span v-if="issue.complexity_score" :class="complexityBadgeClass(issue.complexity_score)" class="px-2 py-1 text-xs font-semibold rounded">
-                                            {{{{ issue.complexity_score }}}}
-                                        </span>
-                                    </td>
-                                </tr>
+                                <template v-for="(issues, type) in groupedDaxQualityIssues">
+                                    <!-- Group Header Row -->
+                                    <tr
+                                        v-memo="[type, issues.length, collapsedDaxTypeGroups[type]]"
+                                        :key="'group-' + type"
+                                        class="bg-gray-100 hover:bg-gray-200 cursor-pointer font-semibold"
+                                        @click="toggleDaxTypeGroup(type)"
+                                    >
+                                        <td class="px-4 py-3" colspan="7">
+                                            <div class="flex items-center justify-between">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="text-gray-600">
+                                                        {{{{ collapsedDaxTypeGroups[type] ? '▶' : '▼' }}}}
+                                                    </span>
+                                                    <span class="text-gray-900">{{{{ type }}}}</span>
+                                                    <span class="text-sm text-gray-600 font-normal">
+                                                        ({{{{ issues.length }}}} issue{{{{ issues.length !== 1 ? 's' : '' }}}})
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <!-- Issue Rows (Collapsible) -->
+                                    <tr
+                                        v-for="(issue, idx) in issues"
+                                        v-show="!collapsedDaxTypeGroups[type]"
+                                        v-memo="[issue, collapsedDaxTypeGroups[type]]"
+                                        :key="type + '-' + idx"
+                                        class="hover:bg-gray-50"
+                                    >
+                                        <td class="px-4 py-3 whitespace-nowrap">
+                                            <span :class="severityBadgeClass(issue.severity)" class="px-2 py-1 text-xs font-semibold rounded">
+                                                {{{{ issue.severity }}}}
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-3 text-sm text-gray-600">{{{{ issue.type }}}}</td>
+                                        <td class="px-4 py-3 text-sm font-medium text-gray-900">{{{{ issue.table }}}}</td>
+                                        <td class="px-4 py-3 text-sm">
+                                            <button
+                                                @click="jumpToMeasureInModel(issue.table, issue.measure)"
+                                                class="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                                                title="Go to measure in Model tab"
+                                            >
+                                                {{{{ issue.measure }}}}
+                                            </button>
+                                        </td>
+                                        <td class="px-4 py-3 text-sm text-gray-600">{{{{ issue.issue }}}}</td>
+                                        <td class="px-4 py-3 text-sm text-blue-600">{{{{ issue.recommendation }}}}</td>
+                                        <td class="px-4 py-3 text-sm">
+                                            <span v-if="issue.complexity_score" :class="complexityBadgeClass(issue.complexity_score)" class="px-2 py-1 text-xs font-semibold rounded">
+                                                {{{{ issue.complexity_score }}}}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                </template>
                             </tbody>
                         </table>
                         <div v-if="sortedDaxQualityIssues.length === 0" class="text-center py-8 text-gray-500">
@@ -2546,7 +2577,7 @@ class PbipHtmlGenerator:
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
-                                <tr v-for="(lineage, colKey) in sortedColumnLineage" :key="colKey" class="hover:bg-gray-50">
+                                <tr v-for="(lineage, colKey) in sortedColumnLineage" v-memo="[lineage]" :key="colKey" class="hover:bg-gray-50">
                                     <td class="px-4 py-3 text-sm font-medium text-gray-900">{{{{ lineage.table }}}}</td>
                                     <td class="px-4 py-3 text-sm text-gray-900">{{{{ lineage.column }}}}</td>
                                     <td class="px-4 py-3 text-sm">
@@ -2768,6 +2799,7 @@ class PbipHtmlGenerator:
                     daxTypeFilter: 'all',
                     daxQualitySortBy: 'complexity',
                     daxQualitySortDesc: true,
+                    collapsedDaxTypeGroups: {{}},
 
                     // Naming conventions
                     namingSeverityFilter: 'all',
@@ -2791,50 +2823,73 @@ class PbipHtmlGenerator:
                         {{ name: 'Export to CSV', description: 'Export model data to CSV', action: () => this.exportToCSV() }},
                         {{ name: 'Export to JSON', description: 'Export all data to JSON', action: () => this.exportToJSON() }},
                         {{ name: 'Toggle Dark Mode', description: 'Switch light/dark theme', action: () => this.toggleDarkMode() }}
-                    ]
+                    ],
+
+                    // Performance: Cache expensive calculations
+                    _cachedVisibleVisualCount: null,
+                    _cachedStatistics: null,
+                    _cachedModelArchitecture: null,
+                    _cachedTableDistribution: null,
+                    _cachedAllMeasures: null,
+                    _cachedAllColumns: null
                 }};
             }},
 
             computed: {{
                 statistics() {{
+                    // Return cached statistics if available
+                    if (this._cachedStatistics) {{
+                        return this._cachedStatistics;
+                    }}
+
                     const summary = this.dependencies.summary || {{}};
 
-                    // Calculate actual visible visual count (excluding filtered types)
-                    let visibleVisualCount = 0;
-                    if (this.reportData && this.reportData.pages) {{
+                    // Use cached visual count or calculate once
+                    if (this._cachedVisibleVisualCount === null && this.reportData && this.reportData.pages) {{
+                        this._cachedVisibleVisualCount = 0;
                         this.reportData.pages.forEach(page => {{
-                            visibleVisualCount += this.getVisibleVisualCount(page.visuals || []);
+                            this._cachedVisibleVisualCount += this.getVisibleVisualCount(page.visuals || []);
                         }});
                     }}
 
-                    return {{
+                    this._cachedStatistics = {{
                         total_tables: summary.total_tables || 0,
                         total_measures: summary.total_measures || 0,
                         total_columns: summary.total_columns || 0,
                         total_relationships: summary.total_relationships || 0,
                         total_pages: summary.total_pages || 0,
-                        total_visuals: visibleVisualCount || summary.total_visuals || 0,
+                        total_visuals: this._cachedVisibleVisualCount || summary.total_visuals || 0,
                         unused_measures: summary.unused_measures || 0,
                         unused_columns: summary.unused_columns || 0
                     }};
+
+                    return this._cachedStatistics;
                 }},
 
                 modelArchitecture() {{
+                    if (this._cachedModelArchitecture) {{
+                        return this._cachedModelArchitecture;
+                    }}
                     const tables = this.modelData.tables || [];
                     const factTables = tables.filter(t => t.name.toLowerCase().startsWith('f ')).length;
                     const dimTables = tables.filter(t => t.name.toLowerCase().startsWith('d ')).length;
-                    return factTables > 0 && dimTables > 0 ? 'Star Schema' : 'Custom';
+                    this._cachedModelArchitecture = factTables > 0 && dimTables > 0 ? 'Star Schema' : 'Custom';
+                    return this._cachedModelArchitecture;
                 }},
 
                 tableDistribution() {{
+                    if (this._cachedTableDistribution) {{
+                        return this._cachedTableDistribution;
+                    }}
                     const tables = this.modelData.tables || [];
                     const total = tables.length || 1;
                     const fact = tables.filter(t => t.name.toLowerCase().startsWith('f ')).length;
                     const dimension = tables.filter(t => t.name.toLowerCase().startsWith('d ')).length;
-                    return {{
+                    this._cachedTableDistribution = {{
                         fact: ((fact / total) * 100).toFixed(1),
                         dimension: ((dimension / total) * 100).toFixed(1)
                     }};
+                    return this._cachedTableDistribution;
                 }},
 
                 avgColumnsPerTable() {{
@@ -3699,6 +3754,21 @@ class PbipHtmlGenerator:
                     }});
 
                     return issues;
+                }},
+
+                groupedDaxQualityIssues() {{
+                    const issues = this.sortedDaxQualityIssues;
+                    const grouped = {{}};
+
+                    issues.forEach(issue => {{
+                        const type = issue.type || 'Unknown';
+                        if (!grouped[type]) {{
+                            grouped[type] = [];
+                        }}
+                        grouped[type].push(issue);
+                    }});
+
+                    return grouped;
                 }},
 
                 // Naming Conventions
@@ -4732,6 +4802,11 @@ class PbipHtmlGenerator:
                         this.daxQualitySortBy = column;
                         this.daxQualitySortDesc = column === 'complexity'; // Default descending for complexity
                     }}
+                }},
+
+                toggleDaxTypeGroup(type) {{
+                    // Vue 3 reactivity handles this automatically
+                    this.collapsedDaxTypeGroups[type] = !this.collapsedDaxTypeGroups[type];
                 }},
 
                 sortLineage(column) {{

@@ -1,6 +1,6 @@
 [project]
 name = "mcp-powerbi-finvision"
-version = "2.5.0"
+version = "2.7.1"
 description = "Production-ready MCP server for Power BI Desktop analysis"
 readme = "README.md"
 requires-python = ">=3.10"

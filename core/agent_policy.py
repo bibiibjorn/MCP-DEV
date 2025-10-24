@@ -507,6 +507,7 @@ class AgentPolicy:
 
         # graph_path, graph_notes = generate_relationship_graph(context.get('relationships', [])  # Visualization removed, output_dir)
         graph_path = None  # Visualization removed
+        graph_notes = []  # Visualization removed
 
         doc_result = render_word_report(
             context,
@@ -581,6 +582,7 @@ class AgentPolicy:
 
         # graph_path, graph_notes = generate_relationship_graph(context.get('relationships', [])  # Visualization removed, output_dir)
         graph_path = None  # Visualization removed
+        graph_notes = []  # Visualization removed
 
         doc_result = render_word_report(
             context,

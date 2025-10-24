@@ -19,7 +19,8 @@
       "Bash(python -c:*)",
       "Read(//c/Users/bjorn.braet/powerbi-mcp-servers/**)",
       "Read(//c/Users/bjorn.braet/AppData/Roaming/Claude/**)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(xargs:*)"
     ],
     "deny": [],
     "ask": []
