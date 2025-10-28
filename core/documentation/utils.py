@@ -7,7 +7,7 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from core.dependency_analyzer import DaxReferenceIndex
+from core.dax.dax_reference_parser import DaxReferenceIndex
 
 # Constants
 DEFAULT_SUBDIR = os.path.join("exports", "docs")

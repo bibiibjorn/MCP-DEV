@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from core import model_narrative
-from core.dependency_analyzer import parse_dax_references
+from core.comparison import model_narrative
+from core.dax.dax_reference_parser import parse_dax_references
 
 from .utils import (
     build_reference_index,

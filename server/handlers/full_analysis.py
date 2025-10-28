@@ -1,8 +1,8 @@
 from typing import Any, Dict
 import time
 
-from server.utils.m_practices import scan_m_practices
-from core.model_narrative import generate_narrative
+from core.analysis.m_practices import scan_m_practices
+from core.comparison.model_narrative import generate_narrative
 
 
 def _simple_main_purpose(summary: Dict[str, Any]) -> str:
@@ -196,7 +196,7 @@ def run_full_analysis(
         }
 
     # Best practices (composite)
-    from core.agent_policy import AgentPolicy
+    from core.orchestration.agent_policy import AgentPolicy
     ap = AgentPolicy(config)
     t0 = time.time()
     sections['best_practices'] = ap.validate_best_practices(connection_state)

@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "mcp-powerbi-finvision",
   "display_name": "Power BI Analysis MCP Server",
-  "version": "2.7.1",
+  "version": "3.4.2",
   "description": "A production-ready MCP server for Power BI Desktop analysis with consolidated analysis tools and streamlined workflow",
   "long_description": "MCP-PowerBi-Finvision enables AI-powered analysis of Power BI models. Features include:\n\n- Auto-detect and connect to Power BI Desktop instances\n- Browse tables, columns, measures, and relationships\n- Inspect DAX expressions and M queries\n- Run comprehensive analysis with consolidated tools\n- Performance analysis with DAX profiling, cardinality checks, and storage optimization\n- Best practices analysis combining BPA and M query scans\n- Detect unused objects and analyze dependencies\n- Export schema, TMSL/TMDL, and interactive HTML documentation\n- Input validation and rate limiting for security\n- Enhanced error context with Desktop version detection\n\nRequirements:\n- Windows 10/11 (64-bit)\n- Power BI Desktop installed and running\n- .NET Framework 4.7.2+\n\nEverything runs locally over stdio with no exposed ports.",
   "author": {
@@ -24,88 +24,212 @@
   },
   "tools": [
     {
-      "name": "detect_pbi_instances",
-      "description": "Detect running Power BI Desktop instances"
+      "name": "01_detect_pbi_instances",
+      "description": "[01-Connection] Detect running Power BI Desktop instances"
     },
     {
-      "name": "connect_to_instance",
-      "description": "Connect to a specific Power BI Desktop instance"
+      "name": "01_connect_to_instance",
+      "description": "[01-Connection] Connect to a specific Power BI Desktop instance"
     },
     {
-      "name": "list_tables",
-      "description": "List all tables in the model"
+      "name": "02_list_tables",
+      "description": "[02-Schema] List all tables in the model"
     },
     {
-      "name": "list_columns",
-      "description": "List columns for a specific table"
+      "name": "02_describe_table",
+      "description": "[02-Schema] Get comprehensive table description with columns, measures, relationships"
     },
     {
-      "name": "list_measures",
-      "description": "List all measures in the model"
+      "name": "02_list_columns",
+      "description": "[02-Schema] List columns, optionally filtered by table"
     },
     {
-      "name": "get_measure_details",
-      "description": "Get detailed information about a measure"
+      "name": "02_list_measures",
+      "description": "[02-Schema] List measures, optionally filtered by table"
     },
     {
-      "name": "get_relationships",
-      "description": "Get all relationships in the model"
+      "name": "02_get_measure_details",
+      "description": "[02-Schema] Get detailed measure information including DAX formula"
     },
     {
-      "name": "run_dax",
-      "description": "Execute DAX queries against the model"
+      "name": "02_list_calculated_columns",
+      "description": "[02-Schema] List calculated columns"
     },
     {
-      "name": "validate_dax",
-      "description": "Validate DAX expression syntax"
+      "name": "02_search_objects",
+      "description": "[02-Schema] Search across tables, columns, and measures"
     },
     {
-      "name": "analyze_dax",
-      "description": "Analyze DAX expression performance"
+      "name": "02_search_string",
+      "description": "[02-Schema] Search in measure names and/or expressions"
     },
     {
-      "name": "get_m_expressions",
-      "description": "Get M/Power Query expressions for tables"
+      "name": "03_preview_table_data",
+      "description": "[03-Query] Preview table rows with EVALUATE"
     },
     {
-      "name": "export_schema",
-      "description": "Export compact model schema"
+      "name": "03_run_dax",
+      "description": "[03-Query] Execute DAX query with auto limits"
     },
     {
-      "name": "export_documentation",
-      "description": "Export comprehensive model documentation"
+      "name": "03_validate_dax_query",
+      "description": "[03-Query] Validate DAX syntax"
     },
     {
-      "name": "generate_model_documentation_word",
-      "description": "Generate a Word report for the connected dataset"
+      "name": "03_get_column_value_distribution",
+      "description": "[03-Query] Get column value distribution (top N)"
     },
     {
-      "name": "update_model_documentation_word",
-      "description": "Update the Word documentation with the latest model changes"
+      "name": "03_get_column_summary",
+      "description": "[03-Query] Get column summary statistics"
     },
     {
-      "name": "export_model_explorer_html",
-      "description": "Generate an interactive HTML Model Explorer. Shows tables with data preview (10 sample rows), columns, measures with DAX code, measure dependencies (forward and reverse), relationship graph visualization with D3.js, and full search capabilities. Includes statistics and export options."
+      "name": "03_list_relationships",
+      "description": "[03-Query] List relationships with optional active_only filter"
     },
     {
-      "name": "full_analysis",
-      "description": "Run comprehensive model analysis"
+      "name": "03_get_data_sources",
+      "description": "[03-Query] List data sources with fallback to TOM"
     },
     {
-      "name": "get_server_info",
-      "description": "Get server diagnostic information"
+      "name": "03_get_m_expressions",
+      "description": "[03-Query] List M/Power Query expressions"
     },
     {
-      "name": "get_rate_limit_stats",
-      "description": "Get rate limiting statistics"
+      "name": "04_upsert_measure",
+      "description": "[04-Model Operations] Create or update a measure"
     },
     {
-      "name": "get_cache_stats",
-      "description": "Get cache performance statistics"
+      "name": "04_delete_measure",
+      "description": "[04-Model Operations] Delete a measure"
     },
     {
-      "name": "compare_pbi_models",
-      "description": "Compare two Power BI models using TMDL and generate an interactive HTML diff report showing all schema, measure, and relationship changes. Requires two Power BI Desktop instances running on different ports."
+      "name": "04_bulk_create_measures",
+      "description": "[04-Model Operations] Bulk create multiple measures"
+    },
+    {
+      "name": "04_bulk_delete_measures",
+      "description": "[04-Model Operations] Bulk delete multiple measures"
+    },
+    {
+      "name": "04_list_calculation_groups",
+      "description": "[04-Model Operations] List calculation groups"
+    },
+    {
+      "name": "04_create_calculation_group",
+      "description": "[04-Model Operations] Create a calculation group"
+    },
+    {
+      "name": "04_delete_calculation_group",
+      "description": "[04-Model Operations] Delete a calculation group"
+    },
+    {
+      "name": "04_list_partitions",
+      "description": "[04-Model Operations] List table partitions"
+    },
+    {
+      "name": "04_list_roles",
+      "description": "[04-Model Operations] List RLS roles"
+    },
+    {
+      "name": "05_full_analysis",
+      "description": "[05-Analysis] Comprehensive model analysis with BPA"
+    },
+    {
+      "name": "05_analyze_best_practices",
+      "description": "[05-Analysis] BPA and M practices analysis"
+    },
+    {
+      "name": "05_analyze_performance",
+      "description": "[05-Analysis] Performance analysis (queries/cardinality/storage)"
+    },
+    {
+      "name": "05_validate_model_integrity",
+      "description": "[05-Analysis] Validate model integrity"
+    },
+    {
+      "name": "05_get_vertipaq_stats",
+      "description": "[05-Analysis] Get VertiPaq storage statistics"
+    },
+    {
+      "name": "06_analyze_measure_dependencies",
+      "description": "[06-Dependencies] Analyze measure dependencies tree"
+    },
+    {
+      "name": "06_get_measure_impact",
+      "description": "[06-Dependencies] Get measure usage impact"
+    },
+    {
+      "name": "07_export_model_schema",
+      "description": "[07-Export] Export model schema by section"
+    },
+    {
+      "name": "07_export_tmsl",
+      "description": "[07-Export] Export TMSL definition"
+    },
+    {
+      "name": "07_export_tmdl",
+      "description": "[07-Export] Export TMDL definition"
+    },
+    {
+      "name": "08_generate_model_documentation_word",
+      "description": "[08-Documentation] Generate Word documentation report"
+    },
+    {
+      "name": "08_update_model_documentation_word",
+      "description": "[08-Documentation] Update Word documentation report"
+    },
+    {
+      "name": "08_export_model_explorer_html",
+      "description": "[08-Documentation] Generate interactive HTML documentation"
+    },
+    {
+      "name": "09_get_model_summary",
+      "description": "[09-Comparison] Get compact model summary"
+    },
+    {
+      "name": "09_prepare_model_comparison",
+      "description": "[09-Comparison] STEP 1: Detect both models for comparison"
+    },
+    {
+      "name": "09_compare_pbi_models",
+      "description": "[09-Comparison] STEP 2: Compare models after user confirms OLD/NEW"
+    },
+    {
+      "name": "10_analyze_pbip_repository",
+      "description": "[10-PBIP] Offline PBIP repository analysis"
+    },
+    {
+      "name": "11_validate_tmdl",
+      "description": "[11-TMDL] Validate TMDL syntax with linting"
+    },
+    {
+      "name": "11_tmdl_find_replace",
+      "description": "[11-TMDL] Find and replace in TMDL with regex support"
+    },
+    {
+      "name": "11_tmdl_bulk_rename",
+      "description": "[11-TMDL] Bulk rename with reference updates"
+    },
+    {
+      "name": "11_tmdl_generate_script",
+      "description": "[11-TMDL] Generate TMDL script from definition"
+    },
+    {
+      "name": "12_analyze_dax_context",
+      "description": "[12-DAX Context] Analyze DAX context transitions"
+    },
+    {
+      "name": "12_visualize_filter_context",
+      "description": "[12-DAX Context] Visualize filter context flow"
+    },
+    {
+      "name": "12_debug_dax_context",
+      "description": "[12-DAX Context] Debug DAX expressions step-by-step with context transition details"
+    },
+    {
+      "name": "13_show_user_guide",
+      "description": "[13-Help] Show comprehensive user guide"
     }
   ],
   "keywords": [

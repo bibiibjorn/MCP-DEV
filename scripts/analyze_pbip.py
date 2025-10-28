@@ -24,12 +24,12 @@ parent_dir = os.path.dirname(script_dir)
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
-from core.pbip_project_scanner import PbipProjectScanner
-from core.pbip_model_analyzer import TmdlModelAnalyzer
-from core.pbip_report_analyzer import PbirReportAnalyzer
-from core.pbip_dependency_engine import PbipDependencyEngine
-from core.pbip_html_generator import PbipHtmlGenerator
-from core.pbip_enhanced_analyzer import EnhancedPbipAnalyzer
+from core.pbip.pbip_project_scanner import PbipProjectScanner
+from core.pbip.pbip_model_analyzer import TmdlModelAnalyzer
+from core.pbip.pbip_report_analyzer import PbirReportAnalyzer
+from core.pbip.pbip_dependency_engine import PbipDependencyEngine
+from core.pbip.pbip_html_generator import PbipHtmlGenerator
+from core.pbip.pbip_enhanced_analyzer import EnhancedPbipAnalyzer
 
 
 def setup_logging(verbose: bool = False) -> None:
