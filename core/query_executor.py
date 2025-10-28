@@ -18,6 +18,7 @@ from collections import OrderedDict
 from core.dax_validator import DaxValidator
 from core.config_manager import config
 from core.constants import QueryLimits
+from core.limits_manager import get_limits
 
 logger = logging.getLogger(__name__)
 
@@ -734,7 +735,7 @@ class OptimizedQueryExecutor:
             ])
         return suggestions
 
-    def execute_info_query(self, function_name: str, filter_expr: Optional[str] = None, exclude_columns: Optional[List[str]] = None, table_name: Optional[str] = None) -> Dict[str, Any]:
+    def execute_info_query(self, function_name: str, filter_expr: Optional[str] = None, exclude_columns: Optional[List[str]] = None, table_name: Optional[str] = None, top_n: Optional[int] = None) -> Dict[str, Any]:
         """
         Execute INFO.* DAX query with optional filtering.
         Automatically converts TableID to Table for MEASURES and COLUMNS.
@@ -767,11 +768,26 @@ class OptimizedQueryExecutor:
                 else:
                     filter_expr = table_filter
 
-            # Prefer plain INFO.* for broad compatibility; optionally attempt selective projection
+            # Apply default limit to prevent unlimited returns
+
+
+            if top_n is None:
+                # Use centralized limits manager if available
+                try:
+                    limits = get_limits()
+                    top_n = limits.query.default_info_limit
+                except RuntimeError:
+                    # Fallback to config if limits_manager not initialized yet
+                    top_n = config.get('query.default_info_limit', 100)
+
+# Prefer plain INFO.* for broad compatibility; optionally attempt selective projection
             inner = f"INFO.{function_name}()"
-            query = f"EVALUATE {inner}"
+            # Apply TOPN limit to prevent token overflow
             if filter_expr:
-                query = f"EVALUATE FILTER({inner}, {filter_expr})"
+                inner_limited = f"TOPN({top_n}, FILTER({inner}, {filter_expr}))"
+            else:
+                inner_limited = f"TOPN({top_n}, {inner})"
+            query = f"EVALUATE {inner_limited}"
             # If caller asked to exclude heavy columns (e.g., Expression), try a projected SELECTCOLUMNS,
             # but fall back to plain INFO.* if projection fails on this Desktop build.
             if exclude_columns:

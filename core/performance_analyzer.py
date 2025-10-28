@@ -276,14 +276,45 @@ class EnhancedAMOTraceAnalyzer:
             self._event_buffer.clear()
 
         try:
+            # Stop trace if already running
             if getattr(trace, "IsStarted", False):
                 trace.Stop()
+
+            # **CRITICAL FIX**: Subscribe to trace events
+            # SessionTrace needs explicit event subscriptions!
+            TraceEventClass = _AMO_TYPES.get("TraceEventClass")
+            if TraceEventClass:
+                try:
+                    # Clear any existing event subscriptions
+                    trace.Events.Clear()
+
+                    # Subscribe to QueryEnd event (total query duration)
+                    trace.Events.Add(TraceEventClass.QueryEnd)
+
+                    # Subscribe to Storage Engine events
+                    trace.Events.Add(TraceEventClass.VertiPaqSEQueryEnd)
+                    trace.Events.Add(TraceEventClass.VertiPaqSEQueryCacheMatch)
+                    trace.Events.Add(TraceEventClass.VertiPaqSEQueryCacheMiss)
+
+                    # Subscribe to QuerySubcube events
+                    trace.Events.Add(TraceEventClass.QuerySubcube)
+                    trace.Events.Add(TraceEventClass.QuerySubcubeVerbose)
+
+                    # Update the trace with new event subscriptions
+                    trace.Update()
+
+                    logger.debug("✓ Subscribed to 7 trace events")
+                except Exception as e:
+                    logger.warning(f"Failed to subscribe to trace events: {e}")
+                    logger.debug("  This may indicate enum values don't match AS version")
+
+            # Start the trace
             trace.Start()
             self.trace_active = True
-            logger.info("AMO SessionTrace started for session %s", session_id)
+            logger.info("✓ AMO SessionTrace started for session %s", session_id)
             return True
         except Exception as exc:
-            logger.warning("Failed to start SessionTrace: %s", exc)
+            logger.warning("✗ Failed to start SessionTrace: %s", exc)
             self.trace_active = False
             return False
 

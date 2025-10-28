@@ -26,7 +26,20 @@
   "query": {
     "max_rows_preview": 1000,
     "max_dax_query_length": 50000,
-    "enable_query_validation": true
+    "enable_query_validation": true,
+    "default_page_size": 20,
+    "max_page_size": 200,
+    "max_result_tokens": 15000,
+    "default_dependency_depth": 2,
+    "max_dependency_depth": 5,
+    "describe_table_defaults": {
+      "columns_page_size": 20,
+      "measures_page_size": 20,
+      "relationships_page_size": 50
+    },
+    "max_expression_display_length": 500,
+    "default_info_limit": 100,
+    "max_info_limit": 1000
   },
   "logging": {
     "structured_logging": false,
@@ -37,7 +50,63 @@
     "enable_bpa": true,
     "enable_performance_analysis": true,
     "enable_bulk_operations": true,
-    "enable_calculation_groups": true
+    "enable_calculation_groups": true,
+    "enable_tmdl_automation": true,
+    "enable_dax_context_analysis": true
+  },
+  "tmdl": {
+    "enable_validation": true,
+    "backup_before_edit": true,
+    "backup_directory": "./backups/tmdl",
+    "max_backup_age_days": 30,
+    "max_bulk_operations": 1000,
+    "validation_rules": {
+      "check_syntax": true,
+      "check_references": true,
+      "check_data_types": true,
+      "check_naming": true,
+      "allow_hidden_references": false
+    },
+    "linting": {
+      "enabled": true,
+      "severity": "warning",
+      "rules": {
+        "hidden_column_referenced": true,
+        "circular_dependencies": true,
+        "unused_columns": true,
+        "large_measure_count": true,
+        "naming_conventions": true
+      }
+    },
+    "templates": {
+      "directory": "./core/tmdl/templates",
+      "allow_custom": true,
+      "auto_update": false
+    }
+  },
+  "dax_context_analysis": {
+    "enable": true,
+    "max_expression_length": 50000,
+    "analysis_timeout_seconds": 30,
+    "performance_threshold_ms": 100,
+    "nested_calculate_limit": 10,
+    "detection": {
+      "explicit_calculate": true,
+      "implicit_measures": true,
+      "iterator_transitions": true
+    },
+    "visualization": {
+      "default_format": "html",
+      "include_mermaid": true,
+      "include_text": true,
+      "highlight_performance_issues": true,
+      "d3_version": "7.8.5"
+    },
+    "debugging": {
+      "enable_step_through": true,
+      "max_steps": 1000,
+      "capture_intermediate_results": true
+    }
   },
   "bpa": {
      "max_rules": 120,

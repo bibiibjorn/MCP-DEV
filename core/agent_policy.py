@@ -28,11 +28,12 @@ logger = logging.getLogger("mcp_powerbi_finvision")
 
 
 class AgentPolicy:
-    def __init__(self, config, timeout_manager=None, cache_manager=None, rate_limiter=None):
+    def __init__(self, config, timeout_manager=None, cache_manager=None, rate_limiter=None, limits_manager=None):
         self.config = config
         self.timeout_manager = timeout_manager
         self.cache_manager = cache_manager
         self.rate_limiter = rate_limiter
+        self.limits_manager = limits_manager
         # Initialize policy helpers
         try:
             self.query_policy: Optional[QueryPolicy] = QueryPolicy(config)
@@ -59,10 +60,11 @@ class AgentPolicy:
         """Ensure the server is connected to a Power BI Desktop instance."""
         if connection_state.is_connected():
             info = connection_manager.get_instance_info() or {}
+            # State delta only - minimal return
             return {
                 "success": True,
                 "already_connected": True,
-                "instance": info,
+                "port": info.get('port') if info else None,
             }
 
         instances = connection_manager.detect_instances()
@@ -86,11 +88,13 @@ class AgentPolicy:
         connection_state.set_connection_manager(connection_manager)
         connection_state.initialize_managers()
 
+        # State delta only - return minimal info, not full arrays
         return {
             "success": True,
-            "connected_index": index,
-            "instances": instances,
-            "managers_initialized": connection_state._managers_initialized,
+            "connected": True,
+            "instance_count": len(instances),
+            "selected_index": index,
+            "selected_port": instances[index].get('port') if index < len(instances) else None,
         }
 
     def safe_run_dax(
@@ -1002,11 +1006,46 @@ class AgentPolicy:
             bpa_analyzer = connection_state.bpa_analyzer
             if bpa_analyzer:
                 try:
-                    bpa_result = bpa_analyzer.run_bpa(
-                        mode=bpa_profile,
-                        max_seconds=max_seconds
-                    )
-                    results['analyses']['bpa'] = bpa_result
+                    # Get TMSL definition first
+                    query_executor = connection_state.query_executor
+                    if not query_executor:
+                        results['analyses']['bpa'] = {
+                            'success': False,
+                            'error': 'Query executor not available'
+                        }
+                    else:
+                        tmsl_result = query_executor.get_tmsl_definition()
+                        if not tmsl_result.get('success'):
+                            results['analyses']['bpa'] = {
+                                'success': False,
+                                'error': f"Failed to get TMSL: {tmsl_result.get('error')}"
+                            }
+                        else:
+                            # Run BPA analysis based on profile
+                            tmsl_json = tmsl_result.get('tmsl')
+                            if bpa_profile == "fast":
+                                cfg = {
+                                    'max_seconds': max_seconds or 10,
+                                    'per_rule_max_ms': 100,
+                                    'severity_at_least': 'WARNING'
+                                }
+                                violations = bpa_analyzer.analyze_model_fast(tmsl_json, cfg)
+                            elif bpa_profile == "deep":
+                                violations = bpa_analyzer.analyze_model(tmsl_json)
+                            else:  # balanced
+                                cfg = {
+                                    'max_seconds': max_seconds or 20,
+                                    'per_rule_max_ms': 150
+                                }
+                                violations = bpa_analyzer.analyze_model_fast(tmsl_json, cfg)
+
+                            results['analyses']['bpa'] = {
+                                'success': True,
+                                'violations': [vars(v) for v in violations],
+                                'violation_count': len(violations),
+                                'summary': bpa_analyzer.get_violations_summary(),
+                                'notes': bpa_analyzer.get_run_notes()
+                            }
                 except Exception as e:
                     results['analyses']['bpa'] = {
                         'success': False,
@@ -1408,3 +1447,190 @@ class AgentPolicy:
                 "error": str(e),
                 "error_type": "lineage_error"
             }
+
+    # ---- Limit Awareness Methods ----
+
+    def check_rate_limit(self, tool_name: str) -> Dict[str, Any]:
+        """
+        Check if a tool call would hit rate limits.
+
+        Returns:
+            Dict with 'allowed' (bool), 'retry_after' (float seconds if not allowed),
+            and 'message' (str) for user notification.
+        """
+        if not self.rate_limiter or not self.limits_manager:
+            return {"allowed": True, "message": "Rate limiting not configured"}
+
+        if not self.limits_manager.rate.enabled:
+            return {"allowed": True, "message": "Rate limiting disabled"}
+
+        # Check if request would be allowed
+        allowed = self.rate_limiter.allow_request(tool_name)
+
+        if allowed:
+            return {
+                "allowed": True,
+                "message": "Request within rate limits"
+            }
+        else:
+            retry_after = self.rate_limiter.get_retry_after(tool_name)
+            tool_limit = self.limits_manager.rate.get_tool_limit(tool_name)
+            global_limit = self.limits_manager.rate.global_calls_per_second
+
+            message = f"Rate limit exceeded for '{tool_name}'. "
+            if tool_limit:
+                message += f"Tool limit: {tool_limit} calls/sec. "
+            else:
+                message += f"Global limit: {global_limit} calls/sec. "
+            message += f"Please wait {retry_after:.1f} seconds before retrying."
+
+            return {
+                "allowed": False,
+                "retry_after": retry_after,
+                "message": message,
+                "tool_limit": tool_limit,
+                "global_limit": global_limit
+            }
+
+    def estimate_response_tokens(self, result: Any) -> int:
+        """
+        Estimate token count of a response.
+
+        Args:
+            result: Response object (dict, string, etc.)
+
+        Returns:
+            Estimated token count
+        """
+        if not self.limits_manager:
+            # Fallback estimation
+            import json
+            text = json.dumps(result) if isinstance(result, (dict, list)) else str(result)
+            return len(text) // 4
+
+        import json
+        text = json.dumps(result) if isinstance(result, (dict, list)) else str(result)
+        return self.limits_manager.token.estimate_tokens(text)
+
+    def check_token_limit(self, result: Any, tool_name: str = "unknown") -> Dict[str, Any]:
+        """
+        Check if response is within token limits and provide user notification.
+
+        Returns:
+            Dict with 'within_limit' (bool), 'estimated_tokens' (int),
+            'max_tokens' (int), 'level' ('ok'/'warning'/'critical'/'over'),
+            and 'message' (str) for user notification.
+        """
+        if not self.limits_manager:
+            return {
+                "within_limit": True,
+                "estimated_tokens": 0,
+                "max_tokens": 15000,
+                "level": "ok",
+                "message": "Token limiting not configured"
+            }
+
+        estimated_tokens = self.estimate_response_tokens(result)
+        token_limits = self.limits_manager.token
+
+        # Determine level
+        if token_limits.is_over_limit(estimated_tokens):
+            level = "over"
+            message = (f"Response from '{tool_name}' exceeds token limit! "
+                      f"Estimated: {estimated_tokens:,} tokens, "
+                      f"Limit: {token_limits.max_result_tokens:,} tokens. "
+                      f"Response will be truncated. Consider using pagination or summary_only mode.")
+        elif token_limits.is_at_critical(estimated_tokens):
+            level = "critical"
+            message = (f"Response from '{tool_name}' is at critical token threshold. "
+                      f"Estimated: {estimated_tokens:,} tokens "
+                      f"(93% of {token_limits.max_result_tokens:,} limit). "
+                      f"Consider using pagination to reduce token usage.")
+        elif token_limits.is_at_warning(estimated_tokens):
+            level = "warning"
+            message = (f"Response from '{tool_name}' is approaching token limit. "
+                      f"Estimated: {estimated_tokens:,} tokens "
+                      f"(80% of {token_limits.max_result_tokens:,} limit).")
+        else:
+            level = "ok"
+            message = f"Token usage: {estimated_tokens:,} / {token_limits.max_result_tokens:,}"
+
+        return {
+            "within_limit": level != "over",
+            "estimated_tokens": estimated_tokens,
+            "max_tokens": token_limits.max_result_tokens,
+            "level": level,
+            "message": message,
+            "percentage": int((estimated_tokens / token_limits.max_result_tokens) * 100)
+        }
+
+    def wrap_response_with_limits_info(self, result: Dict[str, Any], tool_name: str = "unknown") -> Dict[str, Any]:
+        """
+        Wrap a tool response with rate limit and token limit information.
+
+        This adds metadata to help users understand if they're hitting limits.
+
+        Args:
+            result: Original tool response dict
+            tool_name: Name of the tool that generated this response
+
+        Returns:
+            Enhanced response with _limits_info metadata
+        """
+        limits_info = {}
+
+        # Add token usage info
+        token_check = self.check_token_limit(result, tool_name)
+        limits_info["token_usage"] = {
+            "estimated_tokens": token_check["estimated_tokens"],
+            "max_tokens": token_check["max_tokens"],
+            "percentage": token_check["percentage"],
+            "level": token_check["level"]
+        }
+
+        # Add user-facing message if there's a warning or issue
+        if token_check["level"] in ("warning", "critical", "over"):
+            limits_info["warning"] = token_check["message"]
+
+        # Add rate limit info if available
+        if self.rate_limiter:
+            stats = self.rate_limiter.get_stats()
+            limits_info["rate_limit_stats"] = {
+                "requests_last_minute": stats.get("requests_last_minute", 0),
+                "total_throttled": stats.get("total_throttled", 0),
+                "tool_throttled": stats.get("tool_throttled", {}).get(tool_name, 0)
+            }
+
+        # Only add limits_info if there's something meaningful to report
+        if limits_info.get("warning") or limits_info.get("rate_limit_stats", {}).get("total_throttled", 0) > 0:
+            result["_limits_info"] = limits_info
+
+        return result
+
+    def suggest_optimizations(self, tool_name: str, result: Dict[str, Any]) -> Optional[str]:
+        """
+        Suggest optimizations based on tool usage patterns.
+
+        Returns:
+            Suggestion string or None
+        """
+        token_check = self.check_token_limit(result, tool_name)
+
+        suggestions = []
+
+        # Token-based suggestions
+        if token_check["level"] in ("critical", "over"):
+            if tool_name == "full_analysis":
+                suggestions.append("Use 'summary_only=true' parameter to get counts instead of full analysis")
+            elif tool_name in ("list_tables", "list_columns", "list_measures"):
+                suggestions.append("Use pagination with 'limit' and 'offset' parameters")
+            elif tool_name == "describe_table":
+                suggestions.append("Reduce 'columns_page_size' and 'measures_page_size' parameters")
+
+        # Rate limit suggestions
+        if self.rate_limiter and tool_name in ("run_dax", "analyze_model_bpa"):
+            stats = self.rate_limiter.get_stats()
+            if stats.get("tool_throttled", {}).get(tool_name, 0) > 0:
+                suggestions.append(f"Tool '{tool_name}' has been throttled. Consider spacing out requests.")
+
+        return " | ".join(suggestions) if suggestions else None

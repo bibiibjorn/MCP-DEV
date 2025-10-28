@@ -9,8 +9,8 @@ def export_relationship_graph(query_executor: Any, fmt: str = 'json') -> Dict[st
     - edges: from, to, fromColumn, toColumn, active, direction, cardinality,
              id (stable key) and details (raw INFO.RELATIONSHIPS row)
     """
-    tables = query_executor.execute_info_query("TABLES")
-    rels = query_executor.execute_info_query("RELATIONSHIPS")
+    tables = query_executor.execute_info_query("TABLES", top_n=100)
+    rels = query_executor.execute_info_query("RELATIONSHIPS", top_n=100)
     nodes: List[Dict[str, Any]] = []
     edges: List[Dict[str, Any]] = []
     tnames = set()
@@ -35,7 +35,7 @@ def export_relationship_graph(query_executor: Any, fmt: str = 'json') -> Dict[st
             nm = t.get('Name') or t.get('[Name]')
             if tid is not None and nm:
                 id_to_table[str(tid)] = str(nm)
-    cols = query_executor.execute_info_query("COLUMNS")
+    cols = query_executor.execute_info_query("COLUMNS", top_n=100)
     if cols.get('success'):
         for c in cols.get('rows', []):
             cid = c.get('ID') or c.get('ColumnID') or c.get('[ID]') or c.get('[ColumnID]')

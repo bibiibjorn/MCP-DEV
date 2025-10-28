@@ -155,7 +155,7 @@ class RLSManager:
         """Check if all tables with sensitive data have RLS applied."""
         try:
             # Get all tables
-            tables_result = self.executor.execute_info_query("TABLES")
+            tables_result = self.executor.execute_info_query("TABLES", top_n=100)
             if not tables_result.get('success'):
                 return tables_result
 

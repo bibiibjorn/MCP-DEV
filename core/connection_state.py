@@ -102,11 +102,12 @@ class ConnectionState:
                     pass
                 logger.info("[OK] Query executor initialized")
             
-            # Initialize performance analyzer
+            # Initialize performance analyzer with AMO SessionTrace (now fixed!)
             if not self.performance_analyzer or force_reinit:
                 if self.connection_manager and self.connection_manager.connection_string:
                     self.performance_analyzer = EnhancedAMOTraceAnalyzer(self.connection_manager.connection_string)
                     amo_connected = self.performance_analyzer.connect_amo()
+
                     # Respect configured trace mode for clearer logs
                     try:
                         mode = str(config.get('performance.trace_mode', 'full') or 'full').lower()
@@ -118,7 +119,7 @@ class ConnectionState:
                         logger.info("[OK] Performance analyzer initialized (trace_mode=basic; basic timing preferred)")
                     else:
                         if amo_connected:
-                            logger.info("[OK] Performance analyzer initialized (xEvents enabled)")
+                            logger.info("[OK] Performance analyzer initialized (AMO SessionTrace with event subscriptions)")
                         else:
                             logger.warning("[WARN] AMO not available - performance analysis will use basic timing")
                 else:

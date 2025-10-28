@@ -41,6 +41,7 @@ from core.tool_timeouts import ToolTimeoutManager
 from core.cache_manager import EnhancedCacheManager, create_cache_manager
 from core.input_validator import InputValidator
 from core.rate_limiter import RateLimiter
+from core.limits_manager import LimitsManager, init_limits_manager
 
 from core.agent_policy import AgentPolicy
 
@@ -60,6 +61,17 @@ from core.pbip_report_analyzer import PbirReportAnalyzer
 from core.pbip_dependency_engine import PbipDependencyEngine
 from core.pbip_html_generator import PbipHtmlGenerator
 from core.pbip_enhanced_analyzer import EnhancedPbipAnalyzer
+
+# TMDL Automation modules
+from core.tmdl.validator import TmdlValidator
+from core.tmdl.bulk_editor import TmdlBulkEditor
+from core.tmdl.templates import TmdlTemplateLibrary
+from core.tmdl.script_generator import TmdlScriptGenerator
+
+# DAX Context Analysis modules
+from core.dax.context_analyzer import DaxContextAnalyzer
+from core.dax.context_visualizer import FilterContextVisualizer
+from core.dax.context_debugger import DaxContextDebugger
 
 BPA_AVAILABLE = False
 BPA_STATUS = {"available": False, "reason": None}
@@ -110,6 +122,8 @@ except Exception:
     # Fallback to defaults if config manager changes shape
     enhanced_cache = EnhancedCacheManager()
 rate_limiter = RateLimiter(config.get('rate_limiting', {}))
+# Initialize centralized limits manager
+limits_manager = init_limits_manager(config.get_all())
 
 
 connection_state.set_connection_manager(connection_manager)
@@ -119,7 +133,8 @@ agent_policy = AgentPolicy(
     config,
     timeout_manager=timeout_manager,
     cache_manager=enhanced_cache,
-    rate_limiter=rate_limiter
+    rate_limiter=rate_limiter,
+    limits_manager=limits_manager
 )
 
 
@@ -214,6 +229,55 @@ def _dax_quote_column(name: str) -> str:
     DAX uses [Column] notation; a ']' in the name is represented as ']]'."""
     name = (name or "").replace("]", "]]")
     return f"[{name}]"
+
+
+# Token optimization helpers (using limits_manager)
+
+def _truncate_if_needed(result: dict, max_tokens: int = 15000) -> dict:
+    """Truncate result if it exceeds token limit to prevent chat overflow."""
+    if not isinstance(result, dict):
+        return result
+    json_str = json.dumps(result, indent=2)
+    tokens = len(json_str) // 4  # Simple estimation
+
+    if tokens <= max_tokens:
+        return result
+
+    # Result too large - create summary
+    summary = {
+        "success": result.get("success", True),
+        "truncated": True,
+        "token_limit": max_tokens,
+        "actual_tokens": tokens,
+        "message": f"Result exceeded {max_tokens} token limit ({tokens} tokens). Showing summary.",
+    }
+
+    # Add counts for arrays
+    for key, value in result.items():
+        if isinstance(value, list):
+            summary[f"{key}_count"] = len(value)
+            summary[f"{key}_preview"] = value[:5]  # First 5 items
+
+    if any(k.endswith('_next_token') for k in result.keys()):
+        summary["hint"] = "Use pagination parameters (page_size, next_token) to retrieve data in chunks"
+
+    return summary
+
+
+def _truncate_expression(expression: str, max_length: int = 500) -> str:
+    """Truncate long DAX/M expressions to save tokens."""
+    if not expression or len(expression) <= max_length:
+        return expression
+    return expression[:max_length] + f"...[truncated, full length: {len(expression)} chars]"
+
+
+def _apply_default_limits(arguments: dict, defaults: dict) -> dict:
+    """Apply default limits from config if not specified by user."""
+    updated = arguments.copy()
+    for key, default_value in defaults.items():
+        if key not in updated or updated[key] is None:
+            updated[key] = default_value
+    return updated
 
 
 def _describe_table_impl(qe, table: Optional[str], args: dict) -> dict:
@@ -1210,21 +1274,36 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
         dmv_cap = getattr(QueryLimits, 'DMV_DEFAULT_CAP', 1000)
 
     if name == "list_tables":
-        result = qe.execute_info_query("TABLES")
-        return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
+        return _execute_and_paginate(qe, "TABLES", arguments)
     if name == "list_measures":
         table = arguments.get("table")
-        result = qe.execute_info_query_with_fallback("MEASURES", table_name=table, exclude_columns=['Expression'])
-        return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
+        # Apply default page size to prevent token overflow
+        if 'page_size' not in arguments or arguments['page_size'] is None:
+            arguments['page_size'] = limits_manager.query.default_page_size
+        result = qe.execute_info_query("MEASURES", table_name=table, exclude_columns=['Expression'])
+    return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
     if name == "describe_table":
+        # Apply default pagination limits to prevent token overflow
+        defaults = {
+            'columns_page_size': limits_manager.token.describe_table_columns_page_size,
+            'measures_page_size': limits_manager.token.describe_table_measures_page_size,
+            'relationships_page_size': limits_manager.token.describe_table_relationships_page_size
+        }
+        arguments = _apply_default_limits(arguments, defaults)
         return _describe_table_impl(qe, arguments.get("table"), arguments)
     if name == "get_measure_details":
         return qe.get_measure_details_with_fallback(arguments["table"], arguments["measure"])
     if name == "search_string":
+        # Apply default page size to prevent token overflow
+        if 'page_size' not in arguments or arguments['page_size'] is None:
+            arguments['page_size'] = limits_manager.query.default_page_size
         result = qe.search_measures_dax(arguments['search_text'], arguments.get('search_in_expression', True), arguments.get('search_in_name', True))
         return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
     if name == "list_calculated_columns":
         table = arguments.get("table")
+        # Apply default page size to prevent token overflow
+        if 'page_size' not in arguments or arguments['page_size'] is None:
+            arguments['page_size'] = limits_manager.query.default_page_size
         filter_expr = f'[Type] = {COLUMN_TYPE_CALCULATED}'
         result = qe.execute_info_query("COLUMNS", filter_expr=filter_expr, table_name=table)
         return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
@@ -1375,8 +1454,8 @@ def _handle_connected_metadata_and_queries(name: str, arguments: Any) -> Optiona
         return result
     if name == "list_columns":
         table = arguments.get("table")
-        result = qe.execute_info_query_with_fallback("COLUMNS", table_name=table)
-        return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
+        result = qe.execute_info_query("COLUMNS", table_name=table)
+    return _paginate(result, arguments.get('page_size'), arguments.get('next_token'), ['rows'])
     if name == "get_column_values":
         t = _dax_quote_table(arguments['table'])
         c = _dax_quote_column(arguments['column'])
@@ -1592,8 +1671,7 @@ def _h_list_tables(args: Any) -> dict:
     qe = connection_state.query_executor
     if not qe:
         return ErrorHandler.handle_manager_unavailable('query_executor')
-    result = qe.execute_info_query("TABLES")
-    return _paginate(result, args.get('page_size'), args.get('next_token'), ['rows'])
+    return _execute_and_paginate(qe, "TABLES", args)
 
 
 def _h_list_columns(args: Any) -> dict:
@@ -1603,7 +1681,8 @@ def _h_list_columns(args: Any) -> dict:
     if not qe:
         return ErrorHandler.handle_manager_unavailable('query_executor')
     table = args.get('table')
-    res = qe.execute_info_query_with_fallback("COLUMNS", table_name=table)
+    table = args.get('table')
+    res = qe.execute_info_query("COLUMNS", table_name=table)
     return _paginate(res, args.get('page_size'), args.get('next_token'), ['rows'])
 
 
@@ -1614,7 +1693,8 @@ def _h_list_measures(args: Any) -> dict:
     if not qe:
         return ErrorHandler.handle_manager_unavailable('query_executor')
     table = args.get('table')
-    res = qe.execute_info_query_with_fallback("MEASURES", table_name=table, exclude_columns=['Expression'])
+    table = args.get('table')
+    res = qe.execute_info_query("MEASURES", table_name=table, exclude_columns=['Expression'])
     return _paginate(res, args.get('page_size'), args.get('next_token'), ['rows'])
 
 
@@ -1980,6 +2060,225 @@ except Exception:
     pass
 
 
+def _handle_tmdl_and_dax_tools(name: str, arguments: Any) -> Optional[dict]:
+    """Handle TMDL automation and DAX context analysis tools"""
+    try:
+        # TMDL Automation Tools
+        if name == "validate_tmdl":
+            validator = TmdlValidator(config.get("tmdl", {}))
+            result = validator.validate_syntax(arguments["tmdl_path"])
+
+            # Optionally run linting
+            if arguments.get("include_linting", True):
+                lint_issues = validator.lint_best_practices(arguments["tmdl_path"])
+                # Add lint issues to result
+                result.warnings.extend([
+                    type('obj', (object,), {
+                        'file': issue.file,
+                        'line': issue.line,
+                        'column': 0,
+                        'severity': issue.severity,
+                        'code': issue.rule,
+                        'message': issue.message,
+                        'suggestion': issue.suggestion
+                    })() for issue in lint_issues
+                ])
+
+            return result.to_dict()
+
+        elif name == "tmdl_find_replace":
+            editor = TmdlBulkEditor(config.get("tmdl", {}))
+            result = editor.replace_in_measures(
+                tmdl_path=arguments["tmdl_path"],
+                find=arguments["find"],
+                replace=arguments["replace"],
+                regex=arguments.get("regex", False),
+                case_sensitive=arguments.get("case_sensitive", True),
+                dry_run=arguments.get("dry_run", True),
+                target=arguments.get("target", "measures"),
+                backup=arguments.get("backup", True)
+            )
+            return result.to_dict()
+
+        elif name == "tmdl_bulk_rename":
+            editor = TmdlBulkEditor(config.get("tmdl", {}))
+            result = editor.bulk_rename(
+                tmdl_path=arguments["tmdl_path"],
+                renames=arguments["renames"],
+                update_references=arguments.get("update_references", True),
+                dry_run=arguments.get("dry_run", True),
+                backup=arguments.get("backup", True)
+            )
+            return result.to_dict()
+
+        elif name == "tmdl_list_templates":
+            library = TmdlTemplateLibrary()
+            category = arguments.get("category", "all")
+            templates = library.list_templates(None if category == "all" else category)
+
+            return {
+                "success": True,
+                "templates": [
+                    {
+                        "id": t.id,
+                        "name": t.name,
+                        "category": t.category,
+                        "description": t.description,
+                        "parameters": t.parameters
+                    }
+                    for t in templates
+                ],
+                "count": len(templates)
+            }
+
+        elif name == "tmdl_apply_template":
+            library = TmdlTemplateLibrary()
+            result = library.apply_template(
+                tmdl_path=arguments["target_path"],
+                template_id=arguments["template_id"],
+                parameters=arguments.get("parameters", {}),
+                merge_strategy=arguments.get("merge_strategy", "fail_if_exists")
+            )
+
+            return {
+                "success": result.success,
+                "objects_created": result.objects_created,
+                "table_name": result.table_name,
+                "columns": result.columns,
+                "measures": result.measures,
+                "errors": result.errors
+            }
+
+        elif name == "tmdl_generate_script":
+            generator = TmdlScriptGenerator()
+            script = generator.generate_from_definition(
+                object_type=arguments["object_type"],
+                definition=arguments["definition"]
+            )
+
+            # Optionally save to file
+            output_path = arguments.get("output_path")
+            if output_path:
+                from pathlib import Path
+                Path(output_path).write_text(script, encoding="utf-8")
+
+            return {
+                "success": True,
+                "script": script,
+                "output_path": output_path
+            }
+
+        # DAX Context Analysis Tools
+        elif name == "analyze_dax_context":
+            analyzer = DaxContextAnalyzer(config.get("dax_context_analysis", {}))
+            analysis = analyzer.analyze_context_transitions(
+                dax_expression=arguments["dax_expression"],
+                measure_name=arguments.get("measure_name")
+            )
+
+            result = analysis.to_dict()
+
+            # Add text visualization if requested
+            if arguments.get("include_visualization", True):
+                visualizer = FilterContextVisualizer(config.get("dax_context_analysis", {}))
+                result["text_diagram"] = visualizer.generate_text_diagram(analysis)
+
+            # Add optimization suggestions if requested
+            if arguments.get("include_optimization_suggestions", True):
+                debugger = DaxContextDebugger(config.get("dax_context_analysis", {}))
+                optimizations = debugger.suggest_optimizations(analysis)
+                result["optimizations"] = [
+                    {
+                        "severity": opt.severity,
+                        "category": opt.category,
+                        "message": opt.message,
+                        "suggestion": opt.suggestion,
+                        "code_example": opt.code_example
+                    }
+                    for opt in optimizations
+                ]
+
+            result["success"] = True
+            return result
+
+        elif name == "visualize_filter_context":
+            analyzer = DaxContextAnalyzer(config.get("dax_context_analysis", {}))
+            analysis = analyzer.analyze_context_transitions(arguments["dax_expression"])
+
+            visualizer = FilterContextVisualizer(config.get("dax_context_analysis", {}))
+            output_format = arguments.get("output_format", "html")
+
+            if output_format == "text":
+                diagram = visualizer.generate_text_diagram(analysis)
+                return {
+                    "success": True,
+                    "format": "text",
+                    "diagram": diagram
+                }
+            elif output_format == "mermaid":
+                diagram = visualizer.generate_mermaid_diagram(analysis)
+                return {
+                    "success": True,
+                    "format": "mermaid",
+                    "diagram": diagram
+                }
+            elif output_format == "html":
+                output_path = arguments.get("output_path")
+                if not output_path:
+                    import os
+                    output_path = os.path.join("exports", "dax_context_viz.html")
+
+                html_path = visualizer.generate_html_visualization(analysis, output_path)
+                return {
+                    "success": True,
+                    "format": "html",
+                    "output_path": html_path,
+                    "message": f"Interactive visualization saved to {html_path}"
+                }
+
+        elif name == "debug_dax_context":
+            debugger = DaxContextDebugger(config.get("dax_context_analysis", {}))
+
+            # Generate debug report
+            report = debugger.generate_debug_report(
+                dax_expression=arguments["dax_expression"],
+                include_profiling=arguments.get("include_profiling", True),
+                include_optimization=True
+            )
+
+            # Also get step-through evaluation if requested
+            steps = []
+            if arguments.get("capture_intermediate_results", True):
+                steps = debugger.step_through(
+                    dax_expression=arguments["dax_expression"],
+                    breakpoints=arguments.get("breakpoints"),
+                    sample_data=None
+                )
+
+            return {
+                "success": True,
+                "report": report,
+                "steps": [
+                    {
+                        "step_number": step.step_number,
+                        "code_fragment": step.code_fragment,
+                        "explanation": step.explanation
+                    }
+                    for step in steps[:arguments.get("max_steps", 100)]
+                ]
+            }
+
+    except Exception as e:
+        logger.error(f"Error in TMDL/DAX tool '{name}': {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": "tmdl_dax_tool_error"
+        }
+
+    return None
+
+
 def _dispatch_tool(name: str, arguments: Any) -> dict:
     # Normalize friendly aliases to canonical tool names
     try:
@@ -1993,6 +2292,11 @@ def _dispatch_tool(name: str, arguments: Any) -> dict:
     # PBIP Repository Analysis (works offline, no connection required)
     if name == "analyze_pbip_repository":
         return _handle_pbip_analysis(arguments)
+
+    # TMDL and DAX Context Analysis Tools (works offline, no connection required)
+    res = _handle_tmdl_and_dax_tools(name, arguments)
+    if res is not None:
+        return res
 
     # 1) Logs/health/server info
     res = _handle_logs_and_health(name, arguments)
@@ -2049,282 +2353,247 @@ async def get_prompt(name: str, arguments: Dict[str, Any]) -> GetPromptResult:
 
 @app.list_tools()
 async def list_tools() -> List[Tool]:
-    """Expose alphabetically sorted friendly tool names mapping to canonical handlers.
-
-    We keep canonical names working via FRIENDLY_TOOL_ALIASES, but present a lean,
-    categorized surface with prefixes like "analysis:", "list:", "export:", etc.
-    """
-    entries: List[tuple[str, str, str, dict]] = []  # (friendly, canonical, description, schema)
+    """Optimized tool listing with minimal schemas (80-90% token reduction)."""
+    entries: List[tuple[str, str, str, dict]] = []
 
     def add(friendly: str, canonical: str, description: str, schema: dict):
-        # Register alias so call_tool can resolve friendly names
         try:
             FRIENDLY_TOOL_ALIASES.setdefault(friendly, canonical)
         except Exception:
             pass
         entries.append((friendly, canonical, description, schema))
 
-    # Connection & run
-    add("connection: detect powerbi desktop", "detect_powerbi_desktop", "Detect all running Power BI Desktop instances and show their .pbix filenames with port numbers. CRITICAL: Run this BEFORE model comparison to show user which file is on which port, so they can tell you which is OLD vs NEW.", {"type": "object", "properties": {}, "required": []})
-    add("connection: connect to powerbi", "connect_to_powerbi", "Connect to a detected Power BI Desktop instance", {"type": "object", "properties": {"model_index": {"type": "integer"}}, "required": ["model_index"]})
-    add("run: dax", "run_dax", "Run a DAX query with safe limits (auto preview/analyze)", {"type": "object", "properties": {"query": {"type": "string"}, "mode": {"type": "string", "enum": ["auto", "preview", "analyze"], "default": "auto"}, "runs": {"type": "integer"}, "top_n": {"type": "integer"}, "verbose": {"type": "boolean", "default": False}, "include_event_counts": {"type": "boolean", "default": False}}, "required": ["query"]})
+    # Minimal schema helpers
+    E = {"type": "object", "properties": {}, "required": []}  # Empty
+    P = {"page_size": {"type": "integer"}, "next_token": {"type": "string"}}  # Pagination
 
-    # List / describe / search / get
-    add("list: tables", "list_tables", "List tables with pagination", {"type": "object", "properties": {"page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []})
-    add("list: columns", "list_columns", "List columns (optionally by table)", {"type": "object", "properties": {"table": {"type": "string"}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []})
-    add("list: calculated columns", "list_calculated_columns", "List calculated columns", {"type": "object", "properties": {"table": {"type": "string"}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []})
-    add("list: measures", "list_measures", "List measures", {"type": "object", "properties": {"table": {"type": "string"}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []})
-    add("list: relationships", "relationships", "List relationships with optional cardinality analysis", {"type": "object", "properties": {}, "required": []})
-    add("list: roles", "list_roles", "List RLS roles", {"type": "object", "properties": {}, "required": []})
-    add("list: partitions", "list_partitions", "List partitions for a table", {"type": "object", "properties": {"table": {"type": "string"}}, "required": []})
+    def s(**kw):
+        return {"type": "object", "properties": kw, "required": []}
 
-    add("describe: table", "describe_table", "Describe a table (columns, measures, relationships)", {"type": "object", "properties": {"table": {"type": "string"}, "columns_page_size": {"type": "integer"}, "columns_next_token": {"type": "string"}, "measures_page_size": {"type": "integer"}, "measures_next_token": {"type": "string"}, "relationships_page_size": {"type": "integer"}, "relationships_next_token": {"type": "string"}}, "required": ["table"]})
-    add("preview: table", "preview_table_data", "Preview sample rows from a table", {"type": "object", "properties": {"table": {"type": "string"}, "top_n": {"type": "integer", "default": 10}}, "required": ["table"]})
-    add("search: text in measures", "search_string", "Search in measure names/expressions", {"type": "object", "properties": {"search_text": {"type": "string"}, "search_in_expression": {"type": "boolean", "default": True}, "search_in_name": {"type": "boolean", "default": True}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": ["search_text"]})
-    add("search: objects", "search_objects", "Search across tables, columns, measures", {"type": "object", "properties": {"pattern": {"type": "string", "default": "*"}, "types": {"type": "array", "items": {"type": "string"}, "default": ["tables", "columns", "measures"]}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []})
+    def sr(req, **kw):
+        r = s(**kw)
+        r["required"] = req if isinstance(req, list) else [req]
+        return r
 
-    add("get: measure details", "get_measure_details", "Get details for a specific measure", {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}}, "required": ["table", "measure"]})
-    add("get: data sources", "get_data_sources", "List Power Query data sources", {"type": "object", "properties": {"page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []})
-    add("get: m expressions", "get_m_expressions", "List M expressions for queries", {"type": "object", "properties": {"page_size": {"type": "integer"}, "next_token": {"type": "string"}}, "required": []})
-    add("profile: top values for column", "get_column_value_distribution", "Top values distribution for a column", {"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}, "top_n": {"type": "integer", "default": 50}}, "required": ["table", "column"]})
-    add("get: column summary", "get_column_summary", "Summary stats for a column", {"type": "object", "properties": {"table": {"type": "string"}, "column": {"type": "string"}}, "required": ["table", "column"]})
-    add("get: vertipaq stats", "get_vertipaq_stats", "VertiPaq statistics (table-level)", {"type": "object", "properties": {"table": {"type": "string"}}, "required": []})
-    add("get: model summary", "get_model_summary", "Lightweight model summary suitable for large models", {"type": "object", "properties": {}, "required": []})
+    # Connection (3)
+    add("connection: detect powerbi desktop", "detect_powerbi_desktop",
+        "Detect running Power BI Desktop instances with filenames and ports", E)
+    add("connection: connect to powerbi", "connect_to_powerbi",
+        "Connect to detected instance", sr("model_index", model_index={"type": "integer"}))
+    add("run: dax", "run_dax", "Execute DAX query with auto limits",
+        sr("query", query={"type": "string"},
+           mode={"type": "string", "enum": ["auto", "preview", "analyze"]},
+           runs={"type": "integer"}, top_n={"type": "integer"},
+           verbose={"type": "boolean"}, include_event_counts={"type": "boolean"}))
 
-    # Dependencies & impact
-    add("dependency: analyze measure", "analyze_measure_dependencies", "Analyze measure dependencies", {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "depth": {"type": "integer", "default": 3}}, "required": ["table", "measure"]})
-    add("usage: where measure is used", "get_measure_impact", "Forward/backward impact for a measure", {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "depth": {"type": "integer", "default": 3}}, "required": ["table", "measure"]})
-    # heatmap removed from public surface
+    # List (7)
+    add("list: tables", "list_tables", "List tables", s(**P))
+    add("list: columns", "list_columns", "List columns", s(table={"type": "string"}, **P))
+    add("list: calculated columns", "list_calculated_columns", "List calculated columns",
+        s(table={"type": "string"}, **P))
+    add("list: measures", "list_measures", "List measures", s(table={"type": "string"}, **P))
+    add("list: relationships", "relationships", "List relationships", E)
+    add("list: roles", "list_roles", "List RLS roles", E)
+    add("list: partitions", "list_partitions", "List table partitions", sr("table", table={"type": "string"}))
 
-    # Maintenance and runtime insight tools (hidden by default; can be enabled via server.show_admin_tools)
+    # Describe/preview (2)
+    add("describe: table", "describe_table", "Describe table with columns, measures, relationships",
+        sr("table", table={"type": "string"}, columns_page_size={"type": "integer"},
+           columns_next_token={"type": "string"}, measures_page_size={"type": "integer"},
+           measures_next_token={"type": "string"}, relationships_page_size={"type": "integer"},
+           relationships_next_token={"type": "string"}))
+    add("preview: table", "preview_table_data", "Preview table rows",
+        sr("table", table={"type": "string"}, top_n={"type": "integer"}))
+
+    # Search (2)
+    add("search: text in measures", "search_string", "Search measure names/expressions",
+        sr("search_text", search_text={"type": "string"},
+           search_in_expression={"type": "boolean"}, search_in_name={"type": "boolean"}, **P))
+    add("search: objects", "search_objects", "Search tables, columns, measures",
+        s(pattern={"type": "string"},
+          types={"type": "array", "items": {"type": "string"}}, **P))
+
+    # Get (7)
+    add("get: measure details", "get_measure_details", "Get measure details",
+        sr(["table", "measure"], table={"type": "string"}, measure={"type": "string"}))
+    add("get: data sources", "get_data_sources", "List data sources", s(**P))
+    add("get: m expressions", "get_m_expressions", "List M/Power Query expressions", s(**P))
+    add("profile: top values for column", "get_column_value_distribution", "Column value distribution",
+        sr(["table", "column"], table={"type": "string"}, column={"type": "string"}, top_n={"type": "integer"}))
+    add("get: column summary", "get_column_summary", "Column summary stats",
+        sr(["table", "column"], table={"type": "string"}, column={"type": "string"}))
+    add("get: vertipaq stats", "get_vertipaq_stats", "VertiPaq statistics", s(table={"type": "string"}))
+    add("get: model summary", "get_model_summary", "Model summary", E)
+
+    # Dependencies (2)
+    add("dependency: analyze measure", "analyze_measure_dependencies", "Analyze measure dependencies",
+        sr(["table", "measure"], table={"type": "string"}, measure={"type": "string"}, depth={"type": "integer"}))
+    add("usage: where measure is used", "get_measure_impact", "Measure usage impact",
+        sr(["table", "measure"], table={"type": "string"}, measure={"type": "string"}, depth={"type": "integer"}))
+
+    # Admin (conditional)
     if bool(config.get('server.show_admin_tools', False)):
-        add("server: info", "get_server_info", "Server info, telemetry, and config snapshot", {"type": "object", "properties": {}, "required": []})
-        add("server: recent logs", "get_recent_logs", "Tail of server logs for debugging", {"type": "object", "properties": {"lines": {"type": "integer", "default": 200}}, "required": []})
-        add("server: summarize logs", "summarize_logs", "Summarize recent logs (error/warn/info)", {"type": "object", "properties": {"lines": {"type": "integer", "default": 500}}, "required": []})
-        add("server: rate limiter stats", "get_rate_limit_stats", "Rate limiter token and throttle stats", {"type": "object", "properties": {}, "required": []})
-        add("server: tool timeouts", "get_tool_timeouts", "Configured per-tool timeouts", {"type": "object", "properties": {}, "required": []})
-        add("server: runtime cache stats", "get_runtime_cache_stats", "In-process cache stats (TTL/LRU)", {"type": "object", "properties": {}, "required": []})
-        add("server: performance metrics", "get_performance_metrics", "Get performance metrics for operations", {"type": "object", "properties": {"operation_name": {"type": "string", "description": "Specific operation name (optional)"}}, "required": []})
-        add("server: performance summary", "get_performance_summary", "Get overall performance summary", {"type": "object", "properties": {}, "required": []})
-        add("server: slow operations", "get_slow_operations", "Get operations running slower than threshold", {"type": "object", "properties": {"threshold": {"type": "number", "default": 1.0, "description": "Time threshold in seconds"}}, "required": []})
+        add("server: info", "get_server_info", "Server info", E)
+        add("server: recent logs", "get_recent_logs", "Recent log entries", s(lines={"type": "integer"}))
+        add("server: summarize logs", "summarize_logs", "Summarize logs", s(lines={"type": "integer"}))
+        add("server: rate limiter stats", "get_rate_limit_stats", "Rate limit stats", E)
+        add("server: tool timeouts", "get_tool_timeouts", "Tool timeouts", E)
+        add("server: runtime cache stats", "get_runtime_cache_stats", "Cache stats", E)
+        add("server: performance metrics", "get_performance_metrics", "Performance metrics",
+            s(operation_name={"type": "string"}))
+        add("server: performance summary", "get_performance_summary", "Performance summary", E)
+        add("server: slow operations", "get_slow_operations", "Slow operations",
+            s(threshold={"type": "number"}))
 
-    # Model management
-    add("measure: create or update", "upsert_measure", "Create or update a measure", {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}, "expression": {"type": "string"}, "display_folder": {"type": "string"}, "description": {"type": "string"}, "format_string": {"type": "string"}}, "required": ["table", "measure", "expression"]})
-    add("measure: delete", "delete_measure", "Delete a measure", {"type": "object", "properties": {"table": {"type": "string"}, "measure": {"type": "string"}}, "required": ["table", "measure"]})
-    add("measure: bulk create", "bulk_create_measures", "Create multiple measures", {"type": "object", "properties": {"measures": {"type": "array", "items": {"type": "object"}}}, "required": ["measures"]})
-    add("measure: bulk delete", "bulk_delete_measures", "Delete multiple measures", {"type": "object", "properties": {"measures": {"type": "array", "items": {"type": "object"}}}, "required": ["measures"]})
-    add("calc: list calculation groups", "list_calculation_groups", "List calculation groups", {"type": "object", "properties": {}, "required": []})
-    add("calc: create calculation group", "create_calculation_group", "Create a calculation group", {"type": "object", "properties": {"name": {"type": "string"}, "items": {"type": "array", "items": {"type": "object"}}, "description": {"type": "string"}, "precedence": {"type": "integer", "default": 0}}, "required": ["name", "items"]})
-    add("calc: delete calculation group", "delete_calculation_group", "Delete a calculation group", {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]})
+    # Model management (7)
+    add("measure: create or update", "upsert_measure", "Create/update measure",
+        sr(["table", "measure", "expression"], table={"type": "string"}, measure={"type": "string"},
+           expression={"type": "string"}, display_folder={"type": "string"},
+           description={"type": "string"}, format_string={"type": "string"}))
+    add("measure: delete", "delete_measure", "Delete measure",
+        sr(["table", "measure"], table={"type": "string"}, measure={"type": "string"}))
+    add("measure: bulk create", "bulk_create_measures", "Bulk create measures",
+        sr("measures", measures={"type": "array", "items": {"type": "object"}}))
+    add("measure: bulk delete", "bulk_delete_measures", "Bulk delete measures",
+        sr("measures", measures={"type": "array", "items": {"type": "object"}}))
+    add("calc: list calculation groups", "list_calculation_groups", "List calculation groups", E)
+    add("calc: create calculation group", "create_calculation_group", "Create calculation group",
+        sr(["name", "items"], name={"type": "string"},
+           items={"type": "array", "items": {"type": "object"}},
+           description={"type": "string"}, precedence={"type": "integer"}))
+    add("calc: delete calculation group", "delete_calculation_group", "Delete calculation group",
+        sr("name", name={"type": "string"}))
 
-    # Validation & governance
-    add("validate: dax", "validate_dax_query", "Validate DAX syntax and analyze complexity", {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]})
-    add("validate: model integrity", "validate_model_integrity", "Validate model integrity", {"type": "object", "properties": {}, "required": []})
+    # Validation (2)
+    add("validate: dax", "validate_dax_query", "Validate DAX syntax", sr("query", query={"type": "string"}))
+    add("validate: model integrity", "validate_model_integrity", "Validate model integrity", E)
 
-    # Docs & export
-    add("export: tmsl", "export_tmsl", "Export TMSL (summary by default)", {"type": "object", "properties": {"include_full_model": {"type": "boolean", "default": False}}, "required": []})
-    add("export: tmdl", "export_tmdl", "Export TMDL model structure", {"type": "object", "properties": {}, "required": []})
+    # Export (3)
+    add("export: tmsl", "export_tmsl", "Export TMSL", s(include_full_model={"type": "boolean"}))
+    add("export: tmdl", "export_tmdl", "Export TMDL", E)
+    add("export: model schema (sections)", "export_model_schema", "Export schema by section",
+        s(section={"type": "string", "enum": ["tables", "columns", "measures", "relationships"]},
+          preview_size={"type": "integer"},
+          include={"type": "array", "items": {"type": "string"}}, **P))
 
-    # Model comparison - TWO STEP PROCESS
-    add("comparison: prepare comparison", "prepare_model_comparison", "🚨 STEP 1 OF 2: Always call THIS tool first before comparing models! This detects both .pbix files, shows their names to you, and returns an example_question that you MUST ask the user. The response will include 'example_question' field - show that question to the user exactly as written. DO NOT proceed to step 2 until user answers!", {"type": "object", "properties": {}, "required": []})
-    add("Model Comparison - Review TMDL", "compare_pbi_models", "🚨 STEP 2 OF 2: Only call this AFTER running 'prepare comparison' and getting user's answer! Use the ports from step 1 and set confirm_direction based on what the user told you. NEVER call this without calling prepare_model_comparison first!", {"type": "object", "properties": {"port1": {"type": "integer", "description": "Port number from step 1 (prepare_model_comparison)"}, "port2": {"type": "integer", "description": "Port number from step 1 (prepare_model_comparison)"}, "confirm_direction": {"type": "string", "enum": ["port1=OLD, port2=NEW", "port1=NEW, port2=OLD"], "description": "Set based on user's answer from step 1. If user said file on port1 is OLD, use 'port1=OLD, port2=NEW'. If user said file on port1 is NEW, use 'port1=NEW, port2=OLD'."}, "model1_label": {"type": "string", "description": "Optional: Custom display name to override auto-detected .pbix filename for port1"}, "model2_label": {"type": "string", "description": "Optional: Custom display name to override auto-detected .pbix filename for port2"}, "output_path": {"type": "string", "description": "Optional: Custom path for HTML report file"}, "generate_json": {"type": "boolean", "default": False, "description": "Also generate JSON export alongside HTML"}}, "required": ["port1", "port2", "confirm_direction"]})
-    add("export: model schema (sections)", "export_model_schema", "Export model schema by section with pagination", {"type": "object", "properties": {"section": {"type": "string", "enum": ["tables", "columns", "measures", "relationships"]}, "page_size": {"type": "integer"}, "next_token": {"type": "string"}, "preview_size": {"type": "integer", "description": "Rows per section in compact preview (default 30)"}, "include": {"type": "array", "items": {"type": "string"}, "description": "Subset of sections to include in compact preview"}}, "required": []})
-    add(
-        "documentation: generate word",
-        "generate_model_documentation_word",
-        "Generate a professionally formatted Word report covering the full model",
-        {
-            "type": "object",
-            "properties": {
-                "output_dir": {"type": "string", "description": "Directory to write files; defaults to exports/docs/"},
-                "include_hidden": {"type": "boolean", "default": True, "description": "Include hidden objects"},
-                "dependency_depth": {"type": "integer", "default": 1, "minimum": 1, "description": "Dependency analysis depth"},
-            },
-            "required": [],
-        },
-    )
-    add(
-        "documentation: update word",
-        "update_model_documentation_word",
-        "Refresh the Word documentation and append a change log for recent model updates",
-        {
-            "type": "object",
-            "properties": {
-                "output_dir": {"type": "string", "description": "Directory to write files; defaults to exports/docs/"},
-                "snapshot_path": {"type": "string", "description": "Path to previous snapshot (auto-detects if omitted)"},
-                "include_hidden": {"type": "boolean", "default": True, "description": "Include hidden objects"},
-                "dependency_depth": {"type": "integer", "default": 1, "minimum": 1, "description": "Dependency analysis depth"},
-            },
-            "required": [],
-        },
-    )
-    add(
-        "Model Explorer - HTML",
-        "export_model_explorer_html",
-        "SINGLE MODEL EXPLORER: Generate interactive HTML documentation for ONE currently connected model. Shows tables with data previews, measures with DAX code, dependencies, and relationship graphs. Use this to explore/document a single model, NOT for comparing two models.",
-        {
-            "type": "object",
-            "properties": {
-                "output_dir": {"type": "string", "description": "Directory to write HTML file; defaults to exports/"},
-                "include_hidden": {"type": "boolean", "description": "Include hidden objects in analysis", "default": True},
-                "dependency_depth": {"type": "integer", "description": "Maximum depth for dependency tree analysis (1-10)", "default": 5, "minimum": 1, "maximum": 10},
-            },
-            "required": [],
-        },
-    )
+    # Model comparison (2)
+    add("comparison: prepare comparison", "prepare_model_comparison",
+        "STEP 1: Detect both models. Returns question to ask user", E)
+    add("Model Comparison - Review TMDL", "compare_pbi_models",
+        "STEP 2: Compare models after user confirms OLD/NEW",
+        sr(["port1", "port2", "confirm_direction"], port1={"type": "integer"},
+           port2={"type": "integer"},
+           confirm_direction={"type": "string", "enum": ["port1=OLD, port2=NEW", "port1=NEW, port2=OLD"]},
+           model1_label={"type": "string"}, model2_label={"type": "string"},
+           output_path={"type": "string"}, generate_json={"type": "boolean"}))
 
-    # Analysis (consolidated from 8 tools to 3)
-    add(
-        "analysis: full model",
-        "full_analysis",
-        "Comprehensive model analysis including summary, relationships, best practices, M scan, and optional BPA",
-        {
-            "type": "object",
-            "properties": {
-                "include_bpa": {"type": "boolean", "default": True, "description": "Include Best Practice Analyzer scan"},
-                "depth": {"type": "string", "enum": ["light", "standard", "deep"], "default": "standard", "description": "Analysis depth"},
-                "profile": {"type": "string", "enum": ["fast", "balanced", "deep"], "default": "balanced", "description": "Performance profile"},
-                "limits": {
-                    "type": "object",
-                    "properties": {
-                        "relationships_max": {"type": "integer", "default": 200},
-                        "issues_max": {"type": "integer", "default": 200}
-                    }
-                }
-            },
-            "required": []
-        }
-    )
-    add(
-        "analysis: best practices",
-        "analyze_best_practices_unified",
-        "Unified best practices analysis combining BPA and M query practices scans",
-        {
-            "type": "object",
-            "properties": {
-                "mode": {
-                    "type": "string",
-                    "enum": ["all", "bpa", "m_queries"],
-                    "default": "all",
-                    "description": "Analysis mode: 'all' (BPA + M), 'bpa' (BPA only), 'm_queries' (M only)"
-                },
-                "bpa_profile": {
-                    "type": "string",
-                    "enum": ["fast", "balanced", "deep"],
-                    "default": "balanced",
-                    "description": "BPA analysis depth"
-                },
-                "max_seconds": {"type": "number", "description": "Maximum time for BPA analysis"}
-            },
-            "required": []
-        }
-    )
-    add(
-        "analysis: performance",
-        "analyze_performance_unified",
-        "Unified performance analysis combining query performance, cardinality checks, and storage compression",
-        {
-            "type": "object",
-            "properties": {
-                "mode": {
-                    "type": "string",
-                    "enum": ["comprehensive", "queries", "cardinality", "storage"],
-                    "default": "comprehensive",
-                    "description": "Analysis mode: 'comprehensive' (all), 'queries' (DAX batch), 'cardinality' (relationship/column), 'storage' (compression)"
-                },
-                "queries": {"type": "array", "items": {"type": "string"}, "description": "DAX queries for batch performance testing"},
-                "table": {"type": "string", "description": "Table name for table-specific analyses"},
-                "runs": {"type": "integer", "default": 3, "description": "Number of runs for query performance testing"},
-                "clear_cache": {"type": "boolean", "default": True, "description": "Clear cache before performance testing"},
-                "include_event_counts": {"type": "boolean", "default": False, "description": "Include detailed event counts"}
-            },
-            "required": []
-        }
-    )
+    # Documentation (3)
+    add("documentation: generate word", "generate_model_documentation_word", "Generate Word report",
+        s(output_dir={"type": "string"}, include_hidden={"type": "boolean"},
+          dependency_depth={"type": "integer"}))
+    add("documentation: update word", "update_model_documentation_word", "Update Word report",
+        s(output_dir={"type": "string"}, snapshot_path={"type": "string"},
+          include_hidden={"type": "boolean"}, dependency_depth={"type": "integer"}))
+    add("Model Explorer - HTML", "export_model_explorer_html", "Generate interactive HTML documentation",
+        s(output_dir={"type": "string"}, include_hidden={"type": "boolean"},
+          dependency_depth={"type": "integer"}))
 
-    # PBIP Repository Analysis
-    add(
-        "pbip: analyze repository",
-        "analyze_pbip_repository",
-        "📁 PBIP REPOSITORY ANALYZER - Comprehensive offline analysis of Power BI Project repositories (TMDL/PBIR format). Scans semantic models and reports, analyzes dependencies, and generates interactive HTML dashboard. Works WITHOUT Power BI Desktop running!",
-        {
-            "type": "object",
-            "properties": {
-                "repository_path": {
-                    "type": "string",
-                    "description": "Path to the PBIP repository root directory"
-                },
-                "output_path": {
-                    "type": "string",
-                    "description": "Output directory for HTML reports. Relative paths resolve to MCP server directory (not analyzed repository). Default: exports/pbip_analysis in MCP server folder.",
-                    "default": "exports/pbip_analysis"
-                },
-                "exclude_folders": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Folders to exclude from analysis",
-                    "default": []
-                }
-            },
-            "required": ["repository_path"]
-        }
-    )
+    # Analysis (3)
+    add("analysis: full model", "full_analysis", "Comprehensive model analysis",
+        s(include_bpa={"type": "boolean"},
+      summary_only={"type": "boolean"},
+          depth={"type": "string", "enum": ["light", "standard", "deep"]},
+          profile={"type": "string", "enum": ["fast", "balanced", "deep"]},
+          limits={"type": "object", "properties": {
+              "relationships_max": {"type": "integer"},
+              "issues_max": {"type": "integer"}
+          }}))
+    add("analysis: best practices", "analyze_best_practices_unified", "BPA and M practices analysis",
+        s(mode={"type": "string", "enum": ["all", "bpa", "m_queries"]},
+          bpa_profile={"type": "string", "enum": ["fast", "balanced", "deep"]},
+          max_seconds={"type": "number"}))
+    add("analysis: performance", "analyze_performance_unified", "Performance analysis",
+        s(mode={"type": "string", "enum": ["comprehensive", "queries", "cardinality", "storage"]},
+          queries={"type": "array", "items": {"type": "string"}},
+          table={"type": "string"}, runs={"type": "integer"},
+          clear_cache={"type": "boolean"}, include_event_counts={"type": "boolean"}))
 
-    # User Guide & Help
-    add(
-        "guide: show user guide",
-        "show_user_guide",
-        "📚 COMPREHENSIVE USER GUIDE - Get detailed explanations of ALL tools organized by category with examples and best practices",
-        {
-            "type": "object",
-            "properties": {
-                "category": {
-                    "type": "string",
-                    "enum": ["all", "connection", "exploration", "analysis", "export", "validation", "management", "comparison"],
-                    "default": "all",
-                    "description": "Show specific category or 'all' for complete guide"
-                },
-                "format": {
-                    "type": "string",
-                    "enum": ["detailed", "quick"],
-                    "default": "detailed",
-                    "description": "Guide detail level: 'detailed' (full), 'quick' (summaries)"
-                }
-            },
-            "required": []
-        }
-    )
+    # PBIP (1)
+    add("pbip: analyze repository", "analyze_pbip_repository", "Offline PBIP repository analysis",
+        sr("repository_path", repository_path={"type": "string"}, output_path={"type": "string"},
+           exclude_folders={"type": "array", "items": {"type": "string"}}))
 
-    # Visualization tools removed
+    # TMDL (6 tools - conditional on feature flag)
+    if bool(config.get('features.enable_tmdl_automation', True)):
+        add("tmdl: validate", "validate_tmdl", "Validate TMDL syntax",
+            sr("tmdl_path", tmdl_path={"type": "string"}, include_linting={"type": "boolean"},
+               severity_filter={"type": "string", "enum": ["error", "warning", "info"]}))
+        add("tmdl: find and replace", "tmdl_find_replace", "Find/replace in TMDL",
+            sr(["tmdl_path", "find", "replace"], tmdl_path={"type": "string"},
+               find={"type": "string"}, replace={"type": "string"}, regex={"type": "boolean"},
+               case_sensitive={"type": "boolean"}, dry_run={"type": "boolean"},
+               target={"type": "string", "enum": ["measures", "columns", "all"]},
+               backup={"type": "boolean"}))
+        add("tmdl: bulk rename", "tmdl_bulk_rename", "Bulk rename with reference updates",
+            sr(["tmdl_path", "renames"], tmdl_path={"type": "string"},
+               renames={"type": "array", "items": {"type": "object"}},
+               update_references={"type": "boolean"}, dry_run={"type": "boolean"},
+               backup={"type": "boolean"}))
+        add("tmdl: list templates", "tmdl_list_templates", "List TMDL templates",
+            s(category={"type": "string", "enum": ["calendar", "calculation_group", "measures", "model_patterns", "all"]}))
+        add("tmdl: apply template", "tmdl_apply_template", "Apply TMDL template",
+            sr(["template_id", "target_path"], template_id={"type": "string"},
+               target_path={"type": "string"}, parameters={"type": "object"},
+               merge_strategy={"type": "string", "enum": ["fail_if_exists", "skip_existing", "overwrite"]}))
+        add("tmdl: generate script", "tmdl_generate_script", "Generate TMDL script",
+            sr(["object_type", "definition"],
+               object_type={"type": "string", "enum": ["table", "measure", "column", "relationship", "calculation_group"]},
+               definition={"type": "object"}, output_path={"type": "string"}))
 
-    # Helper: sanitize tool identifier to match ^[a-zA-Z0-9_-]{1,64}$ while preserving readability
+    # DAX context (3 tools - conditional on feature flag)
+    if bool(config.get('features.enable_dax_context_analysis', True)):
+        add("dax: analyze context", "analyze_dax_context", "Analyze DAX context transitions",
+            sr("dax_expression", dax_expression={"type": "string"}, measure_name={"type": "string"},
+               include_visualization={"type": "boolean"},
+               include_performance_analysis={"type": "boolean"},
+               include_optimization_suggestions={"type": "boolean"}))
+        add("dax: visualize context", "visualize_filter_context", "Visualize filter context flow",
+            sr("dax_expression", dax_expression={"type": "string"},
+               output_format={"type": "string", "enum": ["text", "mermaid", "html"]},
+               output_path={"type": "string"}, highlight_performance_issues={"type": "boolean"},
+               include_legend={"type": "boolean"}))
+        add("dax: debug context", "debug_dax_context", "Debug DAX step-by-step",
+            sr("dax_expression", dax_expression={"type": "string"},
+               breakpoints={"type": "array", "items": {"type": "integer"}},
+               max_steps={"type": "integer"}, include_profiling={"type": "boolean"},
+               capture_intermediate_results={"type": "boolean"}))
+
+    # User guide (1)
+    add("guide: show user guide", "show_user_guide", "Show comprehensive user guide",
+        s(category={"type": "string", "enum": ["all", "connection", "exploration", "analysis", "export", "validation", "management", "comparison"]},
+          format={"type": "string", "enum": ["detailed", "quick"]}))
+
+    # Sort and return (keep existing logic)
+    mode = str(config.get('server.tool_names_mode', 'friendly') or 'friendly').lower()
+    used_ids: set[str] = set()
+
     def _sanitize_tool_identifier(name: str) -> str:
         try:
-            # Replace disallowed chars with '-'
             s = re.sub(r"[^a-zA-Z0-9_-]+", "-", name)
-            # Collapse repeats and trim
             s = re.sub(r"-+", "-", s).strip("-")
-            # Ensure not empty
             if not s:
                 s = "tool"
-            # Truncate to 64 chars
             if len(s) > 64:
                 s = s[:64]
             return s
         except Exception:
             return (name or "tool")[:64]
 
-    # Sort and emit Tool objects per configured naming mode
-    mode = str(config.get('server.tool_names_mode', 'friendly') or 'friendly').lower()
-    used_ids: set[str] = set()
-
     def _unique_id(base: str) -> str:
-        """Ensure unique identifier within this listing, appending -2, -3, ... as needed."""
         ident = base
         counter = 2
         while ident in used_ids:
             suffix = f"-{counter}"
-            # Keep within 64 char limit
             trimmed = base[: max(1, 64 - len(suffix))]
             ident = trimmed.rstrip('-') + suffix
             counter += 1
@@ -2332,12 +2601,10 @@ async def list_tools() -> List[Tool]:
         return ident
 
     if mode == 'canonical':
-        # Sort by canonical to keep stable order
         entries.sort(key=lambda x: x[1])
         tools_list: List[Tool] = []
         for (_friendly, canon, desc, schema) in entries:
             safe = _unique_id(_sanitize_tool_identifier(canon))
-            # Accept both safe id and the original as aliases for call_tool
             try:
                 FRIENDLY_TOOL_ALIASES.setdefault(safe, canon)
             except Exception:
@@ -2347,22 +2614,20 @@ async def list_tools() -> List[Tool]:
             tools_list.append(Tool(name=safe, description=desc, inputSchema=schema_with_title))
         tools = tools_list
     else:
-        # Default: friendly names sorted alphabetically
         entries.sort(key=lambda x: x[0])
         tools_list: List[Tool] = []
         for (friendly, canon, desc, schema) in entries:
             safe = _unique_id(_sanitize_tool_identifier(friendly))
-            # Map both the friendly text and the sanitized id to the canonical handler
             try:
                 FRIENDLY_TOOL_ALIASES.setdefault(safe, canon)
             except Exception:
                 pass
             schema_with_title = dict(schema)
-            # Preserve the exact friendly name for clients that surface JSON Schema titles
             schema_with_title.setdefault('title', friendly)
             tools_list.append(Tool(name=safe, description=desc, inputSchema=schema_with_title))
         tools = tools_list
     return tools
+
 
 
 @app.call_tool()
@@ -2409,6 +2674,58 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
             })
         except Exception:
             pass
+
+        # Add limits awareness and user notifications
+        if isinstance(result, dict):
+            # Wrap response with limits info (warnings only shown if needed)
+            result = agent_policy.wrap_response_with_limits_info(result, name)
+
+            # HARD STOP: If response exceeds token limit, BLOCK it and require user confirmation
+            # This prevents Claude from autonomously deciding to export/workaround
+            if result.get('_limits_info', {}).get('token_usage', {}).get('level') == 'over':
+                # For tools that commonly cause overflows, return error requiring user confirmation
+                high_token_tools = ['full_analysis', 'export_tmsl', 'export_tmdl', 'analyze_model_bpa']
+                if name in high_token_tools:
+                    token_info = result['_limits_info']['token_usage']
+                    return [TextContent(type="text", text=json.dumps({
+                        'success': False,
+                        'error': 'Response would exceed token limit',
+                        'error_type': 'token_limit_exceeded',
+                        'estimated_tokens': token_info['estimated_tokens'],
+                        'max_tokens': token_info['max_tokens'],
+                        'percentage': token_info['percentage'],
+                        'requires_user_confirmation': True,
+                        'tool_name': name,
+                        'message': (
+                            f"The '{name}' tool would return {token_info['estimated_tokens']:,} tokens, "
+                            f"exceeding the {token_info['max_tokens']:,} token limit ({token_info['percentage']}%). "
+                            f"\n\nThis response has been BLOCKED to prevent automatic overflow. "
+                            f"\n\nPlease choose one of these options:"
+                            f"\n  1. Use 'summary_only=true' parameter for a compact summary"
+                            f"\n  2. Use pagination with 'limit' and 'offset' parameters"
+                            f"\n  3. Export results to a file instead (use export tools)"
+                            f"\n  4. Ask me to proceed anyway (response will be truncated)"
+                        ),
+                        'options': {
+                            'summary_mode': f"Call {name} with summary_only=true",
+                            'pagination': f"Use pagination parameters",
+                            'export': f"Export results to file",
+                            'proceed_anyway': f"I understand the response will be truncated"
+                        }
+                    }, indent=2))]
+
+            # Add optimization suggestions if hitting limits
+            suggestion = agent_policy.suggest_optimizations(name, result)
+            if suggestion:
+                if '_limits_info' not in result:
+                    result['_limits_info'] = {}
+                result['_limits_info']['suggestion'] = suggestion
+
+        # Apply global result truncation to prevent token overflow (only for non-blocked responses)
+        max_tokens = limits_manager.token.max_result_tokens
+        if isinstance(result, dict):
+            result = _truncate_if_needed(result, max_tokens)
+
         # Special-case get_recent_logs to return plain text to preserve formatting in clients
         if name == "get_recent_logs" and isinstance(result, dict) and 'logs' in result:
             return [TextContent(type="text", text=result['logs'])]

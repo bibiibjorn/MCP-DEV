@@ -424,9 +424,9 @@ class ModelExporter:
             doc_lines.append(f"\n*Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*\n")
 
             # Model overview
-            tables_result = query_executor.execute_info_query("TABLES")
-            measures_result = query_executor.execute_info_query("MEASURES")
-            rels_result = query_executor.execute_info_query("RELATIONSHIPS")
+            tables_result = query_executor.execute_info_query("TABLES", top_n=100)
+            measures_result = query_executor.execute_info_query("MEASURES", top_n=100)
+            rels_result = query_executor.execute_info_query("RELATIONSHIPS", top_n=100)
 
             if tables_result.get('success'):
                 tables = tables_result['rows']
@@ -622,7 +622,7 @@ class ModelExporter:
                     return default
 
             # Get tables with row counts
-            tables_result = query_executor.execute_info_query("TABLES")
+            tables_result = query_executor.execute_info_query("TABLES", top_n=100)
             tables = tables_result['rows'] if tables_result.get('success') else []
             # ID and name maps for joins
             tables_by_id: Dict[int, str] = {}
@@ -665,7 +665,7 @@ class ModelExporter:
                         tables_by_id[tid] = nm
 
             # Get measures
-            measures_result = query_executor.execute_info_query("MEASURES")
+            measures_result = query_executor.execute_info_query("MEASURES", top_n=100)
             if measures_result.get('success'):
                 measures = measures_result['rows']
                 top_counts['measures'] = len(measures)
@@ -690,7 +690,7 @@ class ModelExporter:
                     tables_by_name[tbl]['measures'] = cnt
 
             # Get columns
-            columns_result = query_executor.execute_info_query("COLUMNS")
+            columns_result = query_executor.execute_info_query("COLUMNS", top_n=100)
             columns_by_id: Dict[int, Dict[str, Any]] = {}
             if columns_result.get('success'):
                 columns = columns_result['rows']
@@ -724,7 +724,7 @@ class ModelExporter:
                     tables_by_name[tbl]['columns'] = cnt
 
             # Get relationships
-            rels_result = query_executor.execute_info_query("RELATIONSHIPS")
+            rels_result = query_executor.execute_info_query("RELATIONSHIPS", top_n=100)
             if rels_result.get('success'):
                 rels = rels_result['rows']
                 top_counts['relationships'] = len(rels)

@@ -20,7 +20,10 @@
       "Read(//c/Users/bjorn.braet/powerbi-mcp-servers/**)",
       "Read(//c/Users/bjorn.braet/AppData/Roaming/Claude/**)",
       "Bash(python:*)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Skill(code-agent)",
+      "Bash(mkdir:*)",
+      "Bash(./venv/Scripts/python.exe:*)"
     ],
     "deny": [],
     "ask": []

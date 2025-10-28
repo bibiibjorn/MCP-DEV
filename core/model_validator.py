@@ -97,7 +97,7 @@ class ModelValidator:
             return None
 
         try:
-            rels_result = self.executor.execute_info_query("RELATIONSHIPS")
+            rels_result = self.executor.execute_info_query("RELATIONSHIPS", top_n=100)
             if not rels_result.get('success'):
                 return issues
 
@@ -156,7 +156,7 @@ class ModelValidator:
 
         try:
             # Get relationships to identify dimension tables
-            rels_result = self.executor.execute_info_query("RELATIONSHIPS")
+            rels_result = self.executor.execute_info_query("RELATIONSHIPS", top_n=100)
             if not rels_result.get('success'):
                 return issues
 
@@ -220,7 +220,7 @@ class ModelValidator:
             return None
 
         try:
-            rels_result = self.executor.execute_info_query("RELATIONSHIPS")
+            rels_result = self.executor.execute_info_query("RELATIONSHIPS", top_n=100)
             if not rels_result.get('success'):
                 return issues
 
@@ -268,7 +268,7 @@ class ModelValidator:
         issues = []
 
         try:
-            measures_result = self.executor.execute_info_query("MEASURES")
+            measures_result = self.executor.execute_info_query("MEASURES", top_n=100)
             if not measures_result.get('success'):
                 return issues
 
@@ -292,7 +292,7 @@ class ModelValidator:
         issues = []
 
         try:
-            rels_result = self.executor.execute_info_query("RELATIONSHIPS")
+            rels_result = self.executor.execute_info_query("RELATIONSHIPS", top_n=100)
             if not rels_result.get('success'):
                 return issues
 

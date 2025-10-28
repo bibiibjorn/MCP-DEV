@@ -117,7 +117,7 @@ class DependencyAnalyzer:
         measure_rows: List[Dict[str, object]] = []
         column_rows: List[Dict[str, object]] = []
         try:
-            measures_result = self.model.execute_info_query("MEASURES")
+            measures_result = self.model.execute_info_query("MEASURES", top_n=100)
             if measures_result.get("success"):
                 measure_rows = measures_result.get("rows", [])
         except (ConnectionError, TimeoutError, ValueError) as e:
@@ -128,7 +128,7 @@ class DependencyAnalyzer:
             measure_rows = []
 
         try:
-            columns_result = self.model.execute_info_query("COLUMNS")
+            columns_result = self.model.execute_info_query("COLUMNS", top_n=100)
             if columns_result.get("success"):
                 column_rows = columns_result.get("rows", [])
         except (ConnectionError, TimeoutError, ValueError) as e:
