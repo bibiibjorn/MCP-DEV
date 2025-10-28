@@ -234,7 +234,7 @@ def register_model_operations_handlers(registry):
                 "required": ["table", "measure", "expression"]
             },
             category="model_operations",
-            sort_order=40
+            sort_order=18
         ),
         ToolDefinition(
             name="delete_measure",
@@ -249,7 +249,7 @@ def register_model_operations_handlers(registry):
                 "required": ["table", "measure"]
             },
             category="model_operations",
-            sort_order=41
+            sort_order=19
         ),
         ToolDefinition(
             name="bulk_create_measures",
@@ -257,7 +257,7 @@ def register_model_operations_handlers(registry):
             handler=handle_bulk_create_measures,
             input_schema=TOOL_SCHEMAS.get('bulk_create_measures', {}),
             category="model_operations",
-            sort_order=42
+            sort_order=20
         ),
         ToolDefinition(
             name="bulk_delete_measures",
@@ -265,7 +265,7 @@ def register_model_operations_handlers(registry):
             handler=handle_bulk_delete_measures,
             input_schema=TOOL_SCHEMAS.get('bulk_delete_measures', {}),
             category="model_operations",
-            sort_order=43
+            sort_order=21
         ),
         ToolDefinition(
             name="list_calculation_groups",
@@ -273,7 +273,7 @@ def register_model_operations_handlers(registry):
             handler=handle_list_calculation_groups,
             input_schema=TOOL_SCHEMAS.get('list_calculation_groups', {}),
             category="model_operations",
-            sort_order=44
+            sort_order=22
         ),
         ToolDefinition(
             name="create_calculation_group",
@@ -281,7 +281,7 @@ def register_model_operations_handlers(registry):
             handler=handle_create_calculation_group,
             input_schema=TOOL_SCHEMAS.get('create_calculation_group', {}),
             category="model_operations",
-            sort_order=45
+            sort_order=23
         ),
         ToolDefinition(
             name="delete_calculation_group",
@@ -289,7 +289,7 @@ def register_model_operations_handlers(registry):
             handler=handle_delete_calculation_group,
             input_schema=TOOL_SCHEMAS.get('delete_calculation_group', {}),
             category="model_operations",
-            sort_order=46
+            sort_order=24
         ),
         ToolDefinition(
             name="list_partitions",
@@ -297,7 +297,7 @@ def register_model_operations_handlers(registry):
             handler=handle_list_partitions,
             input_schema=TOOL_SCHEMAS.get('list_partitions', {}),
             category="model_operations",
-            sort_order=47
+            sort_order=25
         ),
         ToolDefinition(
             name="list_roles",
@@ -305,7 +305,7 @@ def register_model_operations_handlers(registry):
             handler=handle_list_roles,
             input_schema=TOOL_SCHEMAS.get('list_roles', {}),
             category="model_operations",
-            sort_order=48
+            sort_order=26
         ),
     ]
 

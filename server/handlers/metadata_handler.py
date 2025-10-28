@@ -200,7 +200,7 @@ def register_metadata_handlers(registry):
                 "required": []
             },
             category="metadata",
-            sort_order=10
+            sort_order=2
         ),
         ToolDefinition(
             name="describe_table",
@@ -217,7 +217,7 @@ def register_metadata_handlers(registry):
                 "required": ["table"]
             },
             category="metadata",
-            sort_order=11
+            sort_order=3
         ),
         ToolDefinition(
             name="list_columns",
@@ -233,7 +233,7 @@ def register_metadata_handlers(registry):
                 "required": []
             },
             category="metadata",
-            sort_order=12
+            sort_order=4
         ),
         ToolDefinition(
             name="list_measures",
@@ -249,7 +249,7 @@ def register_metadata_handlers(registry):
                 "required": []
             },
             category="metadata",
-            sort_order=13
+            sort_order=5
         ),
         ToolDefinition(
             name="get_measure_details",
@@ -264,7 +264,7 @@ def register_metadata_handlers(registry):
                 "required": ["table", "measure"]
             },
             category="metadata",
-            sort_order=14
+            sort_order=6
         ),
         ToolDefinition(
             name="list_calculated_columns",
@@ -280,7 +280,7 @@ def register_metadata_handlers(registry):
                 "required": []
             },
             category="metadata",
-            sort_order=15
+            sort_order=7
         ),
         ToolDefinition(
             name="search_objects",
@@ -300,7 +300,7 @@ def register_metadata_handlers(registry):
                 "required": []
             },
             category="metadata",
-            sort_order=16
+            sort_order=8
         ),
         ToolDefinition(
             name="search_string",
@@ -318,7 +318,7 @@ def register_metadata_handlers(registry):
                 "required": ["search_text"]
             },
             category="metadata",
-            sort_order=17
+            sort_order=9
         ),
     ]
 

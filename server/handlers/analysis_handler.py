@@ -128,7 +128,7 @@ def register_analysis_handlers(registry):
             handler=handle_full_analysis,
             input_schema=TOOL_SCHEMAS.get('full_analysis', {}),
             category="analysis",
-            sort_order=30
+            sort_order=27
         ),
         ToolDefinition(
             name="analyze_best_practices_unified",
@@ -136,7 +136,7 @@ def register_analysis_handlers(registry):
             handler=handle_analyze_best_practices_unified,
             input_schema=TOOL_SCHEMAS.get('analyze_best_practices_unified', {}),
             category="analysis",
-            sort_order=31
+            sort_order=28
         ),
         ToolDefinition(
             name="analyze_performance_unified",
@@ -144,7 +144,7 @@ def register_analysis_handlers(registry):
             handler=handle_analyze_performance_unified,
             input_schema=TOOL_SCHEMAS.get('analyze_performance_unified', {}),
             category="analysis",
-            sort_order=32
+            sort_order=29
         ),
         ToolDefinition(
             name="validate_model_integrity",
@@ -152,7 +152,7 @@ def register_analysis_handlers(registry):
             handler=handle_validate_model_integrity,
             input_schema=TOOL_SCHEMAS.get('validate_model_integrity', {}),
             category="analysis",
-            sort_order=33
+            sort_order=30
         ),
         ToolDefinition(
             name="get_vertipaq_stats",
@@ -160,7 +160,7 @@ def register_analysis_handlers(registry):
             handler=handle_get_vertipaq_stats,
             input_schema=TOOL_SCHEMAS.get('get_vertipaq_stats', {}),
             category="analysis",
-            sort_order=34
+            sort_order=31
         ),
     ]
 

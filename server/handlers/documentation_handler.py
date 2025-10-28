@@ -67,7 +67,7 @@ def register_documentation_handlers(registry):
             handler=handle_generate_model_documentation_word,
             input_schema=TOOL_SCHEMAS.get('generate_model_documentation_word', {}),
             category="documentation",
-            sort_order=53
+            sort_order=37
         ),
         ToolDefinition(
             name="update_model_documentation_word",
@@ -75,7 +75,7 @@ def register_documentation_handlers(registry):
             handler=handle_update_model_documentation_word,
             input_schema=TOOL_SCHEMAS.get('update_model_documentation_word', {}),
             category="documentation",
-            sort_order=54
+            sort_order=38
         ),
         ToolDefinition(
             name="export_model_explorer_html",
@@ -83,7 +83,7 @@ def register_documentation_handlers(registry):
             handler=handle_export_model_explorer_html,
             input_schema=TOOL_SCHEMAS.get('export_model_explorer_html', {}),
             category="documentation",
-            sort_order=55
+            sort_order=39
         ),
     ]
 

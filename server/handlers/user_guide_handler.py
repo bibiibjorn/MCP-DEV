@@ -109,7 +109,7 @@ def register_user_guide_handlers(registry):
             handler=handle_show_user_guide,
             input_schema=TOOL_SCHEMAS.get('show_user_guide', {}),
             category="help",
-            sort_order=90
+            sort_order=51
         ),
     ]
 

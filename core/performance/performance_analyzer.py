@@ -227,6 +227,39 @@ class EnhancedAMOTraceAnalyzer:
                 data = self._event_buffer[index:]
             return data, len(self._event_buffer)
 
+    def _wait_for_query_end(self, start_index: int, timeout: float = 30.0) -> Tuple[List[Dict[str, Any]], bool]:
+        """
+        Wait for QueryEnd event to arrive in event buffer.
+
+        Returns:
+            Tuple of (events_list, found_query_end_bool)
+        """
+        start_time = time.perf_counter()
+        poll_interval = 0.1  # 100ms polling
+
+        while (time.perf_counter() - start_time) < timeout:
+            events, _ = self._events_since(start_index)
+
+            # Check if we have QueryEnd event
+            has_query_end = any(evt.get("event") == "QueryEnd" for evt in events)
+
+            if has_query_end:
+                logger.debug("QueryEnd event received after %.2fs", time.perf_counter() - start_time)
+                return events, True
+
+            # If we have any events, wait a bit more for QueryEnd
+            if events:
+                # Found some events, give it a bit more time
+                time.sleep(poll_interval)
+            else:
+                # No events yet, shorter sleep
+                time.sleep(poll_interval / 2)
+
+        # Timeout reached
+        events, _ = self._events_since(start_index)
+        logger.debug("Event wait timeout after %.2fs, captured %d events", timeout, len(events))
+        return events, False
+
     def _summarize_events(self, events: List[Dict[str, Any]], fallback_ms: float) -> Optional[Dict[str, Any]]:
         if not events:
             return None
@@ -369,6 +402,7 @@ class EnhancedAMOTraceAnalyzer:
         runs: int = 3,
         clear_cache: bool = True,
         include_event_counts: bool = False,
+        event_timeout: float = 30.0,
     ) -> Dict[str, Any]:
         """Time the query over N runs using the provided executor."""
         results: List[Dict[str, Any]] = []
@@ -396,7 +430,11 @@ class EnhancedAMOTraceAnalyzer:
 
                 event_summary = None
                 if trace_enabled:
-                    events, _ = self._events_since(start_index)
+                    # Wait for QueryEnd event with timeout
+                    events, found_query_end = self._wait_for_query_end(start_index, timeout=event_timeout)
+                    if not found_query_end:
+                        logger.debug("QueryEnd not found after timeout, using %d events captured", len(events))
+
                     event_summary = self._summarize_events(events, elapsed)
                     if event_summary:
                         trace_total = event_summary["total_ms"]
@@ -435,11 +473,16 @@ class EnhancedAMOTraceAnalyzer:
 
             notes: List[str] = []
             if trace_enabled and trace_totals:
-                notes.append("AMO SessionTrace active; FE/SE metrics derived from xEvents")
+                notes.append("AMO SessionTrace active; FE/SE metrics derived from trace events")
             elif trace_enabled:
-                notes.append("AMO SessionTrace active but no matching events captured; falling back to wall-clock timings")
+                notes.append(
+                    "AMO SessionTrace active but QueryEnd/VertiPaqSE events not captured. "
+                    "Power BI Desktop has limited trace support. "
+                    "For SE/FE breakdown, use DAX Studio or Performance Analyzer. "
+                    "See docs/SE_FE_TIMING_ANALYSIS.md for details."
+                )
             else:
-                notes.append("AMO/xEvents not active; returning basic timing only")
+                notes.append("AMO/SessionTrace not active; returning wall-clock timing only")
 
             output: Dict[str, Any] = {
                 "success": True,

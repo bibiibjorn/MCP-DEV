@@ -232,7 +232,7 @@ def register_tmdl_handlers(registry):
             handler=handle_validate_tmdl,
             input_schema=TOOL_SCHEMAS.get('validate_tmdl', {}),
             category="tmdl",
-            sort_order=70
+            sort_order=44
         ),
         ToolDefinition(
             name="tmdl_find_replace",
@@ -240,7 +240,7 @@ def register_tmdl_handlers(registry):
             handler=handle_tmdl_find_replace,
             input_schema=TOOL_SCHEMAS.get('tmdl_find_replace', {}),
             category="tmdl",
-            sort_order=71
+            sort_order=45
         ),
         ToolDefinition(
             name="tmdl_bulk_rename",
@@ -248,7 +248,7 @@ def register_tmdl_handlers(registry):
             handler=handle_tmdl_bulk_rename,
             input_schema=TOOL_SCHEMAS.get('tmdl_bulk_rename', {}),
             category="tmdl",
-            sort_order=72
+            sort_order=46
         ),
         ToolDefinition(
             name="tmdl_generate_script",
@@ -256,7 +256,7 @@ def register_tmdl_handlers(registry):
             handler=handle_tmdl_generate_script,
             input_schema=TOOL_SCHEMAS.get('tmdl_generate_script', {}),
             category="tmdl",
-            sort_order=73
+            sort_order=47
         ),
     ]
 

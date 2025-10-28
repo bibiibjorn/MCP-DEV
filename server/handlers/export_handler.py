@@ -61,7 +61,7 @@ def register_export_handlers(registry):
             handler=handle_export_model_schema,
             input_schema=TOOL_SCHEMAS.get('export_model_schema', {}),
             category="export",
-            sort_order=50
+            sort_order=34
         ),
         ToolDefinition(
             name="export_tmsl",
@@ -69,7 +69,7 @@ def register_export_handlers(registry):
             handler=handle_export_tmsl,
             input_schema=TOOL_SCHEMAS.get('export_tmsl', {}),
             category="export",
-            sort_order=51
+            sort_order=35
         ),
         ToolDefinition(
             name="export_tmdl",
@@ -77,7 +77,7 @@ def register_export_handlers(registry):
             handler=handle_export_tmdl,
             input_schema=TOOL_SCHEMAS.get('export_tmdl', {}),
             category="export",
-            sort_order=52
+            sort_order=36
         ),
     ]
 

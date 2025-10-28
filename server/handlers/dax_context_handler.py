@@ -305,7 +305,7 @@ def register_dax_context_handlers(registry):
             handler=handle_analyze_dax_context,
             input_schema=TOOL_SCHEMAS.get('analyze_dax_context', {}),
             category="dax_context",
-            sort_order=85
+            sort_order=48
         ),
         ToolDefinition(
             name="visualize_filter_context",
@@ -313,7 +313,7 @@ def register_dax_context_handlers(registry):
             handler=handle_visualize_filter_context,
             input_schema=TOOL_SCHEMAS.get('visualize_filter_context', {}),
             category="dax_context",
-            sort_order=86
+            sort_order=49
         ),
         ToolDefinition(
             name="debug_dax_context",
@@ -321,7 +321,7 @@ def register_dax_context_handlers(registry):
             handler=handle_debug_dax_context,
             input_schema=TOOL_SCHEMAS.get('debug_dax_context', {}),
             category="dax_context",
-            sort_order=87
+            sort_order=50
         ),
     ]
 

@@ -247,7 +247,7 @@ def register_query_handlers(registry):
                 "required": ["table"]
             },
             category="query",
-            sort_order=20
+            sort_order=10
         ),
         ToolDefinition(
             name="run_dax",
@@ -275,7 +275,7 @@ def register_query_handlers(registry):
                 "required": ["query"]
             },
             category="query",
-            sort_order=21
+            sort_order=11
         ),
         ToolDefinition(
             name="validate_dax_query",
@@ -292,7 +292,7 @@ def register_query_handlers(registry):
                 "required": ["query"]
             },
             category="query",
-            sort_order=22
+            sort_order=12
         ),
         ToolDefinition(
             name="get_column_value_distribution",
@@ -318,7 +318,7 @@ def register_query_handlers(registry):
                 "required": ["table", "column"]
             },
             category="query",
-            sort_order=23
+            sort_order=13
         ),
         ToolDefinition(
             name="get_column_summary",
@@ -339,7 +339,7 @@ def register_query_handlers(registry):
                 "required": ["table", "column"]
             },
             category="query",
-            sort_order=24
+            sort_order=14
         ),
         ToolDefinition(
             name="list_relationships",
@@ -357,7 +357,7 @@ def register_query_handlers(registry):
                 "required": []
             },
             category="query",
-            sort_order=25
+            sort_order=15
         ),
         ToolDefinition(
             name="get_data_sources",
@@ -369,7 +369,7 @@ def register_query_handlers(registry):
                 "required": []
             },
             category="query",
-            sort_order=26
+            sort_order=16
         ),
         ToolDefinition(
             name="get_m_expressions",
@@ -386,7 +386,7 @@ def register_query_handlers(registry):
                 "required": []
             },
             category="query",
-            sort_order=27
+            sort_order=17
         ),
     ]
 

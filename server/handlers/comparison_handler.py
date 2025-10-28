@@ -97,7 +97,7 @@ def register_comparison_handlers(registry):
             handler=handle_get_model_summary,
             input_schema=TOOL_SCHEMAS.get('get_model_summary', {}),
             category="comparison",
-            sort_order=60
+            sort_order=40
         ),
         ToolDefinition(
             name="prepare_model_comparison",
@@ -105,7 +105,7 @@ def register_comparison_handlers(registry):
             handler=handle_prepare_model_comparison,
             input_schema=TOOL_SCHEMAS.get('prepare_model_comparison', {}),
             category="comparison",
-            sort_order=61
+            sort_order=41
         ),
         ToolDefinition(
             name="compare_pbi_models",
@@ -113,7 +113,7 @@ def register_comparison_handlers(registry):
             handler=handle_compare_pbi_models,
             input_schema=TOOL_SCHEMAS.get('compare_pbi_models', {}),
             category="comparison",
-            sort_order=62
+            sort_order=42
         ),
     ]
 
