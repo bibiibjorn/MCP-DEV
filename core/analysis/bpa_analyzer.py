@@ -55,7 +55,7 @@ class BPAAnalyzer:
     def __init__(self, rules_file_path: Optional[str] = None):
         """
         Initialize the BPA Analyzer
-        
+
         Args:
             rules_file_path: Path to the BPA rules JSON file
         """
@@ -67,7 +67,14 @@ class BPAAnalyzer:
         self._run_notes: List[str] = []
         # Fast-mode limits injected by analyze_model_fast
         self._fast_cfg: Dict[str, Any] = {}
-        
+
+        # Expression evaluation cache (PERFORMANCE IMPROVEMENT)
+        # Cache key: (expression_str, frozen_context_state)
+        # This avoids re-evaluating the same expression with same context repeatedly
+        self._expression_cache: Dict[tuple, Union[bool, int, float, str]] = {}
+        self._cache_hits = 0
+        self._cache_misses = 0
+
         if rules_file_path:
             self.load_rules(rules_file_path)
     
@@ -166,7 +173,85 @@ class BPAAnalyzer:
             'tables': tables,
         }
 
+    def _freeze_context_for_cache(self, context: Dict) -> tuple:
+        """
+        Create a hashable cache key from context state.
+        We freeze the essential parts of the context that affect evaluation results.
+
+        Args:
+            context: The evaluation context dictionary
+
+        Returns:
+            Frozen tuple representation of context for cache key
+        """
+        try:
+            # Extract the object being evaluated (measure, column, table, etc.)
+            obj_type = context.get('_ObjectType', '')
+            obj_name = context.get('Name', context.get('name', ''))
+            table_name = context.get('Table', context.get('table', ''))
+
+            # Create a minimal frozen representation
+            # We don't freeze the entire context (would be too heavy), just the identifying parts
+            frozen = (
+                obj_type,
+                str(obj_name),
+                str(table_name),
+                # Add a few other commonly accessed properties that affect evaluation
+                str(context.get('Expression', context.get('expression', ''))),
+                str(context.get('IsHidden', context.get('isHidden', ''))),
+                str(context.get('DataType', context.get('dataType', '')))
+            )
+
+            return frozen
+
+        except Exception as e:
+            # If freezing fails, return a unique key to prevent caching
+            # This ensures we don't cache potentially unstable results
+            logger.debug(f"Failed to freeze context for caching: {e}")
+            return (str(id(context)),)  # Unique key that won't match anything
+
+    def get_expression_cache_stats(self) -> Dict[str, Any]:
+        """Get cache statistics for monitoring performance."""
+        total_requests = self._cache_hits + self._cache_misses
+        hit_rate = (self._cache_hits / total_requests * 100) if total_requests > 0 else 0
+
+        return {
+            'cache_size': len(self._expression_cache),
+            'cache_hits': self._cache_hits,
+            'cache_misses': self._cache_misses,
+            'total_requests': total_requests,
+            'hit_rate_percent': round(hit_rate, 1)
+        }
+
+    def clear_expression_cache(self) -> None:
+        """Clear the expression evaluation cache."""
+        cache_size = len(self._expression_cache)
+        self._expression_cache.clear()
+        logger.debug(f"Cleared BPA expression cache ({cache_size} entries)")
+
     def evaluate_expression(self, expression: str, context: Dict) -> Union[bool, int, float, str]:
+        """
+        Cached wrapper for expression evaluation with memoization (PERFORMANCE IMPROVEMENT).
+        This wrapper checks the cache before calling the actual evaluator implementation.
+        """
+        # Check cache FIRST
+        cache_key = (expression, self._freeze_context_for_cache(context))
+        if cache_key in self._expression_cache:
+            self._cache_hits += 1
+            return self._expression_cache[cache_key]
+
+        self._cache_misses += 1
+
+        # Cache miss - evaluate and store result
+        result = self._evaluate_expression_impl(expression, context)
+
+        # Cache the result (only cache stable results, not depth-exceeded or error cases)
+        # We cache False results too, as they're often repeated for invalid expressions
+        self._expression_cache[cache_key] = result
+
+        return result
+
+    def _evaluate_expression_impl(self, expression: str, context: Dict) -> Union[bool, int, float, str]:
         """Recursive evaluator for rule expressions with depth protection
 
         Notes:

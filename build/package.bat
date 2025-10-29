@@ -1,4 +1,7 @@
 @echo off
+:: Change to repository root (parent of build/)
+cd /d "%~dp0\.."
+
 echo ========================================
 echo MCP-PowerBi-Finvision Packager
 echo ========================================

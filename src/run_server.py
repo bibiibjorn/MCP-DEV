@@ -8,8 +8,8 @@ import os
 import site
 from pathlib import Path
 
-# Get the directory where this script is located
-script_dir = Path(__file__).parent.absolute()
+# Get the repository root (parent of src/ where this script is located)
+script_dir = Path(__file__).parent.parent.absolute()
 
 # Add bundled dependencies to Python path using site.addsitedir
 # This properly handles .pth files and native extensions (.pyd files)

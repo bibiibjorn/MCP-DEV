@@ -16,7 +16,10 @@
     "enable_trace_logging": false,
     "trace_mode": "full",
     "trace_init_retries": 2,
-    "trace_init_backoff_ms": 150
+    "trace_init_backoff_ms": 150,
+    "table_mapping_cache_ttl": 600,
+    "batch_row_counting": true,
+    "dependency_cache_ttl": 600
   },
   "detection": {
     "cache_instances_seconds": 60,
@@ -145,6 +148,10 @@
     "max_export_path_length": 260,
     "allowed_export_extensions": [".json", ".csv", ".txt", ".xlsx", ".xml", ".graphml", ".yaml", ".yml"]
   },
+  "validation": {
+    "max_relationships_check": null,
+    "warn_on_sampling": true
+  },
   "tool_timeouts": {
     "list_tables": 5,
     "list_columns": 5,
@@ -158,6 +165,19 @@
     "analyze_queries_batch": 180,
     "export_tmsl": 30,
     "export_tmdl": 60,
-    "generate_documentation": 60
+    "generate_documentation": 60,
+    "profile_query_detailed": 120,
+    "batch_profile_queries": 300,
+    "compare_query_performance": 180,
+    "analyze_query_plan": 90
+  },
+  "performance_tracing": {
+    "default_runs": 3,
+    "default_clear_cache": true,
+    "trace_backend_preference": ["amo", "xmla"],
+    "event_timeout_seconds": 30,
+    "max_batch_queries": 20,
+    "auto_export_html": false,
+    "export_directory": "./exports/performance"
   }
 }

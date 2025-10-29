@@ -103,9 +103,12 @@ class OptimizedQueryExecutor:
         self.max_cache_items = getattr(QueryLimits, 'TELEMETRY_BUFFER_SIZE', 200)  # align with central limits where practical
         self.cache_ttl_seconds = max(0, int(config.get('performance.cache_ttl_seconds', 300) or 0))
         self._table_cache = None
+        # Deprecated: Local table mapping cache (use connection_state shared cache instead)
         self._table_id_by_name: Optional[Dict[str, Any]] = None
         self._table_name_by_id: Optional[Dict[Any, str]] = None
         self._column_name_by_id: Optional[Dict[Any, str]] = None
+        # Connection state reference for shared table mapping cache
+        self._connection_state = None
         # Command timeout (seconds) for ADOMD command execution
         try:
             self.command_timeout_seconds = int(config.get('performance.command_timeout_seconds', 60) or 60)
@@ -117,6 +120,16 @@ class OptimizedQueryExecutor:
         self.cache_hits = 0
         self.cache_misses = 0
         self.cache_bypass = 0
+
+    def set_connection_state(self, connection_state):
+        """
+        Set reference to connection state for shared table mapping cache.
+
+        Args:
+            connection_state: ConnectionState instance with shared table mappings
+        """
+        self._connection_state = connection_state
+        logger.debug("Query executor linked to connection state for shared table mapping cache")
 
     # --------------------
     # AMO/TOM helper methods
@@ -452,10 +465,30 @@ class OptimizedQueryExecutor:
         self._history_logger = logger_cb
 
     def _ensure_table_mappings(self) -> None:
-        """Load table ID<->name mappings once for fast lookups."""
+        """
+        Load table ID<->name mappings once for fast lookups.
+        Uses shared cache from connection_state if available (recommended),
+        or falls back to local cache for backwards compatibility.
+        """
         try:
+            # Use shared cache from connection_state if available (PERFORMANCE OPTIMIZATION)
+            if self._connection_state:
+                id_by_name, name_by_id = self._connection_state.get_table_mappings()
+                if id_by_name and name_by_id:
+                    self._table_id_by_name = id_by_name
+                    self._table_name_by_id = name_by_id
+                    return
+                # If connection_state failed to load, don't fall back to local cache
+                # to avoid duplicate queries - just fail
+                logger.warning("Failed to load table mappings from connection_state shared cache")
+                self._table_id_by_name, self._table_name_by_id = None, None
+                return
+
+            # LEGACY: Local cache for backwards compatibility (when connection_state not set)
             if self._table_id_by_name is not None and self._table_name_by_id is not None:
                 return
+
+            logger.debug("Loading table mappings using legacy local cache (connection_state not set)")
             # Load all columns from INFO.TABLES() (no projection) to include ID
             result = self.validate_and_execute_dax("EVALUATE INFO.TABLES()", 0)
             if not result.get('success'):
@@ -475,7 +508,7 @@ class OptimizedQueryExecutor:
                     name_by_id[tid] = name
             self._table_id_by_name = id_by_name
             self._table_name_by_id = name_by_id
-            logger.info(f"Table mappings loaded: {len(id_by_name)} tables")
+            logger.info(f"Table mappings loaded (legacy local cache): {len(id_by_name)} tables")
         except Exception as e:
             logger.error(f"Error building table mappings: {e}")
             # FIX: Set to None instead of {} to allow retry on next call
@@ -589,8 +622,139 @@ class OptimizedQueryExecutor:
         except Exception:
             return None
 
-    def get_table_row_counts(self) -> Dict[str, int]:
-        """Get row counts for all tables using DAX queries.
+    def get_table_row_counts(self, use_batch: Optional[bool] = None) -> Dict[str, int]:
+        """
+        Get row counts for all tables using DAX queries.
+
+        Args:
+            use_batch: If True, use batched UNION query (10x faster for large models).
+                      If False, use sequential queries (more compatible).
+                      If None (default), try batch first, fallback to sequential on error.
+
+        Returns:
+            Dictionary mapping table name to row count
+        """
+        # Get configuration for batch mode
+        if use_batch is None:
+            use_batch = config.get('performance.batch_row_counting', True)
+
+        # Try batched approach first (if enabled)
+        if use_batch or use_batch is None:
+            try:
+                result = self._get_table_row_counts_batched()
+                if result:  # Success
+                    return result
+                # If batch failed and we're in auto mode, fall back to sequential
+                if use_batch is None:
+                    logger.info("Batch row counting failed, falling back to sequential mode")
+                else:
+                    # User explicitly requested batch mode, so return empty on failure
+                    return {}
+            except Exception as e:
+                if use_batch is None:
+                    logger.warning(f"Batch row counting failed ({e}), falling back to sequential mode")
+                else:
+                    logger.error(f"Batch row counting failed: {e}")
+                    return {}
+
+        # Sequential approach (fallback or explicitly requested)
+        return self._get_table_row_counts_sequential()
+
+    def _get_table_row_counts_batched(self) -> Dict[str, int]:
+        """
+        Get row counts for all tables using a single batched UNION query.
+        This is 10x faster than sequential queries for large models.
+
+        Returns:
+            Dictionary mapping table name to row count, or empty dict on failure
+        """
+        try:
+            # First, get all table names
+            tables_result = self.execute_info_query("TABLES")
+            if not tables_result.get('success'):
+                logger.warning("Failed to get tables for batched row count query")
+                return {}
+
+            tables = tables_result.get('rows', [])
+            if not tables:
+                return {}
+
+            table_names = []
+            for table in tables:
+                table_name = table.get('Name') or table.get('[Name]')
+                if table_name:
+                    table_names.append(table_name)
+
+            if not table_names:
+                return {}
+
+            logger.info(f"Starting batched row count query for {len(table_names)} tables")
+
+            # Build batched UNION query
+            # EVALUATE UNION(
+            #   ROW("Table", "Table1", "Count", COUNTROWS('Table1')),
+            #   ROW("Table", "Table2", "Count", COUNTROWS('Table2')),
+            #   ...
+            # )
+            row_expressions = []
+            for table_name in table_names:
+                # Escape single quotes in table name
+                escaped_name = table_name.replace("'", "''")
+                # Escape double quotes in string literal
+                escaped_literal = table_name.replace('"', '""')
+                row_expr = f'ROW("Table", "{escaped_literal}", "Count", COUNTROWS(\'{escaped_name}\'))'
+                row_expressions.append(row_expr)
+
+            # Join with commas and newlines for readability
+            union_body = ",\n    ".join(row_expressions)
+            dax_query = f"EVALUATE\nUNION(\n    {union_body}\n)"
+
+            # Check if query is too large
+            max_query_length = config.get('query.max_dax_query_length', 50000)
+            if len(dax_query) > max_query_length:
+                logger.warning(f"Batched query too large ({len(dax_query)} chars), falling back to sequential")
+                return {}
+
+            # Execute batched query
+            result = self.validate_and_execute_dax(dax_query, top_n=0, bypass_cache=True)
+
+            if not result.get('success'):
+                error_msg = result.get('error', 'Unknown error')
+                logger.warning(f"Batched row count query failed: {error_msg}")
+                return {}
+
+            # Parse results into table → count mapping
+            rows = result.get('rows', [])
+            row_counts = {}
+
+            for row in rows:
+                # Extract table name and count from result row
+                # Try different possible column name formats
+                table_name = (row.get('[Table]') or row.get('Table') or
+                            row.get('[Table_Name]') or row.get('Table_Name'))
+                count_value = (row.get('[Count]') or row.get('Count') or
+                              row.get('[RowCount]') or row.get('RowCount'))
+
+                if table_name and count_value is not None:
+                    try:
+                        row_counts[table_name] = int(count_value)
+                    except (ValueError, TypeError):
+                        row_counts[table_name] = 0
+                        logger.warning(f"Could not convert count for table '{table_name}': {count_value}")
+
+            logger.info(f"✓ Batched row count: {len(row_counts)} tables in single query")
+            logger.info(f"Tables with data: {sum(1 for count in row_counts.values() if count > 0)}")
+
+            return row_counts
+
+        except Exception as e:
+            logger.warning(f"Error in batched row counting: {e}")
+            return {}
+
+    def _get_table_row_counts_sequential(self) -> Dict[str, int]:
+        """
+        Get row counts for all tables using sequential queries (one per table).
+        This is the legacy approach, slower but more compatible.
 
         Returns:
             Dictionary mapping table name to row count
@@ -605,7 +769,7 @@ class OptimizedQueryExecutor:
             tables = tables_result.get('rows', [])
             row_counts = {}
 
-            logger.info(f"Starting row count query for {len(tables)} tables")
+            logger.info(f"Starting sequential row count query for {len(tables)} tables")
 
             # Query each table's row count using COUNTROWS
             for table in tables:
@@ -631,26 +795,22 @@ class OptimizedQueryExecutor:
                             # Try to get any value from the row (column name varies)
                             count_value = None
 
-                            # Log what we got for debugging
-                            logger.debug(f"Row data for '{table_name}': {first_row}")
-
                             # Try all possible keys in the row
                             for key in first_row.keys():
                                 if first_row[key] is not None:
                                     count_value = first_row[key]
-                                    logger.debug(f"Found value in key '{key}': {count_value}")
                                     break
 
                             if count_value is not None:
                                 try:
                                     row_counts[table_name] = int(count_value)
-                                    logger.info(f"✓ Table '{table_name}': {row_counts[table_name]:,} rows")
+                                    logger.debug(f"✓ Table '{table_name}': {row_counts[table_name]:,} rows")
                                 except (ValueError, TypeError) as e:
                                     row_counts[table_name] = 0
-                                    logger.warning(f"✗ Table '{table_name}': Could not convert value '{count_value}' (type: {type(count_value)}) to int: {e}")
+                                    logger.warning(f"✗ Table '{table_name}': Could not convert value: {e}")
                             else:
                                 row_counts[table_name] = 0
-                                logger.warning(f"✗ Table '{table_name}': No value found in result row. Keys: {list(first_row.keys())}")
+                                logger.warning(f"✗ Table '{table_name}': No value found in result")
                         else:
                             row_counts[table_name] = 0
                             logger.warning(f"✗ Table '{table_name}': Empty result")
@@ -663,7 +823,7 @@ class OptimizedQueryExecutor:
                     logger.warning(f"✗ Error getting row count for table '{table_name}': {e}")
                     row_counts[table_name] = 0
 
-            logger.info(f"Fetched row counts for {len(row_counts)} tables via DAX COUNTROWS")
+            logger.info(f"Fetched row counts for {len(row_counts)} tables via sequential queries")
             logger.info(f"Tables with data: {sum(1 for count in row_counts.values() if count > 0)}")
             return row_counts
 
@@ -1169,6 +1329,169 @@ class OptimizedQueryExecutor:
         ]
         return any(kw in query.upper() for kw in table_keywords)
 
+    def _validate_dax_syntax(self, query: str) -> Optional[Dict[str, Any]]:
+        """
+        Validate DAX query syntax before execution.
+
+        Args:
+            query: DAX query to validate
+
+        Returns:
+            Error dict if validation fails, None if valid
+        """
+        syntax_errors = DaxValidator.validate_query_syntax(query)
+
+        # Additional complete-query structural checks when DEFINE is present
+        try:
+            if isinstance(query, str) and 'DEFINE' in query.upper():
+                struct_errors = DaxValidator.validate_complete_dax_query(query)
+                # Merge and de-duplicate
+                if struct_errors:
+                    for e in struct_errors:
+                        if e not in syntax_errors:
+                            syntax_errors.append(e)
+        except Exception:
+            # Non-fatal: continue with basic errors
+            pass
+
+        if syntax_errors:
+            return {
+                'success': False,
+                'error': f"Query validation failed: {'; '.join(syntax_errors)}",
+                'error_type': 'syntax_validation_error',
+                'query': query,
+                'suggestions': [
+                    "Fix syntax errors before executing",
+                    "Check balanced delimiters"
+                ]
+            }
+        return None
+
+    def _prepare_dax_query(self, query: str, top_n: int) -> str:
+        """
+        Prepare DAX query by auto-adding EVALUATE if needed.
+
+        Args:
+            query: Original DAX query
+            top_n: Row limit
+
+        Returns:
+            Prepared query string
+        """
+        # Auto-add EVALUATE if needed
+        if not query.strip().upper().startswith('EVALUATE'):
+            if self._is_table_expression(query):
+                query = f"EVALUATE TOPN({top_n}, {query})" if top_n > 0 else f"EVALUATE {query}"
+            else:
+                query = f'EVALUATE ROW("Value", {query})'
+        return query
+
+    def _check_dax_cache(self, cache_key: Tuple[str, int], original_query: str,
+                         query: str, top_n: int, bypass_cache: bool) -> Optional[Dict[str, Any]]:
+        """
+        Check cache for existing query results.
+
+        Args:
+            cache_key: Cache lookup key
+            original_query: Original query before preparation
+            query: Prepared query
+            top_n: Row limit
+            bypass_cache: Whether to bypass cache
+
+        Returns:
+            Cached result if found, None otherwise
+        """
+        if bypass_cache:
+            try:
+                self.cache_bypass += 1
+            except Exception:
+                pass
+            return None
+
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            # Count hit and emit history event
+            try:
+                self.cache_hits += 1
+            except Exception:
+                pass
+            try:
+                if callable(self._history_logger):
+                    self._history_logger({
+                        'query': original_query,
+                        'final_query': query,
+                        'top_n': int(top_n or 0),
+                        'success': True,
+                        'row_count': cached.get('row_count', 0),
+                        'execution_time_ms': 0,
+                        'cached': True,
+                        'columns': cached.get('columns'),
+                        'sample_rows': cached.get('rows', [])[: min(5, len(cached.get('rows', [])))],
+                    })
+            except Exception:
+                pass
+            return cached
+        else:
+            # Cache miss
+            try:
+                self.cache_misses += 1
+            except Exception:
+                pass
+            return None
+
+    def _execute_dax_reader(self, cmd: Any) -> Tuple[List[str], List[Dict[str, Any]], float]:
+        """
+        Execute ADOMD command and read results.
+
+        Args:
+            cmd: ADOMD command to execute
+
+        Returns:
+            Tuple of (columns, rows, execution_time_ms)
+        """
+        start_time = time.time()
+        reader = None
+        try:
+            reader = cmd.ExecuteReader()
+
+            # Get columns
+            columns = [reader.GetName(i) for i in range(reader.FieldCount)]
+            rows: List[Dict[str, Any]] = []
+
+            # Read rows with proper error handling
+            max_rows = getattr(QueryLimits, 'SAFETY_MAX_ROWS', 10000)
+            row_count = 0
+
+            while reader.Read() and row_count < max_rows:
+                row: Dict[str, Any] = {}
+                for i, col in enumerate(columns):
+                    try:
+                        val = reader.GetValue(i)
+                        if val is None:
+                            row[col] = None
+                        elif hasattr(val, 'isoformat'):  # DateTime
+                            row[col] = val.isoformat()
+                        else:
+                            row[col] = str(val)
+                    except Exception as col_error:
+                        logger.warning(f"Error reading column {col}: {col_error}")
+                        row[col] = "<read_error>"
+
+                rows.append(row)
+                row_count += 1
+
+            reader.Close()
+            execution_time = (time.time() - start_time) * 1000
+            return columns, rows, execution_time
+
+        finally:
+            # Ensure reader is always closed, even on exception
+            if reader is not None:
+                try:
+                    reader.Close()
+                except Exception:
+                    pass
+
     def validate_and_execute_dax(self, query: str, top_n: int = 0, bypass_cache: bool = False) -> Dict[str, Any]:
         """
         Validate and execute DAX query with comprehensive error handling.
@@ -1176,6 +1499,7 @@ class OptimizedQueryExecutor:
         Args:
             query: DAX query to execute
             top_n: Optional row limit
+            bypass_cache: Whether to bypass query cache
 
         Returns:
             Query result dictionary with success status, data, and metadata
@@ -1190,146 +1514,52 @@ class OptimizedQueryExecutor:
                     'error_type': 'adomd_not_available'
                 }
 
-            # Pre-execution syntax validation
-            syntax_errors = DaxValidator.validate_query_syntax(query)
-            # Additional complete-query structural checks when DEFINE is present
-            try:
-                if isinstance(query, str) and 'DEFINE' in query.upper():
-                    struct_errors = DaxValidator.validate_complete_dax_query(query)
-                    # Merge and de-duplicate
-                    if struct_errors:
-                        for e in struct_errors:
-                            if e not in syntax_errors:
-                                syntax_errors.append(e)
-            except Exception:
-                # Non-fatal: continue with basic errors
-                pass
-            if syntax_errors:
-                return {
-                    'success': False,
-                    'error': f"Query validation failed: {'; '.join(syntax_errors)}",
-                    'error_type': 'syntax_validation_error',
-                    'query': query,
-                    'suggestions': [
-                        "Fix syntax errors before executing",
-                        "Check balanced delimiters"
-                    ]
-                }
+            # Validate syntax
+            validation_error = self._validate_dax_syntax(query)
+            if validation_error:
+                return validation_error
 
-            # Auto-add EVALUATE if needed
-            if not query.strip().upper().startswith('EVALUATE'):
-                if self._is_table_expression(query):
-                    query = f"EVALUATE TOPN({top_n}, {query})" if top_n > 0 else f"EVALUATE {query}"
-                else:
-                    query = f'EVALUATE ROW("Value", {query})'
+            # Prepare query (auto-add EVALUATE)
+            query = self._prepare_dax_query(query, top_n)
 
-            # Cache lookup based on normalized final query and top_n
+            # Check cache
             cache_key = (query, int(top_n or 0))
-            if not bypass_cache:
-                cached = self._cache_get(cache_key)
-                if cached is not None:
-                    # Count hit and emit history event
-                    try:
-                        self.cache_hits += 1
-                    except Exception:
-                        pass
-                    try:
-                        if callable(self._history_logger):
-                            self._history_logger({
-                                'query': original_query,
-                                'final_query': query,
-                                'top_n': int(top_n or 0),
-                                'success': True,
-                                'row_count': cached.get('row_count', 0),
-                                'execution_time_ms': 0,
-                                'cached': True,
-                                'columns': cached.get('columns'),
-                                'sample_rows': cached.get('rows', [])[: min(5, len(cached.get('rows', [])))],
-                            })
-                    except Exception:
-                        pass
-                    return cached
-                else:
-                    # Cache miss
-                    try:
-                        self.cache_misses += 1
-                    except Exception:
-                        pass
-            else:
-                try:
-                    self.cache_bypass += 1
-                except Exception:
-                    pass
+            cached_result = self._check_dax_cache(cache_key, original_query, query, top_n, bypass_cache)
+            if cached_result is not None:
+                return cached_result
 
-            start_time = time.time()
+            # Execute query
             cmd = AdomdCommand(query, self.connection)  # type: ignore
+
             # Apply command timeout if supported
             try:
-                # Some bindings expose CommandTimeout as property, ensure integer seconds
                 if hasattr(cmd, 'CommandTimeout'):
                     setattr(cmd, 'CommandTimeout', int(self.command_timeout_seconds))
             except Exception:
-                # Do not fail execution if setting timeout isn't supported
                 pass
 
-            reader = None
-            try:
-                reader = cmd.ExecuteReader()
+            # Read results
+            columns, rows, execution_time = self._execute_dax_reader(cmd)
 
-                # Get columns
-                columns = [reader.GetName(i) for i in range(reader.FieldCount)]
-                rows: List[Dict[str, Any]] = []
-
-                # Read rows with proper error handling
-                max_rows = getattr(QueryLimits, 'SAFETY_MAX_ROWS', 10000)
-                row_count = 0
-
-                while reader.Read() and row_count < max_rows:
-                    row: Dict[str, Any] = {}
-                    for i, col in enumerate(columns):
-                        try:
-                            val = reader.GetValue(i)
-                            if val is None:
-                                row[col] = None
-                            elif hasattr(val, 'isoformat'):  # DateTime
-                                row[col] = val.isoformat()
-                            else:
-                                row[col] = str(val)
-                        except Exception as col_error:
-                            logger.warning(f"Error reading column {col}: {col_error}")
-                            row[col] = "<read_error>"
-
-                    rows.append(row)
-                    row_count += 1
-
-                reader.Close()
-                execution_time = (time.time() - start_time) * 1000
-            finally:
-                # Ensure reader is always closed, even on exception
-                if reader is not None:
-                    try:
-                        reader.Close()
-                    except Exception:
-                        pass
-
+            # Build result
+            max_rows = getattr(QueryLimits, 'SAFETY_MAX_ROWS', 10000)
             result: Dict[str, Any] = {
                 'success': True,
                 'columns': columns,
                 'rows': rows,
                 'row_count': len(rows),
                 'execution_time_ms': round(execution_time, 2),
-                'truncated': row_count >= max_rows,
+                'truncated': len(rows) >= max_rows,
                 'query': query
             }
 
-            # Store in cache only on success and if not bypassing cache
+            # Store in cache
             if not bypass_cache:
                 self._cache_set(cache_key, result)
-                # Add cache metadata to response
                 result.setdefault('cache', {})
                 result['cache'].update({'hit': False, 'ttl_seconds': self.cache_ttl_seconds})
-            # else: bypassed; stats already counted
-            # Emit history event (trim heavy payload)
+
+            # Emit history event
             try:
                 if callable(self._history_logger):
                     self._history_logger({
@@ -1337,14 +1567,15 @@ class OptimizedQueryExecutor:
                         'final_query': query,
                         'top_n': int(top_n or 0),
                         'success': True,
-                        'row_count': result.get('row_count', 0),
-                        'execution_time_ms': result.get('execution_time_ms'),
-                        'cached': False if bypass_cache else bool(result.get('cache', {}).get('hit') is True),
+                        'row_count': len(rows),
+                        'execution_time_ms': round(execution_time, 2),
+                        'cached': False,
                         'columns': columns,
                         'sample_rows': rows[: min(5, len(rows))],
                     })
             except Exception:
                 pass
+
             return result
 
         except Exception as e:

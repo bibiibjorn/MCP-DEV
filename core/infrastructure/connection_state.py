@@ -5,7 +5,7 @@ Manages connection state and service initialization to avoid repeated initializa
 """
 
 import logging
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, Optional, Type, Tuple
 from core.config.config_manager import config
 import threading
 
@@ -50,17 +50,123 @@ class ConnectionState:
         self._last_result_meta: Dict[str, Any] = {}
         # Init lock for lazy managers
         self._init_lock = threading.RLock()
+
+        # Table mapping cache (shared across all tool invocations)
+        # This cache persists table ID<->name mappings to avoid repeated INFO.TABLES() queries
+        self._table_id_by_name: Optional[Dict[str, Any]] = None
+        self._table_name_by_id: Optional[Dict[Any, str]] = None
+        self._table_mapping_timestamp: Optional[float] = None
+        self._table_mapping_ttl: int = config.get('performance.table_mapping_cache_ttl', 600)  # 10 minutes default
     
     def is_connected(self) -> bool:
         """Check if currently connected to Power BI."""
-        return (self._is_connected and 
-                self.connection_manager is not None and 
+        return (self._is_connected and
+                self.connection_manager is not None and
                 self.connection_manager.is_connected())
-    
+
     def set_connection_manager(self, connection_manager):
         """Set the connection manager instance."""
         self.connection_manager = connection_manager
         self._is_connected = connection_manager.is_connected() if connection_manager else False
+
+    def _is_table_mapping_cache_valid(self) -> bool:
+        """Check if table mapping cache is valid (not expired)."""
+        if self._table_id_by_name is None or self._table_name_by_id is None:
+            return False
+        if self._table_mapping_timestamp is None:
+            return False
+        import time
+        age = time.time() - self._table_mapping_timestamp
+        return age <= self._table_mapping_ttl
+
+    def get_table_mappings(self, refresh: bool = False) -> tuple[Optional[Dict[str, Any]], Optional[Dict[Any, str]]]:
+        """
+        Get cached table ID<->name mappings, loading them if needed.
+
+        Args:
+            refresh: Force refresh from database even if cache is valid
+
+        Returns:
+            Tuple of (id_by_name dict, name_by_id dict) or (None, None) on error
+        """
+        # Return cached mappings if valid and not forcing refresh
+        if not refresh and self._is_table_mapping_cache_valid():
+            logger.debug(f"Table mappings cache hit ({len(self._table_id_by_name or {})} tables)")
+            return (self._table_id_by_name, self._table_name_by_id)
+
+        # Load fresh mappings
+        try:
+            if not self.query_executor:
+                logger.warning("Cannot load table mappings: query executor not initialized")
+                return (None, None)
+
+            logger.debug("Loading table mappings from INFO.TABLES()...")
+            # NOTE: No circular dependency here - INFO.TABLES() is a system function that
+            # doesn't require table name resolution, so validate_and_execute_dax() won't
+            # call _ensure_table_mappings() for this query
+            result = self.query_executor.validate_and_execute_dax("EVALUATE INFO.TABLES()", 0)
+
+            if not result.get('success'):
+                logger.error(f"Failed to load table mappings: {result.get('error')}")
+                return (None, None)
+
+            id_by_name: Dict[str, Any] = {}
+            name_by_id: Dict[Any, str] = {}
+
+            for row in result.get('rows', []):
+                # Check bracketed keys FIRST since Power BI Desktop returns [ID] and [Name]
+                name = row.get('[Name]') or row.get('Name') or row.get('[TABLE_NAME]') or row.get('TABLE_NAME')
+                tid = row.get('[ID]') or row.get('ID') or row.get('[TableID]') or row.get('TableID')
+
+                if name is not None and tid is not None:
+                    id_by_name[name] = tid
+                    name_by_id[tid] = name
+
+            # Update cache with timestamp
+            import time
+            self._table_id_by_name = id_by_name
+            self._table_name_by_id = name_by_id
+            self._table_mapping_timestamp = time.time()
+
+            logger.info(f"Table mappings loaded and cached: {len(id_by_name)} tables (TTL: {self._table_mapping_ttl}s)")
+            return (self._table_id_by_name, self._table_name_by_id)
+
+        except Exception as e:
+            logger.error(f"Error loading table mappings: {e}")
+            return (None, None)
+
+    def invalidate_table_mappings(self) -> Dict[str, Any]:
+        """
+        Manually invalidate table mapping cache, forcing reload on next access.
+        Useful after schema changes (e.g., table rename, add/delete).
+
+        Returns:
+            Status dictionary with invalidation result
+        """
+        try:
+            had_cache = self._table_id_by_name is not None
+            table_count = len(self._table_id_by_name) if self._table_id_by_name else 0
+
+            self._table_id_by_name = None
+            self._table_name_by_id = None
+            self._table_mapping_timestamp = None
+
+            if had_cache:
+                logger.info(f"Table mapping cache invalidated ({table_count} tables)")
+                return {
+                    'success': True,
+                    'message': f'Cache invalidated ({table_count} tables)',
+                    'tables_cleared': table_count
+                }
+            else:
+                return {
+                    'success': True,
+                    'message': 'No cache to invalidate',
+                    'tables_cleared': 0
+                }
+        except Exception as e:
+            logger.error(f"Error invalidating table mapping cache: {e}")
+            return {'success': False, 'error': str(e)}
     
     def initialize_managers(self, force_reinit: bool = False):
         """
@@ -104,6 +210,11 @@ class ConnectionState:
                 # Initialize query executor first (others depend on it)
                 if not self.query_executor or force_reinit:
                     self.query_executor = OptimizedQueryExecutor(conn)
+                    # Link to connection state for shared table mapping cache (PERFORMANCE)
+                    try:
+                        self.query_executor.set_connection_state(self)
+                    except Exception as e:
+                        logger.warning(f"Failed to link query executor to connection state: {e}")
                     # Register history logger to capture executions
                     try:
                         self.query_executor.set_history_logger(self._history_logger)
@@ -265,6 +376,11 @@ class ConnectionState:
         self._is_connected = False
         self._connection_info = None
         self._managers_initialized = False
+
+        # Clear table mapping cache
+        self._table_id_by_name = None
+        self._table_name_by_id = None
+        self._table_mapping_timestamp = None
 
         logger.info("Connection state cleaned up")
 

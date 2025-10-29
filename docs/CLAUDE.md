@@ -11,6 +11,86 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Primary Language**: Python 3.10+
 - **Distribution Format**: `.mcpb` package (bundled with dependencies)
 
+## MANDATORY: Always Use Specialized Skills and Agents
+
+**CRITICAL**: Before responding to ANY task, you MUST check if it matches these categories and delegate to the corresponding specialized agent. DO NOT attempt these tasks directly without invoking the appropriate agent first.
+
+### Task Delegation Matrix
+
+#### Power BI & Data Analysis
+| Task Type | Slash Command | When to Use |
+|-----------|---------------|-------------|
+| **Power BI Development** | `/powerbi-dev` | Model creation, measure implementation, relationship setup, general Power BI work with MCP tools |
+| **Power BI Analysis** | `/powerbi-analyst` | Performance investigation, query analysis, SE/FE optimization, VertiPaq analysis, bottleneck identification |
+| **Power BI Architecture** | `/powerbi-architect` | Model design, star schema planning, scalability architecture, relationship strategy, incremental refresh |
+| **DAX Optimization** | `/dax` | Complex DAX formulas, calculation groups, time intelligence, advanced patterns, DAX performance tuning |
+| **Power Query (M)** | `/m-query` | Power Query transformations, query folding, M code optimization, ETL logic, data refresh optimization |
+| **Power BI Security** | `/powerbi-security` | Row-Level Security (RLS), Object-Level Security (OLS), dynamic security, security role testing |
+| **Data Engineering** | `/data-engineer` | Data pipeline design, ETL workflows, SQL optimization, data modeling, data quality validation |
+
+#### Development & Code Quality
+| Task Type | Slash Command | When to Use |
+|-----------|---------------|-------------|
+| **Python Development** | `/python` | Production Python code, type hints, async patterns, pythonic code, modern Python features |
+| **TypeScript Development** | `/typescript` | Type-safe TypeScript, advanced types, generics, React/Node.js patterns, MCP SDK work |
+| **Code Implementation** | `/code` | General feature implementation, file creation, algorithm implementation, integration work |
+| **Testing & TDD** | `/test` | Unit tests, integration tests, test-driven development, test coverage, testing strategies |
+| **Code Review** | `/review` | Code quality review, security analysis, best practices validation, correctness checks |
+| **Refactoring** | `/refactor` | Legacy code improvement, SOLID principles, design patterns, code smell elimination |
+| **Performance Optimization** | `/performance` | Profiling, bottleneck identification, algorithm optimization, memory optimization |
+| **Security Auditing** | `/security` | Vulnerability detection, security audits, input validation, authentication/authorization review |
+
+#### MCP & Infrastructure
+| Task Type | Slash Command | When to Use |
+|-----------|---------------|-------------|
+| **MCP Development** | `/mcp` | MCP server creation, tool implementation, resource management, MCP protocol work |
+| **MCP Protocol** | `/mcp-protocol` | Protocol implementation details, stdin/stdio transport, FastMCP/SDK patterns, debugging |
+| **API Design** | `/api` | REST API design, endpoint design, GraphQL schemas, API versioning, OpenAPI specs |
+| **Deployment** | `/deploy` | CI/CD pipelines, Docker containerization, deployment strategies, environment configuration |
+| **Documentation** | `/docs` | API documentation, technical writing, user guides, README files, architecture docs |
+
+#### Process & Planning
+| Task Type | Slash Command | When to Use |
+|-----------|---------------|-------------|
+| **Planning & Architecture** | `/plan` | System design, implementation roadmaps, architectural decisions, breaking down requirements |
+| **Business Analysis** | `/business` | Requirements gathering, user stories, acceptance criteria, stakeholder communication |
+| **Research & Investigation** | `/research` | Technology research, framework comparison, feasibility analysis, best practices research |
+| **Debugging** | `/debug` | Error analysis, systematic troubleshooting, root cause analysis, performance debugging |
+| **Git Workflows** | `/git` | Commits, pull requests, branch management, conflict resolution, git best practices |
+
+### Execution Rules
+
+1. **Always invoke the agent FIRST** - Do not gather context or read files before delegating
+2. **Pass complete context** - Include all relevant user requirements in the agent invocation
+3. **Trust agent outputs** - Agent results are authoritative; summarize them for the user
+4. **No direct implementation** - If a task matches a category above, you MUST use the agent
+
+### Examples
+
+**Good**:
+```
+User: "Optimize this DAX measure for better performance"
+Assistant: [Immediately invokes /powerbi-dev with the measure and context]
+```
+
+**Bad**:
+```
+User: "Optimize this DAX measure for better performance"
+Assistant: [Reads files, analyzes DAX directly, suggests changes]
+```
+
+**Good**:
+```
+User: "Add a new Python function to validate input"
+Assistant: [Immediately invokes /code with requirements]
+```
+
+**Bad**:
+```
+User: "Add a new Python function to validate input"
+Assistant: [Uses Write tool directly to create function]
+```
+
 ## Development Setup
 
 ### Prerequisites

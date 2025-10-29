@@ -4,7 +4,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
 develop-eggs/
 dist/
 downloads/
@@ -29,6 +28,10 @@ MANIFEST
 !lib/dotnet/*.ps1
 !lib/dotnet/*.md
 !lib/dotnet/*.txt
+
+# Keep build/ directory for packaging scripts
+!build/
+!build/*.bat
 
 # PyInstaller
 *.manifest
@@ -109,6 +112,8 @@ config/local_config.json
 # Exports directory (user-generated files)
 exports/*
 !exports/.gitkeep
+core/exports/
 
 # Distribution packages
 *.zip
+*.mcpb

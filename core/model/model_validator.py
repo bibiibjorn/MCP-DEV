@@ -4,7 +4,9 @@ Validates model integrity and data quality
 """
 
 import logging
-from typing import Dict, Any, List
+import random
+from typing import Dict, Any, List, Optional
+from core.config.config_manager import config
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +17,39 @@ class ModelValidator:
     def __init__(self, query_executor):
         """Initialize with query executor."""
         self.executor = query_executor
+        self._sampling_warnings = []
+
+    def _get_sampled_relationships(self, relationships: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Apply sampling to relationships list based on configuration.
+
+        Args:
+            relationships: Full list of relationships from INFO.RELATIONSHIPS()
+
+        Returns:
+            Sampled list (or full list if no limit configured)
+        """
+        max_items = config.get('validation.max_relationships_check', None)
+        warn_on_sampling = config.get('validation.warn_on_sampling', True)
+
+        # If no limit, return all relationships
+        if max_items is None:
+            return relationships
+
+        # If limit is greater than or equal to actual count, return all
+        if len(relationships) <= max_items:
+            return relationships
+
+        # Sample relationships
+        sampled = random.sample(relationships, max_items)
+
+        # Add warning about sampling
+        if warn_on_sampling:
+            warning_msg = f"Sampled {max_items} of {len(relationships)} relationships for validation (full validation disabled)"
+            self._sampling_warnings.append(warning_msg)
+            logger.warning(warning_msg)
+
+        return sampled
 
     def validate_model_integrity(self) -> Dict[str, Any]:
         """
@@ -24,6 +59,7 @@ class ModelValidator:
             Validation results with issues found
         """
         issues = []
+        self._sampling_warnings = []  # Reset warnings for this validation run
 
         try:
             # Check 1: Relationships with missing keys
@@ -64,7 +100,7 @@ class ModelValidator:
 
             is_valid = len(critical) == 0 and len(high) == 0
 
-            return {
+            result = {
                 'success': True,
                 'is_valid': is_valid,
                 'total_issues': len(issues),
@@ -77,6 +113,15 @@ class ModelValidator:
                 },
                 'recommendation': 'Fix critical and high issues before deploying' if not is_valid else 'Model passed validation'
             }
+
+            # Include sampling warnings if any
+            if self._sampling_warnings:
+                result['warnings'] = self._sampling_warnings
+                result['validation_scope'] = 'sampled'
+            else:
+                result['validation_scope'] = 'full'
+
+            return result
 
         except Exception as e:
             logger.error(f"Validation error: {e}")
@@ -101,7 +146,10 @@ class ModelValidator:
             if not rels_result.get('success'):
                 return issues
 
-            for rel in rels_result['rows'][:10]:  # Check first 10 relationships
+            # Apply sampling based on configuration (default: unlimited)
+            relationships = self._get_sampled_relationships(rels_result['rows'])
+
+            for rel in relationships:
                 from_table = _get_any(rel, ['FromTable'])
                 from_col = _get_any(rel, ['FromColumn'])
                 to_table = _get_any(rel, ['ToTable'])
@@ -160,10 +208,13 @@ class ModelValidator:
             if not rels_result.get('success'):
                 return issues
 
+            # Apply sampling based on configuration (default: unlimited)
+            relationships = self._get_sampled_relationships(rels_result['rows'])
+
             # Check "to" side of relationships (dimension side)
             checked_tables = set()
 
-            for rel in rels_result['rows'][:10]:
+            for rel in relationships:
                 to_table = _get_any(rel, ['ToTable'])
                 to_col = _get_any(rel, ['ToColumn'])
                 if not to_table or not to_col:
@@ -224,9 +275,12 @@ class ModelValidator:
             if not rels_result.get('success'):
                 return issues
 
+            # Apply sampling based on configuration (default: unlimited)
+            relationships = self._get_sampled_relationships(rels_result['rows'])
+
             checked = set()
 
-            for rel in rels_result['rows'][:10]:
+            for rel in relationships:
                 # Check both sides
                 for side in ['From', 'To']:
                     table = _get_any(rel, [f'{side}Table'])

@@ -9,7 +9,7 @@ import logging
 import time
 import threading
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -225,7 +225,10 @@ class XmlaTraceManager:
 
     def get_trace_events(self, timeout: float = 30.0) -> List[Dict[str, Any]]:
         """
-        Retrieve trace events via XMLA Discover command.
+        Retrieve trace events from event buffer.
+
+        In Power BI Desktop, XMLA trace events must be captured via file-based
+        approach or real-time polling. This implementation returns buffered events.
 
         Args:
             timeout: Maximum time to wait for events (seconds)
@@ -236,11 +239,88 @@ class XmlaTraceManager:
         if not self.connection or not self.trace_id:
             return []
 
-        # TODO: Implement event retrieval via DISCOVER_TRACE_EVENT_CATEGORIES
-        # or by reading trace file if configured
+        with self._event_lock:
+            # Return copy of event buffer
+            events = list(self._event_buffer)
+            return events
 
-        logger.debug("Event retrieval via XMLA not yet implemented")
-        return []
+    def wait_for_query_end(self, start_index: int, timeout: float = 30.0) -> Tuple[List[Dict[str, Any]], bool]:
+        """
+        Wait for QueryEnd event to appear in buffer.
+
+        Args:
+            start_index: Buffer index to start reading from
+            timeout: Maximum time to wait (seconds)
+
+        Returns:
+            Tuple of (events_since_index, found_query_end)
+        """
+        start_time = time.time()
+        poll_interval = 0.1  # 100ms
+
+        while (time.time() - start_time) < timeout:
+            with self._event_lock:
+                if start_index < len(self._event_buffer):
+                    events = self._event_buffer[start_index:]
+                    # Check for QueryEnd
+                    has_query_end = any(
+                        evt.get("EventClass") == 10 for evt in events
+                    )
+                    if has_query_end:
+                        return events, True
+
+            time.sleep(poll_interval)
+
+        # Timeout - return what we have
+        with self._event_lock:
+            events = self._event_buffer[start_index:] if start_index < len(self._event_buffer) else []
+            return events, False
+
+    def summarize_events(self, events: List[Dict[str, Any]], fallback_ms: float = 0.0) -> Dict[str, Any]:
+        """
+        Summarize trace events into SE/FE breakdown.
+
+        Args:
+            events: List of trace events to analyze
+            fallback_ms: Fallback total time if QueryEnd not found
+
+        Returns:
+            Dictionary with timing breakdown and event counts
+        """
+        # Event IDs for SE operations
+        SE_EVENT_IDS = {83, 85, 86, 99}  # VertiPaqSEQueryEnd, CacheMatch, CacheMiss, DirectQueryEnd
+
+        total_ms = None
+        se_ms = 0.0
+        counts: Dict[int, int] = defaultdict(int)
+
+        for evt in events:
+            event_id = evt.get("EventClass", 0)
+            counts[event_id] += 1
+
+            duration = evt.get("Duration", 0) or 0
+
+            # QueryEnd (event 10) gives total timing
+            if event_id == 10:
+                total_ms = float(duration)
+            # SE events contribute to SE timing
+            elif event_id in SE_EVENT_IDS:
+                se_ms += float(duration)
+
+        # Use fallback if QueryEnd not captured
+        if total_ms is None:
+            total_ms = max(fallback_ms, 0.0)
+
+        fe_ms = max(total_ms - se_ms, 0.0)
+
+        return {
+            "total_ms": round(total_ms, 2),
+            "se_ms": round(se_ms, 2),
+            "fe_ms": round(fe_ms, 2),
+            "se_percent": round((se_ms / total_ms * 100) if total_ms > 0 else 0, 1),
+            "fe_percent": round((fe_ms / total_ms * 100) if total_ms > 0 else 0, 1),
+            "event_counts": {f"event_{k}": v for k, v in counts.items()},
+        }
 
     def close(self) -> None:
         """Close XMLA connection and cleanup."""
