@@ -1,7 +1,8 @@
 # MCP-PowerBi-Finvision
 
+**Version 4.2.01** - Production-ready MCP server for comprehensive Power BI analysis
 
-Enables Claude and other AI assistants to analyze Power BI models locally—browse schema, inspect DAX and M code, run performance checks, export documentation, and more. Everything runs locally over stdio with no exposed ports.
+Enables Claude and other AI assistants to analyze Power BI models locally—browse schema, inspect DAX and M code, run performance checks, export documentation, edit TMDL, debug DAX context, and more. Everything runs locally over stdio with no exposed ports.
 
 ---
 
@@ -13,12 +14,34 @@ Enables Claude and other AI assistants to analyze Power BI models locally—brow
 - **Inspect code** - DAX expressions, M/Power Query formulas
 - **Dependency analysis** - measure dependencies, unused objects detection
 - **Interactive HTML explorer** with D3.js visualization and full search
+- **Table descriptions** - comprehensive table metadata with columns, measures, and relationships
+
+### DAX Development & Debugging ⭐ NEW
+- **DAX context analysis** - analyze context transitions and filter context flow
+- **Visual filter context** - interactive visualization of filter propagation
+- **Step-by-step debugging** - debug DAX expressions with detailed context insights
+- **DAX validation** - syntax validation with detailed error messages
+- **DAX reference parsing** - extract measure and column dependencies
+
+### TMDL Editing & Management ⭐ NEW
+- **TMDL validation** - syntax validation with linting and error reporting
+- **Find & replace** - regex-supported search and replace across TMDL files
+- **Bulk renaming** - rename objects with automatic reference updates
+- **Script generation** - generate TMDL scripts from definitions
+- **Semantic diff** - intelligent comparison of TMDL changes
+
+### Model Operations ⭐ ENHANCED
+- **Measure management** - create, update, delete single or bulk measures
+- **Calculation groups** - list, create, and delete calculation groups
+- **Partition management** - view and manage table partitions
+- **RLS management** - list and manage Row-Level Security roles
 
 ### Performance & Optimization
 - **DAX query execution** with Storage Engine / Formula Engine breakdown
 - **Performance profiling** - cardinality checks, storage compression analysis
 - **Query benchmarking** - compare multiple DAX variants, find the fastest
 - **Cache management** - TTL-based caching with configurable policies
+- **VertiPaq statistics** - detailed storage and compression analysis
 
 ### Best Practices & Quality
 - **Best Practice Analyzer (BPA)** - 120+ default rules, 150+ comprehensive rules
@@ -39,6 +62,7 @@ Enables Claude and other AI assistants to analyze Power BI models locally—brow
 - **Comprehensive error handling** - user-friendly messages with fix suggestions
 - **Timeout protection** - per-tool timeouts (5s to 300s)
 - **Audit logging** - structured logs with telemetry tracking
+- **Token usage tracking** - monitor and manage token consumption
 
 ---
 
@@ -101,41 +125,85 @@ Configure in Claude Desktop (`claude_desktop_config.json`):
 1. **Open Power BI Desktop** with a `.pbix` or `.pbip` file
 2. **Wait 10-15 seconds** for the model to load
 3. **In Claude Desktop**, ask:
+
+   **Basic Operations:**
    - "Detect Power BI instances"
    - "Connect to the first instance"
    - "Show me all measures"
+   - "Describe the Sales table"
+
+   **Analysis:**
    - "Run a full analysis of the model"
    - "What are the performance bottlenecks?"
+   - "Analyze best practices"
+
+   **DAX Development:**
+   - "Debug this DAX measure: [Total Sales]"
+   - "Show me the filter context flow for this measure"
+   - "Analyze context transitions in this DAX expression"
+
+   **TMDL Operations:**
+   - "Validate TMDL syntax"
+   - "Find and replace 'OldName' with 'NewName' in TMDL"
+   - "Bulk rename all measures starting with 'old_'"
+
+   **Model Operations:**
+   - "Create a calculation group for time intelligence"
+   - "List all RLS roles"
+   - "Show table partitions"
 
 ---
 
-## Available Tools (20+)
+## Available Tools (50+)
 
-| Category | Tool | Description |
-|----------|------|-------------|
-| **Connection** | `detect_pbi_instances` | Detect running Power BI Desktop instances |
-| | `connect_to_instance` | Connect to a specific instance |
-| **Schema** | `list_tables` | List all tables in the model |
-| | `list_columns` | List columns for a specific table |
-| | `list_measures` | List all measures with metadata |
-| | `get_measure_details` | Get detailed measure information |
-| | `get_relationships` | Get all relationships |
-| **DAX** | `run_dax` | Execute DAX queries |
-| | `validate_dax` | Validate DAX syntax |
-| | `analyze_dax` | Performance analysis with SE/FE breakdown |
-| **M/Power Query** | `get_m_expressions` | Get M expressions for tables |
-| **Analysis** | `full_analysis` | Comprehensive model analysis |
-| | `analyze_best_practices_unified` | BPA + M practices scan |
-| | `analyze_performance_unified` | Query perf + cardinality + storage |
-| **Export** | `export_schema` | Export compact schema (JSON) |
-| | `export_documentation` | Export comprehensive docs (JSON) |
-| | `generate_model_documentation_word` | Generate Word report with graphs |
-| | `export_model_explorer_html` | Interactive HTML explorer |
-| | `compare_pbi_models` | Compare two models (TMDL diff) |
-| **PBIP** | `analyze_pbip_repository` | Analyze PBIP project (offline) |
-| **Diagnostics** | `get_server_info` | Server diagnostic information |
-| | `get_cache_stats` | Cache performance metrics |
-| | `get_rate_limit_stats` | Rate limiting statistics |
+All tools are organized with numerical prefixes for easy discovery (01_ for Connection, 02_ for Schema, etc.)
+
+| Category | Count | Key Tools |
+|----------|-------|-----------|
+| **01 - Connection** | 2 | Detect instances, connect to Power BI Desktop |
+| **02 - Schema** | 8 | List/search tables, columns, measures, calculated columns |
+| **03 - Query** | 8 | Run DAX, preview data, get distributions, M expressions |
+| **04 - Model Operations** | 9 | Measures, calculation groups, partitions, RLS roles |
+| **05 - Analysis** | 5 | Full analysis, best practices, performance, integrity |
+| **06 - Dependencies** | 2 | Measure dependencies, impact analysis |
+| **07 - Export** | 3 | Schema, TMSL, TMDL export |
+| **08 - Documentation** | 3 | Word reports, HTML explorer, update docs |
+| **09 - Comparison** | 3 | Model summary, prepare comparison, compare models |
+| **10 - PBIP** | 1 | Offline PBIP repository analysis |
+| **11 - TMDL** ⭐ NEW | 4 | Validate, find/replace, bulk rename, script generation |
+| **12 - DAX Context** ⭐ NEW | 3 | Context analysis, filter visualization, debugging |
+| **13 - Help** | 1 | Comprehensive user guide |
+
+### Highlighted Tools
+
+**DAX Development:**
+- `12_analyze_dax_context` - Analyze context transitions and row context
+- `12_visualize_filter_context` - Visualize filter propagation through relationships
+- `12_debug_dax_context` - Step-by-step DAX debugging with context details
+
+**TMDL Management:**
+- `11_validate_tmdl` - Validate TMDL syntax with linting
+- `11_tmdl_find_replace` - Find and replace with regex support
+- `11_tmdl_bulk_rename` - Bulk rename with automatic reference updates
+- `11_tmdl_generate_script` - Generate TMDL scripts from definitions
+
+**Model Operations:**
+- `04_list_calculation_groups` - List calculation groups
+- `04_create_calculation_group` - Create new calculation groups
+- `04_delete_calculation_group` - Delete calculation groups
+- `04_list_partitions` - View table partitions
+- `04_list_roles` - List RLS roles
+
+**Analysis:**
+- `05_full_analysis` - Comprehensive model analysis with BPA
+- `05_analyze_best_practices` - BPA + M query practices
+- `05_analyze_performance` - Performance analysis (queries/cardinality/storage)
+- `05_get_vertipaq_stats` - Detailed VertiPaq storage statistics
+
+**Schema:**
+- `02_describe_table` - Comprehensive table description with columns, measures, relationships
+- `02_search_objects` - Search across tables, columns, and measures
+- `02_search_string` - Search in measure names and expressions
 
 ---
 
@@ -147,9 +215,11 @@ Claude Desktop (MCP Client)
     ↓ stdio
 MCP Server (pbixray_server_enhanced.py)
     ↓
-Agent Policy Layer (orchestration + guardrails)
+Server Layer (dispatch, middleware, registry)
     ↓
-Core Services (connection, query, performance, etc.)
+Orchestration Layer (agents, policies, workflows)
+    ↓
+Core Services (50+ modules across 9 domains)
     ↓
 ADOMD.NET / TOM/AMO (.NET assemblies via pythonnet)
     ↓
@@ -158,60 +228,137 @@ Power BI Desktop (Analysis Services instance)
 
 ### Core Components
 
-**Entry Point**: `run_server.py`
+**Entry Point**: `src/run_server.py`
 - Sets up Python path with bundled dependencies
+- Handles virtual environment integration
 - Executes main server module
 
 **Main Server**: `src/pbixray_server_enhanced.py`
 - Implements MCP protocol (stdio)
-- Registers 20+ tools
-- Delegates to agent policy layer
+- Registers 50+ tools with organized numbering
+- Routes to server dispatch layer
 
-**Core Services** (`core/` directory, 46 modules, 28K LOC):
-- `connection_manager.py` - Instance detection via netstat/tasklist
-- `query_executor.py` - DAX execution with TOM/AMO fallback
-- `agent_policy.py` - High-level orchestrations for AI agents
-- `bpa_analyzer.py` - Best Practice Analyzer (120+ rules)
-- `performance_analyzer.py` - Query performance profiling
-- `dependency_analyzer.py` - Measure dependency trees
-- `model_exporter.py` - Schema export, documentation generation
-- `input_validator.py` - DAX/M injection prevention
-- `rate_limiter.py` - Request rate limiting (token bucket)
-- `cache_manager.py` - TTL-based LRU cache
-- `error_handler.py` - Centralized error handling
+**Server Layer** (`server/` directory):
+- `dispatch.py` - Tool request routing
+- `middleware.py` - Request/response processing
+- `registry.py` - Tool registration and discovery
+- `tool_schemas.py` - Tool schema definitions
+- `handlers/` - Specialized request handlers
+- `utils/` - Server utilities (M practices, etc.)
 
-**PBIP Support**:
-- `pbip_project_scanner.py` - Scan PBIP repositories
-- `pbip_model_analyzer.py` - Parse TMDL model files
-- `pbip_report_analyzer.py` - Parse PBIR report files
-- `pbip_dependency_engine.py` - Cross-model dependency analysis
-- `pbip_enhanced_analyzer.py` - Quality metrics, lineage tracking
-- `pbip_html_generator.py` - Interactive HTML dashboard
+**Orchestration Layer** (`core/orchestration/`, ~40K total LOC):
+- `agent_policy.py` - High-level AI orchestrations
+- `query_policy.py` - Query execution policies
+- `analysis_orchestrator.py` - Analysis workflows
+- `connection_orchestrator.py` - Connection management
+- `documentation_orchestrator.py` - Documentation generation
+- `cache_orchestrator.py` - Cache coordination
+- `pbip_orchestrator.py` - PBIP workflows
+- `base_orchestrator.py` - Common orchestration patterns
+
+**Core Services** (organized by domain):
+
+**Analysis** (`core/analysis/`):
+- Best Practice Analyzer (120+ rules)
+- Performance analyzer
+- Dependency analyzer
+- Model validator
+- Impact analyzer
+
+**DAX** (`core/dax/`):
+- `context_analyzer.py` - Context transition analysis
+- `context_debugger.py` - Step-by-step DAX debugging
+- `context_visualizer.py` - Filter context visualization
+- `dax_parser.py` - DAX expression parsing
+- `dax_validator.py` - DAX syntax validation
+- `dax_reference_parser.py` - Dependency extraction
+
+**TMDL** (`core/tmdl/`):
+- `validator.py` - TMDL syntax validation
+- `bulk_editor.py` - Find/replace and bulk operations
+- `script_generator.py` - TMDL script generation
+- `tmdl_parser.py` - TMDL file parsing
+- `tmdl_semantic_diff.py` - Intelligent TMDL diffing
+- `tmdl_exporter.py` - TMDL export functionality
+
+**Model Operations** (`core/operations/`):
+- `calculation_group_manager.py` - Calculation group CRUD
+- `partition_manager.py` - Partition management
+- `rls_manager.py` - RLS role management
+- `bulk_operations.py` - Bulk measure operations
+
+**Infrastructure** (`core/infrastructure/`):
+- Connection management
+- Query execution (ADOMD.NET + TOM fallback)
+- Cache management (TTL-based LRU)
+- Rate limiting (token bucket)
+- Error handling
+- Input validation
+
+**Documentation** (`core/documentation/`):
+- Word/Excel/PDF generation
+- HTML interactive explorer
+- Schema export
+- Model comparison
+
+**PBIP** (`core/pbip/`):
+- PBIP project scanning
+- TMDL model analysis
+- PBIR report parsing
+- Dependency analysis
+- Quality metrics
+- HTML dashboard generation
+
+**Performance** (`core/performance/`):
+- Query profiling (SE/FE breakdown)
+- Cardinality analysis
+- VertiPaq statistics
+- Storage optimization
+
+**Validation** (`core/validation/`):
+- Input validation (DAX/M injection prevention)
+- Path validation (traversal protection)
+- Model integrity checks
 
 ### Key Design Patterns
+
+**Layered Architecture** (v4.0+):
+- Server Layer: Request routing, middleware, tool registry
+- Orchestration Layer: Workflow coordination, policy enforcement
+- Core Services: Domain-specific business logic
+- Infrastructure: Cross-cutting concerns (cache, logging, validation)
 
 **Fallback Architecture**:
 - Primary: DMV queries (`INFO.TABLES()`, `INFO.COLUMNS()`)
 - Secondary: TOM/AMO object model (when Desktop blocks DMV)
 - Tertiary: Client-side filtering (when server-side fails)
 
-**Policy Layer**: `agent_policy.py` provides high-level orchestrations:
-- `ensure_connected()` - Auto-detect + connect
-- `safe_run_dax()` - Validate + execute + profile
-- `decide_and_run()` - Intent-based execution
-- `analyze_best_practices_unified()` - BPA + M scan
-- `analyze_performance_unified()` - Multi-faceted perf analysis
+**Orchestration Patterns**: Specialized orchestrators for different workflows:
+- `agent_policy.py` - AI agent orchestrations (ensure_connected, safe_run_dax)
+- `query_policy.py` - Query execution policies
+- `analysis_orchestrator.py` - Complex analysis workflows
+- `connection_orchestrator.py` - Connection lifecycle management
+- `documentation_orchestrator.py` - Documentation generation pipelines
+- `cache_orchestrator.py` - Multi-level cache coordination
 
-**Centralized State**: `connection_state.py` singleton:
-- Holds active connection
-- Lazy-initializes managers
-- Thread-safe access
+**Domain-Driven Design**: Services organized by domain:
+- DAX domain: parsing, validation, context analysis, debugging
+- TMDL domain: validation, editing, diffing, generation
+- Operations domain: CRUD operations on model objects
+- Analysis domain: BPA, performance, dependencies
+- Documentation domain: export and reporting
+
+**Tool Organization** (v4.0+): Numbered prefix system for discoverability:
+- 01_ Connection, 02_ Schema, 03_ Query, 04_ Operations
+- 05_ Analysis, 06_ Dependencies, 07_ Export, 08_ Documentation
+- 09_ Comparison, 10_ PBIP, 11_ TMDL, 12_ DAX Context, 13_ Help
 
 **Security Hardening**:
 - Input validation (DAX injection, path traversal)
 - Rate limiting (10 req/sec global, per-tool limits)
 - Timeout enforcement (5s-300s per tool)
 - Error sanitization (no info leakage)
+- Token usage tracking and limits
 
 ---
 
@@ -344,7 +491,7 @@ pytest tests/ -v
 .\package.bat
 
 # Package will be created in dist/
-# dist/mcp-powerbi-finvision-2.7.1.mcpb
+# dist/mcp-powerbi-finvision-4.2.01.mcpb
 ```
 
 The packaging process:
@@ -362,52 +509,95 @@ The packaging process:
 ```
 MCP-PowerBi-Finvision/
 ├── src/
-│   └── pbixray_server_enhanced.py   # Main MCP server (3.8K LOC)
-├── core/                             # Core services (46 files, 28K LOC)
-│   ├── connection_manager.py         # Instance detection, ADOMD.NET connection
-│   ├── query_executor.py             # DAX execution with TOM fallback
-│   ├── agent_policy.py               # AI orchestration layer
-│   ├── bpa_analyzer.py               # Best Practice Analyzer
-│   ├── performance_analyzer.py       # DAX query profiling
-│   ├── dependency_analyzer.py        # Measure dependency trees
-│   ├── model_exporter.py             # Schema export, docs generation
-│   ├── input_validator.py            # Security: injection prevention
-│   ├── rate_limiter.py               # Security: rate limiting
-│   ├── cache_manager.py              # Performance: TTL cache
-│   ├── error_handler.py              # Error handling with suggestions
-│   ├── pbip_*.py                     # PBIP project analysis (7 modules)
-│   └── ... (34 more modules)
-├── server/                           # Handler layer
-│   ├── handlers/
-│   │   ├── full_analysis.py          # Comprehensive model analysis
-│   │   └── relationships_graph.py    # Relationship visualization
-│   └── utils/
-│       └── m_practices.py            # M/Power Query best practices
+│   ├── run_server.py                 # Production entry point with venv setup
+│   └── pbixray_server_enhanced.py    # Main MCP server
+├── core/                             # Core services (~40K LOC, v4.0 refactored)
+│   ├── analysis/                     # Analysis domain
+│   │   ├── bpa_analyzer.py           # Best Practice Analyzer (120+ rules)
+│   │   ├── performance_analyzer.py   # Query performance profiling
+│   │   ├── dependency_analyzer.py    # Measure dependency trees
+│   │   └── impact_analyzer.py        # Impact analysis
+│   ├── dax/                          # DAX domain ⭐ NEW
+│   │   ├── context_analyzer.py       # Context transition analysis
+│   │   ├── context_debugger.py       # Step-by-step debugging
+│   │   ├── context_visualizer.py     # Filter context visualization
+│   │   ├── dax_parser.py             # DAX expression parsing
+│   │   ├── dax_validator.py          # Syntax validation
+│   │   └── dax_reference_parser.py   # Dependency extraction
+│   ├── tmdl/                         # TMDL domain ⭐ NEW
+│   │   ├── validator.py              # TMDL validation & linting
+│   │   ├── bulk_editor.py            # Find/replace, bulk rename
+│   │   ├── script_generator.py       # Script generation
+│   │   ├── tmdl_parser.py            # TMDL parsing
+│   │   ├── tmdl_semantic_diff.py     # Intelligent diffing
+│   │   └── tmdl_exporter.py          # TMDL export
+│   ├── operations/                   # Model operations ⭐ ENHANCED
+│   │   ├── calculation_group_manager.py  # Calc group CRUD
+│   │   ├── partition_manager.py      # Partition management
+│   │   ├── rls_manager.py            # RLS role management
+│   │   └── bulk_operations.py        # Bulk measure ops
+│   ├── orchestration/                # Orchestration layer ⭐ NEW
+│   │   ├── agent_policy.py           # AI orchestrations
+│   │   ├── query_policy.py           # Query policies
+│   │   ├── analysis_orchestrator.py  # Analysis workflows
+│   │   ├── connection_orchestrator.py # Connection lifecycle
+│   │   ├── documentation_orchestrator.py # Doc pipelines
+│   │   ├── cache_orchestrator.py     # Cache coordination
+│   │   └── pbip_orchestrator.py      # PBIP workflows
+│   ├── infrastructure/               # Infrastructure services
+│   │   ├── connection_manager.py     # Instance detection
+│   │   ├── query_executor.py         # DAX execution
+│   │   ├── cache_manager.py          # TTL cache
+│   │   ├── rate_limiter.py           # Rate limiting
+│   │   └── error_handler.py          # Error handling
+│   ├── documentation/                # Documentation domain
+│   │   ├── word_generator.py         # Word reports
+│   │   ├── html_generator.py         # HTML explorer
+│   │   └── model_exporter.py         # Schema export
+│   ├── pbip/                         # PBIP domain
+│   │   ├── project_scanner.py        # PBIP scanning
+│   │   ├── model_analyzer.py         # TMDL analysis
+│   │   ├── report_analyzer.py        # PBIR parsing
+│   │   └── dependency_engine.py      # Dependency analysis
+│   ├── performance/                  # Performance domain
+│   │   ├── query_profiler.py         # SE/FE breakdown
+│   │   ├── cardinality_analyzer.py   # Cardinality checks
+│   │   └── vertipaq_stats.py         # VertiPaq statistics
+│   ├── validation/                   # Validation domain
+│   │   ├── input_validator.py        # Injection prevention
+│   │   ├── model_validator.py        # Integrity checks
+│   │   └── path_validator.py         # Path traversal protection
+│   ├── comparison/                   # Comparison domain
+│   │   └── model_comparator.py       # Model diffing
+│   ├── model/                        # Domain models
+│   ├── config/                       # Configuration management
+│   └── policies/                     # Policy definitions
+├── server/                           # Server layer ⭐ NEW
+│   ├── dispatch.py                   # Request routing
+│   ├── middleware.py                 # Request/response processing
+│   ├── registry.py                   # Tool registration
+│   ├── tool_schemas.py               # Schema definitions
+│   ├── handlers/                     # Request handlers
+│   └── utils/                        # Server utilities
 ├── config/                           # Configuration files
 │   ├── default_config.json           # Default configuration
 │   ├── local_config.json             # Local overrides (gitignored)
-│   ├── bpa_rules_default.json        # 50+ BPA rules
+│   ├── bpa_rules_default.json        # 120+ BPA rules
 │   └── bpa_rules_comprehensive.json  # 150+ BPA rules
 ├── lib/
 │   └── dotnet/                       # .NET assemblies (20 DLLs)
 │       ├── Microsoft.AnalysisServices.AdomdClient.dll
 │       ├── Microsoft.AnalysisServices.Tabular.dll
 │       └── ... (TOM/AMO DLLs)
-├── tests/                            # Test infrastructure (tests to be added)
-├── dev/                              # Development scripts (not packaged)
+├── scripts/                          # Build and deployment scripts
 ├── docs/                             # User documentation
-│   ├── PBIXRAY_Quickstart.md
-│   └── PBIXRAY_Quickstart.pdf
 ├── venv/                             # Bundled virtual environment (~1.2 GB)
 ├── exports/                          # Runtime export directory
 ├── logs/                             # Runtime log directory
-├── run_server.py                     # Production entry point
-├── manifest.json                     # MCPB manifest
+├── manifest.json                     # MCPB manifest (v4.2.01)
 ├── requirements.txt                  # Python dependencies
-├── pyproject.toml                    # Project metadata, tool configs
+├── pyproject.toml                    # Project metadata
 ├── package.bat                       # Packaging script
-├── __version__.py                    # Version information
-├── CLAUDE.md                         # Developer documentation
 └── README.md                         # This file
 ```
 
@@ -469,6 +659,58 @@ All requests are logged with:
 
 All dependencies are bundled in the `.mcpb` package for reproducible deployment.
 
+---
+
+## What's New in v4.x
+
+### v4.2.01 (Latest)
+- Refactoring and cleanup
+- Enhanced stability and performance
+- Improved token usage tracking
+
+### v4.2
+- Major codebase refactoring (~40K LOC)
+- Enhanced modular architecture with domain-driven design
+- Improved separation of concerns
+
+### v4.0 - Major Release
+**New DAX Context Analysis Tools** (Category 12):
+- `12_analyze_dax_context` - Analyze context transitions and row context behavior
+- `12_visualize_filter_context` - Visualize filter propagation through relationships
+- `12_debug_dax_context` - Step-by-step DAX debugging with detailed context insights
+
+**New TMDL Editing Tools** (Category 11):
+- `11_validate_tmdl` - TMDL syntax validation with linting and error reporting
+- `11_tmdl_find_replace` - Find and replace across TMDL files with regex support
+- `11_tmdl_bulk_rename` - Bulk rename objects with automatic reference updates
+- `11_tmdl_generate_script` - Generate TMDL scripts from definitions
+
+**Enhanced Model Operations** (Category 04):
+- Calculation group management (list, create, delete)
+- Partition management (list, inspect)
+- RLS role management (list roles)
+- Bulk measure operations (create, delete multiple measures)
+
+**New Help System** (Category 13):
+- `13_show_user_guide` - Comprehensive user guide accessible from Claude
+
+**Architecture Improvements**:
+- New server layer with dispatch, middleware, and registry
+- Orchestration layer with specialized orchestrators
+- Domain-driven design: 9 core domains (analysis, dax, tmdl, operations, etc.)
+- Tool numbering system (01-13) for better organization
+- Enhanced token usage tracking and limits
+- Improved error handling with better context
+
+**Enhanced Schema Tools**:
+- `02_describe_table` - Comprehensive table descriptions
+- `02_search_objects` - Search across all object types
+- `02_search_string` - Search in measure expressions
+
+**Code Growth**:
+- From 28K LOC (v3.x) to ~40K LOC (v4.x)
+- From 46 modules to 50+ modules
+- From 20+ tools to 50+ tools
 
 ---
 ## Acknowledgments
