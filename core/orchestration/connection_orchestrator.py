@@ -61,5 +61,37 @@ class ConnectionOrchestrator(BaseOrchestrator):
             info = connection_manager.get_instance_info() or {}
             status["instance_info"] = info
             status["manager_status"] = connection_state.get_status()
-        
+
         return status
+
+    def summarize_model_safely(self, connection_state) -> Dict[str, Any]:
+        """Get compact model summary.
+
+        Args:
+            connection_state: Current connection state
+
+        Returns:
+            Dictionary with model summary including tables, measures, columns, relationships
+        """
+        from core.validation.error_handler import ErrorHandler
+
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+
+        model_exporter = connection_state.model_exporter
+        if not model_exporter:
+            return ErrorHandler.handle_manager_unavailable('model_exporter')
+
+        query_executor = connection_state.query_executor
+        if not query_executor:
+            return ErrorHandler.handle_manager_unavailable('query_executor')
+
+        try:
+            return model_exporter.get_model_summary(query_executor)
+        except Exception as e:
+            logger.error(f"Error getting model summary: {e}", exc_info=True)
+            return {
+                'success': False,
+                'error': f'Failed to generate model summary: {str(e)}',
+                'error_type': 'summary_error'
+            }
