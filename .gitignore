@@ -33,6 +33,11 @@ MANIFEST
 !build/
 !build/*.bat
 
+# Keep python/ directory for packaging metadata
+!python/
+!python/*.toml
+!python/*.txt
+
 # PyInstaller
 *.manifest
 *.spec

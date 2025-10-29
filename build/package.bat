@@ -35,7 +35,7 @@ echo.
 echo [3/5] Installing dependencies...
 call venv\Scripts\activate.bat
 python -m pip install --quiet --upgrade pip
-pip install --quiet -r requirements.txt
+pip install --quiet -r python\requirements.txt
 echo Dependencies installed
 echo.
 
