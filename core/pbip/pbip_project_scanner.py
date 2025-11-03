@@ -187,6 +187,15 @@ class PbipProjectScanner:
                 if os.path.isdir(model_folder):
                     project_info["model_folder"] = model_folder
                     project_info["has_tmdl"] = self._has_tmdl_format(model_folder)
+
+                    # Set definition_path to the definition subfolder
+                    definition_path = os.path.join(model_folder, "definition")
+                    if os.path.isdir(definition_path):
+                        project_info["definition_path"] = definition_path
+                    else:
+                        self.logger.warning(
+                            f"Definition folder not found in {model_folder}"
+                        )
                 else:
                     self.logger.warning(
                         f"Semantic model folder not found for {pbip_file}"

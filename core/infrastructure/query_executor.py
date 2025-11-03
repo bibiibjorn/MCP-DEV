@@ -95,9 +95,10 @@ class OptimizedQueryExecutor:
         Initialize the query executor.
 
         Args:
-            connection: Active ADOMD connection
+            connection: Active ADOMD connection (initial reference, use get_connection() for current)
         """
-        self.connection = connection
+        self._initial_connection = connection  # Keep initial reference for backward compatibility
+        self._connection_manager = None  # Will hold reference to ConnectionManager for dynamic connection
         # Simple TTL-based LRU cache for query results
         self.query_cache: "OrderedDict[Tuple[str, int], Dict[str, Any]]" = OrderedDict()
         self.max_cache_items = getattr(QueryLimits, 'TELEMETRY_BUFFER_SIZE', 200)  # align with central limits where practical
@@ -121,6 +122,58 @@ class OptimizedQueryExecutor:
         self.cache_misses = 0
         self.cache_bypass = 0
 
+    @property
+    def connection(self):
+        """
+        Get current active connection.
+
+        Returns connection from ConnectionManager if available (always fresh),
+        otherwise falls back to initial connection reference.
+        """
+        # Try to get current connection from connection manager (always fresh)
+        if self._connection_manager:
+            current_conn = self._connection_manager.get_connection()
+            if current_conn:
+                return current_conn
+
+        # Fallback to initial connection for backward compatibility
+        return self._initial_connection
+
+    def get_connection(self):
+        """
+        Explicitly get the current active connection.
+
+        Returns:
+            Active ADOMD connection object
+        """
+        return self.connection
+
+    def _verify_connection_open(self):
+        """
+        Verify that the current connection is open and healthy.
+
+        Returns:
+            Tuple of (is_open: bool, error_message: str or None)
+        """
+        try:
+            conn = self.connection
+            if not conn:
+                return False, "No connection available"
+
+            # Check connection state
+            try:
+                state = conn.State.ToString()
+                if state != 'Open':
+                    return False, f"Connection is not open (state: {state})"
+            except Exception as e:
+                return False, f"Cannot check connection state: {e}"
+
+            # Connection is healthy
+            return True, None
+
+        except Exception as e:
+            return False, f"Connection check failed: {e}"
+
     def set_connection_state(self, connection_state):
         """
         Set reference to connection state for shared table mapping cache.
@@ -129,6 +182,10 @@ class OptimizedQueryExecutor:
             connection_state: ConnectionState instance with shared table mappings
         """
         self._connection_state = connection_state
+        # Also store connection manager reference for dynamic connection retrieval
+        if connection_state and hasattr(connection_state, 'connection_manager'):
+            self._connection_manager = connection_state.connection_manager
+            logger.debug("Query executor linked to connection manager for dynamic connection retrieval")
         logger.debug("Query executor linked to connection state for shared table mapping cache")
 
     # --------------------
@@ -140,8 +197,10 @@ class OptimizedQueryExecutor:
         try:
             if not AdomdCommand:
                 return None
+            # Get current connection (will be fresh from ConnectionManager)
+            current_conn = self.connection
             db_query = "SELECT [CATALOG_NAME] FROM $SYSTEM.DBSCHEMA_CATALOGS"
-            cmd = AdomdCommand(db_query, self.connection)
+            cmd = AdomdCommand(db_query, current_conn)
             reader = cmd.ExecuteReader()
             db_name = None
             if reader.Read():
@@ -1528,8 +1587,24 @@ class OptimizedQueryExecutor:
             if cached_result is not None:
                 return cached_result
 
-            # Execute query
-            cmd = AdomdCommand(query, self.connection)  # type: ignore
+            # Get current connection once (will be fresh from ConnectionManager)
+            # Store in local variable to avoid repeated property lookups
+            current_conn = self.connection
+
+            # Quick null check only (no expensive State.ToString() CLR interop)
+            if not current_conn:
+                return {
+                    'success': False,
+                    'error': 'No active connection available',
+                    'error_type': 'connection_not_open',
+                    'suggestions': [
+                        'Reconnect to Power BI Desktop using connect_to_powerbi',
+                        'Check if Power BI Desktop is still running'
+                    ]
+                }
+
+            # Execute query (connection errors will be caught in except block)
+            cmd = AdomdCommand(query, current_conn)  # type: ignore
 
             # Apply command timeout if supported
             try:
@@ -1592,12 +1667,20 @@ class OptimizedQueryExecutor:
             else:
                 logger.error(f"DAX query error: {error_msg}")
 
+            # Check if this is a connection error
+            is_connection_error = 'connection is not open' in error_msg.lower() or 'connection' in error_msg.lower()
+            error_type = 'connection_not_open' if is_connection_error else 'query_execution_error'
+
             suggestions = self._analyze_dax_error(error_msg, query)
+
+            # Add connection-specific suggestions if it's a connection error
+            if is_connection_error and 'reconnect' not in ''.join(suggestions).lower():
+                suggestions.insert(0, 'Reconnect to Power BI Desktop using connect_to_powerbi')
 
             result: Dict[str, Any] = {
                 'success': False,
                 'error': error_msg,
-                'error_type': 'query_execution_error',
+                'error_type': error_type,
                 'query': query,
                 'suggestions': suggestions
             }
