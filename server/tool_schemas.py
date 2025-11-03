@@ -407,6 +407,10 @@ TOOL_SCHEMAS = {
             "pbip_path": {
                 "type": "string",
                 "description": "Path to .pbip file or directory"
+            },
+            "output_path": {
+                "type": "string",
+                "description": "Optional output directory for HTML report (defaults to 'exports')"
             }
         },
         "required": ["pbip_path"]

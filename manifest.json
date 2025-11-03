@@ -197,7 +197,7 @@
     },
     {
       "name": "10_analyze_pbip_repository",
-      "description": "[10-PBIP] Offline PBIP repository analysis"
+      "description": "[10-PBIP] Offline PBIP repository analysis with HTML export"
     },
     {
       "name": "11_validate_tmdl",

@@ -96,16 +96,52 @@ def handle_analyze_pbip_repository(args: Dict[str, Any]) -> Dict[str, Any]:
             report_data=project_info.get('reports', [])
         )
 
-        result = analyzer.analyze_full()
+        result = analyzer.run_full_analysis()
 
-        return {
-            'success': True,
-            'analysis': result,
-            'project_info': {
-                'semantic_models_count': len(semantic_models),
-                'reports_count': len(project_info.get('reports', []))
+        # Step 5: Generate HTML report
+        from core.pbip.pbip_html_generator import PbipHtmlGenerator
+        import os
+
+        # Determine output path - use exports folder by default
+        output_path = args.get('output_path', 'exports')
+
+        # Get repository name from the path
+        repo_name = os.path.basename(repo_path) if repo_path else "PBIP_Repository"
+
+        html_generator = PbipHtmlGenerator()
+        try:
+            html_file_path = html_generator.generate_full_report(
+                model_data=model_data,
+                report_data=project_info.get('reports'),
+                dependencies=dependencies,
+                output_path=output_path,
+                repository_name=repo_name,
+                enhanced_results=result
+            )
+
+            return {
+                'success': True,
+                'analysis': result,
+                'project_info': {
+                    'semantic_models_count': len(semantic_models),
+                    'reports_count': len(project_info.get('reports', []))
+                },
+                'html_report': html_file_path,
+                'message': f'Analysis complete. HTML report generated at: {html_file_path}'
             }
-        }
+        except Exception as html_error:
+            logger.warning(f"HTML generation failed: {html_error}")
+            # Return analysis results even if HTML generation fails
+            return {
+                'success': True,
+                'analysis': result,
+                'project_info': {
+                    'semantic_models_count': len(semantic_models),
+                    'reports_count': len(project_info.get('reports', []))
+                },
+                'html_report': None,
+                'message': f'Analysis complete but HTML generation failed: {str(html_error)}'
+            }
 
     except ImportError as ie:
         logger.error(f"Import error: {ie}", exc_info=True)
@@ -133,7 +169,7 @@ def register_pbip_handlers(registry):
     tools = [
         ToolDefinition(
             name="analyze_pbip_repository",
-            description="Offline PBIP repository analysis",
+            description="Offline PBIP repository analysis with HTML report export",
             handler=handle_analyze_pbip_repository,
             input_schema=TOOL_SCHEMAS.get('analyze_pbip_repository', {}),
             category="pbip",
