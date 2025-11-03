@@ -28,7 +28,7 @@ def handle_analyze_pbip_repository(args: Dict[str, Any]) -> Dict[str, Any]:
         # We need to parse the PBIP first
         from core.pbip.pbip_project_scanner import PbipProjectScanner
         from core.pbip.pbip_model_analyzer import TmdlModelAnalyzer
-        from core.model.dependency_analyzer import DependencyAnalyzer
+        from core.pbip.pbip_dependency_engine import PbipDependencyEngine
 
         # Step 1: Validate and scan the PBIP project
         from pathlib import Path
@@ -67,19 +67,27 @@ def handle_analyze_pbip_repository(args: Dict[str, Any]) -> Dict[str, Any]:
             }
 
         # Use the first semantic model
-        model_path = semantic_models[0].get('definition_path')
-        if not model_path:
+        model_folder = semantic_models[0].get('model_folder')
+        if not model_folder:
+            return {
+                'success': False,
+                'error': 'Semantic model folder not found'
+            }
+
+        # Verify definition path exists
+        definition_path = semantic_models[0].get('definition_path')
+        if not definition_path:
             return {
                 'success': False,
                 'error': 'Semantic model definition path not found'
             }
 
-        model_analyzer = TmdlModelAnalyzer(model_path)
-        model_data = model_analyzer.parse_model()
+        model_analyzer = TmdlModelAnalyzer()
+        model_data = model_analyzer.analyze_model(model_folder)
 
         # Step 3: Analyze dependencies
-        dep_analyzer = DependencyAnalyzer()
-        dependencies = dep_analyzer.analyze_all(model_data)
+        dep_engine = PbipDependencyEngine(model_data)
+        dependencies = dep_engine.analyze_all_dependencies()
 
         # Step 4: Run enhanced analysis
         analyzer = EnhancedPbipAnalyzer(

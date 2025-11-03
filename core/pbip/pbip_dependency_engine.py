@@ -11,7 +11,7 @@ from typing import Dict, List, Set, Tuple, Optional, Any
 
 # Import existing DAX parser
 try:
-    from .dax_parser import DaxReferenceIndex, parse_dax_references
+    from core.dax.dax_reference_parser import DaxReferenceIndex, parse_dax_references
     DAX_PARSER_AVAILABLE = True
 except ImportError:
     DAX_PARSER_AVAILABLE = False
