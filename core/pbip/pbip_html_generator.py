@@ -1434,6 +1434,15 @@ class PbipHtmlGenerator:
                         >
                             📈 Visuals
                         </button>
+                        <button
+                            @click="dependencySubTab = 'graph'; $nextTick(() => renderMeasureLineage())"
+                            :class="[
+                                'whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition',
+                                dependencySubTab === 'graph' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                            ]"
+                        >
+                            🕸️ Dependency Graph
+                        </button>
                     </nav>
                 </div>
 
@@ -1930,6 +1939,134 @@ class PbipHtmlGenerator:
                         </div>
                         <div v-else class="stat-card">
                             <p class="text-gray-500 italic">Select a page and visual from the left to trace measure dependencies</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dependency Graph Tab -->
+                <div v-show="dependencySubTab === 'graph'" class="space-y-4">
+                    <!-- Graph Controls -->
+                    <div class="stat-card">
+                        <div class="flex flex-wrap items-center gap-4 justify-between">
+                            <div class="flex items-center gap-4 flex-1">
+                                <div class="relative flex-1 max-w-md">
+                                    <input
+                                        v-model="graphSearchQuery"
+                                        type="search"
+                                        placeholder="Search measures..."
+                                        class="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        @input="renderMeasureLineage"
+                                    />
+                                    <svg class="absolute left-3 top-2.5 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                    </svg>
+                                </div>
+                                <select
+                                    v-model="graphFilterMode"
+                                    @change="renderMeasureLineage"
+                                    class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                                >
+                                    <option value="all">All measures</option>
+                                    <option value="connected">Only connected</option>
+                                </select>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        v-model="graphShowDisconnected"
+                                        @change="renderMeasureLineage"
+                                        class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                    />
+                                    <span class="text-sm text-gray-700">Show Disconnected</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Graph Container with Cards -->
+                    <div class="stat-card p-6 overflow-auto" style="max-height: 800px;">
+                        <div id="measure-lineage-container" style="min-width: 100%; position: relative; min-height: 600px;">
+                            <!-- SVG for connection lines (behind cards) -->
+                            <svg id="lineage-svg" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1;">
+                                <defs>
+                                    <marker id="arrowhead-lineage" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b82f6" />
+                                    </marker>
+                                </defs>
+                            </svg>
+
+                            <!-- Measure cards will be rendered here -->
+                            <div id="measure-cards-container" style="position: relative; z-index: 2;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Statistics -->
+                    <div class="stat-card">
+                        <div class="grid grid-cols-4 gap-6 text-center">
+                            <div>
+                                <div class="text-gray-600 text-sm mb-1">Total Measures</div>
+                                <div class="text-2xl font-bold text-gray-900">{{{{ graphStats.totalMeasures }}}}</div>
+                            </div>
+                            <div>
+                                <div class="text-gray-600 text-sm mb-1">Visible</div>
+                                <div class="text-2xl font-bold text-blue-600">{{{{ graphStats.visibleMeasures }}}}</div>
+                            </div>
+                            <div>
+                                <div class="text-gray-600 text-sm mb-1">Dependencies</div>
+                                <div class="text-2xl font-bold text-green-600">{{{{ graphStats.totalDependencies }}}}</div>
+                            </div>
+                            <div>
+                                <div class="text-gray-600 text-sm mb-1">Max Depth</div>
+                                <div class="text-2xl font-bold text-purple-600">{{{{ graphStats.maxDepth }}}}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Measure Info Modal -->
+                <div v-if="showMeasureModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" @click.self="closeMeasureModal">
+                    <div class="bg-white rounded-lg shadow-xl max-w-3xl w-full mx-4" style="max-height: 90vh; overflow-y: auto;">
+                        <div class="p-6 border-b border-gray-200 flex justify-between items-start">
+                            <div>
+                                <h2 class="text-2xl font-bold text-gray-900">{{{{ selectedMeasureForModal?.name }}}}</h2>
+                                <p class="text-sm text-gray-600 mt-1">table: {{{{ selectedMeasureForModal?.table }}}}</p>
+                            </div>
+                            <button @click="closeMeasureModal" class="text-gray-400 hover:text-gray-600">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </button>
+                        </div>
+
+                        <div class="p-6 space-y-6">
+                            <!-- Expression -->
+                            <div v-if="selectedMeasureForModal?.expression">
+                                <h3 class="text-lg font-semibold text-gray-900 mb-3">Expression:</h3>
+                                <div class="bg-gray-50 rounded-lg p-4 font-mono text-sm text-gray-800 overflow-x-auto border border-gray-200">
+                                    {{{{ selectedMeasureForModal.expression }}}}
+                                </div>
+                            </div>
+
+                            <!-- References -->
+                            <div v-if="selectedMeasureForModal?.references && selectedMeasureForModal.references.length > 0">
+                                <h3 class="text-lg font-semibold text-gray-900 mb-3">References:</h3>
+                                <div class="space-y-2">
+                                    <div v-for="ref in selectedMeasureForModal.references" :key="ref"
+                                         class="px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-gray-800">
+                                        {{{{ ref }}}}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Referenced By -->
+                            <div v-if="selectedMeasureForModal?.referencedBy && selectedMeasureForModal.referencedBy.length > 0">
+                                <h3 class="text-lg font-semibold text-gray-900 mb-3">Referenced By:</h3>
+                                <div class="space-y-2">
+                                    <div v-for="ref in selectedMeasureForModal.referencedBy" :key="ref"
+                                         class="px-4 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-gray-800">
+                                        {{{{ ref }}}}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2788,6 +2925,20 @@ class PbipHtmlGenerator:
                     // Visuals tab
                     selectedVisualPage: null,
                     selectedVisualId: null,
+
+                    // Measure Dependency Graph
+                    graphSearchQuery: '',
+                    graphFilterMode: 'all',
+                    graphShowDisconnected: true,
+                    graphStats: {{
+                        totalMeasures: 0,
+                        visibleMeasures: 0,
+                        totalDependencies: 0,
+                        maxDepth: 0
+                    }},
+                    showMeasureModal: false,
+                    selectedMeasureForModal: null,
+                    highlightedMeasures: new Set(),
 
                     // Enhanced analysis tabs
                     bpaSeverityFilter: 'all',
@@ -5376,6 +5527,364 @@ class PbipHtmlGenerator:
                         }});
                     }});
                     return usage;
+                }},
+
+                // ==================== Measure Lineage Card-Based Methods ====================
+
+                renderMeasureLineage() {{
+                    const cardsContainer = document.getElementById('measure-cards-container');
+                    const svg = document.getElementById('lineage-svg');
+
+                    if (!cardsContainer || !svg) {{
+                        console.error('Lineage containers not found');
+                        return;
+                    }}
+
+                    // Clear previous render
+                    cardsContainer.innerHTML = '';
+                    svg.innerHTML = '<defs><marker id="arrowhead-lineage" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#3b82f6" /></marker></defs>';
+
+                    // Build measure data
+                    const {{ measures, links }} = this.buildMeasureLineageData();
+
+                    if (measures.length === 0) {{
+                        cardsContainer.innerHTML = '<div class="text-center text-gray-500 py-12"><p>No measures found</p></div>';
+                        return;
+                    }}
+
+                    // Update stats
+                    this.graphStats.totalMeasures = measures.length;
+                    this.graphStats.visibleMeasures = measures.filter(m => m.visible).length;
+                    this.graphStats.totalDependencies = links.length;
+                    this.graphStats.maxDepth = Math.max(...measures.map(m => m.depth || 0), 0);
+
+                    // Calculate positions in columns
+                    this.calculateMeasurePositions(measures);
+
+                    // Render measure cards
+                    measures.forEach(measure => {{
+                        if (!measure.visible) return;
+
+                        const card = document.createElement('div');
+                        card.id = `measure-card-${{measure.id.replace(/[^a-zA-Z0-9]/g, '-')}}`;
+                        card.className = `measure-card ${{this.highlightedMeasures.has(measure.id) ? 'highlighted' : ''}}`;
+                        card.style.cssText = `
+                            position: absolute;
+                            left: ${{measure.x}}px;
+                            top: ${{measure.y}}px;
+                            width: 180px;
+                            min-height: 80px;
+                            background: white;
+                            border: 2px solid #e5e7eb;
+                            border-radius: 8px;
+                            padding: 12px;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                            cursor: pointer;
+                            transition: all 0.2s;
+                        `;
+
+                        card.innerHTML = `
+                            <div style="display: flex; justify-between; align-items: start; margin-bottom: 8px;">
+                                <div style="font-weight: 600; font-size: 14px; color: #1f2937; flex: 1;">
+                                    ${{measure.name}}
+                                </div>
+                                <button class="info-btn" style="
+                                    background: #3b82f6;
+                                    border: none;
+                                    border-radius: 50%;
+                                    width: 20px;
+                                    height: 20px;
+                                    color: white;
+                                    font-size: 12px;
+                                    cursor: pointer;
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                    flex-shrink: 0;
+                                    margin-left: 8px;
+                                ">i</button>
+                            </div>
+                            <div style="font-size: 11px; color: #6b7280;">
+                                table: ${{measure.table}}
+                            </div>
+                        `;
+
+                        // Add click handlers
+                        card.addEventListener('click', (e) => {{
+                            if (!e.target.classList.contains('info-btn')) {{
+                                this.highlightMeasurePath(measure.id, measures, links);
+                            }}
+                        }});
+
+                        card.querySelector('.info-btn').addEventListener('click', (e) => {{
+                            e.stopPropagation();
+                            this.showMeasureInfo(measure);
+                        }});
+
+                        cardsContainer.appendChild(card);
+                    }});
+
+                    // Draw connection lines
+                    this.drawConnectionLines(measures, links, svg);
+                }},
+
+                buildMeasureLineageData() {{
+                    const measures = [];
+                    const links = [];
+                    const measureMap = new Map();
+
+                    // Build measure objects
+                    const tables = this.modelData.tables || [];
+                    tables.forEach(table => {{
+                        (table.measures || []).forEach(measure => {{
+                            const measureKey = `${{table.name}}[${{measure.name}}]`;
+                            const measureObj = {{
+                                id: measureKey,
+                                name: measure.name,
+                                table: table.name,
+                                expression: measure.expression || '',
+                                displayFolder: measure.displayFolder || '',
+                                isHidden: measure.is_hidden || false,
+                                references: [],
+                                referencedBy: [],
+                                depth: 0,
+                                visible: true,
+                                x: 0,
+                                y: 0
+                            }};
+                            measures.push(measureObj);
+                            measureMap.set(measureKey, measureObj);
+                        }});
+                    }});
+
+                    // Build links from dependencies
+                    const measureToMeasure = this.dependencies.measure_to_measure || {{}};
+                    const measureToMeasureReverse = this.dependencies.measure_to_measure_reverse || {{}};
+
+                    Object.entries(measureToMeasure).forEach(([measureKey, deps]) => {{
+                        const sourceMeasure = measureMap.get(measureKey);
+                        if (!sourceMeasure) return;
+
+                        deps.forEach(depKey => {{
+                            const targetMeasure = measureMap.get(depKey);
+                            if (targetMeasure) {{
+                                links.push({{
+                                    source: depKey,
+                                    target: measureKey
+                                }});
+                                sourceMeasure.references.push(depKey);
+                                targetMeasure.referencedBy.push(measureKey);
+                            }}
+                        }});
+                    }});
+
+                    // Calculate depth for each measure
+                    const calculateDepth = (measure, visited = new Set()) => {{
+                        if (visited.has(measure.id)) return 0;
+                        visited.add(measure.id);
+
+                        if (measure.references.length === 0) {{
+                            measure.depth = 0;
+                            return 0;
+                        }}
+
+                        const depths = measure.references.map(depKey => {{
+                            const depMeasure = measureMap.get(depKey);
+                            return depMeasure ? calculateDepth(depMeasure, new Set(visited)) + 1 : 0;
+                        }});
+
+                        measure.depth = Math.max(...depths, 0);
+                        return measure.depth;
+                    }};
+
+                    measures.forEach(measure => {{
+                        if (measure.depth === 0) {{
+                            calculateDepth(measure);
+                        }}
+                    }});
+
+                    // Apply filters
+                    const query = this.graphSearchQuery.toLowerCase();
+                    measures.forEach(measure => {{
+                        let visible = true;
+
+                        // Search filter
+                        if (query && !measure.name.toLowerCase().includes(query) && !measure.table.toLowerCase().includes(query)) {{
+                            visible = false;
+                        }}
+
+                        // Connection filter
+                        const isConnected = measure.references.length > 0 || measure.referencedBy.length > 0;
+                        if (this.graphFilterMode === 'connected' && !isConnected) {{
+                            visible = false;
+                        }}
+
+                        // Show disconnected filter
+                        if (!this.graphShowDisconnected && !isConnected) {{
+                            visible = false;
+                        }}
+
+                        measure.visible = visible;
+                    }});
+
+                    return {{ measures, links }};
+                }},
+
+                calculateMeasurePositions(measures) {{
+                    // Group measures by depth (column)
+                    const columns = {{}};
+                    measures.forEach(measure => {{
+                        if (!columns[measure.depth]) {{
+                            columns[measure.depth] = [];
+                        }}
+                        columns[measure.depth].push(measure);
+                    }});
+
+                    // Position measures in columns
+                    const columnWidth = 250;
+                    const cardHeight = 100;
+                    const verticalSpacing = 30;
+                    const horizontalPadding = 50;
+
+                    Object.keys(columns).sort((a, b) => Number(a) - Number(b)).forEach((depth, colIndex) => {{
+                        const measuresInColumn = columns[depth];
+                        const x = horizontalPadding + (colIndex * columnWidth);
+
+                        measuresInColumn.forEach((measure, index) => {{
+                            measure.x = x;
+                            measure.y = 50 + (index * (cardHeight + verticalSpacing));
+                        }});
+                    }});
+
+                    // Set container height based on maximum Y position
+                    const maxY = Math.max(...measures.map(m => m.y)) + 150;
+                    const container = document.getElementById('measure-lineage-container');
+                    if (container) {{
+                        container.style.minHeight = maxY + 'px';
+                    }}
+
+                    const svg = document.getElementById('lineage-svg');
+                    if (svg) {{
+                        svg.style.height = maxY + 'px';
+                    }}
+                }},
+
+                drawConnectionLines(measures, links, svg) {{
+                    const measureMap = new Map(measures.map(m => [m.id, m]));
+
+                    links.forEach(link => {{
+                        const source = measureMap.get(link.source);
+                        const target = measureMap.get(link.target);
+
+                        if (!source || !target || !source.visible || !target.visible) return;
+
+                        // Calculate card centers (card width = 180px, height ~80px)
+                        const x1 = source.x + 180; // Right edge of source card
+                        const y1 = source.y + 40; // Center of source card
+                        const x2 = target.x; // Left edge of target card
+                        const y2 = target.y + 40; // Center of target card
+
+                        // Create path element
+                        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+
+                        // Use cubic bezier for smooth curves
+                        const midX = (x1 + x2) / 2;
+                        const pathData = `M ${{x1}} ${{y1}} C ${{midX}} ${{y1}}, ${{midX}} ${{y2}}, ${{x2}} ${{y2}}`;
+
+                        path.setAttribute('d', pathData);
+                        path.setAttribute('stroke', '#3b82f6');
+                        path.setAttribute('stroke-width', '2');
+                        path.setAttribute('stroke-dasharray', '5,5'); // Dotted line
+                        path.setAttribute('fill', 'none');
+                        path.setAttribute('marker-end', 'url(#arrowhead-lineage)');
+                        path.setAttribute('class', `connection-line connection-${{link.source.replace(/[^a-zA-Z0-9]/g, '-')}}-${{link.target.replace(/[^a-zA-Z0-9]/g, '-')}}`);
+                        path.setAttribute('opacity', '0.6');
+
+                        svg.appendChild(path);
+                    }});
+                }},
+
+                highlightMeasurePath(measureId, measures, links) {{
+                    // Find all connected measures (both dependencies and dependents)
+                    const connected = new Set([measureId]);
+                    const measureMap = new Map(measures.map(m => [m.id, m]));
+
+                    const addDependencies = (id) => {{
+                        const measure = measureMap.get(id);
+                        if (!measure) return;
+                        measure.references.forEach(refId => {{
+                            if (!connected.has(refId)) {{
+                                connected.add(refId);
+                                addDependencies(refId);
+                            }}
+                        }});
+                    }};
+
+                    const addDependents = (id) => {{
+                        const measure = measureMap.get(id);
+                        if (!measure) return;
+                        measure.referencedBy.forEach(refId => {{
+                            if (!connected.has(refId)) {{
+                                connected.add(refId);
+                                addDependents(refId);
+                            }}
+                        }});
+                    }};
+
+                    addDependencies(measureId);
+                    addDependents(measureId);
+
+                    // Update highlightedMeasures
+                    this.highlightedMeasures = connected;
+
+                    // Update card styling
+                    measures.forEach(measure => {{
+                        const cardId = `measure-card-${{measure.id.replace(/[^a-zA-Z0-9]/g, '-')}}`;
+                        const card = document.getElementById(cardId);
+                        if (card) {{
+                            if (connected.has(measure.id)) {{
+                                card.style.opacity = '1';
+                                card.style.borderColor = measure.id === measureId ? '#3b82f6' : '#10b981';
+                                card.style.borderWidth = measure.id === measureId ? '3px' : '2px';
+                                card.style.boxShadow = '0 4px 8px rgba(59, 130, 246, 0.3)';
+                            }} else {{
+                                card.style.opacity = '0.3';
+                                card.style.borderColor = '#e5e7eb';
+                                card.style.borderWidth = '2px';
+                                card.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+                            }}
+                        }}
+                    }});
+
+                    // Update line styling
+                    const allLines = document.querySelectorAll('.connection-line');
+                    allLines.forEach(line => {{
+                        line.setAttribute('opacity', '0.2');
+                        line.setAttribute('stroke', '#94a3b8');
+                    }});
+
+                    // Highlight connected lines
+                    links.forEach(link => {{
+                        if (connected.has(link.source) && connected.has(link.target)) {{
+                            const lineClass = `.connection-${{link.source.replace(/[^a-zA-Z0-9]/g, '-')}}-${{link.target.replace(/[^a-zA-Z0-9]/g, '-')}}`;
+                            const line = document.querySelector(lineClass);
+                            if (line) {{
+                                line.setAttribute('opacity', '1');
+                                line.setAttribute('stroke', '#3b82f6');
+                                line.setAttribute('stroke-width', '3');
+                            }}
+                        }}
+                    }});
+                }},
+
+                showMeasureInfo(measure) {{
+                    this.selectedMeasureForModal = measure;
+                    this.showMeasureModal = true;
+                }},
+
+                closeMeasureModal() {{
+                    this.showMeasureModal = false;
+                    this.selectedMeasureForModal = null;
                 }}
             }},
 

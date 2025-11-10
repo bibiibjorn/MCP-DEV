@@ -184,10 +184,6 @@
       "description": "[08-Documentation] Generate interactive HTML documentation"
     },
     {
-      "name": "09_get_model_summary",
-      "description": "[09-Comparison] Get compact model summary"
-    },
-    {
       "name": "09_prepare_model_comparison",
       "description": "[09-Comparison] STEP 1: Detect both models for comparison"
     },

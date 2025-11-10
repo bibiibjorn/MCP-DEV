@@ -70,8 +70,7 @@ class ToolDispatcher:
         '08_update_model_documentation_word': 'update_model_documentation_word',
         '08_export_model_explorer_html': 'export_model_explorer_html',
 
-        # 09 - Comparison (3 tools)
-        '09_get_model_summary': 'get_model_summary',
+        # 09 - Comparison (2 tools)
         '09_prepare_model_comparison': 'prepare_model_comparison',
         '09_compare_pbi_models': 'compare_pbi_models',
 

@@ -23,8 +23,9 @@ SaveOptions = None
 try:
     import clr
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    parent_dir = os.path.dirname(script_dir)
-    dll_folder = os.path.join(parent_dir, "lib", "dotnet")
+    parent_dir = os.path.dirname(script_dir)  # core
+    root_dir = os.path.dirname(parent_dir)     # root
+    dll_folder = os.path.join(root_dir, "lib", "dotnet")
 
     tom_dll = os.path.join(dll_folder, "Microsoft.AnalysisServices.Tabular.dll")
     if os.path.exists(tom_dll):

@@ -10,17 +10,6 @@ from core.validation.error_handler import ErrorHandler
 
 logger = logging.getLogger(__name__)
 
-def handle_get_model_summary(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Get compact model summary"""
-    if not connection_state.is_connected():
-        return ErrorHandler.handle_not_connected()
-
-    agent_policy = connection_state.agent_policy
-    if not agent_policy:
-        return ErrorHandler.handle_manager_unavailable('agent_policy')
-
-    return agent_policy.summarize_model_safely(connection_state)
-
 def handle_prepare_model_comparison(args: Dict[str, Any]) -> Dict[str, Any]:
     """STEP 1: Detect both models for comparison"""
     if not connection_state.is_connected():
@@ -91,14 +80,6 @@ def register_comparison_handlers(registry):
     from server.tool_schemas import TOOL_SCHEMAS
 
     tools = [
-        ToolDefinition(
-            name="get_model_summary",
-            description="Get compact model summary",
-            handler=handle_get_model_summary,
-            input_schema=TOOL_SCHEMAS.get('get_model_summary', {}),
-            category="comparison",
-            sort_order=40
-        ),
         ToolDefinition(
             name="prepare_model_comparison",
             description="STEP 1: Detect both models for comparison",

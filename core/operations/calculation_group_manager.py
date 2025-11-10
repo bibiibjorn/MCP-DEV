@@ -24,8 +24,10 @@ class CalculationGroupManager:
             import clr  # type: ignore
             import os as _os
             script_dir = _os.path.dirname(_os.path.abspath(__file__))
-            parent_dir = _os.path.dirname(script_dir)
-            dll_folder = _os.path.join(parent_dir, "lib", "dotnet")
+            # Go up from core/operations -> core -> root
+            parent_dir = _os.path.dirname(script_dir)  # core
+            root_dir = _os.path.dirname(parent_dir)     # root
+            dll_folder = _os.path.join(root_dir, "lib", "dotnet")
             core_dll = _os.path.join(dll_folder, "Microsoft.AnalysisServices.Core.dll")
             tabular_dll = _os.path.join(dll_folder, "Microsoft.AnalysisServices.Tabular.dll")
             if _os.path.exists(core_dll):
@@ -50,11 +52,117 @@ class CalculationGroupManager:
             logger.warning(f"AMO not available for calc groups: {_e}")
             return None, None, None
 
+    def _list_calculation_groups_via_dax(self) -> Dict[str, Any]:
+        """List calculation groups using DAX queries (fallback when AMO unavailable)."""
+        try:
+            import Microsoft.AnalysisServices.AdomdClient as Adomd  # type: ignore
+
+            # Query to get all tables that are calculation groups
+            tables_query = """
+            EVALUATE
+            SELECTCOLUMNS(
+                FILTER(
+                    INFO.TABLES(),
+                    [TABLE_TYPE] = "CALCULATION_GROUP"
+                ),
+                "TableName", [Name],
+                "Description", [Description]
+            )
+            """
+
+            calc_groups = []
+
+            # Execute the query to get calculation group tables
+            cmd = Adomd.AdomdCommand(tables_query, self.connection)
+            reader = cmd.ExecuteReader()
+
+            cg_tables = []
+            while reader.Read():
+                cg_tables.append({
+                    'table_name': str(reader[0]) if reader[0] is not None else '',
+                    'description': str(reader[1]) if reader[1] is not None else None
+                })
+            reader.Close()
+
+            # For each calculation group table, get its items
+            for cg_table in cg_tables:
+                table_name = cg_table['table_name']
+
+                # Query calculation items using EVALUATE on the calculation group table
+                try:
+                    items_query = f"""
+                    EVALUATE
+                    SELECTCOLUMNS(
+                        '{table_name}',
+                        "Name", [{table_name}]
+                    )
+                    """
+
+                    cmd_items = Adomd.AdomdCommand(items_query, self.connection)
+                    reader_items = cmd_items.ExecuteReader()
+
+                    items = []
+                    ordinal = 0
+                    while reader_items.Read():
+                        item_name = str(reader_items[0]) if reader_items[0] is not None else ''
+                        items.append({
+                            'name': item_name,
+                            'expression': None,  # Not available via DAX query
+                            'ordinal': ordinal,
+                            'format_string_expression': None
+                        })
+                        ordinal += 1
+                    reader_items.Close()
+
+                    calc_groups.append({
+                        'name': table_name,
+                        'table': table_name,
+                        'precedence': 0,  # Not available via DAX query
+                        'description': cg_table['description'],
+                        'items': items,
+                        'item_count': len(items)
+                    })
+
+                except Exception as item_error:
+                    logger.warning(f"Could not query items for calculation group '{table_name}': {item_error}")
+                    # Add the calc group without items
+                    calc_groups.append({
+                        'name': table_name,
+                        'table': table_name,
+                        'precedence': 0,
+                        'description': cg_table['description'],
+                        'items': [],
+                        'item_count': 0
+                    })
+
+            return {
+                'success': True,
+                'calculation_groups': calc_groups,
+                'total_groups': len(calc_groups),
+                'method': 'dax_dmv',
+                'note': 'Limited information available via DAX queries. For full details (expressions, precedence), AMO connection is required.'
+            }
+
+        except Exception as e:
+            logger.error(f"Error listing calculation groups via DAX: {e}")
+            return {'success': False, 'error': f'Failed to list calculation groups via DAX: {str(e)}'}
+
     def list_calculation_groups(self) -> Dict[str, Any]:
         """List all calculation groups and their items."""
+        # Try DAX-based approach first (works without AMO)
+        dax_result = self._list_calculation_groups_via_dax()
+        if dax_result.get('success'):
+            return dax_result
+
+        # Fall back to AMO if DAX approach fails
         server, db, Tabular = self._connect_amo_server_db()
         if not server or not db or not Tabular:
-            return {'success': False, 'error': 'AMO not available for calculation groups'}
+            # Both methods failed
+            return {
+                'success': False,
+                'error': 'Unable to list calculation groups. AMO not available and DAX query failed.',
+                'dax_error': dax_result.get('error')
+            }
         try:
             model = db.Model
 

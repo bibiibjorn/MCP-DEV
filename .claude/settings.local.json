@@ -24,7 +24,8 @@
       "Bash(else echo \"core/exports/ does not exist\")",
       "Bash(python:*)",
       "Bash(timeout 5 python:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(test:*)"
     ],
     "deny": [],
     "ask": []

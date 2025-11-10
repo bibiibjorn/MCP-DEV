@@ -88,7 +88,7 @@ def _get_inline_guide() -> str:
 - **get_measure_impact** - Get measure usage impact
 
 ## Comparison
-- **get_model_summary** - Get compact model summary
+- **full_analysis (with summary_only=true)** - Get fast model summary with purpose detection
 - **prepare_model_comparison** - Detect both models for comparison
 - **compare_pbi_models** - Compare models after user confirms OLD/NEW
 

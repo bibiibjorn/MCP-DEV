@@ -19,8 +19,10 @@ try:
     import os
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    parent_dir = os.path.dirname(script_dir)
-    dll_folder = os.path.join(parent_dir, "lib", "dotnet")
+    parent_dir = os.path.dirname(script_dir)  # core/model
+    root_dir = os.path.dirname(parent_dir)     # core -> need one more level
+    root_dir = os.path.dirname(root_dir)       # root
+    dll_folder = os.path.join(root_dir, "lib", "dotnet")
 
     core_dll = os.path.join(dll_folder, "Microsoft.AnalysisServices.Core.dll")
     amo_dll = os.path.join(dll_folder, "Microsoft.AnalysisServices.dll")
