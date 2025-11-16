@@ -168,31 +168,57 @@ class ConnectionState:
             logger.error(f"Error invalidating table mapping cache: {e}")
             return {'success': False, 'error': str(e)}
     
-    def initialize_managers(self, force_reinit: bool = False):
+    def initialize_managers(self, force_reinit: bool = False) -> Dict[str, Any]:
         """
         Initialize all service managers with thread-safe locking.
 
         Args:
             force_reinit: Force reinitialization even if already initialized
+
+        Returns:
+            Dictionary with success status and error details if initialization failed
         """
         # Quick check without lock
         if self._managers_initialized and not force_reinit:
             logger.debug("Managers already initialized, skipping")
-            return
+            return {'success': True, 'message': 'Managers already initialized'}
 
         # Thread-safe initialization with double-check locking pattern
         with self._init_lock:
             # Double-check after acquiring lock
             if self._managers_initialized and not force_reinit:
                 logger.debug("Managers already initialized (double-check), skipping")
-                return
+                return {'success': True, 'message': 'Managers already initialized'}
 
             if not self.is_connected() or not self.connection_manager:
-                logger.warning("Cannot initialize managers: not connected")
-                return
+                error_msg = "Cannot initialize managers: not connected"
+                logger.warning(error_msg)
+                return {
+                    'success': False,
+                    'error': error_msg,
+                    'error_type': 'not_connected',
+                    'suggestions': [
+                        'Ensure connection to Power BI Desktop is established first',
+                        'Run detect_powerbi_desktop and connect_to_powerbi tools'
+                    ]
+                }
 
             try:
                 conn = self.connection_manager.get_connection()
+
+                if conn is None:
+                    error_msg = "Failed to get connection from connection manager"
+                    logger.error(error_msg)
+                    return {
+                        'success': False,
+                        'error': error_msg,
+                        'error_type': 'connection_unavailable',
+                        'suggestions': [
+                            'Verify Power BI Desktop is running',
+                            'Try disconnecting and reconnecting',
+                            'Check if the Power BI file is still open'
+                        ]
+                    }
 
                 # Import managers
                 from core.infrastructure.query_executor import OptimizedQueryExecutor
@@ -289,9 +315,30 @@ class ConnectionState:
                 self._managers_initialized = True
                 logger.info("[OK] All managers initialized successfully")
 
+                return {
+                    'success': True,
+                    'message': 'All managers initialized successfully',
+                    'query_executor_available': self.query_executor is not None
+                }
+
             except Exception as e:
                 logger.error(f"Error initializing managers: {e}", exc_info=True)
                 self._managers_initialized = False
+
+                # Provide detailed error information
+                import traceback
+                return {
+                    'success': False,
+                    'error': f'Manager initialization failed: {str(e)}',
+                    'error_type': 'initialization_error',
+                    'error_details': traceback.format_exc(),
+                    'suggestions': [
+                        'Check that all required .NET assemblies are available',
+                        'Verify the Power BI connection is stable',
+                        'Check the MCP server logs for detailed error information',
+                        'Try restarting Claude Desktop to reset the MCP server state'
+                    ]
+                }
     
     def _initialize_bpa(self, force_reinit: bool = False):
         """Initialize BPA analyzer if available."""
