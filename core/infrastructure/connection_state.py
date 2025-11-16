@@ -194,9 +194,8 @@ class ConnectionState:
             try:
                 conn = self.connection_manager.get_connection()
 
-                # Import managers
+                # Import managers (import performance_analyzer separately to handle deletion)
                 from core.infrastructure.query_executor import OptimizedQueryExecutor
-                from core.performance.performance_analyzer import EnhancedAMOTraceAnalyzer
                 from core.dax.dax_injector import DAXInjector
                 from core.model.dependency_analyzer import DependencyAnalyzer
                 from core.operations.bulk_operations import BulkOperationsManager
@@ -222,28 +221,34 @@ class ConnectionState:
                         pass
                     logger.info("[OK] Query executor initialized")
 
-                # Initialize performance analyzer with AMO SessionTrace (now fixed!)
+                # Initialize performance analyzer with AMO SessionTrace (optional - may not exist)
                 if not self.performance_analyzer or force_reinit:
-                    if self.connection_manager and self.connection_manager.connection_string:
-                        self.performance_analyzer = EnhancedAMOTraceAnalyzer(self.connection_manager.connection_string)
-                        amo_connected = self.performance_analyzer.connect_amo()
+                    try:
+                        from core.performance.performance_analyzer import EnhancedAMOTraceAnalyzer
+                        if self.connection_manager and self.connection_manager.connection_string:
+                            self.performance_analyzer = EnhancedAMOTraceAnalyzer(self.connection_manager.connection_string)
+                            amo_connected = self.performance_analyzer.connect_amo()
 
-                        # Respect configured trace mode for clearer logs
-                        try:
-                            mode = str(config.get('performance.trace_mode', 'full') or 'full').lower()
-                        except Exception:
-                            mode = 'full'
-                        if mode == 'off':
-                            logger.info("[OK] Performance analyzer initialized (trace_mode=off; basic timing only)")
-                        elif mode == 'basic':
-                            logger.info("[OK] Performance analyzer initialized (trace_mode=basic; basic timing preferred)")
-                        else:
-                            if amo_connected:
-                                logger.info("[OK] Performance analyzer initialized (AMO SessionTrace with event subscriptions)")
+                            # Respect configured trace mode for clearer logs
+                            try:
+                                mode = str(config.get('performance.trace_mode', 'full') or 'full').lower()
+                            except Exception:
+                                mode = 'full'
+                            if mode == 'off':
+                                logger.info("[OK] Performance analyzer initialized (trace_mode=off; basic timing only)")
+                            elif mode == 'basic':
+                                logger.info("[OK] Performance analyzer initialized (trace_mode=basic; basic timing preferred)")
                             else:
-                                logger.warning("[WARN] AMO not available - performance analysis will use basic timing")
-                    else:
-                        logger.warning("Cannot initialize performance analyzer: no connection string")
+                                if amo_connected:
+                                    logger.info("[OK] Performance analyzer initialized (AMO SessionTrace with event subscriptions)")
+                                else:
+                                    logger.warning("[WARN] AMO not available - performance analysis will use basic timing")
+                        else:
+                            logger.warning("Cannot initialize performance analyzer: no connection string")
+                    except ImportError:
+                        logger.info("[SKIP] Performance analyzer not available (module not found)")
+                    except Exception as e:
+                        logger.warning(f"[SKIP] Performance analyzer initialization failed: {e}")
 
                 # Initialize other managers
                 if not self.dax_injector or force_reinit:

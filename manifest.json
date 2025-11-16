@@ -244,7 +244,9 @@
     "clients": {
       "claude-desktop": ">=0.10.0"
     },
-    "platforms": ["win32"],
+    "platforms": [
+      "win32"
+    ],
     "python": ">=3.10.0 <4.0.0"
   }
 }

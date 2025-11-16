@@ -334,48 +334,7 @@ TOOL_SCHEMAS = {
         "required": []
     },
 
-    'analyze_model_for_ai': {
-        "type": "object",
-        "properties": {
-            "output_format": {
-                "type": "string",
-                "description": "Export format: 'json_gzip' (recommended, compressed JSON), 'json' (uncompressed), or 'markdown'",
-                "enum": ["json", "json_gzip", "markdown"],
-                "default": "json_gzip"
-            },
-            "sample_rows": {
-                "type": "integer",
-                "description": "Number of sample data rows per table (default: 20, set to 0 to skip sample data)",
-                "default": 20
-            },
-            "include_sample_data": {
-                "type": "boolean",
-                "description": "Include sample data from tables (default: true)",
-                "default": True
-            },
-            "include_dependencies": {
-                "type": "boolean",
-                "description": "Include measure and column dependency analysis (default: true)",
-                "default": True
-            },
-            "include_bpa_issues": {
-                "type": "boolean",
-                "description": "Include Best Practice Analyzer issues (default: false)",
-                "default": False
-            },
-            "include_dax_patterns": {
-                "type": "boolean",
-                "description": "Detect and include DAX patterns in measures (default: true)",
-                "default": True
-            },
-            "output_path": {
-                "type": "string",
-                "description": "Optional custom output path (auto-generated if not specified)"
-            }
-        },
-        "required": []
-    },
-
+    # 
     # Documentation (3 tools)
     'generate_model_documentation_word': {
         "type": "object",

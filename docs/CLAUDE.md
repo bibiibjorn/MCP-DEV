@@ -147,9 +147,7 @@ python run_server.py
 
 **Specialized Managers**:
 - `model_exporter.py`: Schema export, documentation generation
-- `performance_analyzer_v2.py`: DAX query performance analysis with accurate SE/FE breakdown via xEvents
-- `xevent_trace_manager.py`: XMLA-based Extended Events tracing for authoritative timing data
-- `performance_analyzer.py`: Legacy AMO SessionTrace analyzer (fallback only)
+- `performance_optimizer.py`: Model performance optimization and cardinality analysis
 - `dependency_analyzer.py`: Measure dependency tree analysis
 - `bpa_analyzer.py`: Best Practice Analyzer integration
 - `dax_validator.py`: DAX syntax validation and pattern analysis

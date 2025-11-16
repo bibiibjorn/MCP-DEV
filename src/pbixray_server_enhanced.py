@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, List
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.types import Tool, TextContent, Resource
 from datetime import datetime
 
 # Add parent directory to path
@@ -39,6 +39,7 @@ from core.infrastructure.connection_state import connection_state
 from server.registry import get_registry
 from server.dispatch import ToolDispatcher
 from server.handlers import register_all_handlers
+from server.resources import get_resource_manager
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("mcp_powerbi_finvision")
@@ -95,6 +96,29 @@ connection_state.agent_policy = agent_policy
 async def list_tools() -> List[Tool]:
     """List all available tools from registry"""
     return registry.get_all_tools_as_mcp()
+
+
+@app.list_resources()
+async def list_resources() -> List[Resource]:
+    """List all available MCP resources (exported model files)"""
+    try:
+        resource_manager = get_resource_manager()
+        return resource_manager.list_resources()
+    except Exception as e:
+        logger.error(f"Error listing resources: {e}", exc_info=True)
+        return []
+
+
+@app.read_resource()
+async def read_resource(uri: str) -> str:
+    """Read an MCP resource (exported model file) by URI"""
+    try:
+        resource_manager = get_resource_manager()
+        content = resource_manager.read_resource(uri)
+        return content
+    except Exception as e:
+        logger.error(f"Error reading resource {uri}: {e}", exc_info=True)
+        raise ValueError(f"Failed to read resource {uri}: {str(e)}")
 
 
 @app.call_tool()

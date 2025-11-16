@@ -15,7 +15,6 @@ from server.handlers.pbip_handler import register_pbip_handlers
 from server.handlers.tmdl_handler import register_tmdl_handlers
 from server.handlers.dax_context_handler import register_dax_context_handlers
 from server.handlers.user_guide_handler import register_user_guide_handlers
-from server.handlers.performance_tracing_handler import register_performance_tracing_handlers
 
 def register_all_handlers(registry):
     """Register all handlers with the registry"""
@@ -33,7 +32,6 @@ def register_all_handlers(registry):
     register_tmdl_handlers(registry)
     register_dax_context_handlers(registry)
     register_user_guide_handlers(registry)
-    register_performance_tracing_handlers(registry)
 
 __all__ = [
     'register_all_handlers',
