@@ -38,7 +38,7 @@ def handle_analyze_best_practices_unified(args: Dict[str, Any]) -> Dict[str, Any
     return agent_policy.analysis_orch.analyze_best_practices(connection_state, summary_only)
 
 def handle_analyze_performance_unified(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Performance analysis (queries/cardinality/storage)"""
+    """Performance analysis - relationship cardinality"""
     if not connection_state.is_connected():
         return ErrorHandler.handle_not_connected()
 
@@ -46,9 +46,7 @@ def handle_analyze_performance_unified(args: Dict[str, Any]) -> Dict[str, Any]:
     if not agent_policy:
         return ErrorHandler.handle_manager_unavailable('agent_policy')
 
-    summary_only = args.get('summary_only', False)
-
-    return agent_policy.analysis_orch.analyze_performance(connection_state, summary_only)
+    return agent_policy.analysis_orch.analyze_performance(connection_state)
 
 def handle_validate_model_integrity(args: Dict[str, Any]) -> Dict[str, Any]:
     """Validate model integrity"""
@@ -84,7 +82,7 @@ def register_analysis_handlers(registry):
         ),
         ToolDefinition(
             name="analyze_performance_unified",
-            description="Performance analysis (queries/cardinality/storage)",
+            description="Relationship cardinality analysis",
             handler=handle_analyze_performance_unified,
             input_schema=TOOL_SCHEMAS.get('analyze_performance_unified', {}),
             category="analysis",

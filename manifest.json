@@ -141,7 +141,7 @@
     },
     {
       "name": "05_analyze_performance",
-      "description": "[05-Analysis] Performance analysis (queries/cardinality/storage)"
+      "description": "[05-Analysis] Relationship cardinality analysis"
     },
     {
       "name": "05_validate_model_integrity",
@@ -237,12 +237,8 @@
   ],
   "license": "MIT",
   "compatibility": {
-    "clients": {
-      "claude-desktop": ">=0.10.0"
-    },
     "platforms": [
       "win32"
-    ],
-    "python": ">=3.10.0 <4.0.0"
+    ]
   }
 }

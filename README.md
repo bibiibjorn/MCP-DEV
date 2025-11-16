@@ -37,11 +37,8 @@ Enables Claude and other AI assistants to analyze Power BI models locally—brow
 - **RLS management** - list and manage Row-Level Security roles
 
 ### Performance & Optimization
-- **DAX query execution** with Storage Engine / Formula Engine breakdown
-- **Performance profiling** - cardinality checks, storage compression analysis
-- **Query benchmarking** - compare multiple DAX variants, find the fastest
+- **Relationship cardinality analysis** - identify cardinality issues in relationships
 - **Cache management** - TTL-based caching with configurable policies
-- **VertiPaq statistics** - detailed storage and compression analysis
 
 ### Best Practices & Quality
 - **Best Practice Analyzer (BPA)** - 120+ default rules, 150+ comprehensive rules

@@ -298,79 +298,37 @@ class AnalysisOrchestrator(BaseOrchestrator):
 
     def analyze_performance_unified(
         self,
-        connection_state,
-        mode: str = "comprehensive",
-        queries: Optional[List[str]] = None,
-        table: Optional[str] = None,
-        runs: int = 3,
-        clear_cache: bool = True,
-        include_event_counts: bool = False
+        connection_state
     ) -> Dict[str, Any]:
-        """Unified performance analysis combining query performance, cardinality, and storage."""
+        """Performance analysis focused on relationship and column cardinality."""
         from core.validation.error_handler import ErrorHandler
 
         if not connection_state.is_connected():
             return ErrorHandler.handle_not_connected()
 
-        mode = (mode or "comprehensive").lower()
         performance_optimizer = connection_state.performance_optimizer
 
         results: Dict[str, Any] = {
             'success': True,
-            'mode': mode,
             'analyses': {}
         }
 
-        # Run query batch performance if requested and queries provided
-        if mode in ("comprehensive", "queries") and queries:
-            perf_result = self.analyze_queries_batch(
-                connection_state,
-                queries,
-                runs=runs,
-                clear_cache=clear_cache,
-                include_event_counts=include_event_counts
-            )
-            results['analyses']['query_performance'] = perf_result
-
-        # Run cardinality analysis if requested
-        if mode in ("comprehensive", "cardinality"):
-            if performance_optimizer:
-                try:
-                    # Relationship cardinality
-                    rel_card = performance_optimizer.analyze_relationship_cardinality()
-                    results['analyses']['relationship_cardinality'] = rel_card
-
-                    # Column cardinality if table specified
-                    if table:
-                        col_card = performance_optimizer.analyze_column_cardinality(table)
-                        results['analyses']['column_cardinality'] = col_card
-                except Exception as e:
-                    results['analyses']['cardinality_error'] = {
-                        'success': False,
-                        'error': f'Cardinality analysis failed: {str(e)}'
-                    }
-            else:
-                results['analyses']['cardinality'] = {
+        # Always run cardinality analysis
+        if performance_optimizer:
+            try:
+                # Relationship cardinality analysis
+                rel_card = performance_optimizer.analyze_relationship_cardinality()
+                results['analyses']['relationship_cardinality'] = rel_card
+            except Exception as e:
+                results['analyses']['cardinality_error'] = {
                     'success': False,
-                    'error': 'Performance optimizer not available'
+                    'error': f'Cardinality analysis failed: {str(e)}'
                 }
-
-        # Run storage compression analysis if requested
-        if mode in ("comprehensive", "storage") and table:
-            if performance_optimizer:
-                try:
-                    storage_result = performance_optimizer.analyze_encoding_efficiency(table)
-                    results['analyses']['storage_compression'] = storage_result
-                except Exception as e:
-                    results['analyses']['storage_error'] = {
-                        'success': False,
-                        'error': f'Storage analysis failed: {str(e)}'
-                    }
-            else:
-                results['analyses']['storage'] = {
-                    'success': False,
-                    'error': 'Performance optimizer not available'
-                }
+        else:
+            results['analyses']['cardinality'] = {
+                'success': False,
+                'error': 'Performance optimizer not available'
+            }
 
         # Generate summary
         analysis_count = len([a for a in results['analyses'].values() if isinstance(a, dict) and a.get('success')])
@@ -440,9 +398,8 @@ class AnalysisOrchestrator(BaseOrchestrator):
         mode = "all" if not summary_only else "bpa"
         return self.analyze_best_practices_unified(connection_state, mode=mode)
 
-    def analyze_performance(self, connection_state, summary_only: bool = False) -> Dict[str, Any]:
+    def analyze_performance(self, connection_state) -> Dict[str, Any]:
         """
         Alias for analyze_performance_unified for backward compatibility.
         """
-        mode = "comprehensive" if not summary_only else "cardinality"
-        return self.analyze_performance_unified(connection_state, mode=mode)
+        return self.analyze_performance_unified(connection_state)

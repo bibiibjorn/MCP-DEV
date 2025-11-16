@@ -351,7 +351,7 @@
       "Description": "Inactive relationships that are never used with USERELATIONSHIP should be removed to simplify the model.",
       "Severity": 1,
       "Scope": "Relationship",
-      "Expression": "not IsActive",
+      "Expression": "IsActive == false or isActive == false",
       "CompatibilityLevel": 1200
     },
     {

@@ -239,12 +239,7 @@ TOOL_SCHEMAS = {
 
     'analyze_performance_unified': {
         "type": "object",
-        "properties": {
-            "summary_only": {
-                "type": "boolean",
-                "description": "Return compact summary"
-            }
-        },
+        "properties": {},
         "required": []
     },
 
