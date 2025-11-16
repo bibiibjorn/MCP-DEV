@@ -69,7 +69,6 @@ class ToolTimeoutManager:
         'bulk_delete_measures': 60,
         
         # VertiPaq and DMV queries (10-30s)
-        'get_vertipaq_stats': 30,
         'get_data_sources': 15,
         'get_m_expressions': 20,
         

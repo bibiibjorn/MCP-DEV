@@ -61,35 +61,7 @@ def run_full_analysis(
     BPA_AVAILABLE: bool,
     arguments: Dict[str, Any],
 ) -> Dict[str, Any]:
-    # Check for summary_only mode FIRST - prevents token overflow
-    summary_only = bool(arguments.get('summary_only', False))
-    if summary_only or arguments.get('depth') == 'light':
-        # Return quick counts instead of full analysis (prevents 15K+ token responses)
-        query_executor = connection_state.query_executor
-        if not query_executor:
-            return {'success': False, 'error': 'Query executor unavailable'}
-
-        # Get just counts - minimal token usage (~200 tokens instead of 15K-30K)
-        try:
-            tables = query_executor.execute_info_query("TABLES", top_n=1)
-            columns = query_executor.execute_info_query("COLUMNS", top_n=1)
-            measures = query_executor.execute_info_query("MEASURES", top_n=1)
-            relationships = query_executor.execute_info_query("RELATIONSHIPS", top_n=1)
-
-            return {
-                "success": True,
-                "summary_mode": True,
-                "summary": {
-                    "tables_count": tables.get('row_count', 0),
-                    "columns_count": columns.get('row_count', 0),
-                    "measures_count": measures.get('row_count', 0),
-                    "relationships_count": relationships.get('row_count', 0)
-                },
-                "hint": "Call with summary_only=false for full analysis",
-                "token_limit_friendly": True
-            }
-        except Exception as e:
-            return {'success': False, 'error': str(e), 'summary_mode': True}
+    # Always run full analysis - no summary_only mode
 
     # Shortcut references
     query_executor = connection_state.query_executor

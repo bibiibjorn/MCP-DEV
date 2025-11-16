@@ -148,10 +148,6 @@
       "description": "[05-Analysis] Validate model integrity"
     },
     {
-      "name": "05_get_vertipaq_stats",
-      "description": "[05-Analysis] Get VertiPaq storage statistics"
-    },
-    {
       "name": "06_analyze_measure_dependencies",
       "description": "[06-Dependencies] Analyze measure dependencies tree"
     },
@@ -161,7 +157,7 @@
     },
     {
       "name": "07_export_model_schema",
-      "description": "[07-Export] Export model schema by section"
+      "description": "[07-Export] Export model schema: 'compact' for lightweight preview (~1-2k tokens) or 'all' for full TMDL export to file (optimized for low token usage)"
     },
     {
       "name": "07_export_tmsl",

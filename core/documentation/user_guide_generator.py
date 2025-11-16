@@ -360,12 +360,7 @@ def generate_comprehensive_user_guide(category: str = "all", format_type: str = 
                     "example": '{"page_size": 50}',
                     "returns": "M expressions for all queries/partitions",
                     "tips": ["Full M code included", "Can be very large"]
-                },
-                {
-                    "name": "get_vertipaq_stats",
-                    "purpose": "VertiPaq storage statistics for tables/columns",
-                    "when_to_use": "Optimize model size, find compression issues",
-                    "example": '{"table": "Sales"}',
+                }',
                     "returns": "Column sizes, cardinality, compression ratios",
                     "tips": ["Shows actual memory usage", "Identifies bloat"]
                 },

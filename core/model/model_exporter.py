@@ -5,6 +5,7 @@ Exports models in TMSL, TMDL, and documentation formats
 
 import json
 import logging
+import os
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -287,6 +288,10 @@ class ModelExporter:
 
                 logger.info(f"Exported TMDL structure to file: {output_path} ({statistics['tables']} tables, {statistics['total_measures']} measures)")
 
+                # Calculate file size for user info
+                file_size_bytes = os.path.getsize(output_path)
+                file_size_mb = file_size_bytes / (1024 * 1024)
+
                 return {
                     'success': True,
                     'format': 'TMDL',
@@ -294,7 +299,9 @@ class ModelExporter:
                     'export_file': output_path,
                     'export_timestamp': datetime.now().isoformat(),
                     'statistics': statistics,
-                    'message': f'TMDL structure exported to {output_path}'
+                    'file_size_mb': round(file_size_mb, 2),
+                    'message': f'✅ TMDL structure exported to file ({statistics["tables"]} tables, {statistics["total_measures"]} measures, {round(file_size_mb, 1)} MB)',
+                    'note': 'To read the exported data, use the standard file reading capabilities to open: ' + output_path
                 }
             else:
                 # Return full structure in response (may be too large!)
@@ -874,16 +881,18 @@ class ModelExporter:
 
         Args:
             section: Section to export (all, compact, or specific sections)
-            output_path: Optional output path
+            output_path: Optional output path (auto-generated if not provided for 'all' section)
 
         Returns:
-            Export result
+            Export result with file path for 'all' section, inline data for 'compact'
         """
         if section == "compact":
+            # Return lightweight schema without DAX expressions (low token usage)
             return self.export_compact_schema(include_hidden=True)
         elif section == "all":
-            # Return full TMDL structure
-            return self.export_tmdl_structure(export_to_file=bool(output_path), output_path=output_path)
+            # Always export to file to avoid massive token usage (50k-200k+ tokens)
+            # Auto-generate path if not provided
+            return self.export_tmdl_structure(export_to_file=True, output_path=output_path)
         else:
             # For other sections, use compact schema as default
             return self.export_compact_schema(include_hidden=True)

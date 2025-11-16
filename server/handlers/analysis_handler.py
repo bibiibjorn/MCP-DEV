@@ -61,62 +61,6 @@ def handle_validate_model_integrity(args: Dict[str, Any]) -> Dict[str, Any]:
 
     return model_validator.validate_model()
 
-def handle_get_vertipaq_stats(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Get VertiPaq storage statistics"""
-    if not connection_state.is_connected():
-        return ErrorHandler.handle_not_connected()
-
-    qe = connection_state.query_executor
-    if not qe:
-        return ErrorHandler.handle_manager_unavailable('query_executor')
-
-    # Get storage stats from DMV
-    try:
-        # Use INFO.STORAGETABLECOLUMNSEGMENTS for VertiPaq stats
-        result = qe.execute_info_query("STORAGETABLECOLUMNSEGMENTS")
-
-        if result.get('success'):
-            rows = result.get('rows', [])
-
-            # Aggregate stats by table
-            table_stats = {}
-            for row in rows:
-                table = row.get('Table') or row.get('[Table]')
-                size = row.get('UsedSize') or row.get('[UsedSize]', 0)
-
-                if table:
-                    if table not in table_stats:
-                        table_stats[table] = {
-                            'table': table,
-                            'total_size': 0,
-                            'segment_count': 0
-                        }
-                    table_stats[table]['total_size'] += int(size) if size else 0
-                    table_stats[table]['segment_count'] += 1
-
-            # Convert to list and sort by size
-            stats_list = list(table_stats.values())
-            stats_list.sort(key=lambda x: x['total_size'], reverse=True)
-
-            total_size = sum(s['total_size'] for s in stats_list)
-
-            return {
-                'success': True,
-                'total_size_bytes': total_size,
-                'total_size_mb': round(total_size / (1024 * 1024), 2),
-                'table_count': len(stats_list),
-                'tables': stats_list
-            }
-        else:
-            return result
-
-    except Exception as e:
-        logger.error(f"Error getting VertiPaq stats: {e}", exc_info=True)
-        return {
-            'success': False,
-            'error': f'Error getting VertiPaq stats: {str(e)}'
-        }
-
 def register_analysis_handlers(registry):
     """Register all analysis handlers"""
     from server.tool_schemas import TOOL_SCHEMAS
@@ -153,14 +97,6 @@ def register_analysis_handlers(registry):
             input_schema=TOOL_SCHEMAS.get('validate_model_integrity', {}),
             category="analysis",
             sort_order=30
-        ),
-        ToolDefinition(
-            name="get_vertipaq_stats",
-            description="Get VertiPaq storage statistics",
-            handler=handle_get_vertipaq_stats,
-            input_schema=TOOL_SCHEMAS.get('get_vertipaq_stats', {}),
-            category="analysis",
-            sort_order=31
         ),
     ]
 

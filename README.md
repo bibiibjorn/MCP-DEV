@@ -51,7 +51,8 @@ Enables Claude and other AI assistants to analyze Power BI models locally—brow
 
 ### Documentation & Export
 - **Multiple formats** - JSON, Excel (XLSX), Word (DOCX), PDF
-- **TMSL/TMDL export** - model schema in native formats
+- **TMSL/TMDL export** - model schema in native formats (token-optimized: file-based exports)
+- **Smart export modes** - compact preview (~1-2k tokens) or full export to file (~99% token reduction)
 - **Interactive HTML reports** - dependency explorer, relationship graphs
 - **Model comparison** - diff two Power BI models with interactive HTML report
 - **PBIP support** - analyze modern Power BI project format (offline, no Desktop required)
@@ -198,7 +199,6 @@ All tools are organized with numerical prefixes for easy discovery (01_ for Conn
 - `05_full_analysis` - Comprehensive model analysis with BPA
 - `05_analyze_best_practices` - BPA + M query practices
 - `05_analyze_performance` - Performance analysis (queries/cardinality/storage)
-- `05_get_vertipaq_stats` - Detailed VertiPaq storage statistics
 
 **Schema:**
 - `02_describe_table` - Comprehensive table description with columns, measures, relationships

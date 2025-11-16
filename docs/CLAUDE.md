@@ -237,6 +237,46 @@ mcpb pack . mcp-powerbi-finvision-3.4.2.mcpb
 
 ## Important Implementation Notes
 
+### Connection Management & AI Workflows
+
+**CRITICAL AI GUIDANCE**: Always check connection status and reconnect when needed.
+
+#### When to Use detect_and_connect or detect_instances
+
+**Use `detect_and_connect` (recommended for AI agents)**:
+- At the start of ANY user session when you're unsure if connected
+- After receiving "not connected" errors from any tool
+- When the user mentions opening a new .pbix file
+- After Power BI Desktop restarts
+
+**Use `detect_instances` only when**:
+- You need to list all available Power BI instances for the user
+- The user explicitly asks to see available instances
+
+#### Connection Error Handling Workflow
+
+When you receive an error indicating "no connection" or "not connected":
+
+1. **Automatically call `detect_and_connect`** - Do NOT ask the user first
+2. If successful, retry the original operation
+3. If `detect_and_connect` returns "no instances":
+   - Inform user: "No Power BI Desktop instances detected"
+   - Suggest: "Open a .pbix file in Power BI Desktop and wait 10-15 seconds"
+   - DO NOT retry until user confirms Desktop is open
+
+#### Example Workflow
+
+
+
+**Never leave the user with "not connected" errors without attempting reconnection first.**
+
+#### Tool Availability Checks
+
+Before using specialized managers (BPA, performance optimization):
+- Check `agent_health` to verify manager initialization
+- If manager unavailable, inform user which feature requires it
+- Suggest using alternative tools or manual steps
+
 ### Working with ADOMD.NET and TOM/AMO
 
 Power BI Desktop uses Analysis Services (tabular model). Access is via:
@@ -344,6 +384,43 @@ MCP-PowerBi-Finvision/
 ├── manifest.json                     # MCPB manifest
 └── requirements.txt                  # Python dependencies
 ```
+
+## Tool Usage Best Practices
+
+### Export Operations - Token Optimization
+
+**export_model_schema** has two modes optimized for different use cases:
+
+1. **Compact Mode** (`section="compact"`):
+   - Returns lightweight schema WITHOUT DAX expressions
+   - Token usage: ~1-2k tokens
+   - Includes: Tables, columns (name, type, hidden), measures (name, format, folder), relationships
+   - Use for: Quick model overview, schema comparisons, documentation structure
+
+2. **Full TMDL Mode** (`section="all"`):
+   - Exports complete TMDL structure WITH all DAX expressions to a JSON file
+   - Token usage: ~500-2000 tokens (just returns file path + statistics)
+   - File size: Typically 1-50 MB depending on model complexity
+   - Use for: Complete model backups, detailed analysis, migration planning
+   - **Reading the export**: Use standard file operations to read the exported JSON file
+   - Auto-generates path in `exports/tmdl_exports/` if not specified
+
+**Example workflow**:
+```python
+# Step 1: Export to file (low token usage)
+result = export_model_schema(section="all")
+# Returns: {'export_file': 'exports/tmdl_exports/model_20250116_143022.json', 'statistics': {...}}
+
+# Step 2: Read specific sections from file as needed
+# Use Read tool or file operations to access the exported data
+```
+
+**Why this matters**: For large models with 100+ measures, returning full TMDL in MCP response would use 50k-200k+ tokens. File-based export reduces this by 99%.
+
+### Other Export Tools
+
+- **export_tmsl**: Always exports to file (no inline option) for same token optimization reasons
+- **export_tmdl**: Exports TMDL folder structure (not JSON), always file-based
 
 ## Debugging Tips
 

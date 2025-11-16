@@ -431,8 +431,8 @@ class AgentPolicy:
             if tool_name == 'describe_table':
                 suggestions.append("Use 'include_columns=false' or 'include_measures=false' to reduce details")
 
-            if tool_name in ['full_analysis', 'analyze_model_bpa']:
-                suggestions.append("Use 'summary_only=true' for a more compact response")
+            if tool_name == 'analyze_model_bpa':
+                suggestions.append("Use filtering parameters to reduce result size")
 
             if tool_name == 'export_tmsl' or tool_name == 'export_tmdl':
                 suggestions.append("Export to file instead of returning full content")

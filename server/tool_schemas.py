@@ -222,12 +222,7 @@ TOOL_SCHEMAS = {
     # Analysis (5 tools)
     'full_analysis': {
         "type": "object",
-        "properties": {
-            "summary_only": {
-                "type": "boolean",
-                "description": "Return compact summary (default: false)"
-            }
-        },
+        "properties": {},
         "required": []
     },
 
@@ -254,12 +249,6 @@ TOOL_SCHEMAS = {
     },
 
     'validate_model_integrity': {
-        "type": "object",
-        "properties": {},
-        "required": []
-    },
-
-    'get_vertipaq_stats': {
         "type": "object",
         "properties": {},
         "required": []
@@ -324,11 +313,13 @@ TOOL_SCHEMAS = {
         "properties": {
             "section": {
                 "type": "string",
-                "description": "Section to export (tables/measures/relationships/all)"
+                "description": "Section to export: 'compact' (lightweight schema without DAX expressions, ~1-2k tokens) or 'all' (full TMDL with all DAX, exports to file). Default: 'all'",
+                "enum": ["compact", "all"],
+                "default": "all"
             },
             "output_path": {
                 "type": "string",
-                "description": "Output file path"
+                "description": "Optional output file path. For section='all', file is auto-generated in exports/tmdl_exports/ if not specified. File can be read back using standard file operations."
             }
         },
         "required": []
