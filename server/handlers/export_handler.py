@@ -79,12 +79,6 @@ def register_export_handlers(registry):
             category="export",
             sort_order=36
         ),
-    relationships, calculation groups, and RLS. Use preview_table_data and run_dax tools to fetch actual data and DAX expressions on demand.",
-            handler=handle_analyze_model_for_ai,
-            input_schema=TOOL_SCHEMAS.get('analyze_model_for_ai', {}),
-            category="export",
-            sort_order=33
-        ),
     ]
 
     for tool in tools:

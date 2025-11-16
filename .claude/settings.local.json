@@ -25,7 +25,8 @@
       "Bash(python:*)",
       "Bash(timeout 5 python:*)",
       "Bash(git add:*)",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(git fetch:*)"
     ],
     "deny": [],
     "ask": []
