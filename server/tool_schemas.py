@@ -541,4 +541,171 @@ TOOL_SCHEMAS = {
         "properties": {},
         "required": []
     },
+
+    # Hybrid Analysis (2 tools) - Category 14
+    'export_hybrid_analysis': {
+        "type": "object",
+        "properties": {
+            "pbip_folder_path": {
+                "type": "string",
+                "description": "Path to .SemanticModel folder (for TMDL files)"
+            },
+            "output_dir": {
+                "type": "string",
+                "description": "Optional output directory. If not specified, creates '[ModelName]_analysis' folder next to the PBIP folder."
+            },
+            "connection_string": {
+                "type": "string",
+                "description": "Optional: Connection string to active Power BI model for metadata & sample data. If omitted, will auto-detect running Power BI Desktop."
+            },
+            "server": {
+                "type": "string",
+                "description": "Optional: Server name for connection. If omitted, will auto-detect running Power BI Desktop."
+            },
+            "database": {
+                "type": "string",
+                "description": "Optional: Database name for connection. If omitted, will auto-detect running Power BI Desktop."
+            },
+            "include_sample_data": {
+                "type": "boolean",
+                "description": "Include sample data extraction (default: true)",
+                "default": True
+            },
+            "sample_rows": {
+                "type": "integer",
+                "description": "Number of sample rows per table (default: 1000, max: 5000)",
+                "default": 1000
+            },
+            "sample_compression": {
+                "type": "string",
+                "description": "Compression for parquet files: 'snappy' (default) or 'zstd'",
+                "enum": ["snappy", "zstd"],
+                "default": "snappy"
+            },
+            "include_row_counts": {
+                "type": "boolean",
+                "description": "Include row counts in metadata (default: true)",
+                "default": True
+            },
+            "track_column_usage": {
+                "type": "boolean",
+                "description": "Track column usage (default: true)",
+                "default": True
+            },
+            "track_cardinality": {
+                "type": "boolean",
+                "description": "Track cardinality info (default: true)",
+                "default": True
+            },
+            "tmdl_strategy": {
+                "type": "string",
+                "description": "TMDL handling strategy: 'symlink' (default) or 'copy'",
+                "enum": ["symlink", "copy"],
+                "default": "symlink"
+            },
+            "progress_callback": {
+                "type": "boolean",
+                "description": "Enable progress tracking (default: false)",
+                "default": False
+            }
+        },
+        "required": ["pbip_folder_path"]
+    },
+
+    'analyze_hybrid_model': {
+        "type": "object",
+        "properties": {
+            "analysis_path": {
+                "type": "string",
+                "description": "Path to exported analysis folder (required)"
+            },
+            "operation": {
+                "type": "string",
+                "description": "Operation to perform: 'read_metadata', 'find_objects', 'get_object_definition', 'analyze_dependencies', 'analyze_performance', 'get_sample_data', or 'smart_analyze' (for natural language)",
+                "enum": ["read_metadata", "find_objects", "get_object_definition", "analyze_dependencies", "analyze_performance", "get_sample_data", "smart_analyze"],
+                "default": "read_metadata"
+            },
+            "intent": {
+                "type": "string",
+                "description": "Natural language intent (only for operation='smart_analyze'). Example: 'Show me all measures in Time Intelligence folder'"
+            },
+            "object_filter": {
+                "type": "object",
+                "description": "Filter for objects",
+                "properties": {
+                    "object_type": {
+                        "type": "string",
+                        "description": "Object type: 'tables', 'measures', 'columns', 'relationships', 'roles'",
+                        "enum": ["tables", "measures", "columns", "relationships", "roles"]
+                    },
+                    "name_pattern": {
+                        "type": "string",
+                        "description": "Regex pattern for name matching"
+                    },
+                    "table": {
+                        "type": "string",
+                        "description": "Filter by table name"
+                    },
+                    "folder": {
+                        "type": "string",
+                        "description": "Filter by display folder (for measures)"
+                    },
+                    "is_hidden": {
+                        "type": "boolean",
+                        "description": "Filter by visibility"
+                    },
+                    "complexity": {
+                        "type": "string",
+                        "description": "Filter by complexity: 'simple', 'medium', 'complex'",
+                        "enum": ["simple", "medium", "complex"]
+                    },
+                    "object_name": {
+                        "type": "string",
+                        "description": "Specific object name (for get_object_definition, analyze_dependencies)"
+                    },
+                    "table_name": {
+                        "type": "string",
+                        "description": "Table name (for get_sample_data)"
+                    }
+                }
+            },
+            "format_type": {
+                "type": "string",
+                "description": "Output format: 'json' (default) or 'toon' (50% smaller, auto-applied for large responses)",
+                "enum": ["json", "toon"],
+                "default": "json"
+            },
+            "batch_size": {
+                "type": "integer",
+                "description": "Results per page (default: 50)",
+                "default": 50
+            },
+            "batch_number": {
+                "type": "integer",
+                "description": "Page number (default: 0)",
+                "default": 0
+            },
+            "priority": {
+                "type": "string",
+                "description": "Filter by priority: 'critical', 'high', 'medium', 'low', or null for all",
+                "enum": ["critical", "high", "medium", "low"]
+            },
+            "detailed": {
+                "type": "boolean",
+                "description": "Include detailed analysis (default: false)",
+                "default": False
+            },
+            "include_dependencies": {
+                "type": "boolean",
+                "description": "Include dependency info (default: false)",
+                "default": False
+            },
+            "include_sample_data": {
+                "type": "boolean",
+                "description": "Include sample data (default: false)",
+                "default": False
+            }
+        },
+        "required": ["analysis_path", "operation"]
+    }
 }
