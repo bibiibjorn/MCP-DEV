@@ -168,19 +168,17 @@ All tools are organized with numerical prefixes for easy discovery (01_ for Conn
 | **08 - Documentation** | 3 | Word reports, HTML explorer, update docs |
 | **09 - Comparison** | 3 | Model summary, prepare comparison, compare models |
 | **10 - PBIP** | 1 | Offline PBIP repository analysis |
-| **11 - TMDL** ⭐ NEW | 4 | Validate, find/replace, bulk rename, script generation |
-| **12 - DAX Context** ⭐ NEW | 3 | Context analysis, filter visualization, debugging |
+| **11 - TMDL** ⭐ NEW | 3 | Find/replace, bulk rename, script generation |
+| **12 - DAX Context** ⭐ NEW | 2 | Context analysis, debugging |
 | **13 - Help** | 1 | Comprehensive user guide |
 
 ### Highlighted Tools
 
 **DAX Development:**
 - `12_analyze_dax_context` - Analyze context transitions and row context
-- `12_visualize_filter_context` - Visualize filter propagation through relationships
 - `12_debug_dax_context` - Step-by-step DAX debugging with context details
 
 **TMDL Management:**
-- `11_validate_tmdl` - Validate TMDL syntax with linting
 - `11_tmdl_find_replace` - Find and replace with regex support
 - `11_tmdl_bulk_rename` - Bulk rename with automatic reference updates
 - `11_tmdl_generate_script` - Generate TMDL scripts from definitions
@@ -673,11 +671,9 @@ All dependencies are bundled in the `.mcpb` package for reproducible deployment.
 ### v4.0 - Major Release
 **New DAX Context Analysis Tools** (Category 12):
 - `12_analyze_dax_context` - Analyze context transitions and row context behavior
-- `12_visualize_filter_context` - Visualize filter propagation through relationships
 - `12_debug_dax_context` - Step-by-step DAX debugging with detailed context insights
 
 **New TMDL Editing Tools** (Category 11):
-- `11_validate_tmdl` - TMDL syntax validation with linting and error reporting
 - `11_tmdl_find_replace` - Find and replace across TMDL files with regex support
 - `11_tmdl_bulk_rename` - Bulk rename objects with automatic reference updates
 - `11_tmdl_generate_script` - Generate TMDL scripts from definitions

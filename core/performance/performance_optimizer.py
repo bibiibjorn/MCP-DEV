@@ -480,3 +480,146 @@ class PerformanceOptimizer:
         except Exception as e:
             logger.error(f"Error analyzing encoding: {e}")
             return {'success': False, 'error': str(e)}
+
+    # ========== DAX OPTIMIZATION: PERFORMANCE ANALYSIS ==========
+
+    def analyze_dax_performance(self, performance_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Analyze DAX query performance from DaxExecutor output.
+
+        Args:
+            performance_data: Performance section from DaxExecutor
+
+        Returns:
+            Analysis with bottleneck identification and recommendations
+        """
+        metrics = performance_data.get("Performance", {})
+        events = performance_data.get("EventDetails", [])
+
+        analysis = {
+            "metrics": self._calculate_performance_metrics(metrics),
+            "bottlenecks": self._identify_bottlenecks(metrics, events),
+            "recommendations": self._generate_recommendations(metrics, events),
+            "rating": self._calculate_performance_rating(metrics)
+        }
+
+        return analysis
+
+    def _calculate_performance_metrics(self, metrics: Dict[str, Any]) -> Dict[str, Any]:
+        """Calculate key DAX performance metrics"""
+        total = metrics.get("Total", 0)
+        fe = metrics.get("FE", 0)
+        se = metrics.get("SE", 0)
+
+        se_percentage = (se / total * 100) if total > 0 else 0
+        fe_percentage = (fe / total * 100) if total > 0 else 0
+
+        return {
+            "total_ms": total,
+            "fe_ms": fe,
+            "se_ms": se,
+            "se_percentage": round(se_percentage, 2),
+            "fe_percentage": round(fe_percentage, 2),
+            "se_queries": metrics.get("SE_Queries", 0),
+            "se_parallelism": metrics.get("SE_Par", 0),
+            "se_cache_hits": metrics.get("SE_Cache", 0),
+            "se_cpu_ms": metrics.get("SE_CPU", 0)
+        }
+
+    def _identify_bottlenecks(
+        self, metrics: Dict[str, Any], events: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Identify performance bottlenecks"""
+        bottlenecks = []
+
+        total = metrics.get("Total", 0)
+        fe = metrics.get("FE", 0)
+        se_percentage = (metrics.get("SE", 0) / total * 100) if total > 0 else 0
+        se_queries = metrics.get("SE_Queries", 0)
+
+        # High FE percentage
+        if se_percentage < 60:
+            bottlenecks.append({
+                "type": "high_formula_engine",
+                "severity": "critical" if se_percentage < 40 else "warning",
+                "description": f"Formula Engine is {100-se_percentage:.1f}% of execution time",
+                "impact": "Query is performing row-by-row operations instead of bulk operations",
+                "recommendation": "Consider using CALCULATE instead of iterators, avoid FILTER(ALL())"
+            })
+
+        # High SE query count
+        if se_queries > 20:
+            bottlenecks.append({
+                "type": "excessive_se_queries",
+                "severity": "warning",
+                "description": f"{se_queries} Storage Engine queries executed",
+                "impact": "Multiple scans prevent query fusion and parallelization",
+                "recommendation": "Simplify measure logic to enable vertical fusion"
+            })
+
+        # Callback detection
+        callbacks = [e for e in events if e.get("CallbackDataID")]
+        if callbacks:
+            bottlenecks.append({
+                "type": "callbacks_detected",
+                "severity": "critical",
+                "description": f"{len(callbacks)} callbacks from FE to SE",
+                "impact": "Row-by-row evaluation causing severe performance degradation",
+                "recommendation": "Rewrite measure to avoid context transitions in iterators"
+            })
+
+        # Large materializations
+        large_scans = [e for e in events if e.get("Rows", 0) > 1000000]
+        if large_scans:
+            bottlenecks.append({
+                "type": "large_materialization",
+                "severity": "warning",
+                "description": f"{len(large_scans)} scans returning >1M rows",
+                "impact": "High memory usage and FE processing overhead",
+                "recommendation": "Add filters earlier in the measure to reduce row count"
+            })
+
+        return bottlenecks
+
+    def _generate_recommendations(
+        self, metrics: Dict[str, Any], events: List[Dict[str, Any]]
+    ) -> List[str]:
+        """Generate specific optimization recommendations"""
+        recommendations = []
+
+        se_percentage = (metrics.get("SE", 0) / metrics.get("Total", 1) * 100)
+
+        if se_percentage < 80:
+            recommendations.append(
+                "Target: Increase Storage Engine percentage to >80% by replacing "
+                "iterators (SUMX, FILTER) with CALCULATE-based patterns"
+            )
+
+        if metrics.get("SE_Queries", 0) > 10:
+            recommendations.append(
+                "Target: Reduce Storage Engine query count to <10 by simplifying "
+                "measure logic to enable query fusion"
+            )
+
+        if metrics.get("SE_Par", 0) < 2:
+            recommendations.append(
+                "Warning: Low parallelism detected. Check for serialized callbacks "
+                "or FE bottlenecks preventing parallel execution"
+            )
+
+        return recommendations
+
+    def _calculate_performance_rating(self, metrics: Dict[str, Any]) -> str:
+        """Calculate overall performance rating"""
+        total = metrics.get("Total", 0)
+        se_percentage = (metrics.get("SE", 0) / total * 100) if total > 0 else 0
+        se_queries = metrics.get("SE_Queries", 0)
+
+        if se_percentage >= 80 and se_queries <= 10:
+            return "excellent"
+        elif se_percentage >= 60 and se_queries <= 20:
+            return "good"
+        elif se_percentage >= 40:
+            return "fair"
+        else:
+            return "poor"

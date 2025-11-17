@@ -71,7 +71,7 @@ class HybridAnalyzer:
         self.query_executor = None
         self.has_connection = False
 
-        # Step 1: Try to establish connection
+        # Step 1: Try to establish connection (ALWAYS auto-detect if not explicitly provided)
         if connection_string or (server and database):
             # User provided connection explicitly
             logger.info("Using provided connection parameters")
@@ -81,8 +81,10 @@ class HybridAnalyzer:
                 logger.info(f"Server: {server}, Database: {database}")
             self.has_connection = True
         else:
-            # Auto-detect Power BI Desktop instance
-            logger.info("No connection provided - attempting to auto-detect Power BI Desktop...")
+            # Auto-detect Power BI Desktop instance (ALWAYS try this)
+            logger.info("=" * 80)
+            logger.info("AUTO-DETECTING Power BI Desktop...")
+            logger.info("=" * 80)
             try:
                 from core.infrastructure.multi_instance_manager import MultiInstanceManager
                 manager = MultiInstanceManager()
@@ -92,29 +94,41 @@ class HybridAnalyzer:
                     # Use the first detected instance
                     instance = instances[0]
                     self.server = f"localhost:{instance['port']}"
-                    # Note: detection returns 'database' not 'database_name'
-                    self.database = instance.get('database') or instance.get('database_name')
+                    # Detection returns 'database' field (filename like "Test.pbix")
+                    detected_db_name = instance.get('database') or instance.get('database_name')
 
-                    if not self.database:
-                        logger.warning("✗ No database name found in detected instance. Will use basic metadata from TMDL only.")
-                        logger.warning(f"  Instance details: {instance}")
-                        self.has_connection = False
-                    else:
-                        self.has_connection = True
-                        logger.info(f"✓ Auto-detected Power BI Desktop: {self.server} / {self.database}")
-                        logger.info(f"  Instance details: Port={instance.get('port')}, PID={instance.get('pid', 'N/A')}")
+                    logger.info(f"✓ DETECTED Power BI Desktop Instance:")
+                    logger.info(f"  - Port: {instance.get('port')}")
+                    logger.info(f"  - PID: {instance.get('pid', 'N/A')}")
+                    logger.info(f"  - Database (filename): {detected_db_name}")
+                    logger.info(f"  - Server: {self.server}")
+
+                    # We'll resolve the actual GUID database name when connecting
+                    # For now, mark that we found an instance
+                    self.has_connection = True
+                    logger.info("  - Connection: Will attempt to connect and resolve actual database GUID")
                 else:
-                    logger.warning("✗ No Power BI Desktop instances detected. Will use basic metadata from TMDL only.")
-                    logger.warning("  Make sure Power BI Desktop is running with a PBIX/PBIP file open.")
+                    logger.warning("=" * 80)
+                    logger.warning("✗ NO Power BI Desktop instances detected")
+                    logger.warning("  Make sure Power BI Desktop is running with a PBIX/PBIP file open")
+                    logger.warning("  Will use basic metadata from TMDL only (no connection)")
+                    logger.warning("=" * 80)
+                    self.has_connection = False
             except Exception as e:
-                logger.warning(f"✗ Could not auto-detect Power BI Desktop: {e}. Will use basic metadata from TMDL only.")
-                logger.debug(f"  Auto-detection error details:", exc_info=True)
+                logger.error("=" * 80)
+                logger.error(f"✗ ERROR during auto-detection: {e}")
+                logger.error("  Will use basic metadata from TMDL only")
+                logger.error("=" * 80)
+                logger.debug("  Auto-detection error details:", exc_info=True)
+                self.has_connection = False
 
-        # Step 2: Connect to the model (if we have connection info)
+        # Step 2: Connect to the model (if we detected an instance)
         if self.has_connection:
             try:
                 # Import ADOMD
-                logger.info("Attempting to connect to active model via ADOMD...")
+                logger.info("=" * 80)
+                logger.info("CONNECTING to active Power BI model via ADOMD.NET...")
+                logger.info("=" * 80)
                 from core.infrastructure.query_executor import OptimizedQueryExecutor, ADOMD_AVAILABLE, AdomdConnection
 
                 if not ADOMD_AVAILABLE or not AdomdConnection:
@@ -123,16 +137,20 @@ class HybridAnalyzer:
                 # Build connection string
                 if connection_string:
                     conn_str = connection_string
+                    logger.info(f"Using explicit connection string: {conn_str[:60]}...")
                 else:
                     # Step 2a: Connect without database to get actual GUID database name
                     # Power BI uses GUID database names internally, not file names
                     temp_conn_str = f"Provider=MSOLAP;Data Source={self.server}"
-                    logger.info(f"  Querying actual database name from {self.server}...")
+                    logger.info(f"Step 1/3: Opening temporary connection to {self.server}...")
+                    logger.info(f"  Connection string: {temp_conn_str}")
 
                     temp_conn = AdomdConnection(temp_conn_str)
                     temp_conn.Open()
+                    logger.info(f"  ✓ Temporary connection opened")
 
                     # Query the catalog to get the actual database GUID
+                    logger.info(f"Step 2/3: Querying for actual database GUID...")
                     cmd = temp_conn.CreateCommand()
                     cmd.CommandText = "SELECT [CATALOG_NAME] FROM $SYSTEM.DBSCHEMA_CATALOGS"
                     reader = cmd.ExecuteReader()
@@ -140,33 +158,49 @@ class HybridAnalyzer:
                     actual_database = None
                     if reader.Read():
                         actual_database = reader[0]
+                        logger.info(f"  ✓ Found database GUID: {actual_database}")
+                    else:
+                        logger.warning(f"  ✗ No database found in catalog query")
+
                     reader.Close()
                     temp_conn.Close()
+                    logger.info(f"  ✓ Temporary connection closed")
 
                     if not actual_database:
-                        raise RuntimeError(f"Could not find database on {self.server}")
+                        raise RuntimeError(f"Could not find database on {self.server}. Make sure a PBIX/PBIP file is open in Power BI Desktop.")
 
-                    logger.info(f"  ✓ Found database: {actual_database}")
                     self.database = actual_database
 
                     # Build final connection string with actual database GUID
                     conn_str = f"Provider=MSOLAP;Data Source={self.server};Initial Catalog={actual_database}"
-
-                logger.info(f"  Connection string: Provider=MSOLAP;Data Source={self.server};Initial Catalog=...")
+                    logger.info(f"Step 3/3: Opening final connection with database...")
+                    logger.info(f"  Connection string: Provider=MSOLAP;Data Source={self.server};Initial Catalog={actual_database[:40]}...")
 
                 # Create and open ADOMD connection
                 connection = AdomdConnection(conn_str)
                 connection.Open()
+                logger.info(f"  ✓ Final connection opened successfully")
 
                 # Create query executor with active connection
                 self.query_executor = OptimizedQueryExecutor(connection)
-                logger.info("✓ Successfully connected to active model!")
-                logger.info("  - Metadata extraction: ENABLED (DMV queries)")
-                logger.info("  - Sample data extraction: ENABLED (DAX queries)")
+
+                logger.info("=" * 80)
+                logger.info("✓✓✓ CONNECTION SUCCESSFUL ✓✓✓")
+                logger.info("=" * 80)
+                logger.info("  - Server: " + self.server)
+                logger.info("  - Database: " + (self.database[:60] if self.database else "N/A"))
+                logger.info("  - Metadata extraction: ENABLED (DMV queries via query_executor)")
+                logger.info("  - Sample data extraction: ENABLED (DAX queries via query_executor)")
+                logger.info("=" * 80)
+
             except Exception as e:
-                logger.warning(f"✗ Could not connect to active model: {e}")
-                logger.warning("  Will use basic metadata from TMDL only (no row counts, no sample data)")
-                logger.debug("  Connection error details:", exc_info=True)
+                logger.error("=" * 80)
+                logger.error(f"✗✗✗ CONNECTION FAILED ✗✗✗")
+                logger.error("=" * 80)
+                logger.error(f"Error: {e}")
+                logger.error("Will use basic metadata from TMDL only (no row counts, no sample data)")
+                logger.error("=" * 80)
+                logger.debug("Connection error details:", exc_info=True)
                 self.has_connection = False
                 self.query_executor = None
 
@@ -289,9 +323,26 @@ class HybridAnalyzer:
         row_counts = metadata_dict.get("row_counts", {})
         statistics_summary = metadata_dict.get("statistics", {})
 
+        # Prepare connection status for result
+        connection_status = {
+            "connected_to_live_model": self.has_connection,
+            "connection_method": "none",
+            "server": None,
+            "database": None
+        }
+
+        if self.has_connection and self.query_executor:
+            if self.connection_string:
+                connection_status["connection_method"] = "explicit_connection_string"
+            elif self.server and self.database:
+                connection_status["connection_method"] = "auto_detected"
+                connection_status["server"] = self.server
+                connection_status["database"] = self.database[:60] + "..." if len(self.database or "") > 60 else self.database
+
         return {
             "success": True,
             "output_path": str(self.output_dir),
+            "connection_status": connection_status,
             "structure": {
                 "pbip_source_path": pbip_source_info.source_pbip_path,
                 "tmdl_path": "tmdl/",
@@ -312,6 +363,13 @@ class HybridAnalyzer:
                 "columns": statistics_summary.get("columns", {}).get("total", 0),
                 "roles": len(roles),
                 "total_rows": row_counts.get("total_rows", 0)
+            },
+            "data_extraction_summary": {
+                "tmdl_extracted": True,
+                "metadata_extracted": self.has_connection,
+                "row_counts_extracted": self.has_connection and row_counts.get("total_rows", 0) > 0,
+                "sample_data_extracted": self.has_connection and parquet_file_count > 0,
+                "note": "Full metadata requires connection to active Power BI Desktop instance" if not self.has_connection else "Successfully extracted all metadata from active model"
             },
             "generation_time_seconds": round(export_time, 2),
             "export_version": "4.1-pbip",
@@ -540,21 +598,80 @@ class HybridAnalyzer:
         )
 
     def _generate_catalog(self, tables: List[str], roles: List[str]) -> Catalog:
-        """Generate catalog.json structure"""
+        """Generate catalog.json structure with full column and measure details"""
         table_infos = []
+        measure_infos = []
+
+        # Extract columns and measures from live model if connected
+        columns_by_table = {}
+        all_measures = []
+
+        if self.query_executor:
+            # Get all columns
+            logger.info("  - Extracting columns for catalog...")
+            columns_result = self.query_executor.validate_and_execute_dax("EVALUATE INFO.COLUMNS()", top_n=0, bypass_cache=True)
+            if columns_result.get('success'):
+                for row in columns_result.get('rows', []):
+                    table_name = row.get('[TableName]', row.get('TableName', ''))
+                    column_name = row.get('[Name]', row.get('Name', ''))
+                    data_type = row.get('[DataType]', row.get('DataType', 'Unknown'))
+                    is_hidden = row.get('[IsHidden]', row.get('IsHidden', False))
+                    is_key = row.get('[IsKey]', row.get('IsKey', False))
+
+                    # Convert string boolean to bool
+                    if isinstance(is_hidden, str):
+                        is_hidden = is_hidden.lower() == 'true'
+                    if isinstance(is_key, str):
+                        is_key = is_key.lower() == 'true'
+
+                    if table_name not in columns_by_table:
+                        columns_by_table[table_name] = []
+
+                    column_info = ColumnInfo(
+                        name=column_name,
+                        data_type=data_type,
+                        is_key=is_key,
+                        is_hidden=is_hidden
+                    )
+                    columns_by_table[table_name].append(column_info)
+                logger.info(f"    ✓ Extracted {sum(len(cols) for cols in columns_by_table.values())} columns across {len(columns_by_table)} tables")
+
+            # Get all measures
+            logger.info("  - Extracting measures for catalog...")
+            measures_result = self.query_executor.validate_and_execute_dax("EVALUATE INFO.MEASURES()", top_n=0, bypass_cache=True)
+            if measures_result.get('success'):
+                for row in measures_result.get('rows', []):
+                    measure_name = row.get('[Name]', row.get('Name', ''))
+                    table_name = row.get('[TableName]', row.get('TableName', ''))
+                    display_folder = row.get('[DisplayFolder]', row.get('DisplayFolder', ''))
+
+                    measure_info = MeasureInfo(
+                        name=measure_name,
+                        table=table_name,
+                        display_folder=display_folder if display_folder else None,
+                        tmdl_path=f"tmdl/tables/{table_name}.tmdl"
+                    )
+                    all_measures.append(measure_info)
+                logger.info(f"    ✓ Extracted {len(all_measures)} measures")
+
+        # Build table infos
         for table in tables:
+            columns = columns_by_table.get(table, [])
+
             table_info = TableInfo(
                 name=table,
-                type="dimension",  # TODO: Detect fact vs dimension
+                type="dimension",  # Can be enhanced to detect fact vs dimension
                 tmdl_path=f"tmdl/tables/{table}.tmdl",
-                column_count=0,  # TODO: Parse from TMDL
-                relationship_count=0,
-                has_sample_data=self.has_connection
+                column_count=len(columns),
+                relationship_count=0,  # TODO: Count from relationships
+                has_sample_data=self.has_connection,
+                columns=columns
             )
             if self.has_connection:
                 table_info.sample_data_path = f"sample_data/{table}.parquet"
             table_infos.append(table_info)
 
+        # Build role infos
         role_infos = []
         for role in roles:
             role_info = RoleInfo(
@@ -566,7 +683,7 @@ class HybridAnalyzer:
 
         return Catalog(
             tables=table_infos,
-            measures=[],  # TODO: Parse from expressions.tmdl
+            measures=all_measures,
             relationships_path="tmdl/relationships.tmdl",
             roles=role_infos,
             optimization_summary={
@@ -578,19 +695,157 @@ class HybridAnalyzer:
         )
 
     def _generate_dependencies(self, tables: List[str]) -> Dependencies:
-        """Generate dependencies.json structure"""
+        """Generate dependencies.json structure with measure and column dependencies"""
+        measure_deps = {}
+        column_deps = {}
+        table_deps = {}
+
+        if self.query_executor:
+            # Get all measures with expressions
+            logger.info("  - Extracting measure dependencies...")
+            measures_result = self.query_executor.validate_and_execute_dax("EVALUATE INFO.MEASURES()", top_n=0, bypass_cache=True)
+
+            if measures_result.get('success'):
+                import re
+
+                for row in measures_result.get('rows', []):
+                    measure_name = row.get('[Name]', row.get('Name', ''))
+                    table_name = row.get('[TableName]', row.get('TableName', ''))
+                    expression = row.get('[Expression]', row.get('Expression', ''))
+
+                    # Simple dependency extraction using regex
+                    # Find measure references like [MeasureName] or 'Table'[Measure]
+                    measure_refs = set()
+                    column_refs = set()
+                    table_refs = set()
+
+                    if expression:
+                        # Find measure references: [MeasureName]
+                        measure_pattern = r'\[([^\]]+)\]'
+                        matches = re.findall(measure_pattern, expression)
+                        for match in matches:
+                            if match != measure_name:  # Don't include self-reference
+                                measure_refs.add(match)
+
+                        # Find table references: 'TableName' or TableName
+                        table_pattern = r"'([^']+)'\[|([A-Za-z_][A-Za-z0-9_]*)\["
+                        table_matches = re.findall(table_pattern, expression)
+                        for match in table_matches:
+                            table_ref = match[0] or match[1]
+                            if table_ref and table_ref in tables:
+                                table_refs.add(table_ref)
+
+                    # Create dependency info
+                    full_measure_name = f"{table_name}[{measure_name}]"
+                    measure_deps[full_measure_name] = MeasureDependency(
+                        expression=expression[:200] + "..." if len(expression) > 200 else expression,  # Truncate long expressions
+                        table=table_name,
+                        dependencies=DependencyInfo(
+                            measures=list(measure_refs),
+                            columns=list(column_refs),
+                            tables=list(table_refs)
+                        ),
+                        referenced_by=ReferencedBy(measures=[], count=0),
+                        complexity_score=min(len(expression) // 100, 10) if expression else 1
+                    )
+
+                logger.info(f"    ✓ Extracted {len(measure_deps)} measure dependencies")
+
+            # Get all columns
+            logger.info("  - Extracting column dependencies...")
+            columns_result = self.query_executor.validate_and_execute_dax("EVALUATE INFO.COLUMNS()", top_n=0, bypass_cache=True)
+
+            if columns_result.get('success'):
+                for row in columns_result.get('rows', []):
+                    table_name = row.get('[TableName]', row.get('TableName', ''))
+                    column_name = row.get('[Name]', row.get('Name', ''))
+                    data_type = row.get('[DataType]', row.get('DataType', 'Unknown'))
+
+                    full_column_name = f"{table_name}[{column_name}]"
+                    column_deps[full_column_name] = ColumnDependency(
+                        table=table_name,
+                        data_type=data_type,
+                        used_in_measures=[],  # TODO: Parse from measure expressions
+                        used_in_relationships=False,  # TODO: Check relationships
+                        used_in_rls=False,  # TODO: Check RLS
+                        usage_count=0
+                    )
+
+                logger.info(f"    ✓ Extracted {len(column_deps)} column dependencies")
+
+            # Get table dependencies
+            logger.info("  - Extracting table dependencies...")
+            for table in tables:
+                table_deps[table] = TableDependency(
+                    type="dimension",  # TODO: Detect fact vs dimension
+                    relationships={},
+                    used_in_measures=0,  # TODO: Count from measure dependencies
+                    used_in_rls=False,
+                    critical=False
+                )
+
         return Dependencies(
-            measures={},  # TODO: Parse measure dependencies
-            columns={},
-            tables={},
+            measures=measure_deps,
+            columns=column_deps,
+            tables=table_deps,
             summary={
-                "total_measures": 0,
-                "max_dependency_depth": 0,
-                "circular_references": [],
-                "orphan_measures": [],
-                "critical_objects": []
+                "total_measures": len(measure_deps),
+                "max_dependency_depth": 0,  # TODO: Calculate actual depth
+                "circular_references": [],  # TODO: Detect circular refs
+                "orphan_measures": [],  # TODO: Find orphaned measures
+                "critical_objects": []  # TODO: Identify critical objects
             }
         )
+
+    def _get_physical_columns(self, table_name: str) -> List[str]:
+        """
+        Get list of physical columns (exclude calculated columns) from TMDL
+
+        Args:
+            table_name: Table name
+
+        Returns:
+            List of physical column names (empty list means fallback to querying all columns)
+        """
+        try:
+            # Try method 1: Parse TMDL file for sourceColumn properties
+            if hasattr(self, 'tmdl_dir') and self.tmdl_dir:
+                table_tmdl_path = self.tmdl_dir / "tables" / f"{table_name}.tmdl"
+                if table_tmdl_path.exists():
+                    physical_columns = []
+                    with open(table_tmdl_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+
+                    # Parse columns with sourceColumn property (physical columns)
+                    import re
+                    # Pattern: column '<name>' or column <name> followed by sourceColumn: <name>
+                    pattern = r"column\s+(?:'([^']+)'|([^\s=]+))\s*\n(?:.*\n)*?\s*sourceColumn:"
+                    matches = re.finditer(pattern, content, re.MULTILINE)
+
+                    for match in matches:
+                        col_name = match.group(1) or match.group(2)
+                        if col_name and col_name not in physical_columns:
+                            physical_columns.append(col_name)
+
+                    if physical_columns:
+                        return physical_columns
+
+            # Method 2: Use catalog metadata if available
+            if hasattr(self, '_catalog') and self._catalog:
+                table_info = next((t for t in self._catalog.get('tables', []) if t.get('name') == table_name), None)
+                if table_info:
+                    columns = table_info.get('columns', [])
+                    # Filter out calculated columns
+                    physical_cols = [c.get('name') for c in columns if not c.get('is_calculated', False)]
+                    if physical_cols:
+                        return physical_cols
+
+            # Fallback: return empty list (will query all columns or skip if measures-only)
+            return []
+
+        except Exception as e:
+            logger.debug(f"Error getting physical columns for '{table_name}': {e}")
+            return []  # Return empty list on error
 
     def _extract_sample_data(
         self,
@@ -599,7 +854,7 @@ class HybridAnalyzer:
         compression: str
     ) -> int:
         """
-        Extract sample data for tables
+        Extract sample data for tables with file size management
 
         Args:
             tables: List of table names
@@ -622,34 +877,66 @@ class HybridAnalyzer:
             return 0
 
         parquet_count = 0
-        failed_count = 0
+        skipped_tables = {
+            "measures_only": [],
+            "empty": [],
+            "failed": [],
+            "too_large": []
+        }
         logger.info(f"Extracting sample data for {len(tables)} tables (max {sample_rows} rows per table)...")
 
         for idx, table in enumerate(tables, 1):
             try:
-                # Escape single quotes in table name
+                # Escape single quotes in table and column names
                 escaped_table = table.replace("'", "''")
 
-                # Build DAX query - use simple EVALUATE and let top_n parameter handle row limiting
-                dax_query = f"EVALUATE '{escaped_table}'"
+                # Get physical columns (exclude calculated columns) to avoid calculated column errors
+                physical_columns = self._get_physical_columns(table)
+
+                # Build DAX query
+                if physical_columns:
+                    # Use SELECTCOLUMNS with only physical columns to avoid calculated column errors
+                    # Limit to first 50 columns to avoid query length issues
+                    columns_to_query = physical_columns[:50]
+                    column_selects = ", ".join([f'"{col}", [{col}]' for col in columns_to_query])
+                    dax_query = f"EVALUATE SELECTCOLUMNS('{escaped_table}', {column_selects})"
+                else:
+                    # Fallback to simple EVALUATE (for tables where we couldn't get column info)
+                    dax_query = f"EVALUATE '{escaped_table}'"
 
                 # Execute query
                 result = self.query_executor.validate_and_execute_dax(dax_query, top_n=sample_rows, bypass_cache=True)
 
                 if not result.get('success'):
-                    logger.warning(f"  [{idx}/{len(tables)}] ✗ Failed to extract from '{table}': {result.get('error')}")
-                    failed_count += 1
-                    continue
+                    error_msg = result.get('error', '')
+
+                    # Check if it's a measures-only table (no columns)
+                    if 'cannot be used in computations because it does not have any columns' in error_msg:
+                        logger.debug(f"  [{idx}/{len(tables)}] - Skipping '{table}' (measures-only table)")
+                        skipped_tables["measures_only"].append(table)
+                        continue
+
+                    # If SELECTCOLUMNS failed, try simple EVALUATE as fallback
+                    if physical_columns and ('SELECTCOLUMNS' in error_msg or 'syntax' in error_msg.lower()):
+                        logger.debug(f"  [{idx}/{len(tables)}] - SELECTCOLUMNS failed, trying simple EVALUATE...")
+                        dax_query = f"EVALUATE '{escaped_table}'"
+                        result = self.query_executor.validate_and_execute_dax(dax_query, top_n=sample_rows, bypass_cache=True)
+
+                    if not result.get('success'):
+                        logger.warning(f"  [{idx}/{len(tables)}] ✗ Failed to extract from '{table}': {result.get('error')}")
+                        skipped_tables["failed"].append(f"{table}: {result.get('error', 'Unknown error')[:100]}")
+                        continue
 
                 rows = result.get('rows', [])
                 if not rows:
                     logger.debug(f"  [{idx}/{len(tables)}] - Table '{table}' is empty")
+                    skipped_tables["empty"].append(table)
                     continue
 
                 # Convert to polars DataFrame (scan all rows for schema inference)
                 df = pl.DataFrame(rows, infer_schema_length=None)
 
-                # Write to parquet file
+                # Write to parquet file (with file size checking)
                 parquet_path = self.sample_data_dir / f"{table}.parquet"
                 df.write_parquet(
                     parquet_path,
@@ -657,20 +944,108 @@ class HybridAnalyzer:
                     use_pyarrow=False  # Use polars native writer (faster)
                 )
 
-                parquet_count += 1
+                # Check file size and split if too large
+                file_size = parquet_path.stat().st_size
+                max_size = 50 * 1024 * 1024  # 50 MB limit for parquet files
+
+                if file_size > max_size:
+                    logger.info(f"  [{idx}/{len(tables)}] Table '{table}' is too large ({file_size / 1024 / 1024:.1f}MB), splitting...")
+                    try:
+                        self._split_large_parquet(table, df, parquet_path, max_size, compression)
+                        parquet_count += 1  # Count split files as successful
+                    except Exception as split_error:
+                        logger.warning(f"  [{idx}/{len(tables)}] ✗ Failed to split '{table}': {split_error}")
+                        skipped_tables["too_large"].append(f"{table}: {file_size / 1024 / 1024:.1f}MB")
+                        # Remove the original large file
+                        if parquet_path.exists():
+                            parquet_path.unlink()
+                else:
+                    parquet_count += 1
+                    logger.debug(f"  [{idx}/{len(tables)}] ✓ Extracted '{table}' ({len(rows)} rows, {file_size / 1024:.1f}KB)")
+
                 if idx % 10 == 0:
                     logger.info(f"  Progress: {idx}/{len(tables)} tables processed, {parquet_count} files created")
 
             except Exception as e:
                 logger.warning(f"  [{idx}/{len(tables)}] ✗ Error extracting from '{table}': {e}")
-                failed_count += 1
+                skipped_tables["failed"].append(f"{table}: {str(e)[:100]}")
                 continue
 
+        # Summary report
         logger.info(f"✓ Sample data extraction complete:")
         logger.info(f"  - Successfully extracted: {parquet_count} parquet files")
-        logger.info(f"  - Failed/empty tables: {failed_count}")
+        total_skipped = sum(len(v) for v in skipped_tables.values())
+        logger.info(f"  - Skipped tables: {total_skipped}")
+
+        if skipped_tables["measures_only"]:
+            logger.info(f"    • Measures-only: {len(skipped_tables['measures_only'])} tables")
+        if skipped_tables["empty"]:
+            logger.info(f"    • Empty: {len(skipped_tables['empty'])} tables")
+        if skipped_tables["failed"]:
+            logger.info(f"    • Failed: {len(skipped_tables['failed'])} tables")
+            for failure in skipped_tables["failed"][:5]:  # Show first 5
+                logger.info(f"      - {failure}")
+            if len(skipped_tables["failed"]) > 5:
+                logger.info(f"      ... and {len(skipped_tables['failed']) - 5} more")
+        if skipped_tables["too_large"]:
+            logger.info(f"    • Too large: {len(skipped_tables['too_large'])} tables")
+            for large in skipped_tables["too_large"]:
+                logger.info(f"      - {large}")
+
         logger.info(f"  - Total tables: {len(tables)}")
         return parquet_count
+
+    def _split_large_parquet(
+        self,
+        table_name: str,
+        df,
+        original_path: Path,
+        max_size: int,
+        compression: str
+    ):
+        """
+        Split large parquet file into multiple smaller files
+
+        Args:
+            table_name: Table name
+            df: Polars DataFrame
+            original_path: Path to original (large) parquet file
+            max_size: Maximum file size in bytes
+            compression: Compression algorithm
+        """
+        import polars as pl
+
+        # Get file size before removing it
+        file_size = original_path.stat().st_size if original_path.exists() else max_size
+
+        # Remove original large file
+        if original_path.exists():
+            original_path.unlink()
+
+        # Calculate rows per chunk (estimate)
+        total_rows = len(df)
+        estimated_rows_per_chunk = max(100, int((max_size / file_size) * total_rows * 0.8))  # 80% safety margin
+
+        logger.info(f"    Splitting {total_rows} rows into chunks of ~{estimated_rows_per_chunk} rows")
+
+        # Split into chunks
+        chunk_num = 0
+        for start_idx in range(0, total_rows, estimated_rows_per_chunk):
+            end_idx = min(start_idx + estimated_rows_per_chunk, total_rows)
+            chunk_df = df[start_idx:end_idx]
+
+            chunk_path = self.sample_data_dir / f"{table_name}_part{chunk_num}.parquet"
+            chunk_df.write_parquet(
+                chunk_path,
+                compression=compression,
+                use_pyarrow=False
+            )
+
+            chunk_size = chunk_path.stat().st_size
+            logger.info(f"    Created {chunk_path.name} ({chunk_size / 1024:.1f}KB, {len(chunk_df)} rows)")
+            chunk_num += 1
+
+        logger.info(f"    ✓ Split into {chunk_num} files")
 
     def _write_json(self, path: Path, data: Dict[str, Any]):
         """Write JSON file using orjson if available"""

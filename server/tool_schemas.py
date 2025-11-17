@@ -219,33 +219,44 @@ TOOL_SCHEMAS = {
         "required": []
     },
 
-    # Analysis (5 tools)
-    'full_analysis': {
-        "type": "object",
-        "properties": {},
-        "required": []
-    },
-
-    'analyze_best_practices_unified': {
+    # Analysis (1 tool)
+    'comprehensive_analysis': {
         "type": "object",
         "properties": {
-            "summary_only": {
+            "scope": {
+                "type": "string",
+                "enum": ["all", "best_practices", "performance", "integrity"],
+                "description": "Analysis scope: 'all' (default) runs all analyses, 'best_practices' focuses on BPA and M practices, 'performance' focuses on cardinality, 'integrity' focuses on validation",
+                "default": "all"
+            },
+            "depth": {
+                "type": "string",
+                "enum": ["fast", "balanced", "deep"],
+                "description": "Analysis depth: 'fast' (quick scan), 'balanced' (default, recommended), 'deep' (thorough but slower)",
+                "default": "balanced"
+            },
+            "include_bpa": {
                 "type": "boolean",
-                "description": "Return compact summary"
+                "description": "Include Best Practice Analyzer (BPA) rules. Set to false if BPA dependencies not installed or to skip BPA checks",
+                "default": True
+            },
+            "include_performance": {
+                "type": "boolean",
+                "description": "Include performance/cardinality analysis",
+                "default": True
+            },
+            "include_integrity": {
+                "type": "boolean",
+                "description": "Include model integrity validation (relationships, duplicates, nulls, circular refs)",
+                "default": True
+            },
+            "max_seconds": {
+                "type": "integer",
+                "description": "Optional maximum execution time in seconds (primarily affects BPA analysis)",
+                "minimum": 5,
+                "maximum": 300
             }
         },
-        "required": []
-    },
-
-    'analyze_performance_unified': {
-        "type": "object",
-        "properties": {},
-        "required": []
-    },
-
-    'validate_model_integrity': {
-        "type": "object",
-        "properties": {},
         "required": []
     },
 
@@ -397,18 +408,7 @@ TOOL_SCHEMAS = {
         "required": ["pbip_path"]
     },
 
-    # TMDL Automation (6 tools)
-    'validate_tmdl': {
-        "type": "object",
-        "properties": {
-            "tmdl_path": {
-                "type": "string",
-                "description": "Path to TMDL file or directory"
-            }
-        },
-        "required": ["tmdl_path"]
-    },
-
+    # TMDL Automation (3 tools)
     'tmdl_find_replace': {
         "type": "object",
         "properties": {
@@ -478,55 +478,44 @@ TOOL_SCHEMAS = {
         "required": ["definition"]
     },
 
-    # DAX Context Analysis (3 tools)
-    'analyze_dax_context': {
+    # DAX Intelligence (1 unified tool) - Tool 03: Validation + Analysis + Debugging
+    'dax_intelligence': {
         "type": "object",
         "properties": {
             "expression": {
                 "type": "string",
-                "description": "DAX expression to analyze"
-            }
-        },
-        "required": ["expression"]
-    },
-
-    'visualize_filter_context': {
-        "type": "object",
-        "properties": {
-            "expression": {
-                "type": "string",
-                "description": "DAX expression"
-            }
-        },
-        "required": ["expression"]
-    },
-
-    'debug_dax_context': {
-        "type": "object",
-        "properties": {
-            "expression": {
-                "type": "string",
-                "description": "DAX expression to debug (can be a measure definition or any DAX formula)"
+                "description": "DAX expression to analyze/debug (measure expression, calculated column, or table query)"
             },
-            "format": {
+            "analysis_mode": {
                 "type": "string",
-                "description": "Output format: 'friendly' (default, user-friendly with emojis and explanations), 'steps' (raw step data), or 'report' (full analysis with optimization suggestions)",
-                "enum": ["friendly", "steps", "report"],
+                "description": "Analysis mode: 'analyze' (context transition analysis), 'debug' (step-by-step debugging with friendly output), 'report' (comprehensive report with optimization + profiling). Default: 'analyze'",
+                "enum": ["analyze", "debug", "report"],
+                "default": "analyze"
+            },
+            "skip_validation": {
+                "type": "boolean",
+                "description": "Skip DAX syntax validation before analysis (default: false). Validation is performed by default.",
+                "default": False
+            },
+            "output_format": {
+                "type": "string",
+                "description": "Output format for debug mode: 'friendly' (user-friendly with emojis), 'steps' (raw step data). Ignored for other modes. Default: 'friendly'",
+                "enum": ["friendly", "steps"],
                 "default": "friendly"
             },
             "include_optimization": {
                 "type": "boolean",
-                "description": "Include optimization suggestions (only for 'report' format, default: true)",
+                "description": "Include optimization suggestions (only for analysis_mode='report', default: true)",
                 "default": True
             },
             "include_profiling": {
                 "type": "boolean",
-                "description": "Include performance profiling information (only for 'report' format, default: true)",
+                "description": "Include performance profiling (only for analysis_mode='report', default: true)",
                 "default": True
             },
             "breakpoints": {
                 "type": "array",
-                "description": "Optional list of character positions to pause at (advanced usage)",
+                "description": "Optional character positions to pause at during debugging (advanced usage)",
                 "items": {
                     "type": "integer"
                 }
@@ -621,7 +610,7 @@ TOOL_SCHEMAS = {
             },
             "operation": {
                 "type": "string",
-                "description": "Operation to perform: 'read_metadata', 'find_objects', 'get_object_definition', 'analyze_dependencies', 'analyze_performance', 'get_sample_data', or 'smart_analyze' (for natural language)",
+                "description": "Operation to perform: 'read_metadata' (model overview), 'find_objects' (search tables/measures), 'get_object_definition' (get DAX/TMDL), 'analyze_dependencies' (dependency analysis), 'analyze_performance' (perf analysis), 'get_sample_data' (automatically reads parquet sample data - no file copying needed), or 'smart_analyze' (natural language)",
                 "enum": ["read_metadata", "find_objects", "get_object_definition", "analyze_dependencies", "analyze_performance", "get_sample_data", "smart_analyze"],
                 "default": "read_metadata"
             },
@@ -661,11 +650,11 @@ TOOL_SCHEMAS = {
                     },
                     "object_name": {
                         "type": "string",
-                        "description": "Specific object name (for get_object_definition, analyze_dependencies)"
+                        "description": "Object name or search pattern (e.g., 'base scenario' will fuzzy match 'PL-AMT-BASE Scenario'). For get_object_definition and analyze_dependencies."
                     },
                     "table_name": {
                         "type": "string",
-                        "description": "Table name (for get_sample_data)"
+                        "description": "Table name (for get_sample_data operation - automatically reads and returns sample data from parquet file)"
                     }
                 }
             },

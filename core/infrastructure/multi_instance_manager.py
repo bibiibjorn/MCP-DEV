@@ -25,6 +25,23 @@ class MultiInstanceManager:
         self.instances: Dict[int, ConnectionManager] = {}
         self.active_ports: List[int] = []
 
+    def detect_instances(self) -> List[Dict[str, Any]]:
+        """
+        Detect available Power BI Desktop instances.
+
+        Returns:
+            List of detected instances with port, database_name, etc.
+        """
+        try:
+            # Create temporary ConnectionManager to detect instances
+            temp_conn = ConnectionManager()
+            instances = temp_conn.detect_instances()
+            logger.info(f"Detected {len(instances)} Power BI Desktop instance(s)")
+            return instances
+        except Exception as e:
+            logger.error(f"Error detecting Power BI instances: {e}", exc_info=True)
+            return []
+
     def connect_to_instance(self, port: int) -> Dict[str, Any]:
         """
         Connect to a specific Power BI Desktop instance.

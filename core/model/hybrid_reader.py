@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from dataclasses import asdict
 
+from core.model.tmdl_parser import TMDLParser
+
 # Try to import orjson for faster JSON parsing
 try:
     import orjson
@@ -61,7 +63,7 @@ class HybridReader:
         Read metadata.json (supports both formats)
 
         Returns:
-            Metadata dictionary
+            Metadata dictionary (with file paths sanitized)
         """
         if "metadata" not in self._cache:
             if self.format_type == "test_metadata":
@@ -72,7 +74,9 @@ class HybridReader:
                 # Read analysis/metadata.json
                 metadata_path = self.analysis_dir / "metadata.json"
                 self._cache["metadata"] = self._read_json(metadata_path)
-        return self._cache["metadata"]
+
+        # Sanitize file paths to prevent Claude from prompting to copy files
+        return self._sanitize_file_paths(self._cache["metadata"])
 
     def read_catalog(self, object_filter: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
@@ -89,16 +93,25 @@ class HybridReader:
             if self.format_type == "test_metadata":
                 # Build minimal catalog from test_metadata.json
                 metadata = self.read_metadata()
-                row_counts = metadata.get("row_counts", {})
+                row_counts_data = metadata.get("row_counts", {})
 
-                # Create minimal catalog with table info
+                # Create minimal catalog with table info from by_table array
                 tables = []
-                for table_name, row_count in row_counts.items():
+                by_table = row_counts_data.get("by_table", [])
+                for table_info in by_table:
                     tables.append({
-                        "name": table_name,
-                        "row_count": row_count,
+                        "name": table_info.get("table", ""),
+                        "row_count": table_info.get("row_count", 0),
                         "type": "table"
                     })
+
+                # Extract counts from nested structure
+                statistics = metadata.get("statistics", {})
+                row_counts_data = metadata.get("row_counts", {})
+
+                total_measures = statistics.get("measures", {}).get("total", 0)
+                total_columns = statistics.get("columns", {}).get("total", 0)
+                total_rows = row_counts_data.get("total_rows", 0)
 
                 self._cache["catalog"] = {
                     "tables": tables,
@@ -106,9 +119,9 @@ class HybridReader:
                     "columns": [],   # Not available in test_metadata
                     "summary": {
                         "total_tables": len(tables),
-                        "total_measures": metadata.get("measures_count", 0),
-                        "total_columns": metadata.get("columns_count", 0),
-                        "total_rows": metadata.get("total_rows", 0),
+                        "total_measures": total_measures,
+                        "total_columns": total_columns,
+                        "total_rows": total_rows,
                         "note": "Limited catalog from test_metadata format - only table names and row counts available"
                     }
                 }
@@ -127,10 +140,12 @@ class HybridReader:
                     raise ValueError("Catalog file not found (neither single file nor manifest)")
 
         # Apply filter if provided
+        catalog = self._cache["catalog"]
         if object_filter:
-            return self._filter_catalog(self._cache["catalog"], object_filter)
+            catalog = self._filter_catalog(catalog, object_filter)
 
-        return self._cache["catalog"]
+        # Sanitize file paths to prevent Claude from prompting to copy files
+        return self._sanitize_file_paths(catalog)
 
     def read_dependencies(self) -> Dict[str, Any]:
         """
@@ -186,7 +201,7 @@ class HybridReader:
 
     def list_sample_data_tables(self) -> List[str]:
         """
-        List tables with available sample data (parquet files)
+        List tables with available sample data (parquet files including multi-part)
 
         Returns:
             List of table names with sample data
@@ -196,14 +211,28 @@ class HybridReader:
 
         # Find all .parquet files in sample_data directory
         parquet_files = list(self.sample_data_dir.glob("*.parquet"))
-        return [f.stem for f in parquet_files]
 
-    def read_sample_data(self, table_name: str) -> Optional[Dict[str, Any]]:
+        # Extract unique table names (handle multi-part files like table_name_part0.parquet)
+        table_names = set()
+        for f in parquet_files:
+            stem = f.stem
+            # Remove _partN suffix if present
+            if "_part" in stem:
+                # Extract table name before _part
+                table_name = stem.rsplit("_part", 1)[0]
+                table_names.add(table_name)
+            else:
+                table_names.add(stem)
+
+        return sorted(list(table_names))
+
+    def read_sample_data(self, table_name: str, max_rows: int = 100) -> Optional[Dict[str, Any]]:
         """
-        Read sample data for table (parquet file)
+        Read sample data for table (parquet file or multi-part parquet files)
 
         Args:
             table_name: Table name
+            max_rows: Maximum rows to return (default: 100)
 
         Returns:
             Sample data as dictionary or None if not available
@@ -211,23 +240,52 @@ class HybridReader:
         if not self.sample_data_dir.exists():
             return None
 
-        parquet_path = self.sample_data_dir / f"{table_name}.parquet"
-        if not parquet_path.exists():
-            return None
-
         try:
             import polars as pl
-            df = pl.read_parquet(parquet_path)
-            return {
-                "columns": df.columns,
-                "row_count": len(df),
-                "data": df.to_dicts()[:100]  # Limit to 100 rows for MCP response
-            }
         except ImportError:
             logger.warning("Polars not available, cannot read sample data")
             return None
+
+        # Check for single file first
+        parquet_path = self.sample_data_dir / f"{table_name}.parquet"
+        if parquet_path.exists():
+            try:
+                df = pl.read_parquet(parquet_path)
+                return {
+                    "columns": df.columns,
+                    "row_count": len(df),
+                    "data": df.to_dicts()[:max_rows],
+                    "is_multipart": False
+                }
+            except Exception as e:
+                logger.error(f"Error reading sample data for {table_name}: {e}")
+                return None
+
+        # Check for multi-part files (table_name_part0.parquet, table_name_part1.parquet, etc.)
+        part_files = sorted(self.sample_data_dir.glob(f"{table_name}_part*.parquet"))
+        if not part_files:
+            return None
+
+        try:
+            # Read and concatenate all parts
+            logger.debug(f"Reading {len(part_files)} parts for table '{table_name}'")
+            dfs = []
+            for part_file in part_files:
+                df_part = pl.read_parquet(part_file)
+                dfs.append(df_part)
+
+            # Concatenate all parts
+            df = pl.concat(dfs)
+
+            return {
+                "columns": df.columns,
+                "row_count": len(df),
+                "data": df.to_dicts()[:max_rows],
+                "is_multipart": True,
+                "part_count": len(part_files)
+            }
         except Exception as e:
-            logger.error(f"Error reading sample data for {table_name}: {e}")
+            logger.error(f"Error reading multi-part sample data for {table_name}: {e}")
             return None
 
     def find_objects(
@@ -268,39 +326,90 @@ class HybridReader:
         object_type: str
     ) -> Dict[str, Any]:
         """
-        Get full TMDL definition for an object
+        Get full TMDL definition for an object with parsed DAX and metadata
+        Supports both exact name match and pattern matching
 
         Args:
-            object_name: Object name
+            object_name: Object name or pattern (e.g., "base.*scenario" for pattern matching)
             object_type: "table" | "measure" | "role"
 
         Returns:
-            Object definition with TMDL content
+            Object definition with TMDL content and parsed DAX
         """
+        if object_type == "measure":
+            # Detect if this is a pattern (contains regex special chars)
+            import re
+            is_pattern = bool(re.search(r'[.*+?[\]{}()\\|^$]', object_name))
+
+            # Try exact match first
+            measure_def = self.get_measure_from_tmdl(object_name, use_pattern=False)
+
+            # If not found and looks like it might be a search query, try pattern matching
+            if not measure_def and (is_pattern or ' ' in object_name or '-' in object_name):
+                logger.info(f"Exact match failed, trying pattern search for: {object_name}")
+                # Convert friendly search terms to regex patterns
+                search_pattern = object_name
+                # Replace spaces and hyphens with flexible patterns
+                search_pattern = search_pattern.replace(' ', '[-_ ]?')
+                search_pattern = search_pattern.replace('-', '[-_ ]?')
+                measure_def = self.get_measure_from_tmdl(search_pattern, use_pattern=True)
+
+            if measure_def:
+                actual_name = measure_def.get("name", object_name)
+                return {
+                    "name": actual_name,
+                    "type": "measure",
+                    "table": measure_def.get("table"),
+                    "dax_expression": measure_def.get("expression"),
+                    "description": measure_def.get("description"),
+                    "display_folder": measure_def.get("displayFolder"),
+                    "format_string": measure_def.get("formatString"),
+                    "is_hidden": measure_def.get("isHidden"),
+                    "source": "tmdl_parsed",
+                    "search_query": object_name if actual_name != object_name else None
+                }
+
+        # Fallback to catalog-based lookup
         catalog = self.read_catalog()
 
         if object_type == "table":
             tables = catalog.get("tables", [])
             for table in tables:
                 if table["name"] == object_name:
-                    tmdl_content = self.read_tmdl_file(table["tmdl_path"].replace("tmdl/", ""))
-                    return {
-                        "name": object_name,
-                        "type": "table",
-                        "metadata": table,
-                        "tmdl": tmdl_content
-                    }
+                    tmdl_path = table.get("tmdl_path", "").replace("tmdl/", "")
+                    if tmdl_path and self.tmdl_dir.exists():
+                        tmdl_content = self.read_tmdl_file(tmdl_path)
+                        # Parse table TMDL
+                        parsed = TMDLParser.parse_table_metadata(tmdl_content)
+                        columns = TMDLParser.parse_all_columns(tmdl_content)
+                        measures = TMDLParser.parse_all_measures(tmdl_content)
+
+                        return {
+                            "name": object_name,
+                            "type": "table",
+                            "metadata": table,
+                            "parsed_metadata": parsed,
+                            "columns": columns,
+                            "measures": measures,
+                            "tmdl": tmdl_content
+                        }
+                    else:
+                        return {
+                            "name": object_name,
+                            "type": "table",
+                            "metadata": table,
+                            "note": "TMDL not available in test_metadata format"
+                        }
 
         elif object_type == "measure":
             measures = catalog.get("measures", [])
             for measure in measures:
                 if measure["name"] == object_name:
-                    tmdl_content = self.read_tmdl_file(measure["tmdl_path"].replace("tmdl/", ""))
                     return {
                         "name": object_name,
                         "type": "measure",
                         "metadata": measure,
-                        "tmdl": tmdl_content
+                        "note": "Measure found in catalog but TMDL parsing failed"
                     }
 
         raise ValueError(f"{object_type} '{object_name}' not found")
@@ -466,3 +575,274 @@ class HybridReader:
             result = [obj for obj in result if obj.get("is_hidden") == filters["is_hidden"]]
 
         return result
+
+    def _sanitize_file_paths(self, data: Any) -> Any:
+        """
+        Remove file path fields from data to prevent Claude from prompting to copy files.
+        Recursively sanitizes dictionaries and lists.
+
+        Args:
+            data: Data structure to sanitize
+
+        Returns:
+            Sanitized data with file paths replaced by boolean flags
+        """
+        if isinstance(data, dict):
+            sanitized = {}
+            for key, value in data.items():
+                # Replace path fields with has_* boolean flags
+                if key in ["sample_data_path", "tmdl_path"]:
+                    # Convert path to boolean flag
+                    has_key = f"has_{key.replace('_path', '')}"
+                    sanitized[has_key] = bool(value)
+                else:
+                    # Recursively sanitize nested structures
+                    sanitized[key] = self._sanitize_file_paths(value)
+            return sanitized
+        elif isinstance(data, list):
+            return [self._sanitize_file_paths(item) for item in data]
+        else:
+            return data
+
+    def get_relationships_from_tmdl(self) -> List[Dict[str, Any]]:
+        """
+        Parse relationships directly from TMDL files
+
+        Returns:
+            List of relationship definitions
+        """
+        if self.format_type == "test_metadata":
+            return []
+
+        if not self.tmdl_dir.exists():
+            return []
+
+        # Check for relationships.tmdl
+        rel_path = self.tmdl_dir / "relationships.tmdl"
+        if not rel_path.exists():
+            # Try definition/relationships.tmdl
+            rel_path = self.tmdl_dir / "definition" / "relationships.tmdl"
+            if not rel_path.exists():
+                logger.warning("relationships.tmdl not found")
+                return []
+
+        try:
+            content = self.read_tmdl_file("relationships.tmdl")
+            relationships = TMDLParser.parse_relationships(content)
+            return relationships
+        except Exception as e:
+            logger.error(f"Error parsing relationships from TMDL: {e}")
+            return []
+
+    def get_measure_from_tmdl(self, measure_name: str, use_pattern: bool = False) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific measure definition from TMDL files
+        Supports both direct TMDL structure and definition/ subfolder structure
+
+        Args:
+            measure_name: Name of measure (or pattern if use_pattern=True)
+            use_pattern: If True, treat measure_name as a regex pattern for flexible search
+
+        Returns:
+            Measure definition or None
+        """
+        if self.format_type == "test_metadata":
+            logger.debug("TMDL not available in test_metadata format")
+            return None
+
+        if not self.tmdl_dir.exists():
+            logger.debug(f"TMDL directory not found: {self.tmdl_dir}")
+            return None
+
+        # Try both direct path and definition/ subfolder for expressions.tmdl
+        expr_paths = [
+            self.tmdl_dir / "expressions.tmdl",
+            self.tmdl_dir / "definition" / "expressions.tmdl"
+        ]
+
+        for expr_path in expr_paths:
+            if expr_path.exists():
+                logger.debug(f"Searching for measure in {expr_path}")
+                try:
+                    content = expr_path.read_text(encoding='utf-8')
+                    if use_pattern:
+                        # Search all measures for pattern match
+                        all_measures = TMDLParser.parse_all_measures(content)
+                        import re
+                        pattern = re.compile(measure_name, re.IGNORECASE)
+                        for measure in all_measures:
+                            if pattern.search(measure["name"]):
+                                logger.info(f"Found measure '{measure['name']}' matching pattern '{measure_name}'")
+                                return measure
+                    else:
+                        measure_def = TMDLParser.parse_measure(content, measure_name)
+                        if measure_def:
+                            logger.info(f"Found measure '{measure_name}' in expressions.tmdl")
+                            return measure_def
+                except Exception as e:
+                    logger.debug(f"Error parsing measure from {expr_path}: {e}")
+
+        # Try table TMDL files - both direct and definition/ subfolder
+        tables_dirs = [
+            self.tmdl_dir / "tables",
+            self.tmdl_dir / "definition" / "tables"
+        ]
+
+        for tables_dir in tables_dirs:
+            if tables_dir.exists():
+                logger.debug(f"Searching for measure in {tables_dir}")
+                for table_file in tables_dir.glob("*.tmdl"):
+                    try:
+                        content = table_file.read_text(encoding='utf-8')
+                        if use_pattern:
+                            # Search all measures for pattern match
+                            all_measures = TMDLParser.parse_all_measures(content)
+                            import re
+                            pattern = re.compile(measure_name, re.IGNORECASE)
+                            for measure in all_measures:
+                                if pattern.search(measure["name"]):
+                                    measure["table"] = table_file.stem
+                                    logger.info(f"Found measure '{measure['name']}' in {table_file.name}")
+                                    return measure
+                        else:
+                            measure_def = TMDLParser.parse_measure(content, measure_name)
+                            if measure_def:
+                                measure_def["table"] = table_file.stem
+                                logger.info(f"Found measure '{measure_name}' in {table_file.name}")
+                                return measure_def
+                    except Exception as e:
+                        logger.debug(f"Error parsing measure from {table_file}: {e}")
+
+        logger.warning(f"Measure '{measure_name}' not found in any TMDL files")
+        return None
+
+    def find_measures_by_pattern(self, pattern: str) -> List[Dict[str, Any]]:
+        """
+        Find all measures matching a pattern
+
+        Args:
+            pattern: Regex pattern to match measure names
+
+        Returns:
+            List of matching measure definitions
+        """
+        if self.format_type == "test_metadata":
+            logger.debug("TMDL not available in test_metadata format")
+            return []
+
+        if not self.tmdl_dir.exists():
+            logger.debug(f"TMDL directory not found: {self.tmdl_dir}")
+            return []
+
+        matching_measures = []
+        import re
+        regex_pattern = re.compile(pattern, re.IGNORECASE)
+
+        # Search in expressions.tmdl - try both paths
+        expr_paths = [
+            self.tmdl_dir / "expressions.tmdl",
+            self.tmdl_dir / "definition" / "expressions.tmdl"
+        ]
+
+        for expr_path in expr_paths:
+            if expr_path.exists():
+                try:
+                    content = expr_path.read_text(encoding='utf-8')
+                    all_measures = TMDLParser.parse_all_measures(content)
+                    for measure in all_measures:
+                        if regex_pattern.search(measure["name"]):
+                            measure["table"] = "Model"
+                            matching_measures.append(measure)
+                    break
+                except Exception as e:
+                    logger.debug(f"Error parsing {expr_path}: {e}")
+
+        # Search in table files - try both paths
+        tables_dirs = [
+            self.tmdl_dir / "tables",
+            self.tmdl_dir / "definition" / "tables"
+        ]
+
+        for tables_dir in tables_dirs:
+            if tables_dir.exists():
+                for table_file in tables_dir.glob("*.tmdl"):
+                    try:
+                        content = table_file.read_text(encoding='utf-8')
+                        all_measures = TMDLParser.parse_all_measures(content)
+                        for measure in all_measures:
+                            if regex_pattern.search(measure["name"]):
+                                measure["table"] = table_file.stem
+                                matching_measures.append(measure)
+                    except Exception as e:
+                        logger.debug(f"Error parsing {table_file}: {e}")
+                break
+
+        logger.info(f"Found {len(matching_measures)} measures matching pattern '{pattern}'")
+        return matching_measures
+
+    def get_all_measures_from_tmdl(self) -> List[Dict[str, Any]]:
+        """
+        Get all measures from TMDL files
+        Supports both direct TMDL structure and definition/ subfolder structure
+
+        Returns:
+            List of all measure definitions
+        """
+        if self.format_type == "test_metadata":
+            logger.debug("TMDL not available in test_metadata format")
+            return []
+
+        if not self.tmdl_dir.exists():
+            logger.debug(f"TMDL directory not found: {self.tmdl_dir}")
+            return []
+
+        all_measures = []
+
+        # Get measures from expressions.tmdl - try both paths
+        expr_paths = [
+            self.tmdl_dir / "expressions.tmdl",
+            self.tmdl_dir / "definition" / "expressions.tmdl"
+        ]
+
+        for expr_path in expr_paths:
+            if expr_path.exists():
+                logger.debug(f"Reading shared measures from {expr_path}")
+                try:
+                    content = expr_path.read_text(encoding='utf-8')
+                    measures = TMDLParser.parse_all_measures(content)
+                    for measure in measures:
+                        measure["table"] = "Model"  # Shared measures
+                    all_measures.extend(measures)
+                    logger.info(f"Found {len(measures)} shared measures in {expr_path.name}")
+                    break  # Only read from one location
+                except Exception as e:
+                    logger.error(f"Error parsing {expr_path}: {e}")
+
+        # Get measures from table files - try both paths
+        tables_dirs = [
+            self.tmdl_dir / "tables",
+            self.tmdl_dir / "definition" / "tables"
+        ]
+
+        for tables_dir in tables_dirs:
+            if tables_dir.exists():
+                logger.debug(f"Reading table measures from {tables_dir}")
+                table_count = 0
+                for table_file in tables_dir.glob("*.tmdl"):
+                    try:
+                        content = table_file.read_text(encoding='utf-8')
+                        measures = TMDLParser.parse_all_measures(content)
+                        for measure in measures:
+                            measure["table"] = table_file.stem
+                        all_measures.extend(measures)
+                        if measures:
+                            table_count += 1
+                            logger.debug(f"Found {len(measures)} measures in {table_file.name}")
+                    except Exception as e:
+                        logger.error(f"Error parsing {table_file}: {e}")
+                if table_count > 0:
+                    logger.info(f"Found measures in {table_count} table files under {tables_dir}")
+                break  # Only read from one location
+
+        logger.info(f"Total measures found: {len(all_measures)}")
+        return all_measures

@@ -1,8 +1,8 @@
 """
 DAX Context Handler
-Handles DAX context analysis and debugging operations
+Handles DAX context analysis and debugging operations with integrated validation
 """
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 import logging
 from server.registry import ToolDefinition
 from core.infrastructure.connection_state import connection_state
@@ -10,12 +10,67 @@ from core.validation.error_handler import ErrorHandler
 
 logger = logging.getLogger(__name__)
 
+
+def _validate_dax_syntax(expression: str) -> Tuple[bool, str]:
+    """
+    Validate DAX syntax before analysis
+
+    Args:
+        expression: DAX expression to validate
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not connection_state.is_connected():
+        return False, "Not connected to Power BI instance"
+
+    qe = connection_state.query_executor
+    if not qe:
+        return False, "Query executor not available"
+
+    try:
+        # Prepare query for validation
+        test_query = expression
+        if 'EVALUATE' not in test_query.upper():
+            # Check if it's a table expression or scalar expression
+            # Table expressions contain keywords like FILTER, SELECTCOLUMNS, etc.
+            table_keywords = [
+                'SELECTCOLUMNS', 'ADDCOLUMNS', 'SUMMARIZE', 'FILTER',
+                'VALUES', 'ALL', 'INFO.', 'TOPN', 'SAMPLE', 'SUMMARIZECOLUMNS'
+            ]
+            is_table_expr = any(kw in test_query.upper() for kw in table_keywords)
+
+            if is_table_expr:
+                test_query = f'EVALUATE {test_query}'
+            else:
+                # Scalar expression (measure) - wrap in ROW()
+                test_query = f'EVALUATE ROW("Result", {test_query})'
+
+        # Use query executor to validate
+        result = qe.validate_and_execute_dax(test_query, top_n=0)
+
+        if result.get('success'):
+            return True, ""
+        else:
+            return False, result.get('error', 'Unknown validation error')
+    except Exception as e:
+        return False, str(e)
+
 def handle_analyze_dax_context(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Analyze DAX context transitions"""
+    """
+    Analyze DAX context transitions with integrated syntax validation
+
+    This tool combines:
+    1. DAX syntax validation (former tool 03)
+    2. Context transition analysis
+
+    Returns validation status + context analysis
+    """
     if not connection_state.is_connected():
         return ErrorHandler.handle_not_connected()
 
     expression = args.get('expression')
+    skip_validation = args.get('skip_validation', False)
 
     if not expression:
         return {
@@ -23,6 +78,24 @@ def handle_analyze_dax_context(args: Dict[str, Any]) -> Dict[str, Any]:
             'error': 'expression parameter is required'
         }
 
+    # Step 1: Validate DAX syntax (unless explicitly skipped)
+    validation_result = {'valid': True, 'message': 'Validation skipped'}
+    if not skip_validation:
+        is_valid, error_msg = _validate_dax_syntax(expression)
+        validation_result = {
+            'valid': is_valid,
+            'message': 'DAX syntax is valid' if is_valid else f'DAX syntax error: {error_msg}'
+        }
+
+        if not is_valid:
+            return {
+                'success': True,
+                'validation': validation_result,
+                'analysis': None,
+                'note': 'Analysis skipped due to syntax errors'
+            }
+
+    # Step 2: Perform context analysis
     try:
         from core.dax import DaxContextAnalyzer
         analyzer = DaxContextAnalyzer()
@@ -31,13 +104,15 @@ def handle_analyze_dax_context(args: Dict[str, Any]) -> Dict[str, Any]:
 
         return {
             'success': True,
-            'result': result.to_dict() if hasattr(result, 'to_dict') else result
+            'validation': validation_result,
+            'analysis': result.to_dict() if hasattr(result, 'to_dict') else result
         }
 
     except ImportError as ie:
         logger.error(f"Import error: {ie}", exc_info=True)
         return {
             'success': False,
+            'validation': validation_result,
             'error': 'DaxContextAnalyzer not available. This is an internal error.',
             'error_type': 'import_error'
         }
@@ -45,63 +120,20 @@ def handle_analyze_dax_context(args: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(f"Error analyzing DAX context: {e}", exc_info=True)
         return {
             'success': False,
+            'validation': validation_result,
             'error': f'Error analyzing DAX context: {str(e)}'
         }
 
-def handle_visualize_filter_context(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Visualize filter context flow"""
-    if not connection_state.is_connected():
-        return ErrorHandler.handle_not_connected()
-
-    expression = args.get('expression')
-    output_format = args.get('format', 'text')  # text, mermaid, html
-
-    if not expression:
-        return {
-            'success': False,
-            'error': 'expression parameter is required'
-        }
-
-    try:
-        from core.dax import FilterContextVisualizer, DaxContextAnalyzer
-
-        # First analyze the context
-        analyzer = DaxContextAnalyzer()
-        context_analysis = analyzer.analyze_context_transitions(expression)
-
-        # Then visualize it
-        visualizer = FilterContextVisualizer()
-
-        if output_format == 'mermaid':
-            result = visualizer.generate_mermaid_diagram(context_analysis)
-        elif output_format == 'html':
-            output_path = args.get('output_path', './dax_context_visualization.html')
-            result = visualizer.generate_html_visualization(context_analysis, output_path)
-        else:  # text format
-            result = visualizer.generate_text_diagram(context_analysis)
-
-        return {
-            'success': True,
-            'visualization': result,
-            'format': output_format
-        }
-
-    except ImportError as ie:
-        logger.error(f"Import error: {ie}", exc_info=True)
-        return {
-            'success': False,
-            'error': 'FilterContextVisualizer not available. This is an internal error.',
-            'error_type': 'import_error'
-        }
-    except Exception as e:
-        logger.error(f"Error visualizing filter context: {e}", exc_info=True)
-        return {
-            'success': False,
-            'error': f'Error visualizing filter context: {str(e)}'
-        }
-
 def handle_debug_dax_context(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Debug DAX step-by-step with breakpoints"""
+    """
+    Debug DAX step-by-step with integrated syntax validation
+
+    This tool combines:
+    1. DAX syntax validation (former tool 03)
+    2. Step-by-step DAX debugging with context transitions
+
+    Returns validation status + debugging steps
+    """
     if not connection_state.is_connected():
         return ErrorHandler.handle_not_connected()
 
@@ -110,6 +142,7 @@ def handle_debug_dax_context(args: Dict[str, Any]) -> Dict[str, Any]:
     include_profiling = args.get('include_profiling', True)
     include_optimization = args.get('include_optimization', True)
     output_format = args.get('format', 'friendly')  # 'friendly', 'steps', or 'report'
+    skip_validation = args.get('skip_validation', False)
 
     if not expression:
         return {
@@ -117,6 +150,24 @@ def handle_debug_dax_context(args: Dict[str, Any]) -> Dict[str, Any]:
             'error': 'expression parameter is required'
         }
 
+    # Step 1: Validate DAX syntax (unless explicitly skipped)
+    validation_result = {'valid': True, 'message': 'Validation skipped'}
+    if not skip_validation:
+        is_valid, error_msg = _validate_dax_syntax(expression)
+        validation_result = {
+            'valid': is_valid,
+            'message': 'DAX syntax is valid' if is_valid else f'DAX syntax error: {error_msg}'
+        }
+
+        if not is_valid:
+            return {
+                'success': True,
+                'validation': validation_result,
+                'debug_steps': None,
+                'note': 'Debugging skipped due to syntax errors. Fix the syntax errors first.'
+            }
+
+    # Step 2: Perform debugging
     try:
         from core.dax import DaxContextDebugger
         debugger = DaxContextDebugger()
@@ -130,6 +181,7 @@ def handle_debug_dax_context(args: Dict[str, Any]) -> Dict[str, Any]:
             )
             return {
                 'success': True,
+                'validation': validation_result,
                 'report': result
             }
         else:
@@ -142,6 +194,7 @@ def handle_debug_dax_context(args: Dict[str, Any]) -> Dict[str, Any]:
             if not steps:
                 return {
                     'success': True,
+                    'validation': validation_result,
                     'message': '✅ No context transitions detected in this DAX expression.',
                     'explanation': 'This is a simple expression without CALCULATE, iterators, or measure references that would cause context transitions.',
                     'total_steps': 0
@@ -150,8 +203,14 @@ def handle_debug_dax_context(args: Dict[str, Any]) -> Dict[str, Any]:
             # Format output based on requested format
             if output_format == 'friendly':
                 formatted_output = _format_debug_steps_friendly(expression, steps)
+                # Add validation header
+                if validation_result['valid']:
+                    validation_header = "✅ DAX SYNTAX VALIDATION: PASSED\n\n"
+                    formatted_output = validation_header + formatted_output
+
                 return {
                     'success': True,
+                    'validation': validation_result,
                     'formatted_output': formatted_output,
                     'total_steps': len(steps)
                 }
@@ -172,6 +231,7 @@ def handle_debug_dax_context(args: Dict[str, Any]) -> Dict[str, Any]:
 
                 return {
                     'success': True,
+                    'validation': validation_result,
                     'debug_steps': steps_dict,
                     'total_steps': len(steps_dict)
                 }
@@ -180,6 +240,7 @@ def handle_debug_dax_context(args: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(f"Import error: {ie}", exc_info=True)
         return {
             'success': False,
+            'validation': validation_result,
             'error': 'DaxContextDebugger not available. This is an internal error.',
             'error_type': 'import_error'
         }
@@ -187,6 +248,7 @@ def handle_debug_dax_context(args: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(f"Error debugging DAX: {e}", exc_info=True)
         return {
             'success': False,
+            'validation': validation_result,
             'error': f'Error debugging DAX: {str(e)}'
         }
 
@@ -294,38 +356,182 @@ def _wrap_text(text: str, width: int = 80, indent: int = 0) -> list:
 
     return wrapper.wrap(text)
 
-def register_dax_context_handlers(registry):
-    """Register all DAX context analysis handlers"""
+def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Unified DAX Intelligence Tool
+
+    Combines validation, analysis, and debugging into a single intelligent tool.
+
+    Modes:
+    - 'analyze': Context transition analysis
+    - 'debug': Step-by-step debugging with friendly/steps output
+    - 'report': Comprehensive report with optimization + profiling
+    """
+    if not connection_state.is_connected():
+        return ErrorHandler.handle_not_connected()
+
+    expression = args.get('expression')
+    analysis_mode = args.get('analysis_mode', 'analyze')
+    skip_validation = args.get('skip_validation', False)
+
+    if not expression:
+        return {
+            'success': False,
+            'error': 'expression parameter is required'
+        }
+
+    # Step 1: Validate DAX syntax (unless explicitly skipped)
+    validation_result = {'valid': True, 'message': 'Validation skipped'}
+    if not skip_validation:
+        is_valid, error_msg = _validate_dax_syntax(expression)
+        validation_result = {
+            'valid': is_valid,
+            'message': 'DAX syntax is valid' if is_valid else f'DAX syntax error: {error_msg}'
+        }
+
+        if not is_valid:
+            return {
+                'success': True,
+                'validation': validation_result,
+                'analysis': None,
+                'note': f'{analysis_mode.title()} skipped due to syntax errors. Fix the syntax errors first.'
+            }
+
+    # Step 2: Route to appropriate analysis mode
+    try:
+        if analysis_mode == 'analyze':
+            # Context transition analysis
+            from core.dax import DaxContextAnalyzer
+            analyzer = DaxContextAnalyzer()
+            result = analyzer.analyze_context_transitions(expression)
+
+            return {
+                'success': True,
+                'validation': validation_result,
+                'analysis': result.to_dict() if hasattr(result, 'to_dict') else result,
+                'mode': 'analyze'
+            }
+
+        elif analysis_mode == 'debug':
+            # Step-by-step debugging
+            from core.dax import DaxContextDebugger
+            debugger = DaxContextDebugger()
+
+            output_format = args.get('output_format', 'friendly')
+            breakpoints = args.get('breakpoints')
+
+            steps = debugger.step_through(
+                dax_expression=expression,
+                breakpoints=breakpoints
+            )
+
+            if not steps:
+                return {
+                    'success': True,
+                    'validation': validation_result,
+                    'message': '✅ No context transitions detected in this DAX expression.',
+                    'explanation': 'This is a simple expression without CALCULATE, iterators, or measure references that would cause context transitions.',
+                    'total_steps': 0,
+                    'mode': 'debug'
+                }
+
+            # Format output based on requested format
+            if output_format == 'friendly':
+                formatted_output = _format_debug_steps_friendly(expression, steps)
+                # Add validation header
+                if validation_result['valid']:
+                    validation_header = "✅ DAX SYNTAX VALIDATION: PASSED\n\n"
+                    formatted_output = validation_header + formatted_output
+
+                return {
+                    'success': True,
+                    'validation': validation_result,
+                    'formatted_output': formatted_output,
+                    'total_steps': len(steps),
+                    'mode': 'debug'
+                }
+            else:
+                # 'steps' format - raw data
+                steps_dict = [
+                    {
+                        'step_number': step.step_number,
+                        'code_fragment': step.code_fragment,
+                        'filter_context': step.filter_context,
+                        'row_context': step.row_context,
+                        'intermediate_result': step.intermediate_result,
+                        'explanation': step.explanation,
+                        'execution_time_ms': step.execution_time_ms
+                    }
+                    for step in steps
+                ]
+
+                return {
+                    'success': True,
+                    'validation': validation_result,
+                    'debug_steps': steps_dict,
+                    'total_steps': len(steps_dict),
+                    'mode': 'debug'
+                }
+
+        elif analysis_mode == 'report':
+            # Comprehensive debug report
+            from core.dax import DaxContextDebugger
+            debugger = DaxContextDebugger()
+
+            include_profiling = args.get('include_profiling', True)
+            include_optimization = args.get('include_optimization', True)
+
+            result = debugger.generate_debug_report(
+                expression,
+                include_profiling=include_profiling,
+                include_optimization=include_optimization
+            )
+
+            return {
+                'success': True,
+                'validation': validation_result,
+                'report': result,
+                'mode': 'report'
+            }
+        else:
+            return {
+                'success': False,
+                'error': f"Invalid analysis_mode: {analysis_mode}. Use 'analyze', 'debug', or 'report'."
+            }
+
+    except ImportError as ie:
+        logger.error(f"Import error: {ie}", exc_info=True)
+        return {
+            'success': False,
+            'validation': validation_result,
+            'error': f'DAX Intelligence components not available. This is an internal error.',
+            'error_type': 'import_error'
+        }
+    except Exception as e:
+        logger.error(f"Error in DAX Intelligence ({analysis_mode} mode): {e}", exc_info=True)
+        return {
+            'success': False,
+            'validation': validation_result,
+            'error': f'Error in DAX Intelligence ({analysis_mode} mode): {str(e)}'
+        }
+
+
+def register_dax_handlers(registry):
+    """Register unified DAX Intelligence handler (Tool 03)"""
     from server.tool_schemas import TOOL_SCHEMAS
 
     tools = [
         ToolDefinition(
-            name="analyze_dax_context",
-            description="Analyze DAX context transitions",
-            handler=handle_analyze_dax_context,
-            input_schema=TOOL_SCHEMAS.get('analyze_dax_context', {}),
-            category="dax_context",
-            sort_order=48
-        ),
-        ToolDefinition(
-            name="visualize_filter_context",
-            description="Visualize filter context flow",
-            handler=handle_visualize_filter_context,
-            input_schema=TOOL_SCHEMAS.get('visualize_filter_context', {}),
-            category="dax_context",
-            sort_order=49
-        ),
-        ToolDefinition(
-            name="debug_dax_context",
-            description="🔍 Debug DAX expressions step-by-step. Shows exactly where context transitions happen (CALCULATE, iterators, measure references) with clear explanations, the ▶ pointer showing execution position, and helpful performance tips. Perfect for understanding complex DAX and troubleshooting unexpected results.",
-            handler=handle_debug_dax_context,
-            input_schema=TOOL_SCHEMAS.get('debug_dax_context', {}),
-            category="dax_context",
-            sort_order=50
+            name="dax_intelligence",
+            description="[03-DAX Intelligence] Unified DAX analysis tool: Validates syntax + analyzes context transitions + step-by-step debugging + comprehensive reporting. Single tool for all DAX analysis needs.",
+            handler=handle_dax_intelligence,
+            input_schema=TOOL_SCHEMAS.get('dax_intelligence', {}),
+            category="dax",
+            sort_order=30
         ),
     ]
 
     for tool in tools:
         registry.register(tool)
 
-    logger.info(f"Registered {len(tools)} DAX context handlers")
+    logger.info(f"Registered {len(tools)} DAX Intelligence handler (Tool 03)")

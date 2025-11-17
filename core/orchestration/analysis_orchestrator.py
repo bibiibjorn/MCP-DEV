@@ -391,15 +391,312 @@ class AnalysisOrchestrator(BaseOrchestrator):
 
         return results
 
+    def comprehensive_analysis(
+        self,
+        connection_state,
+        scope: str = "all",
+        depth: str = "balanced",
+        include_bpa: bool = True,
+        include_performance: bool = True,
+        include_integrity: bool = True,
+        max_seconds: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Unified comprehensive model analysis combining best practices, performance, and integrity checks.
+
+        Args:
+            connection_state: Current connection state
+            scope: Analysis scope - "all", "best_practices", "performance", "integrity"
+            depth: Analysis depth - "fast", "balanced", "deep"
+            include_bpa: Whether to run BPA analysis (requires dependencies)
+            include_performance: Whether to run performance analysis
+            include_integrity: Whether to run integrity validation
+            max_seconds: Maximum execution time (optional)
+
+        Returns:
+            Comprehensive analysis results with all requested analyses
+        """
+        from core.validation.error_handler import ErrorHandler
+
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+
+        scope = (scope or "all").lower()
+        depth = (depth or "balanced").lower()
+
+        results: Dict[str, Any] = {
+            'success': True,
+            'scope': scope,
+            'depth': depth,
+            'analyses': {},
+            'start_time': time.time()
+        }
+
+        # Determine what to run based on scope
+        run_bp = scope in ("all", "best_practices")
+        run_perf = scope in ("all", "performance") and include_performance
+        run_integrity = scope in ("all", "integrity") and include_integrity
+
+        # 1. Model Integrity Validation
+        if run_integrity:
+            try:
+                validator = connection_state.model_validator
+                if validator:
+                    integrity_result = validator.validate_model_integrity()
+                    results['analyses']['integrity'] = integrity_result
+                else:
+                    results['analyses']['integrity'] = {
+                        'success': False,
+                        'error': 'Model validator not available'
+                    }
+            except Exception as e:
+                logger.error(f"Integrity validation failed: {e}")
+                results['analyses']['integrity'] = {
+                    'success': False,
+                    'error': f'Integrity validation failed: {str(e)}'
+                }
+
+        # 2. Best Practice Analyzer (BPA)
+        if run_bp and include_bpa:
+            try:
+                bpa_analyzer = connection_state.bpa_analyzer
+                query_executor = connection_state.query_executor
+
+                if bpa_analyzer and query_executor:
+                    # Get TMSL definition
+                    tmsl_result = query_executor.get_tmsl_definition()
+
+                    if tmsl_result.get('success'):
+                        tmsl_json = tmsl_result.get('tmsl')
+
+                        # Configure BPA based on depth
+                        if depth == "fast":
+                            cfg = {
+                                'max_seconds': max_seconds or 10,
+                                'per_rule_max_ms': 100,
+                                'severity_at_least': 'WARNING'
+                            }
+                            violations = bpa_analyzer.analyze_model_fast(tmsl_json, cfg)
+                        elif depth == "deep":
+                            violations = bpa_analyzer.analyze_model(tmsl_json)
+                        else:  # balanced
+                            cfg = {
+                                'max_seconds': max_seconds or 20,
+                                'per_rule_max_ms': 150
+                            }
+                            violations = bpa_analyzer.analyze_model_fast(tmsl_json, cfg)
+
+                        results['analyses']['bpa'] = {
+                            'success': True,
+                            'violations': [vars(v) for v in violations],
+                            'violation_count': len(violations),
+                            'summary': bpa_analyzer.get_violations_summary(),
+                            'notes': bpa_analyzer.get_run_notes()
+                        }
+                    else:
+                        results['analyses']['bpa'] = {
+                            'success': False,
+                            'error': f"Failed to get TMSL: {tmsl_result.get('error')}"
+                        }
+                else:
+                    results['analyses']['bpa'] = {
+                        'success': True,
+                        'skipped': True,
+                        'reason': 'BPA analyzer not available - dependencies not installed',
+                        'violations': [],
+                        'violation_count': 0
+                    }
+            except Exception as e:
+                logger.error(f"BPA analysis failed: {e}")
+                results['analyses']['bpa'] = {
+                    'success': False,
+                    'error': f'BPA analysis failed: {str(e)}'
+                }
+
+        # 3. M Query Practices
+        if run_bp:
+            try:
+                from core.analysis.m_practices import scan_m_practices
+                query_executor = connection_state.query_executor
+
+                if query_executor:
+                    m_result = scan_m_practices(query_executor)
+                    results['analyses']['m_practices'] = m_result
+                else:
+                    results['analyses']['m_practices'] = {
+                        'success': False,
+                        'error': 'Query executor not available'
+                    }
+            except Exception as e:
+                logger.error(f"M practices scan failed: {e}")
+                results['analyses']['m_practices'] = {
+                    'success': False,
+                    'error': f'M practices scan failed: {str(e)}'
+                }
+
+        # 4. Performance Analysis (Cardinality)
+        if run_perf:
+            try:
+                performance_optimizer = connection_state.performance_optimizer
+
+                if performance_optimizer:
+                    rel_card = performance_optimizer.analyze_relationship_cardinality()
+                    results['analyses']['performance'] = rel_card
+                else:
+                    results['analyses']['performance'] = {
+                        'success': False,
+                        'error': 'Performance optimizer not available'
+                    }
+            except Exception as e:
+                logger.error(f"Performance analysis failed: {e}")
+                results['analyses']['performance'] = {
+                    'success': False,
+                    'error': f'Performance analysis failed: {str(e)}'
+                }
+
+        # 5. Relationship Overview (always included for context)
+        try:
+            query_executor = connection_state.query_executor
+            if query_executor:
+                rels = query_executor.execute_info_query('RELATIONSHIPS')
+                results['analyses']['relationships'] = {
+                    'success': bool(rels.get('success')),
+                    'count': len(rels.get('rows', [])),
+                    'relationships': rels.get('rows', [])
+                }
+        except Exception as e:
+            logger.error(f"Relationship overview failed: {e}")
+            results['analyses']['relationships'] = {
+                'success': False,
+                'error': f'Relationship overview failed: {str(e)}'
+            }
+
+        # Calculate execution time
+        results['execution_time_seconds'] = round(time.time() - results['start_time'], 2)
+        del results['start_time']
+
+        # Aggregate summary
+        total_issues = 0
+        successful_analyses = 0
+
+        for analysis_name, analysis_result in results['analyses'].items():
+            if isinstance(analysis_result, dict):
+                if analysis_result.get('success'):
+                    successful_analyses += 1
+
+                # Count issues from different analysis types
+                if analysis_name == 'integrity':
+                    total_issues += analysis_result.get('total_issues', 0)
+                elif analysis_name == 'bpa':
+                    total_issues += analysis_result.get('violation_count', 0)
+                elif analysis_name == 'm_practices':
+                    total_issues += analysis_result.get('total_issues', 0)
+                elif analysis_name == 'performance':
+                    # Count high/critical performance issues
+                    issues = analysis_result.get('issues', [])
+                    if isinstance(issues, list):
+                        total_issues += len([i for i in issues if isinstance(i, dict) and i.get('severity') in ('high', 'critical')])
+
+        results['summary'] = {
+            'total_issues': total_issues,
+            'successful_analyses': successful_analyses,
+            'total_analyses': len(results['analyses']),
+            'recommendation': self._get_recommendation(total_issues, results['analyses'])
+        }
+
+        return results
+
+    def _get_recommendation(self, total_issues: int, analyses: Dict[str, Any]) -> str:
+        """Generate recommendation based on analysis results."""
+        if total_issues == 0:
+            return "Model is in good shape. No critical issues found."
+
+        # Check for critical issues
+        critical_count = 0
+        high_count = 0
+
+        if 'integrity' in analyses and isinstance(analyses['integrity'], dict):
+            summary = analyses['integrity'].get('summary', {})
+            if isinstance(summary, dict):
+                critical_count += summary.get('critical_issues', 0)
+                high_count += summary.get('high_issues', 0)
+
+        if 'bpa' in analyses and isinstance(analyses['bpa'], dict):
+            violations = analyses['bpa'].get('violations', [])
+            for v in violations:
+                if isinstance(v, dict):
+                    severity = v.get('Severity', '').upper()
+                    if 'ERROR' in severity or 'CRITICAL' in severity:
+                        critical_count += 1
+                    elif 'WARNING' in severity or 'HIGH' in severity:
+                        high_count += 1
+
+        if critical_count > 0:
+            return f"CRITICAL: Found {critical_count} critical issues. Address immediately before deployment."
+        elif high_count > 0:
+            return f"WARNING: Found {high_count} high-priority issues. Review and fix before production use."
+        else:
+            return f"Found {total_issues} issues (low/medium severity). Consider addressing for optimization."
+
     def analyze_best_practices(self, connection_state, summary_only: bool = False) -> Dict[str, Any]:
         """
-        Alias for analyze_best_practices_unified for backward compatibility.
+        Alias for comprehensive_analysis focused on best practices.
         """
-        mode = "all" if not summary_only else "bpa"
-        return self.analyze_best_practices_unified(connection_state, mode=mode)
+        return self.comprehensive_analysis(
+            connection_state,
+            scope="best_practices",
+            depth="balanced" if not summary_only else "fast",
+            include_bpa=True,
+            include_performance=False,
+            include_integrity=True
+        )
 
     def analyze_performance(self, connection_state) -> Dict[str, Any]:
         """
-        Alias for analyze_performance_unified for backward compatibility.
+        Alias for comprehensive_analysis focused on performance.
         """
-        return self.analyze_performance_unified(connection_state)
+        return self.comprehensive_analysis(
+            connection_state,
+            scope="performance",
+            depth="balanced",
+            include_bpa=False,
+            include_performance=True,
+            include_integrity=False
+        )
+
+    def full_analysis_legacy(self, connection_state, summary_only: bool = False) -> Dict[str, Any]:
+        """
+        Legacy full_analysis - now delegates to comprehensive_analysis.
+        """
+        return self.comprehensive_analysis(
+            connection_state,
+            scope="all",
+            depth="balanced" if not summary_only else "fast",
+            include_bpa=True,
+            include_performance=True,
+            include_integrity=True
+        )
+
+    def validate_model_integrity(self, connection_state) -> Dict[str, Any]:
+        """
+        Validate model integrity - now delegates to comprehensive_analysis.
+
+        Returns only the integrity analysis results for backward compatibility.
+        """
+        result = self.comprehensive_analysis(
+            connection_state,
+            scope="integrity",
+            depth="balanced",
+            include_bpa=False,
+            include_performance=False,
+            include_integrity=True
+        )
+
+        # Extract just the integrity analysis for backward compatibility
+        if result.get('success') and 'integrity' in result.get('analyses', {}):
+            integrity_result = result['analyses']['integrity']
+            # Add execution metadata
+            integrity_result['execution_time_seconds'] = result.get('execution_time_seconds')
+            return integrity_result
+
+        return result

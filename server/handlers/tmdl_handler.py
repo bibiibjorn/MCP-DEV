@@ -10,43 +10,6 @@ from core.validation.error_handler import ErrorHandler
 
 logger = logging.getLogger(__name__)
 
-def handle_validate_tmdl(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Validate TMDL syntax with linting"""
-    tmdl_path = args.get('tmdl_path')
-
-    if not tmdl_path:
-        return {
-            'success': False,
-            'error': 'tmdl_path parameter is required'
-        }
-
-    try:
-        from core.tmdl import TmdlValidator
-        validator = TmdlValidator()
-
-        result = validator.validate_syntax(tmdl_path)
-
-        return result.to_dict()
-
-    except ImportError as ie:
-        logger.error(f"Import error: {ie}", exc_info=True)
-        return {
-            'success': False,
-            'error': 'TmdlValidator not available. This is an internal error.',
-            'error_type': 'import_error'
-        }
-    except FileNotFoundError as fnf:
-        return {
-            'success': False,
-            'error': f'TMDL path not found: {str(fnf)}'
-        }
-    except Exception as e:
-        logger.error(f"Error validating TMDL: {e}", exc_info=True)
-        return {
-            'success': False,
-            'error': f'Error validating TMDL: {str(e)}'
-        }
-
 def handle_tmdl_find_replace(args: Dict[str, Any]) -> Dict[str, Any]:
     """Find and replace in TMDL with regex support"""
     tmdl_path = args.get('tmdl_path')
@@ -227,20 +190,12 @@ def register_tmdl_handlers(registry):
 
     tools = [
         ToolDefinition(
-            name="validate_tmdl",
-            description="Validate TMDL syntax with linting",
-            handler=handle_validate_tmdl,
-            input_schema=TOOL_SCHEMAS.get('validate_tmdl', {}),
-            category="tmdl",
-            sort_order=44
-        ),
-        ToolDefinition(
             name="tmdl_find_replace",
             description="Find and replace in TMDL with regex support",
             handler=handle_tmdl_find_replace,
             input_schema=TOOL_SCHEMAS.get('tmdl_find_replace', {}),
             category="tmdl",
-            sort_order=45
+            sort_order=44
         ),
         ToolDefinition(
             name="tmdl_bulk_rename",
@@ -248,7 +203,7 @@ def register_tmdl_handlers(registry):
             handler=handle_tmdl_bulk_rename,
             input_schema=TOOL_SCHEMAS.get('tmdl_bulk_rename', {}),
             category="tmdl",
-            sort_order=46
+            sort_order=45
         ),
         ToolDefinition(
             name="tmdl_generate_script",
@@ -256,7 +211,7 @@ def register_tmdl_handlers(registry):
             handler=handle_tmdl_generate_script,
             input_schema=TOOL_SCHEMAS.get('tmdl_generate_script', {}),
             category="tmdl",
-            sort_order=47
+            sort_order=46
         ),
     ]
 

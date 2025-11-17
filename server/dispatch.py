@@ -28,9 +28,10 @@ class ToolDispatcher:
         '02_search_objects': 'search_objects',
         '02_search_string': 'search_string',
 
-        # 03 - Query & Data (8 tools)
+        # 03 - Query & Data + DAX Intelligence (9 tools)
         '03_preview_table_data': 'preview_table_data',
         '03_run_dax': 'run_dax',
+        '03_dax_intelligence': 'dax_intelligence',  # Unified DAX analysis/debug/report
         '03_validate_dax_query': 'validate_dax_query',
         '03_get_column_value_distribution': 'get_column_value_distribution',
         '03_get_column_summary': 'get_column_summary',
@@ -49,12 +50,8 @@ class ToolDispatcher:
         '04_list_partitions': 'list_partitions',
         '04_list_roles': 'list_roles',
 
-        # 05 - Analysis (5 tools)
-        '05_full_analysis': 'full_analysis',
-        '05_analyze_best_practices': 'analyze_best_practices_unified',
-        '05_analyze_performance': 'analyze_performance_unified',
-        '05_validate_model_integrity': 'validate_model_integrity',
-        '05_get_vertipaq_stats': 'get_vertipaq_stats',
+        # 05 - Analysis (1 tool)
+        '05_comprehensive_analysis': 'comprehensive_analysis',
 
         # 06 - Dependencies (2 tools)
         '06_analyze_measure_dependencies': 'analyze_measure_dependencies',
@@ -77,19 +74,21 @@ class ToolDispatcher:
         # 10 - PBIP Offline Analysis (1 tool)
         '10_analyze_pbip_repository': 'analyze_pbip_repository',
 
-        # 11 - TMDL Automation (4 tools)
-        '11_validate_tmdl': 'validate_tmdl',
+        # 11 - TMDL Automation (3 tools)
         '11_tmdl_find_replace': 'tmdl_find_replace',
         '11_tmdl_bulk_rename': 'tmdl_bulk_rename',
         '11_tmdl_generate_script': 'tmdl_generate_script',
 
-        # 12 - DAX Context Analysis (3 tools)
-        '12_analyze_dax_context': 'analyze_dax_context',
-        '12_visualize_filter_context': 'visualize_filter_context',
-        '12_debug_dax_context': 'debug_dax_context',
-
         # 13 - Help (1 tool)
-        '13_show_user_guide': 'show_user_guide'
+        '13_show_user_guide': 'show_user_guide',
+
+        # 14 - Hybrid Analysis (2 tools)
+        '14_export_hybrid_analysis': 'export_hybrid_analysis',
+        '14_analyze_hybrid_model': 'analyze_hybrid_model',
+
+        # 15 - DAX Optimization (2 tools)
+        '15_analyze_dax_query': 'analyze_dax_query',
+        '15_test_optimized_dax': 'test_optimized_dax'
     }
 
     def __init__(self):

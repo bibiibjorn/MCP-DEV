@@ -121,6 +121,8 @@ class OptimizedQueryExecutor:
         self.cache_hits = 0
         self.cache_misses = 0
         self.cache_bypass = 0
+        # DAX profiling support (lazy load)
+        self._dax_profiler = None
 
     @property
     def connection(self):
@@ -1924,3 +1926,82 @@ class OptimizedQueryExecutor:
                 server.Disconnect()
             except Exception:
                 pass
+
+    # ========== DAX OPTIMIZATION: PERFORMANCE PROFILING MODE ==========
+
+    def execute_dax_with_profiling(
+        self,
+        query: str,
+        xmla_endpoint: str,
+        dataset_name: str,
+        access_token: Optional[str] = None,
+        timeout: int = 120
+    ) -> Tuple[bool, Dict[str, Any], Optional[str]]:
+        """
+        Execute DAX query with performance profiling using C# DaxExecutor.
+
+        This method provides SE/FE breakdown and detailed event traces for
+        performance optimization workflows.
+
+        Args:
+            query: DAX query to execute
+            xmla_endpoint: XMLA endpoint URL
+            dataset_name: Dataset/database name
+            access_token: Optional access token (None for desktop)
+            timeout: Execution timeout in seconds
+
+        Returns:
+            Tuple of (success, result_data, error_message)
+            result_data includes: Results, Performance, EventDetails
+        """
+        # Lazy load DaxExecutorWrapper
+        if self._dax_profiler is None:
+            try:
+                from .dax_executor_wrapper import DaxExecutorWrapper
+                self._dax_profiler = DaxExecutorWrapper()
+            except Exception as e:
+                logger.warning(f"DaxExecutor not available: {e}")
+                # Fallback to standard execution
+                return self._execute_dax_standard_fallback(query, timeout)
+
+        try:
+            # Execute with profiling
+            success, result_data, error = self._dax_profiler.execute_with_profiling(
+                query=query,
+                xmla_endpoint=xmla_endpoint,
+                dataset_name=dataset_name,
+                access_token=access_token,
+                timeout_seconds=timeout
+            )
+
+            return success, result_data, error
+
+        except Exception as e:
+            logger.exception("Error in profiling execution")
+            return False, {}, str(e)
+
+    def _execute_dax_standard_fallback(
+        self, query: str, timeout: int
+    ) -> Tuple[bool, Dict[str, Any], Optional[str]]:
+        """
+        Fallback to standard execution when profiler is not available.
+        """
+        result = self.validate_and_execute_dax(query, top_n=0)
+
+        if result.get('success'):
+            # Convert to profiling format without performance metrics
+            return True, {
+                'Results': [{'Rows': result.get('rows', []), 'RowCount': result.get('row_count', 0)}],
+                'Performance': {
+                    'Total': result.get('execution_time_ms', 0),
+                    'FE': 0,
+                    'SE': 0,
+                    'SE_CPU': 0,
+                    'SE_Par': 0,
+                    'SE_Queries': 0,
+                    'SE_Cache': 0
+                },
+                'EventDetails': []
+            }, None
+        else:
+            return False, {}, result.get('error', 'Execution failed')

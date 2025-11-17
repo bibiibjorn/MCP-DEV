@@ -128,47 +128,6 @@ def handle_get_column_summary(args: Dict[str, Any]) -> Dict[str, Any]:
         mode='auto'
     )
 
-def handle_validate_dax_query(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Validate DAX syntax"""
-    if not connection_state.is_connected():
-        return ErrorHandler.handle_not_connected()
-
-    qe = connection_state.query_executor
-    if not qe:
-        return ErrorHandler.handle_manager_unavailable('query_executor')
-
-    query = args.get('query')
-    if not query:
-        return {'success': False, 'error': 'query parameter required'}
-
-    try:
-        # Try to execute query with LIMIT 0 to validate syntax
-        test_query = f'{query}'
-        if 'EVALUATE' not in test_query.upper():
-            test_query = f'EVALUATE {test_query}'
-
-        # Use query executor to validate - use validate_and_execute_dax method
-        result = qe.validate_and_execute_dax(test_query, top_n=0)
-
-        if result.get('success'):
-            return {
-                'success': True,
-                'valid': True,
-                'message': 'DAX query is valid'
-            }
-        else:
-            return {
-                'success': True,
-                'valid': False,
-                'error': result.get('error', 'Unknown validation error')
-            }
-    except Exception as e:
-        return {
-            'success': True,
-            'valid': False,
-            'error': str(e)
-        }
-
 def handle_get_data_sources(args: Dict[str, Any]) -> Dict[str, Any]:
     """List data sources with fallback to TOM"""
     if not connection_state.is_connected():
@@ -276,23 +235,6 @@ def register_query_handlers(registry):
             },
             category="query",
             sort_order=11
-        ),
-        ToolDefinition(
-            name="validate_dax_query",
-            description="Validate DAX syntax",
-            handler=handle_validate_dax_query,
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "DAX query to validate"
-                    }
-                },
-                "required": ["query"]
-            },
-            category="query",
-            sort_order=12
         ),
         ToolDefinition(
             name="get_column_value_distribution",

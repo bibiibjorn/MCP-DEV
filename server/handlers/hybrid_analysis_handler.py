@@ -14,6 +14,7 @@ from typing import Dict, Any, Optional
 from core.model.hybrid_analyzer import HybridAnalyzer
 from core.model.hybrid_reader import HybridReader
 from core.model.hybrid_intelligence import HybridIntelligence
+from core.model.bi_expert_analyzer import BIExpertAnalyzer
 from server.registry import ToolDefinition
 from server.tool_schemas import TOOL_SCHEMAS
 
@@ -325,23 +326,46 @@ def handle_analyze_hybrid_model(
 
 
 def _operation_read_metadata(reader: HybridReader) -> Dict[str, Any]:
-    """Read metadata operation"""
+    """Read metadata operation with BI expert analysis"""
     metadata = reader.read_metadata()
+
+    # Parse relationships from TMDL if available
+    relationships = reader.get_relationships_from_tmdl()
+
+    # Get BI expert analysis
+    expert_analysis = BIExpertAnalyzer.analyze_model_overview(metadata, relationships)
 
     # Add sample data info if available
     sample_tables = reader.list_sample_data_tables()
+    sample_data_info = None
     if sample_tables:
-        metadata["sample_data_available"] = {
+        sample_data_info = {
+            "available": True,
             "tables": sample_tables,
             "table_count": len(sample_tables),
-            "note": "Use operation='get_sample_data' with table name to retrieve data"
+            "guidance": "Sample data is available. Use operation='get_sample_data' with object_filter={'table_name': 'TableName'} to preview table contents."
+        }
+    else:
+        sample_data_info = {
+            "available": False,
+            "guidance": "No sample data available. This is a TMDL-only analysis. For data profiling, re-export with include_sample_data=true."
         }
 
-    # Add format type info
-    metadata["_format_type"] = reader.format_type
+    # Build response
+    response_data = {
+        "model_info": metadata,
+        "expert_analysis": expert_analysis,
+        "sample_data_info": sample_data_info,
+        "_format_type": reader.format_type
+    }
+
+    # Add relationship summary if available
+    if relationships:
+        rel_analysis = BIExpertAnalyzer.analyze_relationships(relationships)
+        response_data["relationships_analysis"] = rel_analysis
 
     return {
-        "data": metadata,
+        "data": response_data,
         "count": 1
     }
 
@@ -388,12 +412,72 @@ def _operation_get_object_definition(
     object_name: str,
     object_type: str
 ) -> Dict[str, Any]:
-    """Get object definition operation"""
-    definition = reader.get_object_definition(object_name, object_type)
-    return {
-        "data": definition,
-        "count": 1
-    }
+    """Get object definition operation with expert analysis and pattern search support"""
+    try:
+        definition = reader.get_object_definition(object_name, object_type)
+
+        # Add expert analysis for measures
+        if object_type == "measure" and definition.get("dax_expression"):
+            expert_analysis = BIExpertAnalyzer.analyze_measure(definition, include_dax_analysis=True)
+            definition["expert_analysis"] = expert_analysis
+
+        # Check if sample data would be beneficial
+        sample_data_guidance = BIExpertAnalyzer.should_request_sample_data(
+            "get_object_definition",
+            {"object_type": object_type}
+        )
+
+        if sample_data_guidance["sample_data_recommended"]:
+            definition["_sample_data_guidance"] = sample_data_guidance
+
+        return {
+            "data": definition,
+            "count": 1
+        }
+    except ValueError as e:
+        # Object not found - try pattern search if it's a measure
+        if object_type == "measure":
+            logger.info(f"Exact match failed for '{object_name}', trying pattern search")
+            # Convert search term to pattern
+            search_pattern = object_name.replace(' ', '[-_ ]?').replace('-', '[-_ ]?')
+            matching_measures = reader.find_measures_by_pattern(search_pattern)
+
+            if matching_measures:
+                if len(matching_measures) == 1:
+                    # Single match - return it
+                    measure = matching_measures[0]
+                    definition = {
+                        "name": measure["name"],
+                        "type": "measure",
+                        "table": measure.get("table"),
+                        "dax_expression": measure.get("expression"),
+                        "description": measure.get("description"),
+                        "display_folder": measure.get("displayFolder"),
+                        "format_string": measure.get("formatString"),
+                        "is_hidden": measure.get("isHidden"),
+                        "source": "tmdl_parsed",
+                        "search_query": object_name
+                    }
+                    expert_analysis = BIExpertAnalyzer.analyze_measure(definition, include_dax_analysis=True)
+                    definition["expert_analysis"] = expert_analysis
+                    return {
+                        "data": definition,
+                        "count": 1
+                    }
+                else:
+                    # Multiple matches - return list
+                    return {
+                        "data": {
+                            "search_query": object_name,
+                            "message": f"Found {len(matching_measures)} measures matching '{object_name}'",
+                            "matches": [{"name": m["name"], "table": m.get("table"), "display_folder": m.get("displayFolder")} for m in matching_measures],
+                            "suggestion": f"Use exact name from matches list in object_filter.object_name"
+                        },
+                        "count": len(matching_measures)
+                    }
+
+        # No matches found
+        raise ValueError(f"{object_type} '{object_name}' not found. Try using a pattern or check available objects with operation='find_objects'")
 
 
 def _operation_analyze_dependencies(
@@ -474,7 +558,7 @@ def register_hybrid_analysis_handlers(registry):
 
     registry.register(ToolDefinition(
         name='analyze_hybrid_model',
-        description='Read and analyze hybrid analysis package with intelligent routing and natural language support',
+        description='BI Expert Analysis: Read and analyze hybrid model (TMDL + JSON + sample data) with expert insights. Automatically reads TMDL files for accurate measure DAX and relationships. Supports fuzzy search (e.g., "base scenario" finds "PL-AMT-BASE Scenario"). No manual file reading needed!',
         handler=make_handler(handle_analyze_hybrid_model),
         input_schema=TOOL_SCHEMAS['analyze_hybrid_model'],
         category='14 - Hybrid Analysis',

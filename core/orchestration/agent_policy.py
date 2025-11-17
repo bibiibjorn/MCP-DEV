@@ -22,6 +22,7 @@ from core.orchestration.documentation_orchestrator import DocumentationOrchestra
 from core.orchestration.analysis_orchestrator import AnalysisOrchestrator
 from core.orchestration.pbip_orchestrator import PbipOrchestrator
 from core.orchestration.cache_orchestrator import CacheOrchestrator
+from core.orchestration.hybrid_analysis_orchestrator import HybridAnalysisOrchestrator
 from core.orchestration.query_policy import QueryPolicy
 
 logger = logging.getLogger("mcp_powerbi_finvision")
@@ -49,6 +50,7 @@ class AgentPolicy:
         self.analysis_orch = AnalysisOrchestrator(config)
         self.pbip_orch = PbipOrchestrator(config)
         self.cache_orch = CacheOrchestrator(config)
+        self.hybrid_orch = HybridAnalysisOrchestrator(config)
 
         # Initialize query policy for the query orchestrator
         try:
