@@ -327,6 +327,19 @@ def handle_analyze_hybrid_model(
 def _operation_read_metadata(reader: HybridReader) -> Dict[str, Any]:
     """Read metadata operation"""
     metadata = reader.read_metadata()
+
+    # Add sample data info if available
+    sample_tables = reader.list_sample_data_tables()
+    if sample_tables:
+        metadata["sample_data_available"] = {
+            "tables": sample_tables,
+            "table_count": len(sample_tables),
+            "note": "Use operation='get_sample_data' with table name to retrieve data"
+        }
+
+    # Add format type info
+    metadata["_format_type"] = reader.format_type
+
     return {
         "data": metadata,
         "count": 1
