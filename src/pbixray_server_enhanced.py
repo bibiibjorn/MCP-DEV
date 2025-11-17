@@ -44,18 +44,23 @@ from server.resources import get_resource_manager
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("mcp_powerbi_finvision")
 
-# Configure file-based logging
+# Configure file-based logging for ALL loggers by adding to root logger
 try:
     logs_dir = os.path.join(parent_dir, "logs")
     os.makedirs(logs_dir, exist_ok=True)
     LOG_PATH = os.path.join(logs_dir, "pbixray.log")
-    if not any(isinstance(h, logging.FileHandler) and getattr(h, 'baseFilename', None) == LOG_PATH for h in logger.handlers):
+
+    # Add file handler to root logger so ALL loggers write to pbixray.log
+    root_logger = logging.getLogger()
+    if not any(isinstance(h, logging.FileHandler) and getattr(h, 'baseFilename', None) == LOG_PATH for h in root_logger.handlers):
         _fh = logging.FileHandler(LOG_PATH, encoding="utf-8")
         _fh.setLevel(logging.INFO)
-        _fh.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-        logger.addHandler(_fh)
-except Exception:
+        _fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        root_logger.addHandler(_fh)
+        logger.info(f"File logging enabled: {LOG_PATH}")
+except Exception as e:
     LOG_PATH = os.path.join(os.path.dirname(__file__), "..", "pbixray.log")
+    logger.warning(f"Could not set up file logging: {e}")
 
 # Track server start time
 start_time = time.time()
