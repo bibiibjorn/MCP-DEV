@@ -11,20 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
-
-# Use orjson for 2-5x faster JSON parsing
-try:
-    import orjson
-    def load_json(file_path: str) -> Dict:
-        """Load JSON using orjson for performance."""
-        with open(file_path, 'rb') as f:
-            return orjson.loads(f.read())
-except ImportError:
-    import json
-    def load_json(file_path: str) -> Dict:
-        """Fallback to standard json library."""
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+from core.utilities.json_utils import load_json
 
 logger = logging.getLogger(__name__)
 

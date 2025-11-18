@@ -2,6 +2,7 @@
 import logging
 from typing import Any, Dict, List, Optional
 from .base_orchestrator import BaseOrchestrator
+from core.utilities.type_conversions import safe_bool
 
 logger = logging.getLogger(__name__)
 
@@ -330,15 +331,6 @@ class DocumentationOrchestrator(BaseOrchestrator):
                     return row[alt]
             return default
 
-        def _to_bool(value: Any) -> bool:
-            if isinstance(value, bool):
-                return value
-            if isinstance(value, (int, float)):
-                return bool(value)
-            if isinstance(value, str):
-                return value.strip().lower() in {"true", "1", "yes", "y"}
-            return False
-
         relationships: List[Dict[str, Any]] = []
         for rel in relationships_rows:
             relationships.append({
@@ -346,7 +338,7 @@ class DocumentationOrchestrator(BaseOrchestrator):
                 "from_column": str(_pick(rel, "FromColumn", default="")),
                 "to_table": str(_pick(rel, "ToTable", default="")),
                 "to_column": str(_pick(rel, "ToColumn", default="")),
-                "is_active": _to_bool(_pick(rel, "IsActive", default=False)),
+                "is_active": safe_bool(_pick(rel, "IsActive", default=False)),
                 "cardinality": str(_pick(rel, "Cardinality", default=_pick(rel, "RelationshipType", default=""))),
                 "direction": str(_pick(rel, "CrossFilterDirection", default="")),
             })

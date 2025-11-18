@@ -108,9 +108,6 @@ class MeasureInfo:
     display_folder: Optional[str] = None
     tmdl_path: str = "tmdl/expressions.tmdl"
     line_number: Optional[int] = None
-    complexity_score: int = 1
-    dependencies: List[str] = field(default_factory=list)
-    referenced_by_count: int = 0
 
 
 @dataclass
@@ -125,7 +122,6 @@ class RoleInfo:
 class Catalog:
     """Complete catalog.json structure"""
     tables: List[TableInfo]
-    measures: List[MeasureInfo]
     relationships_path: str = "tmdl/relationships.tmdl"
     roles: List[RoleInfo] = field(default_factory=list)
     optimization_summary: Dict[str, Any] = field(default_factory=dict)
@@ -136,11 +132,21 @@ class Catalog:
 
 
 @dataclass
+class Measures:
+    """Complete measures.json structure"""
+    measures: List[MeasureInfo]
+    total_count: int = 0
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return asdict(self)
+
+
+@dataclass
 class DependencyInfo:
     """Dependency information for a measure/column/table"""
-    columns: List[str] = field(default_factory=list)
+    columns: List[str] = field(default_factory=list)  # Format: "Table[Column]"
     measures: List[str] = field(default_factory=list)
-    tables: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -157,8 +163,6 @@ class MeasureDependency:
     table: str
     dependencies: DependencyInfo
     referenced_by: ReferencedBy
-    dependency_depth: int = 0
-    complexity_score: int = 1
 
 
 @dataclass

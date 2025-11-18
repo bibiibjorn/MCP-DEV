@@ -5,6 +5,8 @@ Analyzes cardinality, encoding, and provides optimization recommendations
 
 import logging
 from typing import Dict, Any, List, Optional
+from core.utilities.dmv_helpers import get_field_value
+from core.utilities.type_conversions import safe_int, safe_bool
 
 logger = logging.getLogger(__name__)
 
@@ -20,15 +22,6 @@ class PerformanceOptimizer:
         """Analyze actual vs configured relationship cardinality."""
         try:
             # Helpers for robust DMV field access and ID->name mapping
-            def _get_any(row, keys):
-                for k in keys:
-                    if k in row and row[k] not in (None, ""):
-                        return row[k]
-                    bk = f"[{k}]"
-                    if bk in row and row[bk] not in (None, ""):
-                        return row[bk]
-                return None
-
             def _build_maps():
                 tables_map = {}
                 cols_map = {}
@@ -36,8 +29,8 @@ class PerformanceOptimizer:
                 t_res = self.executor.execute_info_query("TABLES", top_n=100)
                 if t_res.get('success'):
                     for tr in t_res.get('rows', []):
-                        tid = _get_any(tr, ['ID', 'TableID'])
-                        name = _get_any(tr, ['Name', 'Table'])
+                        tid = get_field_value(tr, ['ID', 'TableID'])
+                        name = get_field_value(tr, ['Name', 'Table'])
                         try:
                             if tid is not None and name:
                                 tables_map[int(str(tid))] = str(name)
@@ -47,8 +40,8 @@ class PerformanceOptimizer:
                 c_res = self.executor.execute_info_query("COLUMNS", top_n=100)
                 if c_res.get('success'):
                     for cr in c_res.get('rows', []):
-                        cid = _get_any(cr, ['ID', 'ColumnID'])
-                        cname = _get_any(cr, ['Name'])
+                        cid = get_field_value(cr, ['ID', 'ColumnID'])
+                        cname = get_field_value(cr, ['Name'])
                         try:
                             if cid is not None and cname:
                                 cols_map[int(str(cid))] = str(cname)
@@ -57,17 +50,6 @@ class PerformanceOptimizer:
                 return tables_map, cols_map
 
             tables_by_id, columns_by_id = _build_maps()
-
-            def _to_int(v, default=0):
-                try:
-                    if v is None:
-                        return default
-                    if isinstance(v, (int, float)):
-                        return int(v)
-                    s = str(v).replace(',', '').strip()
-                    return int(float(s)) if s else default
-                except Exception:
-                    return default
 
             # Get all relationships
             rels_result = self.executor.execute_info_query("RELATIONSHIPS", top_n=100)
@@ -79,36 +61,36 @@ class PerformanceOptimizer:
 
             for rel in relationships:
                 # Prefer name fields; if missing, resolve from IDs
-                from_table = _get_any(rel, ['FromTable'])
-                to_table = _get_any(rel, ['ToTable'])
-                from_col = _get_any(rel, ['FromColumn'])
-                to_col = _get_any(rel, ['ToColumn'])
+                from_table = get_field_value(rel, ['FromTable'])
+                to_table = get_field_value(rel, ['ToTable'])
+                from_col = get_field_value(rel, ['FromColumn'])
+                to_col = get_field_value(rel, ['ToColumn'])
                 if not from_table:
-                    ftid = _get_any(rel, ['FromTableID'])
+                    ftid = get_field_value(rel, ['FromTableID'])
                     try:
                         from_table = tables_by_id.get(int(str(ftid))) if ftid is not None else None
                     except Exception:
                         from_table = None
                 if not to_table:
-                    ttid = _get_any(rel, ['ToTableID'])
+                    ttid = get_field_value(rel, ['ToTableID'])
                     try:
                         to_table = tables_by_id.get(int(str(ttid))) if ttid is not None else None
                     except Exception:
                         to_table = None
                 if not from_col:
-                    fcid = _get_any(rel, ['FromColumnID'])
+                    fcid = get_field_value(rel, ['FromColumnID'])
                     try:
                         from_col = columns_by_id.get(int(str(fcid))) if fcid is not None else None
                     except Exception:
                         from_col = None
                 if not to_col:
-                    tcid = _get_any(rel, ['ToColumnID'])
+                    tcid = get_field_value(rel, ['ToColumnID'])
                     try:
                         to_col = columns_by_id.get(int(str(tcid))) if tcid is not None else None
                     except Exception:
                         to_col = None
 
-                configured_card = str(_get_any(rel, ['Cardinality']) or 'Unknown')
+                configured_card = str(get_field_value(rel, ['Cardinality']) or 'Unknown')
 
                 # Skip incomplete rows to avoid 'None' table references
                 if not to_table or not to_col or not from_table or not from_col:
@@ -130,8 +112,8 @@ class PerformanceOptimizer:
                     result = self.executor.validate_and_execute_dax(check_query)
                     if result.get('success') and result.get('rows'):
                         row = result['rows'][0]
-                        total = _to_int(row.get('TotalRows', 0))
-                        unique = _to_int(row.get('UniqueValues', 0))
+                        total = safe_int(row.get('TotalRows', 0))
+                        unique = safe_int(row.get('UniqueValues', 0))
 
                         if total > 0 and total != unique:
                             duplicate_count = total - unique
@@ -172,34 +154,13 @@ class PerformanceOptimizer:
             Cardinality analysis with recommendations
         """
         try:
-            def _to_int(v, default=0):
-                try:
-                    if v is None:
-                        return default
-                    if isinstance(v, (int, float)):
-                        return int(v)
-                    s = str(v).replace(',', '').strip()
-                    return int(float(s)) if s else default
-                except Exception:
-                    return default
-
-            # Helpers for robust DMV field access and ID->name mapping
-            def _get_any(row, keys):
-                for k in keys:
-                    if k in row and row[k] not in (None, ""):
-                        return row[k]
-                    bk = f"[{k}]"
-                    if bk in row and row[bk] not in (None, ""):
-                        return row[bk]
-                return None
-
             # Build table and column ID maps
             tables_by_id = {}
             t_res = self.executor.execute_info_query("TABLES", top_n=100)
             if t_res.get('success'):
                 for tr in t_res.get('rows', []):
-                    tid = _get_any(tr, ['ID', 'TableID'])
-                    tname = _get_any(tr, ['Name', 'Table'])
+                    tid = get_field_value(tr, ['ID', 'TableID'])
+                    tname = get_field_value(tr, ['Name', 'Table'])
                     try:
                         if tid is not None and tname:
                             tables_by_id[int(str(tid))] = str(tname)
@@ -236,11 +197,11 @@ class PerformanceOptimizer:
 
             # Analyze up to 20 columns to avoid long execution
             for col in columns[:20]:
-                col_table = _get_any(col, ['Table', 'TableName', 'TABLE_NAME'])
+                col_table = get_field_value(col, ['Table', 'TableName', 'TABLE_NAME'])
                 # Prefer explicit/inferred names when standard Name is absent
-                col_name = _get_any(col, ['Name', 'ExplicitName', 'InferredName', 'COLUMN_NAME'])
+                col_name = get_field_value(col, ['Name', 'ExplicitName', 'InferredName', 'COLUMN_NAME'])
                 if not col_table:
-                    tid = _get_any(col, ['TableID'])
+                    tid = get_field_value(col, ['TableID'])
                     try:
                         col_table = tables_by_id.get(int(str(tid))) if tid is not None else None
                     except Exception:
@@ -276,9 +237,9 @@ class PerformanceOptimizer:
                 result = self.executor.validate_and_execute_dax(card_query)
                 if result.get('success') and result.get('rows'):
                     row = result['rows'][0]
-                    row_count = _to_int(row.get('RowCount', 0))
-                    distinct_count = _to_int(row.get('DistinctCount', 0))
-                    null_count = _to_int(row.get('NullCount', 0))
+                    row_count = safe_int(row.get('RowCount', 0))
+                    distinct_count = safe_int(row.get('DistinctCount', 0))
+                    null_count = safe_int(row.get('NullCount', 0))
 
                     # Calculate metrics
                     cardinality_ratio = distinct_count / row_count if row_count > 0 else 0
@@ -343,17 +304,6 @@ class PerformanceOptimizer:
             Encoding analysis with recommendations
         """
         try:
-            def _to_int(v, default=0):
-                try:
-                    if v is None:
-                        return default
-                    if isinstance(v, (int, float)):
-                        return int(v)
-                    s = str(v).replace(',', '').strip()
-                    return int(float(s)) if s else default
-                except Exception:
-                    return default
-
             # Query full VertiPaq storage info and filter client-side for maximum compatibility
             all_vp = self.executor.validate_and_execute_dax("EVALUATE INFO.STORAGETABLECOLUMNS()")
             if not all_vp.get('success'):
@@ -400,8 +350,8 @@ class PerformanceOptimizer:
                         )
                         r = self.executor.validate_and_execute_dax(q)
                         if r.get('success') and r.get('rows'):
-                            distinct = _to_int(r['rows'][0].get('DistinctCount', 0))
-                            nulls = _to_int(r['rows'][0].get('NullCount', 0))
+                            distinct = safe_int(r['rows'][0].get('DistinctCount', 0))
+                            nulls = safe_int(r['rows'][0].get('NullCount', 0))
                             total_cardinality += distinct
                             analysis.append({
                                 'column': col_name,
@@ -428,8 +378,8 @@ class PerformanceOptimizer:
 
             for row in rows:
                 column = row.get('COLUMN_ID') or row.get('COLUMN_NAME') or row.get('Column') or 'Unknown'
-                data_size = _to_int(row.get('DICTIONARY_SIZE') or row.get('DICTIONARY_SIZE_BYTES') or row.get('DictionarySize') or 0)
-                cardinality = _to_int(row.get('DICTIONARY_COUNT') or row.get('Cardinality') or 0)
+                data_size = safe_int(row.get('DICTIONARY_SIZE') or row.get('DICTIONARY_SIZE_BYTES') or row.get('DictionarySize') or 0)
+                cardinality = safe_int(row.get('DICTIONARY_COUNT') or row.get('Cardinality') or 0)
 
                 total_size += data_size
                 total_cardinality += cardinality

@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from core.dax.dax_reference_parser import DaxReferenceIndex
+from core.utilities.type_conversions import safe_bool as _safe_bool
 
 # Constants
 DEFAULT_SUBDIR = os.path.join("exports", "docs")
@@ -60,13 +61,7 @@ def pick(row: Dict[str, Any], *keys: str, default: Any = None) -> Any:
 
 def to_bool(value: Any) -> bool:
     """Convert various types to boolean."""
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return bool(value)
-    if isinstance(value, str):
-        return value.strip().lower() in {"true", "1", "yes", "y"}
-    return False
+    return _safe_bool(value)
 
 
 def build_reference_index(

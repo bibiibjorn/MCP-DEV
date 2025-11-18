@@ -12,13 +12,7 @@ from typing import Dict, Any, List, Optional
 from dataclasses import asdict
 
 from core.model.tmdl_parser import TMDLParser
-
-# Try to import orjson for faster JSON parsing
-try:
-    import orjson
-    HAS_ORJSON = True
-except ImportError:
-    HAS_ORJSON = False
+from core.utilities.json_utils import load_json
 
 logger = logging.getLogger(__name__)
 
@@ -81,13 +75,14 @@ class HybridReader:
     def read_catalog(self, object_filter: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Read catalog.json (with automatic multi-part reassembly)
+        Note: Measures are now in separate measures.json file
         For test_metadata format, returns minimal catalog with table names and row counts
 
         Args:
             object_filter: Optional filter for selective loading
 
         Returns:
-            Catalog dictionary
+            Catalog dictionary (without measures - use read_measures() for measures)
         """
         if "catalog" not in self._cache:
             if self.format_type == "test_metadata":
@@ -109,20 +104,17 @@ class HybridReader:
                 statistics = metadata.get("statistics", {})
                 row_counts_data = metadata.get("row_counts", {})
 
-                total_measures = statistics.get("measures", {}).get("total", 0)
                 total_columns = statistics.get("columns", {}).get("total", 0)
                 total_rows = row_counts_data.get("total_rows", 0)
 
                 self._cache["catalog"] = {
                     "tables": tables,
-                    "measures": [],  # Not available in test_metadata
                     "columns": [],   # Not available in test_metadata
                     "summary": {
                         "total_tables": len(tables),
-                        "total_measures": total_measures,
                         "total_columns": total_columns,
                         "total_rows": total_rows,
-                        "note": "Limited catalog from test_metadata format - only table names and row counts available"
+                        "note": "Limited catalog from test_metadata format - only table names and row counts available. Measures are in separate measures.json file."
                     }
                 }
             else:
@@ -146,6 +138,42 @@ class HybridReader:
 
         # Sanitize file paths to prevent Claude from prompting to copy files
         return self._sanitize_file_paths(catalog)
+
+    def read_measures(self) -> Dict[str, Any]:
+        """
+        Read measures.json (with automatic multi-part reassembly)
+        For test_metadata format, returns empty measures list
+
+        Returns:
+            Measures dictionary with 'measures' list and 'total_count'
+        """
+        if "measures" not in self._cache:
+            if self.format_type == "test_metadata":
+                # test_metadata format doesn't include separate measures file
+                metadata = self.read_metadata()
+                statistics = metadata.get("statistics", {})
+                total_measures = statistics.get("measures", {}).get("total", 0)
+
+                self._cache["measures"] = {
+                    "measures": [],
+                    "total_count": total_measures,
+                    "note": "Measures list not available in test_metadata format"
+                }
+            else:
+                # Full hybrid analysis format
+                measures_path = self.analysis_dir / "measures.json"
+                manifest_path = self.analysis_dir / "measures.manifest.json"
+
+                if measures_path.exists():
+                    # Single file
+                    self._cache["measures"] = self._read_json(measures_path)
+                elif manifest_path.exists():
+                    # Multi-part file - reassemble
+                    self._cache["measures"] = self._reassemble_multipart("measures")
+                else:
+                    raise ValueError("Measures file not found (neither single file nor manifest)")
+
+        return self._cache["measures"]
 
     def read_dependencies(self) -> Dict[str, Any]:
         """
@@ -303,13 +331,14 @@ class HybridReader:
         Returns:
             List of matching objects
         """
-        catalog = self.read_catalog()
-
         if object_type == "tables":
+            catalog = self.read_catalog()
             objects = catalog.get("tables", [])
         elif object_type == "measures":
-            objects = catalog.get("measures", [])
+            measures_data = self.read_measures()
+            objects = measures_data.get("measures", [])
         elif object_type == "roles":
+            catalog = self.read_catalog()
             objects = catalog.get("roles", [])
         else:
             return []
@@ -402,14 +431,15 @@ class HybridReader:
                         }
 
         elif object_type == "measure":
-            measures = catalog.get("measures", [])
+            measures_data = self.read_measures()
+            measures = measures_data.get("measures", [])
             for measure in measures:
                 if measure["name"] == object_name:
                     return {
                         "name": object_name,
                         "type": "measure",
                         "metadata": measure,
-                        "note": "Measure found in catalog but TMDL parsing failed"
+                        "note": "Measure found in measures.json but TMDL parsing failed"
                     }
 
         raise ValueError(f"{object_type} '{object_name}' not found")
@@ -456,20 +486,15 @@ class HybridReader:
         }
 
     def _read_json(self, path: Path) -> Dict[str, Any]:
-        """Read JSON file using orjson if available"""
-        if HAS_ORJSON:
-            with open(path, 'rb') as f:
-                return orjson.loads(f.read())
-        else:
-            with open(path, 'r', encoding='utf-8') as f:
-                return json.load(f)
+        """Read JSON file using centralized JSON utility with orjson optimization"""
+        return load_json(path)
 
     def _reassemble_multipart(self, file_type: str) -> Dict[str, Any]:
         """
         Reassemble multi-part file
 
         Args:
-            file_type: "catalog" or "dependencies"
+            file_type: "catalog", "measures", or "dependencies"
 
         Returns:
             Complete reassembled dictionary
@@ -489,16 +514,17 @@ class HybridReader:
         # Merge based on file type
         if file_type == "catalog":
             return self._merge_catalog_parts(parts_data)
+        elif file_type == "measures":
+            return self._merge_measures_parts(parts_data)
         elif file_type == "dependencies":
             return self._merge_dependencies_parts(parts_data)
         else:
             raise ValueError(f"Unknown file type: {file_type}")
 
     def _merge_catalog_parts(self, parts: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Merge catalog parts into single structure"""
+        """Merge catalog parts into single structure (measures are now in separate file)"""
         merged = {
             "tables": [],
-            "measures": [],
             "relationships_path": "",
             "roles": [],
             "optimization_summary": {}
@@ -506,15 +532,28 @@ class HybridReader:
 
         for part in parts:
             merged["tables"].extend(part.get("tables", []))
-            # Only take measures, roles, etc. from first part
-            if part.get("measures"):
-                merged["measures"] = part["measures"]
+            # Only take roles, etc. from first part
             if part.get("relationships_path"):
                 merged["relationships_path"] = part["relationships_path"]
             if part.get("roles"):
                 merged["roles"] = part["roles"]
             if part.get("optimization_summary"):
                 merged["optimization_summary"] = part["optimization_summary"]
+
+        return merged
+
+    def _merge_measures_parts(self, parts: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Merge measures parts into single structure"""
+        merged = {
+            "measures": [],
+            "total_count": 0
+        }
+
+        for part in parts:
+            merged["measures"].extend(part.get("measures", []))
+            # Only take total_count from first part
+            if part.get("total_count") and merged["total_count"] == 0:
+                merged["total_count"] = part["total_count"]
 
         return merged
 

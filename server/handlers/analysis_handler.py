@@ -7,6 +7,8 @@ import logging
 from server.registry import ToolDefinition
 from core.infrastructure.connection_state import connection_state
 from core.validation.error_handler import ErrorHandler
+from core.utilities.business_impact import enrich_issue_with_impact, add_impact_summary
+from core.utilities.suggested_actions import add_suggested_actions
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +33,8 @@ def handle_comprehensive_analysis(args: Dict[str, Any]) -> Dict[str, Any]:
     include_integrity = args.get('include_integrity', True)
     max_seconds = args.get('max_seconds', None)
 
-    return agent_policy.analysis_orch.comprehensive_analysis(
+    # Run the analysis
+    result = agent_policy.analysis_orch.comprehensive_analysis(
         connection_state,
         scope=scope,
         depth=depth,
@@ -40,6 +43,28 @@ def handle_comprehensive_analysis(args: Dict[str, Any]) -> Dict[str, Any]:
         include_integrity=include_integrity,
         max_seconds=max_seconds
     )
+
+    # Enrich issues with business impact context
+    if result.get('success') and result.get('issues'):
+        try:
+            enriched_issues = []
+            for issue in result['issues']:
+                enriched_issue = enrich_issue_with_impact(issue)
+                enriched_issues.append(enriched_issue)
+
+            result['issues'] = enriched_issues
+
+            # Add overall impact summary
+            result = add_impact_summary(result)
+
+        except Exception as e:
+            logger.error(f"Error enriching issues with business impact: {e}", exc_info=True)
+            # Don't fail the analysis if enrichment fails
+
+    # Add suggested next actions
+    result = add_suggested_actions(result, 'comprehensive_analysis', args)
+
+    return result
 
 def register_analysis_handlers(registry):
     """Register all analysis handlers"""

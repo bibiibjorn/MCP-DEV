@@ -79,12 +79,12 @@ class ToolDispatcher:
         '11_tmdl_bulk_rename': 'tmdl_bulk_rename',
         '11_tmdl_generate_script': 'tmdl_generate_script',
 
-        # 13 - Help (1 tool)
-        '13_show_user_guide': 'show_user_guide',
+        # 12 - Help (1 tool)
+        '12_show_user_guide': 'show_user_guide',
 
-        # 14 - Hybrid Analysis (2 tools)
-        '14_export_hybrid_analysis': 'export_hybrid_analysis',
-        '14_analyze_hybrid_model': 'analyze_hybrid_model',
+        # 13 - Hybrid Analysis (2 tools)
+        '13_export_hybrid_analysis': 'export_hybrid_analysis',
+        '13_analyze_hybrid_model': 'analyze_hybrid_model',
 
         # 15 - DAX Optimization (2 tools)
         '15_analyze_dax_query': 'analyze_dax_query',

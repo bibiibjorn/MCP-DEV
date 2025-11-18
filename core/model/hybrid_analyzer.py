@@ -20,14 +20,7 @@ import os
 
 from .pbip_reader import PBIPReader
 from .hybrid_structures import *
-
-# Try to import orjson for faster JSON serialization
-try:
-    import orjson
-    HAS_ORJSON = True
-except ImportError:
-    HAS_ORJSON = False
-    logging.warning("orjson not available, using standard json (slower)")
+from core.utilities.json_utils import dumps_json
 
 logger = logging.getLogger(__name__)
 
@@ -296,6 +289,14 @@ class HybridAnalyzer:
             "catalog"
         )
 
+        # Generate measures (separate from catalog)
+        measures = self._generate_measures()
+        self._write_json_with_splitting(
+            self.analysis_dir / "measures.json",
+            measures.to_dict(),
+            "measures"
+        )
+
         # Generate dependencies
         dependencies = self._generate_dependencies(tables)
         self._write_json_with_splitting(
@@ -351,9 +352,9 @@ class HybridAnalyzer:
                 "sample_data_path": "sample_data/" if self.has_connection else None,
                 "file_counts": {
                     "tmdl_files": tmdl_result["file_count"],
-                    "json_files": 3,  # metadata, catalog, dependencies (or their manifests)
+                    "json_files": 4,  # metadata, catalog, measures, dependencies (or their manifests)
                     "parquet_files": parquet_file_count,
-                    "total": tmdl_result["file_count"] + 3 + parquet_file_count
+                    "total": tmdl_result["file_count"] + 4 + parquet_file_count
                 }
             },
             "statistics": {
@@ -597,14 +598,40 @@ class HybridAnalyzer:
             export_performance=export_performance
         )
 
-    def _generate_catalog(self, tables: List[str], roles: List[str]) -> Catalog:
-        """Generate catalog.json structure with full column and measure details"""
-        table_infos = []
-        measure_infos = []
-
-        # Extract columns and measures from live model if connected
-        columns_by_table = {}
+    def _generate_measures(self) -> Measures:
+        """Generate measures.json structure with all measure details"""
         all_measures = []
+
+        if self.query_executor:
+            # Get all measures
+            logger.info("  - Extracting measures for measures.json...")
+            measures_result = self.query_executor.validate_and_execute_dax("EVALUATE INFO.MEASURES()", top_n=0, bypass_cache=True)
+            if measures_result.get('success'):
+                for row in measures_result.get('rows', []):
+                    measure_name = row.get('[Name]', row.get('Name', ''))
+                    table_name = row.get('[TableName]', row.get('TableName', ''))
+                    display_folder = row.get('[DisplayFolder]', row.get('DisplayFolder', ''))
+
+                    measure_info = MeasureInfo(
+                        name=measure_name,
+                        table=table_name,
+                        display_folder=display_folder if display_folder else None,
+                        tmdl_path=f"tmdl/tables/{table_name}.tmdl"
+                    )
+                    all_measures.append(measure_info)
+                logger.info(f"    ✓ Extracted {len(all_measures)} measures")
+
+        return Measures(
+            measures=all_measures,
+            total_count=len(all_measures)
+        )
+
+    def _generate_catalog(self, tables: List[str], roles: List[str]) -> Catalog:
+        """Generate catalog.json structure with table and column details (measures moved to separate file)"""
+        table_infos = []
+
+        # Extract columns from live model if connected
+        columns_by_table = {}
 
         if self.query_executor:
             # Get all columns
@@ -636,24 +663,6 @@ class HybridAnalyzer:
                     columns_by_table[table_name].append(column_info)
                 logger.info(f"    ✓ Extracted {sum(len(cols) for cols in columns_by_table.values())} columns across {len(columns_by_table)} tables")
 
-            # Get all measures
-            logger.info("  - Extracting measures for catalog...")
-            measures_result = self.query_executor.validate_and_execute_dax("EVALUATE INFO.MEASURES()", top_n=0, bypass_cache=True)
-            if measures_result.get('success'):
-                for row in measures_result.get('rows', []):
-                    measure_name = row.get('[Name]', row.get('Name', ''))
-                    table_name = row.get('[TableName]', row.get('TableName', ''))
-                    display_folder = row.get('[DisplayFolder]', row.get('DisplayFolder', ''))
-
-                    measure_info = MeasureInfo(
-                        name=measure_name,
-                        table=table_name,
-                        display_folder=display_folder if display_folder else None,
-                        tmdl_path=f"tmdl/tables/{table_name}.tmdl"
-                    )
-                    all_measures.append(measure_info)
-                logger.info(f"    ✓ Extracted {len(all_measures)} measures")
-
         # Build table infos
         for table in tables:
             columns = columns_by_table.get(table, [])
@@ -683,7 +692,6 @@ class HybridAnalyzer:
 
         return Catalog(
             tables=table_infos,
-            measures=all_measures,
             relationships_path="tmdl/relationships.tmdl",
             roles=role_infos,
             optimization_summary={
@@ -716,37 +724,54 @@ class HybridAnalyzer:
                     # Simple dependency extraction using regex
                     # Find measure references like [MeasureName] or 'Table'[Measure]
                     measure_refs = set()
-                    column_refs = set()
-                    table_refs = set()
+                    column_refs = set()  # Now stores "Table[Column]" format
 
                     if expression:
-                        # Find measure references: [MeasureName]
-                        measure_pattern = r'\[([^\]]+)\]'
-                        matches = re.findall(measure_pattern, expression)
-                        for match in matches:
-                            if match != measure_name:  # Don't include self-reference
-                                measure_refs.add(match)
+                        # First, find column references: 'Table'[Column] or Table[Column]
+                        # This pattern captures both the table and column name
+                        column_pattern = r"(?:'([^']+)'|([A-Za-z_][A-Za-z0-9_\s]*))\[([^\]]+)\]"
+                        column_matches = re.findall(column_pattern, expression)
 
-                        # Find table references: 'TableName' or TableName
-                        table_pattern = r"'([^']+)'\[|([A-Za-z_][A-Za-z0-9_]*)\["
-                        table_matches = re.findall(table_pattern, expression)
-                        for match in table_matches:
+                        for match in column_matches:
                             table_ref = match[0] or match[1]
-                            if table_ref and table_ref in tables:
-                                table_refs.add(table_ref)
+                            column_name = match[2]
+
+                            # Only add as column if the table reference is actually a known table
+                            # This prevents function names like MAX, SELECTEDVALUE from being treated as tables
+                            if table_ref and table_ref.strip() in tables:
+                                # Add to column references in "Table[Column]" format
+                                if column_name and column_name != measure_name:
+                                    full_column_ref = f"{table_ref.strip()}[{column_name}]"
+                                    column_refs.add(full_column_ref)
+
+                        # Now find standalone measure references: [MeasureName]
+                        # These are brackets NOT preceded by a table name or apostrophe
+                        # Use negative lookbehind to exclude Table[...] patterns
+                        measure_pattern = r"(?<![\w'])\[([^\]]+)\]"
+                        measure_matches = re.findall(measure_pattern, expression)
+
+                        # Get all column names from column_refs to check against
+                        column_names_only = {ref.split('[')[1].rstrip(']') for ref in column_refs}
+
+                        for match in measure_matches:
+                            # Skip if this is the measure itself or if we already found it as a column
+                            if match != measure_name and match not in column_names_only:
+                                measure_refs.add(match)
 
                     # Create dependency info
                     full_measure_name = f"{table_name}[{measure_name}]"
+                    # Handle None expressions - ensure we have a string
+                    safe_expression = expression if expression else ""
+                    truncated_expression = safe_expression[:200] + "..." if len(safe_expression) > 200 else safe_expression
+
                     measure_deps[full_measure_name] = MeasureDependency(
-                        expression=expression[:200] + "..." if len(expression) > 200 else expression,  # Truncate long expressions
+                        expression=truncated_expression,
                         table=table_name,
                         dependencies=DependencyInfo(
                             measures=list(measure_refs),
-                            columns=list(column_refs),
-                            tables=list(table_refs)
+                            columns=list(column_refs)  # Already in "Table[Column]" format
                         ),
-                        referenced_by=ReferencedBy(measures=[], count=0),
-                        complexity_score=min(len(expression) // 100, 10) if expression else 1
+                        referenced_by=ReferencedBy(measures=[], count=0)
                     )
 
                 logger.info(f"    ✓ Extracted {len(measure_deps)} measure dependencies")
@@ -1049,15 +1074,10 @@ class HybridAnalyzer:
 
     def _write_json(self, path: Path, data: Dict[str, Any]):
         """Write JSON file using orjson if available"""
-        if HAS_ORJSON:
-            with open(path, 'wb') as f:
-                f.write(orjson.dumps(
-                    data,
-                    option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS
-                ))
-        else:
-            with open(path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, sort_keys=True)
+        # Use centralized JSON utility with orjson optimization
+        json_str = dumps_json(data)
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(json_str)
 
     def _write_json_with_splitting(
         self,
@@ -1073,15 +1093,8 @@ class HybridAnalyzer:
             data: Data to write
             file_type: "catalog" or "dependencies"
         """
-        # Serialize to check size
-        if HAS_ORJSON:
-            serialized = orjson.dumps(
-                data,
-                option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS
-            )
-        else:
-            serialized = json.dumps(data, indent=2, sort_keys=True).encode('utf-8')
-
+        # Serialize to check size using centralized JSON utility
+        serialized = dumps_json(data).encode('utf-8')
         size_bytes = len(serialized)
 
         if size_bytes < MAX_FILE_SIZE:
@@ -1107,7 +1120,7 @@ class HybridAnalyzer:
         Args:
             base_path: Base file path (e.g., catalog.json)
             data: Data to split
-            file_type: "catalog" or "dependencies"
+            file_type: "catalog", "measures", or "dependencies"
             total_size: Total size in bytes
         """
         parts = []
@@ -1121,7 +1134,6 @@ class HybridAnalyzer:
             for i in range(0, len(tables), items_per_part):
                 part_data = {
                     "tables": tables[i:i + items_per_part],
-                    "measures": data.get("measures", []) if i == 0 else [],
                     "relationships_path": data.get("relationships_path", ""),
                     "roles": data.get("roles", []) if i == 0 else [],
                     "optimization_summary": data.get("optimization_summary", {}) if i == 0 else {}
@@ -1136,6 +1148,29 @@ class HybridAnalyzer:
                     filename=part_path.name,
                     size_bytes=part_size,
                     content_range=f"tables[{i}:{i+items_per_part}]"
+                ))
+                part_num += 1
+
+        elif file_type == "measures":
+            # Split by measures
+            measures = data.get("measures", [])
+            items_per_part = max(1, len(measures) // ((total_size // MAX_FILE_SIZE) + 1))
+
+            for i in range(0, len(measures), items_per_part):
+                part_data = {
+                    "measures": measures[i:i + items_per_part],
+                    "total_count": data.get("total_count", 0) if i == 0 else 0
+                }
+
+                part_path = base_path.parent / f"{base_path.stem}.part{part_num}.json"
+                self._write_json(part_path, part_data)
+
+                part_size = part_path.stat().st_size
+                parts.append(FilePart(
+                    part_number=part_num,
+                    filename=part_path.name,
+                    size_bytes=part_size,
+                    content_range=f"measures[{i}:{i+items_per_part}]"
                 ))
                 part_num += 1
 

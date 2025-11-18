@@ -8,6 +8,8 @@ import logging
 import os
 from typing import Dict, Any, Optional
 from datetime import datetime
+from core.utilities.dmv_helpers import get_field_value
+from core.utilities.type_conversions import safe_bool
 
 logger = logging.getLogger(__name__)
 
@@ -607,21 +609,6 @@ class ModelExporter:
             tables_by_name: Dict[str, Any] = {}
 
             # Helpers to read DMV rows with flexible key names (supports [Name] etc.)
-            def _get_any(row: Dict[str, Any], keys: list[str]) -> Any:
-                for k in keys:
-                    if k in row and row[k] not in (None, ""):
-                        return row[k]
-                    bk = f"[{k}]"
-                    if bk in row and row[bk] not in (None, ""):
-                        return row[bk]
-                return None
-
-            def _to_bool(v: Any) -> bool:
-                if isinstance(v, bool):
-                    return v
-                s = str(v).strip().lower()
-                return s in ("true", "1", "yes")
-
             def _safe_get(mapping: Dict[int, Any], key: int | None, default: Any = None) -> Any:
                 try:
                     if key is None:
@@ -636,7 +623,7 @@ class ModelExporter:
             # ID and name maps for joins
             tables_by_id: Dict[int, str] = {}
             def _get_id(row: Dict[str, Any], keys: list[str]) -> int | None:
-                v = _get_any(row, keys)
+                v = get_field_value(row, keys)
                 try:
                     if v is None:
                         return None
@@ -648,11 +635,11 @@ class ModelExporter:
                 top_counts['tables'] = len(tables)
                 # Normalize table names to avoid nulls in clients
                 def _table_name(row: Dict[str, Any]) -> str:
-                    v = _get_any(row, ['Name', 'Table', 'TABLE_NAME', 'TableName'])
+                    v = get_field_value(row, ['Name', 'Table', 'TABLE_NAME', 'TableName'])
                     if v not in (None, ""):
                         return str(v)
                     # As a last resort use ID if present
-                    v = _get_any(row, ['ID', 'TableID'])
+                    v = get_field_value(row, ['ID', 'TableID'])
                     return str(v) if v not in (None, "") else "Unknown"
 
                 table_list = [{'name': _table_name(t), 'hidden': t.get('IsHidden', False)} for t in tables]
@@ -683,7 +670,7 @@ class ModelExporter:
                     'by_table': {}
                 }
                 for m in measures:
-                    table = _get_any(m, ['Table', 'TableName'])
+                    table = get_field_value(m, ['Table', 'TableName'])
                     if not table:
                         # Try joining by TableID
                         mid = _get_id(m, ['TableID'])
@@ -706,11 +693,11 @@ class ModelExporter:
                 top_counts['columns'] = len(columns)
                 summary['columns'] = {
                     'count': len(columns),
-                    'calculated': len([c for c in columns if str(_get_any(c, ['Type'])).lower() == 'calculated']),
+                    'calculated': len([c for c in columns if str(get_field_value(c, ['Type'])).lower() == 'calculated']),
                     'by_table': {}
                 }
                 for c in columns:
-                    table = _get_any(c, ['Table', 'TableName'])
+                    table = get_field_value(c, ['Table', 'TableName'])
                     if not table:
                         # Join via TableID
                         cid_tid = _get_id(c, ['TableID'])
@@ -724,7 +711,7 @@ class ModelExporter:
                     col_id = _get_id(c, ['ID', 'ColumnID'])
                     if col_id is not None and col_id not in columns_by_id:
                         columns_by_id[col_id] = {
-                            'name': str(_get_any(c, ['Name']) or ''),
+                            'name': str(get_field_value(c, ['Name']) or ''),
                             'table': table
                         }
                 # Populate per-table columns count
@@ -740,17 +727,17 @@ class ModelExporter:
                 rel_list = []
                 active_count = 0
                 for r in rels:
-                    is_active = _to_bool(_get_any(r, ['IsActive']))
+                    is_active = safe_bool(get_field_value(r, ['IsActive']))
                     if is_active:
                         active_count += 1
                     ftid = _get_id(r, ['FromTableID'])
                     fcid = _get_id(r, ['FromColumnID'])
                     ttid = _get_id(r, ['ToTableID'])
                     tcid = _get_id(r, ['ToColumnID'])
-                    ft = _safe_get(tables_by_id, ftid, _get_any(r, ['FromTable']) or '?')
-                    tt = _safe_get(tables_by_id, ttid, _get_any(r, ['ToTable']) or '?')
-                    fc = (_safe_get(columns_by_id, fcid, {}) or {}).get('name') or _get_any(r, ['FromColumn']) or '?'
-                    tc = (_safe_get(columns_by_id, tcid, {}) or {}).get('name') or _get_any(r, ['ToColumn']) or '?'
+                    ft = _safe_get(tables_by_id, ftid, get_field_value(r, ['FromTable']) or '?')
+                    tt = _safe_get(tables_by_id, ttid, get_field_value(r, ['ToTable']) or '?')
+                    fc = (_safe_get(columns_by_id, fcid, {}) or {}).get('name') or get_field_value(r, ['FromColumn']) or '?'
+                    tc = (_safe_get(columns_by_id, tcid, {}) or {}).get('name') or get_field_value(r, ['ToColumn']) or '?'
                     rel_list.append(f"{ft}[{fc}] -> {tt}[{tc}]")
                 summary['relationships'] = {
                     'count': len(rels),

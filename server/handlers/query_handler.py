@@ -8,6 +8,7 @@ from server.registry import ToolDefinition
 from core.infrastructure.connection_state import connection_state
 from core.validation.error_handler import ErrorHandler
 from core.infrastructure.limits_manager import get_limits
+from core.utilities.suggested_actions import add_suggested_actions
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +28,15 @@ def handle_run_dax(args: Dict[str, Any]) -> Dict[str, Any]:
     top_n = args.get('top_n', 100)
     mode = args.get('mode', 'auto')
 
-    return agent_policy.safe_run_dax(
+    result = agent_policy.safe_run_dax(
         connection_state=connection_state,
         query=query,
         mode=mode,
         max_rows=top_n
     )
+
+    # Add suggested next actions
+    return add_suggested_actions(result, 'run_dax', args)
 
 def handle_preview_table_data(args: Dict[str, Any]) -> Dict[str, Any]:
     """Preview table rows with EVALUATE"""
@@ -52,12 +56,15 @@ def handle_preview_table_data(args: Dict[str, Any]) -> Dict[str, Any]:
     # Create EVALUATE query for table preview
     query = f'EVALUATE TOPN({max_rows}, \'{table}\')'
 
-    return agent_policy.safe_run_dax(
+    result = agent_policy.safe_run_dax(
         connection_state=connection_state,
         query=query,
         mode='auto',
         max_rows=max_rows
     )
+
+    # Add suggested next actions
+    return add_suggested_actions(result, 'preview_table_data', {'table': table})
 
 def handle_get_column_value_distribution(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get column value distribution (top N)"""
@@ -181,7 +188,8 @@ def handle_list_relationships(args: Dict[str, Any]) -> Dict[str, Any]:
         active_rows = [r for r in rows if r.get('IsActive') or r.get('[IsActive]')]
         result['rows'] = active_rows
 
-    return result
+    # Add suggested next actions
+    return add_suggested_actions(result, 'list_relationships', args)
 
 def register_query_handlers(registry):
     """Register all query execution handlers"""

@@ -7,6 +7,7 @@ import logging
 import random
 from typing import Dict, Any, List, Optional
 from core.config.config_manager import config
+from core.utilities.dmv_helpers import get_field_value
 
 logger = logging.getLogger(__name__)
 
@@ -131,16 +132,6 @@ class ModelValidator:
         """Check for orphaned records in relationships."""
         issues = []
 
-        # Helper to fetch DMV fields that may arrive as "Name" or "[Name]"
-        def _get_any(row: Dict[str, Any], keys: List[str]) -> Any:
-            for k in keys:
-                if k in row and row[k] not in (None, ""):
-                    return row[k]
-                bk = f"[{k}]"
-                if bk in row and row[bk] not in (None, ""):
-                    return row[bk]
-            return None
-
         try:
             rels_result = self.executor.execute_info_query("RELATIONSHIPS", top_n=100)
             if not rels_result.get('success'):
@@ -150,10 +141,10 @@ class ModelValidator:
             relationships = self._get_sampled_relationships(rels_result['rows'])
 
             for rel in relationships:
-                from_table = _get_any(rel, ['FromTable'])
-                from_col = _get_any(rel, ['FromColumn'])
-                to_table = _get_any(rel, ['ToTable'])
-                to_col = _get_any(rel, ['ToColumn'])
+                from_table = get_field_value(rel, ['FromTable'])
+                from_col = get_field_value(rel, ['FromColumn'])
+                to_table = get_field_value(rel, ['ToTable'])
+                to_col = get_field_value(rel, ['ToColumn'])
                 if not from_table or not from_col or not to_table or not to_col:
                     # Skip incomplete rows
                     continue
@@ -193,15 +184,6 @@ class ModelValidator:
         """Check for duplicate keys in dimension tables."""
         issues = []
 
-        def _get_any(row: Dict[str, Any], keys: List[str]) -> Any:
-            for k in keys:
-                if k in row and row[k] not in (None, ""):
-                    return row[k]
-                bk = f"[{k}]"
-                if bk in row and row[bk] not in (None, ""):
-                    return row[bk]
-            return None
-
         try:
             # Get relationships to identify dimension tables
             rels_result = self.executor.execute_info_query("RELATIONSHIPS", top_n=100)
@@ -215,8 +197,8 @@ class ModelValidator:
             checked_tables = set()
 
             for rel in relationships:
-                to_table = _get_any(rel, ['ToTable'])
-                to_col = _get_any(rel, ['ToColumn'])
+                to_table = get_field_value(rel, ['ToTable'])
+                to_col = get_field_value(rel, ['ToColumn'])
                 if not to_table or not to_col:
                     continue
 
@@ -261,15 +243,6 @@ class ModelValidator:
         """Check for null values in key columns."""
         issues = []
 
-        def _get_any(row: Dict[str, Any], keys: List[str]) -> Any:
-            for k in keys:
-                if k in row and row[k] not in (None, ""):
-                    return row[k]
-                bk = f"[{k}]"
-                if bk in row and row[bk] not in (None, ""):
-                    return row[bk]
-            return None
-
         try:
             rels_result = self.executor.execute_info_query("RELATIONSHIPS", top_n=100)
             if not rels_result.get('success'):
@@ -283,8 +256,8 @@ class ModelValidator:
             for rel in relationships:
                 # Check both sides
                 for side in ['From', 'To']:
-                    table = _get_any(rel, [f'{side}Table'])
-                    col = _get_any(rel, [f'{side}Column'])
+                    table = get_field_value(rel, [f'{side}Table'])
+                    col = get_field_value(rel, [f'{side}Column'])
                     if not table or not col:
                         continue
 
