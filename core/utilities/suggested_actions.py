@@ -4,6 +4,9 @@ Provides context-aware next action suggestions for tool responses
 """
 from typing import Dict, Any, List, Optional
 
+# Enable suggested actions - but AI should ALWAYS ask user before executing them
+ENABLE_SUGGESTED_ACTIONS = True
+
 def add_suggested_actions(
     result: Dict[str, Any],
     tool_name: str,
@@ -20,6 +23,9 @@ def add_suggested_actions(
     Returns:
         Updated result dictionary with suggested_actions field
     """
+    if not ENABLE_SUGGESTED_ACTIONS:
+        return result
+
     if not result.get('success'):
         return result
 
@@ -27,7 +33,11 @@ def add_suggested_actions(
     suggestions = _get_suggestions_for_tool(tool_name, result, context)
 
     if suggestions:
-        result['suggested_actions'] = suggestions
+        # Add clear notice that these are suggestions only - DO NOT auto-execute
+        result['suggested_actions'] = {
+            '_notice': '⚠️ SUGGESTIONS ONLY - Do not execute without explicit user approval',
+            'suggestions': suggestions
+        }
         result['workflow_hint'] = _get_workflow_hint(tool_name, result, context)
 
     return result

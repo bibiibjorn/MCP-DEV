@@ -20,7 +20,7 @@ import os
 
 from .pbip_reader import PBIPReader
 from .hybrid_structures import *
-from core.utilities.json_utils import dumps_json
+from core.utilities.json_utils import dumps_json, HAS_ORJSON
 
 logger = logging.getLogger(__name__)
 

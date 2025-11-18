@@ -105,7 +105,24 @@ def handle_export_hybrid_analysis(
         )
 
         logger.info(f"Export completed successfully in {result['generation_time_seconds']}s")
-        return result
+
+        # Return simplified response - just the essentials
+        return {
+            'success': True,
+            'message': f"✓ Hybrid analysis exported successfully",
+            'output_path': result['output_path'],
+            'export_time_seconds': result['generation_time_seconds'],
+            'files_created': {
+                'tmdl_files': result['structure']['file_counts']['tmdl_files'],
+                'analysis_files': result['structure']['file_counts']['json_files'],
+                'sample_data_files': result['structure']['file_counts']['parquet_files']
+            },
+            'statistics_summary': {
+                'tables': result['statistics']['tables'],
+                'measures': result['statistics']['measures'],
+                'total_rows': result['statistics']['total_rows']
+            }
+        }
 
     except Exception as e:
         logger.error(f"Error in export_hybrid_analysis: {str(e)}\n{traceback.format_exc()}")
@@ -271,24 +288,10 @@ def handle_analyze_hybrid_model(
             format_type = "toon"
             result = HybridIntelligence.convert_to_toon_format(result)
 
-        # Add guidance
-        guidance = HybridIntelligence.generate_guidance(
-            actual_operation,
-            result,
-            intent
-        )
-
-        # Add token warning
-        token_warning = HybridIntelligence.generate_token_warning(
-            estimated_tokens,
-            format_type
-        )
-
-        # Add next steps
-        next_steps = HybridIntelligence.generate_next_steps(
-            actual_operation,
-            result
-        )
+        # Add guidance (informational only - AI should not auto-execute)
+        guidance = HybridIntelligence.generate_guidance(actual_operation, result, intent)
+        token_warning = HybridIntelligence.generate_token_warning(estimated_tokens, format_type)
+        next_steps = HybridIntelligence.generate_next_steps(actual_operation, result)
 
         # Build response
         response = {
@@ -306,8 +309,12 @@ def handle_analyze_hybrid_model(
             }
         }
 
+        # Add next steps as suggestions only (AI should ask user before executing)
         if next_steps:
-            response["_next_steps"] = next_steps
+            response["_next_steps"] = {
+                "_notice": "⚠️ SUGGESTIONS ONLY - Do not execute without explicit user approval",
+                "suggestions": next_steps
+            }
 
         logger.info(f"Analysis completed: {actual_operation}")
         return response

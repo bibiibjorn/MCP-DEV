@@ -527,7 +527,7 @@ def register_dax_handlers(registry):
             handler=handle_dax_intelligence,
             input_schema=TOOL_SCHEMAS.get('dax_intelligence', {}),
             category="dax",
-            sort_order=30
+            sort_order=12
         ),
     ]
 

@@ -31,7 +31,7 @@ class ToolDispatcher:
         # 03 - Query & Data + DAX Intelligence (9 tools)
         '03_preview_table_data': 'preview_table_data',
         '03_run_dax': 'run_dax',
-        '03_dax_intelligence': 'dax_intelligence',  # Unified DAX analysis/debug/report
+        '03_standard_dax_analysis': 'dax_intelligence',  # Unified DAX analysis/debug/report
         '03_validate_dax_query': 'validate_dax_query',
         '03_get_column_value_distribution': 'get_column_value_distribution',
         '03_get_column_summary': 'get_column_summary',
