@@ -84,11 +84,7 @@ class ToolDispatcher:
 
         # 13 - Hybrid Analysis (2 tools)
         '13_export_hybrid_analysis': 'export_hybrid_analysis',
-        '13_analyze_hybrid_model': 'analyze_hybrid_model',
-
-        # 15 - DAX Optimization (2 tools)
-        '15_analyze_dax_query': 'analyze_dax_query',
-        '15_test_optimized_dax': 'test_optimized_dax'
+        '13_analyze_hybrid_model': 'analyze_hybrid_model'
     }
 
     def __init__(self):

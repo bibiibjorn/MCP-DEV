@@ -224,6 +224,33 @@ class FileManifest:
 
 
 @dataclass
+class RelationshipInfo:
+    """Relationship metadata"""
+    name: str
+    from_table: str
+    from_column: str
+    to_table: str
+    to_column: str
+    is_active: bool = True
+    cross_filter_direction: str = "OneDirection"  # "OneDirection" | "BothDirections"
+    cardinality: str = "ManyToOne"  # "OneToOne" | "OneToMany" | "ManyToOne" | "ManyToMany"
+    security_filtering_behavior: str = "OneDirection"
+    relies_on_referential_integrity: bool = False
+
+
+@dataclass
+class Relationships:
+    """Complete relationships.json structure"""
+    relationships: List[RelationshipInfo]
+    total_count: int = 0
+    summary: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return asdict(self)
+
+
+@dataclass
 class PBIPSourceInfo:
     """PBIP source information"""
     source_pbip_path: str

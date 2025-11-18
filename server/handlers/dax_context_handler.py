@@ -400,17 +400,50 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
     # Step 2: Route to appropriate analysis mode
     try:
         if analysis_mode == 'analyze':
-            # Context transition analysis
-            from core.dax import DaxContextAnalyzer
+            # Context transition analysis with anti-pattern detection
+            from core.dax import DaxContextAnalyzer, DaxContextDebugger
             analyzer = DaxContextAnalyzer()
+            debugger = DaxContextDebugger()
+
             result = analyzer.analyze_context_transitions(expression)
 
-            return {
+            # Add anti-pattern detection
+            anti_patterns = analyzer.detect_dax_anti_patterns(expression)
+
+            # Generate specific improvements and new DAX code
+            improvements = debugger.generate_improved_dax(
+                dax_expression=expression,
+                context_analysis=result,
+                anti_patterns=anti_patterns
+            )
+
+            response = {
                 'success': True,
                 'validation': validation_result,
                 'analysis': result.to_dict() if hasattr(result, 'to_dict') else result,
                 'mode': 'analyze'
             }
+
+            # Include anti-pattern detection if successful
+            if anti_patterns.get('success'):
+                response['anti_patterns'] = {
+                    'patterns_detected': anti_patterns.get('patterns_detected', 0),
+                    'pattern_matches': anti_patterns.get('pattern_matches', {}),
+                    'recommendations': anti_patterns.get('recommendations', []),
+                    'articles': anti_patterns.get('articles', [])
+                }
+
+            # Include specific improvements with new DAX code
+            if improvements.get('has_improvements'):
+                response['improvements'] = {
+                    'summary': improvements.get('summary'),
+                    'count': improvements.get('improvements_count'),
+                    'details': improvements.get('improvements'),
+                    'original_code': improvements.get('original_code'),
+                    'suggested_code': improvements.get('suggested_code')
+                }
+
+            return response
 
         elif analysis_mode == 'debug':
             # Step-by-step debugging
@@ -523,7 +556,7 @@ def register_dax_handlers(registry):
     tools = [
         ToolDefinition(
             name="dax_intelligence",
-            description="[03-DAX Intelligence] Unified DAX analysis tool: Validates syntax + analyzes context transitions + step-by-step debugging + comprehensive reporting. Single tool for all DAX analysis needs.",
+            description="[03-DAX Intelligence] Unified DAX analysis tool: Validates syntax + analyzes context transitions + detects anti-patterns + generates SPECIFIC IMPROVEMENTS with NEW/REWRITTEN DAX CODE. Provides before/after code examples and actionable optimization suggestions. Single tool for all DAX analysis needs.",
             handler=handle_dax_intelligence,
             input_schema=TOOL_SCHEMAS.get('dax_intelligence', {}),
             category="dax",

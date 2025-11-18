@@ -206,6 +206,72 @@ class HybridReader:
 
         return self._cache["dependencies"]
 
+    def read_relationships(self) -> Dict[str, Any]:
+        """
+        Read relationships.json
+        For test_metadata format, attempts to read from TMDL fallback
+
+        Returns:
+            Relationships dictionary with 'relationships' list and 'summary'
+        """
+        if "relationships" not in self._cache:
+            if self.format_type == "test_metadata":
+                # test_metadata format doesn't include relationships.json, try TMDL fallback
+                logger.debug("test_metadata format - attempting TMDL fallback for relationships")
+                relationships_list = self.get_relationships_from_tmdl()
+
+                # Calculate summary
+                active_count = sum(1 for r in relationships_list if r.get('isActive', True))
+                inactive_count = len(relationships_list) - active_count
+                bidirectional_count = sum(1 for r in relationships_list if r.get('crossFilteringBehavior') == 'BothDirections')
+                many_to_many_count = sum(1 for r in relationships_list if r.get('cardinality') == 'ManyToMany')
+
+                self._cache["relationships"] = {
+                    "relationships": relationships_list,
+                    "total_count": len(relationships_list),
+                    "summary": {
+                        "total": len(relationships_list),
+                        "active": active_count,
+                        "inactive": inactive_count,
+                        "bidirectional": bidirectional_count,
+                        "many_to_many": many_to_many_count
+                    },
+                    "note": "Relationships parsed from TMDL (test_metadata format)"
+                }
+            else:
+                # Full hybrid analysis format
+                relationships_path = self.analysis_dir / "relationships.json"
+
+                if relationships_path.exists():
+                    # Read from JSON file
+                    self._cache["relationships"] = self._read_json(relationships_path)
+                    logger.debug(f"Loaded relationships from {relationships_path}")
+                else:
+                    # Fallback to TMDL if JSON doesn't exist
+                    logger.warning("relationships.json not found, falling back to TMDL parsing")
+                    relationships_list = self.get_relationships_from_tmdl()
+
+                    # Calculate summary
+                    active_count = sum(1 for r in relationships_list if r.get('isActive', True))
+                    inactive_count = len(relationships_list) - active_count
+                    bidirectional_count = sum(1 for r in relationships_list if r.get('crossFilteringBehavior') == 'BothDirections')
+                    many_to_many_count = sum(1 for r in relationships_list if r.get('cardinality') == 'ManyToMany')
+
+                    self._cache["relationships"] = {
+                        "relationships": relationships_list,
+                        "total_count": len(relationships_list),
+                        "summary": {
+                            "total": len(relationships_list),
+                            "active": active_count,
+                            "inactive": inactive_count,
+                            "bidirectional": bidirectional_count,
+                            "many_to_many": many_to_many_count
+                        },
+                        "note": "Relationships parsed from TMDL (fallback)"
+                    }
+
+        return self._cache["relationships"]
+
     def read_tmdl_file(self, relative_path: str) -> str:
         """
         Read TMDL file content
@@ -454,6 +520,7 @@ class HybridReader:
 
         Args:
             object_name: Object name (table, measure, column)
+                        For measures, can be with or without brackets: "MeasureName" or "[MeasureName]"
             direction: "dependencies" | "referenced_by" | "both"
 
         Returns:
@@ -461,28 +528,43 @@ class HybridReader:
         """
         dependencies = self.read_dependencies()
 
+        # Normalize object name - try both with and without brackets for measures
+        search_names = [object_name]
+
+        # If it's not already bracketed, add bracketed version
+        if not object_name.startswith('['):
+            search_names.append(f"[{object_name}]")
+        # If it's bracketed, also try without brackets
+        if object_name.startswith('[') and object_name.endswith(']'):
+            search_names.append(object_name[1:-1])
+
         # Search in measures, columns, tables
         for category in ["measures", "columns", "tables"]:
-            if object_name in dependencies.get(category, {}):
-                dep_info = dependencies[category][object_name]
+            category_data = dependencies.get(category, {})
 
-                result = {
-                    "object": object_name,
-                    "category": category
-                }
+            # Try all search name variations
+            for search_name in search_names:
+                if search_name in category_data:
+                    dep_info = category_data[search_name]
 
-                if direction in ["dependencies", "both"]:
-                    result["dependencies"] = dep_info.get("dependencies", {})
+                    result = {
+                        "object": search_name,  # Return the actual key found
+                        "object_requested": object_name,  # Original requested name
+                        "category": category
+                    }
 
-                if direction in ["referenced_by", "both"]:
-                    result["referenced_by"] = dep_info.get("referenced_by", {})
+                    if direction in ["dependencies", "both"]:
+                        result["dependencies"] = dep_info.get("dependencies", {})
 
-                return result
+                    if direction in ["referenced_by", "both"]:
+                        result["referenced_by"] = dep_info.get("referenced_by", {})
+
+                    return result
 
         return {
             "object": object_name,
             "found": False,
-            "message": f"Object '{object_name}' not found in dependencies"
+            "message": f"Object '{object_name}' not found in dependencies (searched: {', '.join(search_names)})"
         }
 
     def _read_json(self, path: Path) -> Dict[str, Any]:

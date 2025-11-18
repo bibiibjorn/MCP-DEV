@@ -453,6 +453,57 @@ class DaxContextAnalyzer:
         column = len(lines[-1]) + 1
         return line, column
 
+    def detect_dax_anti_patterns(self, dax_expression: str) -> Dict[str, Any]:
+        """
+        Detect common DAX anti-patterns using pattern matching
+
+        Args:
+            dax_expression: DAX expression to analyze
+
+        Returns:
+            Dictionary with detected patterns and recommendations
+        """
+        try:
+            from core.research.dax_research import DaxResearchProvider
+
+            research_provider = DaxResearchProvider()
+            results = research_provider.get_optimization_guidance(
+                query=dax_expression,
+                performance_data=None  # No SE/FE data needed for pattern detection
+            )
+
+            # Extract just the pattern-based information (exclude SE/FE recommendations)
+            pattern_matches = results.get('pattern_matches', {})
+            articles = results.get('articles', [])
+
+            # Filter recommendations to only include pattern-based ones
+            all_recommendations = results.get('recommendations', [])
+            pattern_recommendations = [
+                rec for rec in all_recommendations
+                if not any(keyword in rec.lower() for keyword in ['se%', 'storage engine', 'formula engine', 'se query'])
+            ]
+
+            return {
+                'success': True,
+                'patterns_detected': len(pattern_matches),
+                'pattern_matches': pattern_matches,
+                'articles': articles,
+                'recommendations': pattern_recommendations
+            }
+
+        except ImportError:
+            logger.warning("DaxResearchProvider not available for anti-pattern detection")
+            return {
+                'success': False,
+                'error': 'Pattern detection not available'
+            }
+        except Exception as e:
+            logger.error(f"Error detecting anti-patterns: {e}", exc_info=True)
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
     def explain_context_flow(self, dax_expression: str) -> str:
         """
         Generate step-by-step explanation of context flow

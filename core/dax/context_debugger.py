@@ -320,6 +320,196 @@ RETURN SUMX(Sales, TotalSales * TaxRate)"""
 
         return optimizations
 
+    def generate_improved_dax(
+        self,
+        dax_expression: str,
+        context_analysis: ContextFlowExplanation,
+        anti_patterns: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Generate specific DAX improvements with before/after code examples
+
+        Args:
+            dax_expression: Original DAX expression
+            context_analysis: Context analysis result
+            anti_patterns: Optional anti-pattern detection results
+
+        Returns:
+            Dictionary with specific improvements and rewritten code
+        """
+        improvements = []
+        improved_code = dax_expression
+        has_improvements = False
+
+        try:
+            # Improvement 1: Replace iterator + measure with iterator + column
+            iterator_transitions = [
+                t for t in context_analysis.transitions
+                if t.type.value == "iterator" and t.function in ["SUMX", "AVERAGEX", "COUNTX"]
+            ]
+
+            if iterator_transitions:
+                improvement = {
+                    "issue": "Iterator with measure references causing row-by-row context transitions",
+                    "severity": "medium",
+                    "original_pattern": "SUMX(Table, [Measure])",
+                    "improved_pattern": "SUMX(Table, Table[Column])",
+                    "explanation": "Replace measure references inside iterators with direct column references to avoid context transitions in each iteration.",
+                    "specific_suggestion": f"Found {len(iterator_transitions)} iterator(s) with potential measure references. Review each iterator to see if measure can be replaced with column reference."
+                }
+                improvements.append(improvement)
+                has_improvements = True
+
+            # Improvement 2: Reduce CALCULATE nesting with variables
+            if context_analysis.max_nesting_level > 2:
+                nested_calcs = [
+                    t for t in context_analysis.transitions
+                    if t.type.value == "explicit_calculate" and t.nested_level > 1
+                ]
+
+                if nested_calcs:
+                    # Generate improved version with variables
+                    improved_with_vars = self._generate_var_based_code(dax_expression, nested_calcs)
+
+                    improvement = {
+                        "issue": f"Excessive CALCULATE nesting (depth: {context_analysis.max_nesting_level})",
+                        "severity": "high",
+                        "original_code": dax_expression.strip(),
+                        "improved_code": improved_with_vars,
+                        "explanation": "Use variables (VAR) to flatten nested CALCULATE statements, making code more readable and potentially more efficient.",
+                        "specific_suggestion": "Refactor nested CALCULATE statements into sequential variables with a RETURN statement."
+                    }
+                    improvements.append(improvement)
+                    improved_code = improved_with_vars
+                    has_improvements = True
+
+            # Improvement 3: Apply anti-pattern fixes
+            if anti_patterns and anti_patterns.get('success') and anti_patterns.get('patterns_detected', 0) > 0:
+                for pattern_id, matches in anti_patterns.get('pattern_matches', {}).items():
+                    # Find corresponding article
+                    article = next((a for a in anti_patterns.get('articles', []) if a['id'] == pattern_id), None)
+
+                    if article and matches:
+                        improvement = {
+                            "issue": f"Anti-pattern detected: {article['title']}",
+                            "severity": "high",
+                            "pattern_occurrences": len(matches),
+                            "pattern_details": article.get('content', '')[:200] + "...",
+                            "explanation": f"This pattern is known to cause performance or correctness issues. Review the article for specific guidance.",
+                            "specific_suggestion": f"Found {len(matches)} occurrence(s) of '{pattern_id}'. Apply recommended pattern from DAX documentation."
+                        }
+
+                        # Add specific code examples for known patterns
+                        if 'nested_calculate' in pattern_id.lower():
+                            improvement["original_pattern"] = "CALCULATE([Measure], CALCULATE([InnerMeasure], Filter))"
+                            improvement["improved_pattern"] = """// Flatten nested CALCULATE using variables
+VAR InnerResult = CALCULATE([InnerMeasure], Filter)
+VAR FinalResult = CALCULATE(InnerResult, AdditionalFilter)
+RETURN FinalResult
+
+// Or combine filters in single CALCULATE
+CALCULATE([Measure], Filter1, Filter2)"""
+
+                        elif 'filter_iterator' in pattern_id.lower():
+                            improvement["original_pattern"] = "FILTER(Table, [Measure] > 100)"
+                            improvement["improved_pattern"] = """// Use KEEPFILTERS or direct column reference
+FILTER(Table, Table[Column] > 100)
+
+// Or pre-calculate measure
+VAR Threshold = [Measure]
+RETURN FILTER(Table, Table[Column] > Threshold)"""
+
+                        improvements.append(improvement)
+                        has_improvements = True
+
+            # Improvement 4: Optimize implicit measure references
+            implicit_refs = [
+                t for t in context_analysis.transitions
+                if t.type.value == "implicit_measure"
+            ]
+
+            if len(implicit_refs) > 5:
+                improvement = {
+                    "issue": f"Multiple implicit measure references ({len(implicit_refs)} detected)",
+                    "severity": "medium",
+                    "explanation": "Each measure reference creates an implicit CALCULATE wrapper. Consider caching frequently used measures in variables.",
+                    "original_pattern": "[Measure1] + [Measure2] + [Measure3]",
+                    "improved_pattern": """VAR M1 = [Measure1]
+VAR M2 = [Measure2]
+VAR M3 = [Measure3]
+RETURN M1 + M2 + M3""",
+                    "specific_suggestion": "Store measure results in variables when the same measure is referenced multiple times or when measures are used in complex expressions."
+                }
+                improvements.append(improvement)
+                has_improvements = True
+
+            return {
+                "has_improvements": has_improvements,
+                "improvements_count": len(improvements),
+                "improvements": improvements,
+                "original_code": dax_expression.strip(),
+                "suggested_code": improved_code.strip() if has_improvements else None,
+                "summary": self._generate_improvement_summary(improvements)
+            }
+
+        except Exception as e:
+            logger.error(f"Error generating improved DAX: {e}", exc_info=True)
+            return {
+                "has_improvements": False,
+                "improvements_count": 0,
+                "improvements": [],
+                "error": str(e)
+            }
+
+    def _generate_var_based_code(self, dax_expression: str, nested_calcs: List) -> str:
+        """
+        Generate improved code using variables instead of nested CALCULATE
+
+        This is a simplified version - full implementation would need DAX parsing
+        """
+        # Simple heuristic-based transformation
+        # In production, this would use proper DAX parsing
+        if "CALCULATE" not in dax_expression.upper():
+            return dax_expression
+
+        # Add comment suggesting variable-based approach
+        suggestion = f"""// SUGGESTED IMPROVEMENT: Use variables to reduce nesting
+// Original code had {len(nested_calcs)} nested CALCULATE statement(s)
+
+VAR Result =
+    // Break down nested CALCULATE into sequential steps
+    // Step 1: Apply first filter context
+    // Step 2: Apply additional filters
+    // Step 3: Final calculation
+{dax_expression}
+
+RETURN Result
+
+// NOTE: This is a template. Manually refactor nested CALCULATE statements
+// into separate VAR statements for each calculation step."""
+
+        return suggestion
+
+    def _generate_improvement_summary(self, improvements: List[Dict[str, Any]]) -> str:
+        """Generate human-readable summary of improvements"""
+        if not improvements:
+            return "No significant improvements identified. Your DAX code follows best practices."
+
+        high_severity = sum(1 for i in improvements if i.get('severity') == 'high')
+        medium_severity = sum(1 for i in improvements if i.get('severity') == 'medium')
+        low_severity = sum(1 for i in improvements if i.get('severity') == 'low')
+
+        summary_parts = [f"Found {len(improvements)} potential improvement(s):"]
+
+        if high_severity > 0:
+            summary_parts.append(f"  • {high_severity} high-priority issue(s) - should be addressed")
+        if medium_severity > 0:
+            summary_parts.append(f"  • {medium_severity} medium-priority improvement(s) - recommended")
+        if low_severity > 0:
+            summary_parts.append(f"  • {low_severity} low-priority enhancement(s) - optional")
+
+        return "\n".join(summary_parts)
+
     def _extract_code_fragment(self, dax: str, position: int) -> str:
         """Extract code fragment around position"""
         start = max(0, position - 30)
@@ -400,12 +590,89 @@ RETURN SUMX(Sales, TotalSales * TaxRate)"""
                 lines.append(f"   💡 {w.suggestion}")
                 lines.append("")
 
-        # Optimizations
+        # Anti-Pattern Detection
+        anti_patterns = self.analyzer.detect_dax_anti_patterns(dax_expression)
+        if anti_patterns.get('success') and anti_patterns.get('patterns_detected', 0) > 0:
+            lines.append("ANTI-PATTERN DETECTION")
+            lines.append("-" * 70)
+            lines.append(f"Detected {anti_patterns['patterns_detected']} anti-pattern(s)")
+            lines.append("")
+
+            # List matched patterns
+            for pattern_id, matches in anti_patterns.get('pattern_matches', {}).items():
+                article = next((a for a in anti_patterns.get('articles', []) if a['id'] == pattern_id), None)
+                if article:
+                    lines.append(f"⚠️  {article['title']}")
+                    lines.append(f"   Pattern: {pattern_id}")
+                    lines.append(f"   Occurrences: {len(matches)}")
+                    if article.get('content'):
+                        # Add first few lines of content
+                        content_lines = article['content'].strip().split('\n')[:3]
+                        for cline in content_lines:
+                            lines.append(f"   {cline.strip()}")
+                    lines.append("")
+
+            # List recommendations
+            if anti_patterns.get('recommendations'):
+                lines.append("Recommendations:")
+                for rec in anti_patterns['recommendations']:
+                    lines.append(f"   • {rec}")
+                lines.append("")
+
+        # Generate specific improvements with new DAX code
+        if include_optimization:
+            improvements = self.generate_improved_dax(
+                dax_expression=dax_expression,
+                context_analysis=analysis,
+                anti_patterns=anti_patterns
+            )
+
+            if improvements.get('has_improvements'):
+                lines.append("SPECIFIC IMPROVEMENTS & NEW DAX CODE")
+                lines.append("=" * 70)
+                lines.append("")
+                lines.append(improvements['summary'])
+                lines.append("")
+
+                for i, improvement in enumerate(improvements['improvements'], 1):
+                    severity_icon = "🔴" if improvement.get('severity') == 'high' else "🟡" if improvement.get('severity') == 'medium' else "🔵"
+                    lines.append(f"{severity_icon} IMPROVEMENT {i}: {improvement['issue']}")
+                    lines.append("-" * 70)
+                    lines.append(f"Explanation: {improvement['explanation']}")
+                    lines.append("")
+
+                    if improvement.get('specific_suggestion'):
+                        lines.append(f"💡 Specific Action: {improvement['specific_suggestion']}")
+                        lines.append("")
+
+                    # Show original pattern
+                    if improvement.get('original_pattern'):
+                        lines.append("❌ Original Pattern:")
+                        lines.append(f"   {improvement['original_pattern']}")
+                        lines.append("")
+
+                    # Show improved pattern
+                    if improvement.get('improved_pattern'):
+                        lines.append("✅ Improved Pattern:")
+                        for line in improvement['improved_pattern'].split('\n'):
+                            lines.append(f"   {line}")
+                        lines.append("")
+
+                    # Show full improved code if available
+                    if improvement.get('improved_code'):
+                        lines.append("✅ Suggested Refactored Code:")
+                        for line in improvement['improved_code'].split('\n'):
+                            lines.append(f"   {line}")
+                        lines.append("")
+
+                    lines.append("")
+
+        # Traditional Optimizations (generic patterns)
         if include_optimization:
             optimizations = self.suggest_optimizations(analysis)
 
             if optimizations:
-                lines.append("OPTIMIZATION SUGGESTIONS")
+                lines.append("GENERAL OPTIMIZATION PATTERNS")
                 lines.append("-" * 70)
 
                 for opt in optimizations:

@@ -305,6 +305,13 @@ class HybridAnalyzer:
             "dependencies"
         )
 
+        # Generate relationships
+        relationships = self._generate_relationships()
+        self._write_json(
+            self.analysis_dir / "relationships.json",
+            relationships.to_dict()
+        )
+
         # Step 4: Extract sample data (ALWAYS extract when connection is available)
         parquet_file_count = 0
         if self.has_connection:
@@ -352,9 +359,9 @@ class HybridAnalyzer:
                 "sample_data_path": "sample_data/" if self.has_connection else None,
                 "file_counts": {
                     "tmdl_files": tmdl_result["file_count"],
-                    "json_files": 4,  # metadata, catalog, measures, dependencies (or their manifests)
+                    "json_files": 5,  # metadata, catalog, measures, dependencies, relationships (or their manifests)
                     "parquet_files": parquet_file_count,
-                    "total": tmdl_result["file_count"] + 4 + parquet_file_count
+                    "total": tmdl_result["file_count"] + 5 + parquet_file_count
                 }
             },
             "statistics": {
@@ -820,6 +827,120 @@ class HybridAnalyzer:
                 "orphan_measures": [],  # TODO: Find orphaned measures
                 "critical_objects": []  # TODO: Identify critical objects
             }
+        )
+
+    def _generate_relationships(self) -> Relationships:
+        """Generate relationships.json structure with relationship details from both live model and TMDL"""
+        relationship_infos = []
+
+        if self.query_executor:
+            # Get relationships from live model using INFO.RELATIONSHIPS()
+            logger.info("  - Extracting relationships from live model...")
+            relationships_result = self.query_executor.validate_and_execute_dax(
+                "EVALUATE INFO.RELATIONSHIPS()",
+                top_n=0,
+                bypass_cache=True
+            )
+
+            if relationships_result.get('success'):
+                for row in relationships_result.get('rows', []):
+                    # Extract relationship info with multiple column name variations
+                    name = row.get('[Name]', row.get('Name', ''))
+                    from_table = row.get('[FromTable]', row.get('FromTable', row.get('[From Table]', row.get('From Table', ''))))
+                    from_column = row.get('[FromColumn]', row.get('FromColumn', row.get('[From Column]', row.get('From Column', ''))))
+                    to_table = row.get('[ToTable]', row.get('ToTable', row.get('[To Table]', row.get('To Table', ''))))
+                    to_column = row.get('[ToColumn]', row.get('ToColumn', row.get('[To Column]', row.get('To Column', ''))))
+                    is_active = row.get('[IsActive]', row.get('IsActive', True))
+                    cross_filter = row.get('[CrossFilterDirection]', row.get('CrossFilterDirection', 'OneDirection'))
+                    cardinality = row.get('[Cardinality]', row.get('Cardinality', 'ManyToOne'))
+                    security_filtering = row.get('[SecurityFilteringBehavior]', row.get('SecurityFilteringBehavior', 'OneDirection'))
+                    referential_integrity = row.get('[ReliesOnReferentialIntegrity]', row.get('ReliesOnReferentialIntegrity', False))
+
+                    # Convert string booleans to bool
+                    if isinstance(is_active, str):
+                        is_active = is_active.lower() == 'true'
+                    if isinstance(referential_integrity, str):
+                        referential_integrity = referential_integrity.lower() == 'true'
+
+                    rel_info = RelationshipInfo(
+                        name=name,
+                        from_table=from_table,
+                        from_column=from_column,
+                        to_table=to_table,
+                        to_column=to_column,
+                        is_active=is_active,
+                        cross_filter_direction=cross_filter,
+                        cardinality=cardinality,
+                        security_filtering_behavior=security_filtering,
+                        relies_on_referential_integrity=referential_integrity
+                    )
+                    relationship_infos.append(rel_info)
+
+                logger.info(f"    ✓ Extracted {len(relationship_infos)} relationships from live model")
+            else:
+                logger.warning(f"    ✗ Could not extract relationships from live model: {relationships_result.get('error')}")
+
+        # If no connection or failed, try to get from TMDL
+        if not relationship_infos and self.pbip_reader:
+            logger.info("  - Extracting relationships from TMDL...")
+            try:
+                from core.model.tmdl_parser import TMDLParser
+
+                # Check for relationships.tmdl in multiple locations
+                rel_paths = [
+                    self.pbip_reader.definition_dir / "relationships.tmdl",
+                    self.pbip_reader.definition_dir.parent / "relationships.tmdl"
+                ]
+
+                for rel_path in rel_paths:
+                    if rel_path.exists():
+                        content = rel_path.read_text(encoding='utf-8')
+                        parsed_rels = TMDLParser.parse_relationships(content)
+
+                        for rel in parsed_rels:
+                            rel_info = RelationshipInfo(
+                                name=rel.get('name', ''),
+                                from_table=rel.get('fromTable', ''),
+                                from_column=rel.get('fromColumn', ''),
+                                to_table=rel.get('toTable', ''),
+                                to_column=rel.get('toColumn', ''),
+                                is_active=rel.get('isActive', True),
+                                cross_filter_direction=rel.get('crossFilteringBehavior', 'OneDirection'),
+                                cardinality=rel.get('cardinality', 'ManyToOne'),
+                                security_filtering_behavior=rel.get('securityFilteringBehavior', 'OneDirection'),
+                                relies_on_referential_integrity=rel.get('reliesOnReferentialIntegrity', False)
+                            )
+                            relationship_infos.append(rel_info)
+
+                        logger.info(f"    ✓ Extracted {len(relationship_infos)} relationships from TMDL")
+                        break
+                else:
+                    logger.warning("    ✗ relationships.tmdl not found")
+
+            except Exception as e:
+                logger.error(f"    ✗ Error parsing relationships from TMDL: {e}")
+
+        # Calculate summary statistics
+        active_count = sum(1 for r in relationship_infos if r.is_active)
+        inactive_count = len(relationship_infos) - active_count
+        bidirectional_count = sum(1 for r in relationship_infos if r.cross_filter_direction == "BothDirections")
+        many_to_many_count = sum(1 for r in relationship_infos if r.cardinality == "ManyToMany")
+
+        summary = {
+            "total": len(relationship_infos),
+            "active": active_count,
+            "inactive": inactive_count,
+            "bidirectional": bidirectional_count,
+            "many_to_many": many_to_many_count,
+            "one_to_many": sum(1 for r in relationship_infos if r.cardinality == "OneToMany"),
+            "many_to_one": sum(1 for r in relationship_infos if r.cardinality == "ManyToOne"),
+            "one_to_one": sum(1 for r in relationship_infos if r.cardinality == "OneToOne")
+        }
+
+        return Relationships(
+            relationships=relationship_infos,
+            total_count=len(relationship_infos),
+            summary=summary
         )
 
     def _get_physical_columns(self, table_name: str) -> List[str]:

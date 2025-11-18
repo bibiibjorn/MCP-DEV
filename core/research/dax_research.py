@@ -1,6 +1,6 @@
 """
 DAX Research Module - Retrieves optimization articles based on query patterns.
-Integrates with existing analysis infrastructure.
+Integrates with existing analysis infrastructure and can fetch online resources.
 """
 import re
 import logging
@@ -12,10 +12,24 @@ class DaxResearchProvider:
     """
     Provides DAX optimization research and guidance.
     Integrates with existing analysis workflows.
+
+    Features:
+    - Pattern-based anti-pattern detection
+    - Online article fetching (when enabled)
+    - Context-aware improvement suggestions
+    - Integration with DAX Intelligence tool
     """
 
-    def __init__(self):
+    def __init__(self, enable_online_research: bool = False):
+        """
+        Initialize DAX Research Provider
+
+        Args:
+            enable_online_research: If True, will fetch content from URLs when available
+        """
         self.article_patterns = self._load_article_patterns()
+        self.enable_online_research = enable_online_research
+        self._article_cache = {}  # Cache fetched articles
 
     def get_optimization_guidance(
         self, query: str, performance_data: Optional[Dict[str, Any]] = None
@@ -97,56 +111,148 @@ class DaxResearchProvider:
                 "title": config.get("title", article_id),
                 "url": config.get("url", ""),
                 "content": config.get("content", ""),
-                "matched_patterns": pattern_matches.get(article_id, [])
+                "matched_patterns": pattern_matches.get(article_id, []),
+                "source": "embedded"  # Default to embedded content
             }
+
+            # If online research is enabled and URL exists, try to fetch
+            if self.enable_online_research and config.get("url"):
+                online_content = self._fetch_article_content(config["url"], article_id)
+                if online_content:
+                    article["content"] = online_content
+                    article["source"] = "online"
+                    article["content_note"] = "Fetched from online source"
 
             articles.append(article)
 
         return articles
+
+    def _fetch_article_content(self, url: str, article_id: str) -> Optional[str]:
+        """
+        Fetch article content from URL
+
+        Args:
+            url: Article URL
+            article_id: Article identifier for caching
+
+        Returns:
+            Article content or None if fetch fails
+        """
+        # Check cache first
+        if article_id in self._article_cache:
+            logger.debug(f"Using cached content for {article_id}")
+            return self._article_cache[article_id]
+
+        try:
+            # Try importing requests (optional dependency)
+            try:
+                import requests
+            except ImportError:
+                logger.info("requests library not available - online research disabled")
+                return None
+
+            # Fetch with timeout
+            logger.info(f"Fetching online content from {url}")
+            response = requests.get(url, timeout=10, headers={
+                'User-Agent': 'Mozilla/5.0 (compatible; PBIXRay/1.0; +https://github.com/your-repo)'
+            })
+
+            if response.status_code == 200:
+                # Extract text content (simplified - would need proper HTML parsing)
+                content = response.text[:2000]  # Limit to first 2000 chars
+                self._article_cache[article_id] = content
+                logger.info(f"Successfully fetched content for {article_id}")
+                return content
+            else:
+                logger.warning(f"Failed to fetch {url}: HTTP {response.status_code}")
+                return None
+
+        except Exception as e:
+            logger.warning(f"Error fetching article {article_id}: {e}")
+            return None
 
     def _generate_recommendations(
         self,
         pattern_matches: Dict[str, List],
         performance_data: Optional[Dict[str, Any]]
     ) -> List[str]:
-        """Generate specific recommendations based on patterns and performance"""
+        """Generate specific recommendations based on detected patterns"""
         recommendations = []
 
-        # Pattern-based recommendations
-        if "sumx_filter" in pattern_matches:
-            recommendations.append(
-                "Replace SUMX(FILTER(...)) with CALCULATE(SUM(...), filters) "
-                "for 5-10x performance improvement"
-            )
+        # Priority-ordered recommendations (most impactful first)
+        pattern_recommendations = {
+            "sumx_filter": {
+                "priority": 1,
+                "message": "🔴 HIGH IMPACT: Replace SUMX(FILTER(...)) with CALCULATE(SUM(...), filters) for 5-10x performance improvement"
+            },
+            "countrows_filter": {
+                "priority": 1,
+                "message": "🔴 HIGH IMPACT: Replace COUNTROWS(FILTER(...)) with CALCULATE(COUNTROWS(...), filters) for 5-10x improvement"
+            },
+            "filter_all": {
+                "priority": 1,
+                "message": "🔴 HIGH IMPACT: FILTER(ALL(...)) forces Formula Engine evaluation - use CALCULATE with filter arguments"
+            },
+            "nested_calculate": {
+                "priority": 2,
+                "message": "🟡 MEDIUM IMPACT: Consolidate nested CALCULATE functions into single CALCULATE or use variables"
+            },
+            "divide_zero_check": {
+                "priority": 2,
+                "message": "🟡 MEDIUM IMPACT: Replace manual IF zero-checks with DIVIDE function for 2-3x improvement"
+            },
+            "related_in_iterator": {
+                "priority": 2,
+                "message": "🟡 MEDIUM IMPACT: RELATED in iterators causes row-by-row lookups - consider TREATAS or table expansion"
+            },
+            "measure_in_filter": {
+                "priority": 2,
+                "message": "🟡 MEDIUM IMPACT: Measures in FILTER predicates cause row-by-row context transitions - pre-calculate or use columns"
+            },
+            "unnecessary_iterators": {
+                "priority": 3,
+                "message": "🔵 LOW IMPACT: Replace unnecessary iterator functions (SUMX(Table, Table[Column])) with direct aggregation (SUM)"
+            },
+            "values_in_calculate": {
+                "priority": 3,
+                "message": "🔵 LOW IMPACT: VALUES in CALCULATE filter arguments can be replaced with direct column references"
+            },
+            "multiple_context_transitions": {
+                "priority": 3,
+                "message": "🔵 LOW IMPACT: Multiple measure references create implicit CALCULATEs - cache results in variables"
+            },
+        }
 
-        if "nested_calculate" in pattern_matches:
-            recommendations.append(
-                "Avoid nested CALCULATE functions - consolidate filters into single CALCULATE"
-            )
+        # Build prioritized recommendation list
+        matched_patterns = []
+        for pattern_id in pattern_matches.keys():
+            if pattern_id in pattern_recommendations:
+                rec = pattern_recommendations[pattern_id]
+                matched_patterns.append((rec["priority"], rec["message"]))
 
-        if "filter_all" in pattern_matches:
-            recommendations.append(
-                "FILTER(ALL(...)) forces Formula Engine - use CALCULATE with filter arguments instead"
-            )
+        # Sort by priority and add to recommendations
+        matched_patterns.sort(key=lambda x: x[0])
+        recommendations.extend([msg for _, msg in matched_patterns])
 
-        # Performance-based recommendations
+        # Add performance-based recommendations if data available
         if performance_data:
-            metrics = performance_data.get("Performance", {})
-            se_percentage = (
-                metrics.get("SE", 0) / metrics.get("Total", 1) * 100
-                if metrics.get("Total", 0) > 0 else 0
+            se_percentage = performance_data.get('se_percentage', 0)
+            fe_percentage = performance_data.get('fe_percentage', 0)
+
+            if fe_percentage > 70:
+                recommendations.insert(0,
+                    f"⚠️ CRITICAL: Formula Engine: {fe_percentage}% - Focus on eliminating iterators and using Storage Engine operations"
+                )
+            elif fe_percentage > 50:
+                recommendations.insert(0,
+                    f"⚠️ WARNING: Formula Engine: {fe_percentage}% - Consider optimizing for Storage Engine pushdown"
+                )
+
+        # Add general best practice if no specific issues found
+        if not recommendations:
+            recommendations.append(
+                "✅ No major anti-patterns detected. Continue following DAX best practices."
             )
-
-            if se_percentage < 60:
-                recommendations.append(
-                    f"Current SE%: {se_percentage:.1f}% - Target >80% by reducing row-by-row operations"
-                )
-
-            if metrics.get("SE_Queries", 0) > 20:
-                recommendations.append(
-                    f"High SE query count ({metrics['SE_Queries']}) - "
-                    "Simplify measure logic to enable vertical fusion"
-                )
 
         return recommendations
 
