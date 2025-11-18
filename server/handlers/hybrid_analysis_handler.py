@@ -9,7 +9,7 @@ Provides MCP tool handlers for hybrid analysis operations:
 import logging
 import traceback
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from core.model.hybrid_analyzer import HybridAnalyzer
 from core.model.hybrid_reader import HybridReader
