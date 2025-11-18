@@ -21,6 +21,9 @@ import os
 from .pbip_reader import PBIPReader
 from .hybrid_structures import *
 from core.utilities.json_utils import dumps_json, HAS_ORJSON
+from core.pbip.pbip_dependency_engine import PbipDependencyEngine
+from core.pbip.pbip_report_analyzer import PbirReportAnalyzer
+from core.model.tmdl_model_analyzer import TmdlModelAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -297,13 +300,36 @@ class HybridAnalyzer:
             "measures"
         )
 
-        # Generate dependencies
-        dependencies = self._generate_dependencies(tables)
+        # Generate comprehensive dependency analysis using PbipDependencyEngine
+        logger.info("  - Running comprehensive dependency analysis...")
+        dependency_engine_result = self._run_dependency_analysis()
+
+        # Generate dependencies with upstream/downstream relationships
+        dependencies = self._generate_dependencies(tables, dependency_engine_result)
         self._write_json_with_splitting(
             self.analysis_dir / "dependencies.json",
             dependencies.to_dict(),
             "dependencies"
         )
+
+        # Generate NEW: unused_columns.json
+        if dependency_engine_result:
+            logger.info("  - Generating unused_columns.json...")
+            unused_columns = self._generate_unused_columns(dependency_engine_result)
+            self._write_json(
+                self.analysis_dir / "unused_columns.json",
+                unused_columns
+            )
+
+        # Generate NEW: report_dependencies.json (visual-level dependencies)
+        if dependency_engine_result and self.report:
+            logger.info("  - Generating report_dependencies.json...")
+            report_deps = self._generate_report_dependencies(dependency_engine_result)
+            self._write_json_with_splitting(
+                self.analysis_dir / "report_dependencies.json",
+                report_deps,
+                "report_dependencies"
+            )
 
         # Generate relationships
         relationships = self._generate_relationships()
@@ -709,13 +735,161 @@ class HybridAnalyzer:
             }
         )
 
-    def _generate_dependencies(self, tables: List[str]) -> Dependencies:
-        """Generate dependencies.json structure with measure and column dependencies"""
+    def _run_dependency_analysis(self) -> Optional[Dict[str, Any]]:
+        """
+        Run comprehensive dependency analysis using PbipDependencyEngine
+
+        Returns:
+            Dictionary with all dependency information from PbipDependencyEngine, or None if failed
+        """
+        try:
+            # Parse TMDL model data
+            logger.info("    - Parsing TMDL model...")
+            tmdl_analyzer = TmdlModelAnalyzer(str(self.pbip_reader.definition_dir))
+            model_data = tmdl_analyzer.analyze()
+
+            # Parse report data if PBIR exists
+            report_data = None
+            pbir_path = self.pbip_reader.definition_dir.parent.parent / "report.pbir"
+            if pbir_path.exists():
+                logger.info("    - Parsing PBIR report...")
+                try:
+                    report_analyzer = PbirReportAnalyzer(str(pbir_path))
+                    report_data = report_analyzer.analyze()
+                    logger.info(f"      ✓ Found {len(report_data.get('pages', []))} pages")
+                except Exception as e:
+                    logger.warning(f"      ✗ Could not parse report: {e}")
+                    report_data = None
+            else:
+                logger.info("    - No report.pbir found, skipping visual dependencies")
+
+            # Store report data for later use
+            self.report = report_data
+
+            # Run dependency analysis
+            logger.info("    - Analyzing dependencies...")
+            engine = PbipDependencyEngine(model_data, report_data)
+            result = engine.analyze_all_dependencies()
+
+            logger.info(f"      ✓ Analyzed {result['summary']['total_measures']} measures, "
+                       f"{result['summary']['total_columns']} columns")
+            if report_data:
+                logger.info(f"      ✓ Analyzed {result['summary'].get('total_visuals', 0)} visuals "
+                           f"across {result['summary'].get('total_pages', 0)} pages")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"    ✗ Dependency analysis failed: {e}")
+            logger.debug("Dependency analysis error details:", exc_info=True)
+            return None
+
+    def _generate_dependencies(self, tables: List[str], dependency_engine_result: Optional[Dict[str, Any]] = None) -> Dependencies:
+        """
+        Generate dependencies.json structure with comprehensive measure and column dependencies
+
+        If dependency_engine_result is provided (from PbipDependencyEngine), use that.
+        Otherwise, fall back to the basic dependency extraction from live model.
+        """
         measure_deps = {}
         column_deps = {}
         table_deps = {}
 
-        if self.query_executor:
+        # Use comprehensive dependency analysis from PbipDependencyEngine if available
+        if dependency_engine_result:
+            logger.info("    - Using comprehensive dependency analysis from PbipDependencyEngine...")
+
+            # Build measure dependencies with UPSTREAM and DOWNSTREAM
+            measure_to_measure = dependency_engine_result.get("measure_to_measure", {})
+            measure_to_measure_reverse = dependency_engine_result.get("measure_to_measure_reverse", {})
+            measure_to_column = dependency_engine_result.get("measure_to_column", {})
+
+            for measure_key in set(list(measure_to_measure.keys()) + list(measure_to_measure_reverse.keys())):
+                # Get downstream (what this measure depends on)
+                downstream_measures = measure_to_measure.get(measure_key, [])
+                downstream_columns = measure_to_column.get(measure_key, [])
+
+                # Get upstream (what depends on this measure) - NEW!
+                upstream_measures = measure_to_measure_reverse.get(measure_key, [])
+
+                # Parse table and measure name
+                if '[' in measure_key:
+                    table_name = measure_key.split('[')[0]
+                    measure_name = measure_key.split('[')[1].rstrip(']')
+                else:
+                    table_name = ""
+                    measure_name = measure_key
+
+                measure_deps[measure_key] = MeasureDependency(
+                    expression="",  # Expression not available from engine
+                    table=table_name,
+                    dependencies=DependencyInfo(
+                        measures=downstream_measures,
+                        columns=downstream_columns
+                    ),
+                    referenced_by=ReferencedBy(
+                        measures=upstream_measures,  # UPSTREAM DEPENDENCIES - NEW!
+                        count=len(upstream_measures)
+                    )
+                )
+
+            # Build column dependencies
+            column_to_measure = dependency_engine_result.get("column_to_measure", {})
+
+            for column_key, measure_list in column_to_measure.items():
+                # Parse table and column name
+                if '[' in column_key:
+                    table_name = column_key.split('[')[0]
+                    data_type = "Unknown"  # Not available from engine
+                else:
+                    table_name = ""
+                    data_type = "Unknown"
+
+                column_deps[column_key] = ColumnDependency(
+                    table=table_name,
+                    data_type=data_type,
+                    used_in_measures=measure_list,
+                    used_in_relationships=False,  # TODO: Check relationships
+                    used_in_rls=False,
+                    usage_count=len(measure_list)
+                )
+
+            # Build table dependencies
+            for table in tables:
+                table_deps[table] = TableDependency(
+                    type="dimension",
+                    relationships={},
+                    used_in_measures=0,
+                    used_in_rls=False,
+                    critical=False
+                )
+
+            # Enhanced summary with upstream/downstream info
+            summary = {
+                "total_measures": dependency_engine_result['summary']['total_measures'],
+                "measures_with_downstream_deps": len(measure_to_measure),
+                "measures_with_upstream_deps": len(measure_to_measure_reverse),  # NEW!
+                "total_columns": dependency_engine_result['summary']['total_columns'],
+                "columns_used_in_measures": dependency_engine_result['summary']['columns_used_in_measures'],
+                "unused_measures": dependency_engine_result['summary']['unused_measures'],
+                "unused_columns": dependency_engine_result['summary']['unused_columns'],
+                "max_dependency_depth": 0,  # TODO: Calculate
+                "circular_references": [],
+                "orphan_measures": dependency_engine_result.get("unused_measures", []),
+                "critical_objects": []
+            }
+
+            logger.info(f"      ✓ Generated dependencies for {len(measure_deps)} measures, {len(column_deps)} columns")
+
+            return Dependencies(
+                measures=measure_deps,
+                columns=column_deps,
+                tables=table_deps,
+                summary=summary
+            )
+
+        # FALLBACK: Use basic dependency extraction from live model
+        elif self.query_executor:
             # Get all measures with expressions
             logger.info("  - Extracting measure dependencies...")
             measures_result = self.query_executor.validate_and_execute_dax("EVALUATE INFO.MEASURES()", top_n=0, bypass_cache=True)
@@ -942,6 +1116,175 @@ class HybridAnalyzer:
             total_count=len(relationship_infos),
             summary=summary
         )
+
+    def _generate_unused_columns(self, dependency_engine_result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Generate unused_columns.json with detailed information about unused columns
+
+        Args:
+            dependency_engine_result: Result from PbipDependencyEngine
+
+        Returns:
+            Dictionary with unused column information
+        """
+        unused_columns_list = dependency_engine_result.get("unused_columns", [])
+
+        # Build detailed unused column information
+        unused_by_table = {}
+        all_unused_details = []
+
+        for column_key in unused_columns_list:
+            # Parse table and column name
+            if '[' in column_key:
+                table_name = column_key.split('[')[0]
+                column_name = column_key.split('[')[1].rstrip(']')
+            else:
+                table_name = "Unknown"
+                column_name = column_key
+
+            # Group by table
+            if table_name not in unused_by_table:
+                unused_by_table[table_name] = []
+
+            column_detail = {
+                "column": column_name,
+                "full_name": column_key,
+                "table": table_name,
+                "reason": "Not used in measures, visuals, relationships, or field parameters"
+            }
+
+            unused_by_table[table_name].append(column_detail)
+            all_unused_details.append(column_detail)
+
+        # Build summary
+        summary = {
+            "total_unused_columns": len(unused_columns_list),
+            "total_columns": dependency_engine_result['summary']['total_columns'],
+            "unused_percentage": round(
+                (len(unused_columns_list) / dependency_engine_result['summary']['total_columns'] * 100)
+                if dependency_engine_result['summary']['total_columns'] > 0 else 0,
+                2
+            ),
+            "tables_with_unused_columns": len(unused_by_table),
+            "top_tables_by_unused_count": sorted(
+                [{"table": table, "unused_count": len(cols)} for table, cols in unused_by_table.items()],
+                key=lambda x: x["unused_count"],
+                reverse=True
+            )[:10]
+        }
+
+        result = {
+            "summary": summary,
+            "unused_columns": all_unused_details,
+            "unused_by_table": unused_by_table,
+            "analysis_notes": {
+                "detection_method": "Comprehensive analysis via PbipDependencyEngine",
+                "checks_performed": [
+                    "Not used in any measure DAX expressions",
+                    "Not used in any calculated column expressions",
+                    "Not used in any relationships (from/to columns)",
+                    "Not used in any visual fields",
+                    "Not used in any page filters",
+                    "Not referenced in field parameters (NAMEOF)"
+                ],
+                "recommendation": "Consider hiding or removing unused columns to optimize model size and performance"
+            }
+        }
+
+        logger.info(f"      ✓ Found {len(unused_columns_list)} unused columns across {len(unused_by_table)} tables")
+
+        return result
+
+    def _generate_report_dependencies(self, dependency_engine_result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Generate report_dependencies.json with visual-level dependencies
+
+        Args:
+            dependency_engine_result: Result from PbipDependencyEngine
+
+        Returns:
+            Dictionary with report dependency information
+        """
+        visual_dependencies = dependency_engine_result.get("visual_dependencies", {})
+        page_dependencies = dependency_engine_result.get("page_dependencies", {})
+
+        # Build visual-level dependencies
+        visuals_by_page = {}
+        all_visuals = []
+
+        for visual_key, visual_data in visual_dependencies.items():
+            page = visual_data.get("page", "Unknown")
+            visual_id = visual_data.get("visual_id", "")
+            visual_type = visual_data.get("visual_type", "")
+            measures = visual_data.get("measures", [])
+            columns = visual_data.get("columns", [])
+            tables = visual_data.get("tables", [])
+
+            visual_detail = {
+                "visual_id": visual_id,
+                "visual_key": visual_key,
+                "visual_type": visual_type,
+                "page": page,
+                "measures_used": measures,
+                "columns_used": columns,
+                "tables_used": tables,
+                "total_fields": len(measures) + len(columns)
+            }
+
+            # Group by page
+            if page not in visuals_by_page:
+                visuals_by_page[page] = []
+            visuals_by_page[page].append(visual_detail)
+            all_visuals.append(visual_detail)
+
+        # Build page-level summary
+        page_summaries = {}
+        for page, page_data in page_dependencies.items():
+            page_summaries[page] = {
+                "measures": page_data.get("measures", []),
+                "columns": page_data.get("columns", []),
+                "tables": page_data.get("tables", []),
+                "visual_count": page_data.get("visual_count", 0),
+                "filter_count": page_data.get("filter_count", 0),
+                "total_measures": len(page_data.get("measures", [])),
+                "total_columns": len(page_data.get("columns", [])),
+                "total_tables": len(page_data.get("tables", []))
+            }
+
+        # Build summary
+        summary = {
+            "total_pages": len(page_dependencies),
+            "total_visuals": len(visual_dependencies),
+            "visuals_per_page": round(len(visual_dependencies) / len(page_dependencies), 2) if page_dependencies else 0,
+            "top_pages_by_visual_count": sorted(
+                [{"page": page, "visual_count": data["visual_count"]}
+                 for page, data in page_summaries.items()],
+                key=lambda x: x["visual_count"],
+                reverse=True
+            )[:10],
+            "total_measures_in_visuals": dependency_engine_result['summary'].get('total_measures', 0),
+            "total_columns_in_visuals": dependency_engine_result['summary'].get('total_columns', 0)
+        }
+
+        result = {
+            "summary": summary,
+            "visual_dependencies": all_visuals,
+            "visuals_by_page": visuals_by_page,
+            "page_summaries": page_summaries,
+            "analysis_notes": {
+                "detection_method": "Comprehensive analysis via PbipDependencyEngine",
+                "data_sources": [
+                    "Visual field mappings from report.pbir",
+                    "Page-level filters and slicers",
+                    "Aggregated page-level dependencies"
+                ],
+                "recommendation": "Use this data to understand field usage patterns and identify opportunities for optimization"
+            }
+        }
+
+        logger.info(f"      ✓ Analyzed {len(all_visuals)} visuals across {len(page_dependencies)} pages")
+
+        return result
 
     def _get_physical_columns(self, table_name: str) -> List[str]:
         """
@@ -1241,7 +1584,7 @@ class HybridAnalyzer:
         Args:
             base_path: Base file path (e.g., catalog.json)
             data: Data to split
-            file_type: "catalog", "measures", or "dependencies"
+            file_type: "catalog", "measures", "dependencies", or "report_dependencies"
             total_size: Total size in bytes
         """
         parts = []
@@ -1322,12 +1665,45 @@ class HybridAnalyzer:
                 ))
                 part_num += 1
 
+        elif file_type == "report_dependencies":
+            # Split by visual dependencies
+            visuals = data.get("visual_dependencies", [])
+            items_per_part = max(1, len(visuals) // ((total_size // MAX_FILE_SIZE) + 1))
+
+            for i in range(0, len(visuals), items_per_part):
+                part_data = {
+                    "visual_dependencies": visuals[i:i + items_per_part],
+                    "visuals_by_page": data.get("visuals_by_page", {}) if i == 0 else {},
+                    "page_summaries": data.get("page_summaries", {}) if i == 0 else {},
+                    "summary": data.get("summary", {}) if i == 0 else {},
+                    "analysis_notes": data.get("analysis_notes", {}) if i == 0 else {}
+                }
+
+                part_path = base_path.parent / f"{base_path.stem}.part{part_num}.json"
+                self._write_json(part_path, part_data)
+
+                part_size = part_path.stat().st_size
+                parts.append(FilePart(
+                    part_number=part_num,
+                    filename=part_path.name,
+                    size_bytes=part_size,
+                    content_range=f"visual_dependencies[{i}:{i+items_per_part}]"
+                ))
+                part_num += 1
+
         # Write manifest
+        split_strategies = {
+            "catalog": "table_boundary",
+            "measures": "measure_boundary",
+            "dependencies": "measure_boundary",
+            "report_dependencies": "visual_boundary"
+        }
+
         manifest = FileManifest(
             file_type=file_type,
             total_parts=len(parts),
             total_size_bytes=total_size,
-            split_strategy="table_boundary" if file_type == "catalog" else "measure_boundary",
+            split_strategy=split_strategies.get(file_type, "default_boundary"),
             parts=parts,
             reassembly_instructions=f"Load all parts and merge arrays/objects"
         )

@@ -201,7 +201,7 @@
     },
     {
       "name": "13_analyze_hybrid_model",
-      "description": "[13-Hybrid Analysis] BI Expert Analysis: Read and analyze hybrid model (TMDL + JSON + sample data) with expert insights"
+      "description": "[13-Hybrid Analysis] BI Expert Analysis: AUTOMATICALLY reads ALL files internally (TMDL, JSON, parquet). Just provide analysis_path - DO NOT manually list directories or read files! The tool handles: TMDL parsing (relationships, measures), metadata, sample data. Supports fuzzy search."
     }
   ],
   "keywords": [

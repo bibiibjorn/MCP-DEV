@@ -606,11 +606,11 @@ TOOL_SCHEMAS = {
         "properties": {
             "analysis_path": {
                 "type": "string",
-                "description": "Path to exported analysis folder (required)"
+                "description": "Path to exported analysis folder - the ONLY parameter you need to provide. The tool automatically reads all TMDL, JSON, and parquet files from subdirectories. DO NOT manually list directories or read files!"
             },
             "operation": {
                 "type": "string",
-                "description": "Operation to perform: 'read_metadata' (model overview), 'find_objects' (search tables/measures), 'get_object_definition' (get DAX/TMDL), 'analyze_dependencies' (dependency analysis), 'analyze_performance' (perf analysis), 'get_sample_data' (automatically reads parquet sample data - no file copying needed), or 'smart_analyze' (natural language)",
+                "description": "Operation to perform (ALL operations automatically read files internally - NO manual file operations needed): 'read_metadata' (reads metadata.json + parses TMDL for relationships), 'find_objects' (searches tables/measures in TMDL), 'get_object_definition' (parses DAX from TMDL files), 'analyze_dependencies' (auto-parses TMDL dependencies), 'analyze_performance' (auto-reads all TMDL measures), 'get_sample_data' (auto-reads parquet files), or 'smart_analyze' (natural language)",
                 "enum": ["read_metadata", "find_objects", "get_object_definition", "analyze_dependencies", "analyze_performance", "get_sample_data", "smart_analyze"],
                 "default": "read_metadata"
             },
