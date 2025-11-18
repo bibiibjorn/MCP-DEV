@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "mcp-powerbi-finvision",
   "display_name": "Power BI Analysis MCP Server",
-  "version": "4.102",
+  "version": "5.01",
   "description": "A production-ready MCP server for Power BI Desktop analysis with DAX debugging, TMDL editing, and comprehensive model operations",
   "long_description": "MCP-PowerBi-Finvision v4.2 enables AI-powered analysis of Power BI models with 50+ tools. Features include:\n\n**Core Analysis:**\n- Auto-detect and connect to Power BI Desktop instances\n- Browse tables, columns, measures, and relationships\n- Inspect DAX expressions and M queries\n- Run comprehensive analysis with consolidated tools\n\n**DAX Development (ENHANCED):**\n- Unified DAX analysis: syntax validation + context analysis in one tool\n- Debug DAX with context transition analysis\n- Visualize filter context flow through relationships\n- Step-by-step DAX debugging with detailed insights\n- Automatic syntax validation before analysis\n\n**TMDL Management (NEW):**\n- Validate TMDL syntax with linting\n- Find & replace with regex support\n- Bulk rename with automatic reference updates\n- Generate TMDL scripts\n\n**Model Operations (ENHANCED):**\n- Create/manage calculation groups\n- View/manage partitions and RLS roles\n- Bulk measure operations\n\n**Performance & Quality:**\n- Performance analysis with DAX profiling and VertiPaq stats\n- Best practices analysis (120+ BPA rules)\n- Dependency analysis and impact assessment\n- Export to Word, Excel, PDF, HTML, TMSL/TMDL\n\nRequirements:\n- Windows 10/11 (64-bit)\n- Power BI Desktop installed and running\n- .NET Framework 4.7.2+\n\nEverything runs locally over stdio with no exposed ports.",
   "author": {

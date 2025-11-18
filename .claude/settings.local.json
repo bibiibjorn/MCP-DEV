@@ -53,7 +53,9 @@
       "Bash(cmd.exe /c build.bat)",
       "Bash(\"/c/Program Files/dotnet/dotnet.exe\" build -c Release)",
       "Bash(dir:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(./package.bat)",
+      "Bash(./build/package.bat)"
     ],
     "deny": [],
     "ask": []
