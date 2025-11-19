@@ -995,3 +995,319 @@ class AnalysisOrchestrator(BaseOrchestrator):
                 'success': False,
                 'error': f'Simple model analysis failed: {str(e)}'
             }
+
+    def list_measures_simple(self, connection_state, table_name: str = None, max_results: int = None) -> Dict[str, Any]:
+        """
+        List measures with optional table filter.
+        Microsoft MCP Measure List operation.
+
+        Args:
+            connection_state: Current connection state
+            table_name: Optional table filter
+            max_results: Optional limit on results
+
+        Returns:
+            {
+                'success': True,
+                'message': 'Found 30 measures in table "m_Measures"',
+                'operation': 'List',
+                'tableName': 'm_Measures',
+                'data': [
+                    {
+                        'displayFolder': 'Financial Model\\1.3 Base measures Balance Sheet',
+                        'name': 'PL-COL-Background'
+                    }
+                ],
+                'warnings': ['Results truncated: Showing 30 of 224 measures']
+            }
+        """
+        from core.validation.error_handler import ErrorHandler
+
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+
+        executor = connection_state.query_executor
+        if not executor:
+            return ErrorHandler.handle_manager_unavailable('query_executor')
+
+        try:
+            # Get measures
+            result = executor.execute_info_query('MEASURES', table_name=table_name, exclude_columns=['Expression'])
+
+            if not result.get('success'):
+                return result
+
+            rows = result.get('rows', [])
+            total_count = len(rows)
+
+            # Build measure list (name and displayFolder only for List operation)
+            measures = []
+            for row in rows:
+                measure_info = {
+                    'name': row.get('Name', ''),
+                    'displayFolder': row.get('DisplayFolder', '')
+                }
+                measures.append(measure_info)
+
+            # Apply max_results if specified
+            truncated = False
+            if max_results and len(measures) > max_results:
+                measures = measures[:max_results]
+                truncated = True
+
+            # Build response matching Microsoft MCP format
+            response = {
+                'success': True,
+                'operation': 'List'
+            }
+
+            # Message format
+            if table_name:
+                response['message'] = f'Found {len(measures)} measures in table \'{table_name}\''
+                response['tableName'] = table_name
+            else:
+                response['message'] = f'Found {len(measures)} measures'
+
+            response['data'] = measures
+
+            # Add warning if truncated
+            if truncated:
+                response['warnings'] = [
+                    f'Results truncated: Showing {len(measures)} of {total_count} measures (limited by MaxResults={max_results})'
+                ]
+
+            return response
+
+        except Exception as e:
+            logger.error(f"List measures failed: {e}")
+            return {
+                'success': False,
+                'error': f'List measures failed: {str(e)}'
+            }
+
+    def get_measure_simple(self, connection_state, table_name: str, measure_name: str) -> Dict[str, Any]:
+        """
+        Get detailed measure information including DAX expression.
+        Microsoft MCP Measure Get operation.
+
+        Args:
+            connection_state: Current connection state
+            table_name: Table containing the measure
+            measure_name: Measure name to retrieve
+
+        Returns:
+            {
+                'success': True,
+                'message': 'Measure "PL-AMT-BASE Scenario" retrieved successfully',
+                'operation': 'Get',
+                'measureName': 'PL-AMT-BASE Scenario',
+                'tableName': 'm_Measures',
+                'data': {
+                    'tableName': 'm_Measures',
+                    'name': 'PL-AMT-BASE Scenario',
+                    'expression': '...',
+                    'description': '',
+                    'formatString': '',
+                    'isHidden': False,
+                    'displayFolder': '...',
+                    ...
+                }
+            }
+        """
+        from core.validation.error_handler import ErrorHandler
+
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+
+        executor = connection_state.query_executor
+        if not executor:
+            return ErrorHandler.handle_manager_unavailable('query_executor')
+
+        if not table_name or not measure_name:
+            return {
+                'success': False,
+                'error': 'table_name and measure_name are required'
+            }
+
+        try:
+            # Use the existing get_measure_details_with_fallback
+            result = executor.get_measure_details_with_fallback(table_name, measure_name)
+
+            if not result.get('success'):
+                return result
+
+            measure_data = result.get('measure', {})
+
+            # Build response matching Microsoft MCP format
+            return {
+                'success': True,
+                'message': f'Measure \'{measure_name}\' retrieved successfully',
+                'operation': 'Get',
+                'measureName': measure_name,
+                'tableName': table_name,
+                'data': measure_data
+            }
+
+        except Exception as e:
+            logger.error(f"Get measure failed: {e}")
+            return {
+                'success': False,
+                'error': f'Get measure failed: {str(e)}'
+            }
+
+    def list_relationships_simple(self, connection_state, active_only: bool = False) -> Dict[str, Any]:
+        """
+        List all relationships with full metadata.
+        Microsoft MCP Relationship List operation.
+
+        Args:
+            connection_state: Current connection state
+            active_only: If True, only return active relationships
+
+        Returns:
+            {
+                'success': True,
+                'message': 'Found 91 relationships',
+                'operation': 'LIST',
+                'data': [
+                    {
+                        'fromTable': 'f_FINREP',
+                        'fromColumn': '#Company Code',
+                        'toTable': 'd_Company',
+                        'toColumn': 'Company Code',
+                        'isActive': True,
+                        'crossFilteringBehavior': 'OneDirection',
+                        'fromCardinality': 'Many',
+                        'toCardinality': 'One',
+                        'name': '70c38ab1-00b9-bb04-7903-4027e569f76e'
+                    }
+                ]
+            }
+        """
+        from core.validation.error_handler import ErrorHandler
+
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+
+        executor = connection_state.query_executor
+        if not executor:
+            return ErrorHandler.handle_manager_unavailable('query_executor')
+
+        try:
+            # Get relationships
+            result = executor.execute_info_query('RELATIONSHIPS')
+
+            if not result.get('success'):
+                return result
+
+            rows = result.get('rows', [])
+
+            # Filter for active only if requested
+            if active_only:
+                rows = [r for r in rows if r.get('IsActive')]
+
+            # Build relationship list matching Microsoft MCP format
+            relationships = []
+            for row in rows:
+                rel_info = {
+                    'fromTable': row.get('FromTable', row.get('FromTableName', '')),
+                    'fromColumn': row.get('FromColumn', row.get('FromColumnName', '')),
+                    'toTable': row.get('ToTable', row.get('ToTableName', '')),
+                    'toColumn': row.get('ToColumn', row.get('ToColumnName', '')),
+                    'isActive': row.get('IsActive', False),
+                    'crossFilteringBehavior': row.get('CrossFilteringBehavior', 'OneDirection'),
+                    'fromCardinality': row.get('FromCardinality', 'Many'),
+                    'toCardinality': row.get('ToCardinality', 'One'),
+                    'name': row.get('Name', '')
+                }
+                relationships.append(rel_info)
+
+            # Build response matching Microsoft MCP format
+            return {
+                'success': True,
+                'message': f'Found {len(relationships)} relationships',
+                'operation': 'LIST',
+                'data': relationships
+            }
+
+        except Exception as e:
+            logger.error(f"List relationships failed: {e}")
+            return {
+                'success': False,
+                'error': f'List relationships failed: {str(e)}'
+            }
+
+    def list_calculation_groups_simple(self, connection_state) -> Dict[str, Any]:
+        """
+        List all calculation groups with their items.
+        Microsoft MCP Calculation Group ListGroups operation.
+
+        Args:
+            connection_state: Current connection state
+
+        Returns:
+            {
+                'success': True,
+                'message': 'Found 5 calculation groups',
+                'operation': 'ListGroups',
+                'data': [
+                    {
+                        'calculationItems': [
+                            {'ordinal': 0, 'name': 'MTD'},
+                            {'ordinal': 1, 'name': 'QTD'}
+                        ],
+                        'name': 'c_Time Intelligence P&L'
+                    }
+                ]
+            }
+        """
+        from core.validation.error_handler import ErrorHandler
+
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+
+        calc_group_mgr = connection_state.calc_group_manager
+        if not calc_group_mgr:
+            return ErrorHandler.handle_manager_unavailable('calc_group_manager')
+
+        try:
+            # Get calculation groups
+            result = calc_group_mgr.list_calculation_groups()
+
+            if not result.get('success'):
+                return result
+
+            groups = result.get('groups', [])
+
+            # Transform to Microsoft MCP format
+            mcp_groups = []
+            for group in groups:
+                items = group.get('items', [])
+
+                # Transform items to MCP format
+                mcp_items = []
+                for item in items:
+                    mcp_items.append({
+                        'ordinal': item.get('ordinal', 0),
+                        'name': item.get('name', '')
+                    })
+
+                mcp_groups.append({
+                    'name': group.get('name', ''),
+                    'calculationItems': mcp_items
+                })
+
+            # Build response matching Microsoft MCP format
+            return {
+                'success': True,
+                'message': f'Found {len(mcp_groups)} calculation groups',
+                'operation': 'ListGroups',
+                'data': mcp_groups
+            }
+
+        except Exception as e:
+            logger.error(f"List calculation groups failed: {e}")
+            return {
+                'success': False,
+                'error': f'List calculation groups failed: {str(e)}'
+            }

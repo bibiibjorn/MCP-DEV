@@ -13,11 +13,15 @@ logger = logging.getLogger(__name__)
 
 def handle_simple_analysis(args: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Fast model statistics overview based on Microsoft Official MCP Server operations.
+    Fast model operations based on Microsoft Official MCP Server operations.
 
-    Two modes:
+    Modes:
     - 'tables': Ultra-fast table list (< 500ms) - Microsoft MCP List operation
     - 'stats': Fast model statistics (< 1s) - Microsoft MCP GetStats operation
+    - 'measures': List measures (optional table filter) - Microsoft MCP Measure List operation
+    - 'measure': Get measure details (requires table + measure_name) - Microsoft MCP Measure Get operation
+    - 'relationships': List relationships - Microsoft MCP Relationship List operation
+    - 'calculation_groups': List calculation groups - Microsoft MCP ListGroups operation
     """
     if not connection_state.is_connected():
         return ErrorHandler.handle_not_connected()
@@ -29,11 +33,38 @@ def handle_simple_analysis(args: Dict[str, Any]) -> Dict[str, Any]:
     # Extract mode parameter (default: stats)
     mode = args.get('mode', 'stats')
 
-    # Route to appropriate function
+    # Route to appropriate function based on mode
     if mode == 'tables':
         result = agent_policy.analysis_orch.list_tables_simple(connection_state)
-    else:  # mode == 'stats'
+    elif mode == 'stats':
         result = agent_policy.analysis_orch.simple_model_analysis(connection_state)
+    elif mode == 'measures':
+        # Measure List operation
+        table_name = args.get('table')
+        max_results = args.get('max_results')
+        result = agent_policy.analysis_orch.list_measures_simple(connection_state, table_name, max_results)
+    elif mode == 'measure':
+        # Measure Get operation - requires table and measure_name
+        table_name = args.get('table')
+        measure_name = args.get('measure_name')
+        if not table_name or not measure_name:
+            return {
+                'success': False,
+                'error': 'mode="measure" requires both table and measure_name parameters'
+            }
+        result = agent_policy.analysis_orch.get_measure_simple(connection_state, table_name, measure_name)
+    elif mode == 'relationships':
+        # Relationship List operation
+        active_only = args.get('active_only', False)
+        result = agent_policy.analysis_orch.list_relationships_simple(connection_state, active_only)
+    elif mode == 'calculation_groups':
+        # Calculation Group ListGroups operation
+        result = agent_policy.analysis_orch.list_calculation_groups_simple(connection_state)
+    else:
+        return {
+            'success': False,
+            'error': f'Unknown mode: {mode}. Valid modes: tables, stats, measures, measure, relationships, calculation_groups'
+        }
 
     return result
 

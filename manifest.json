@@ -133,7 +133,7 @@
     },
     {
       "name": "05_simple_analysis",
-      "description": "[05-Analysis] Fast model statistics (< 1s) based on Microsoft Official MCP Server. Mode 'tables': ultra-fast table list (< 500ms). Mode 'stats': complete model overview with metadata + all aggregate counts (tables, columns, measures, relationships, roles, etc.) + per-table breakdown + summary"
+      "description": "[05-Analysis] Microsoft Official MCP Server operations. Modes: 'tables' (table list <500ms), 'stats' (model GetStats <1s), 'measures' (measure list), 'measure' (measure Get with DAX), 'relationships' (relationship list), 'calculation_groups' (calc group ListGroups). All operations return Microsoft MCP-formatted responses."
     },
     {
       "name": "05_full_analysis",
