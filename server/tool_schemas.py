@@ -696,5 +696,62 @@ TOOL_SCHEMAS = {
             }
         },
         "required": ["analysis_path", "operation"]
+    },
+
+    # Workflow & Intelligence Tools
+    'execute_workflow': {
+        "type": "object",
+        "properties": {
+            "workflow": {
+                "type": "string",
+                "description": "Workflow ID to execute (complete_measure_analysis, model_health_check, measure_impact_analysis, table_profiling, performance_investigation, relationship_validation)"
+            },
+            "inputs": {
+                "type": "object",
+                "description": "Input parameters for the workflow (varies by workflow type)",
+                "properties": {
+                    "table": {"type": "string"},
+                    "measure": {"type": "string"},
+                    "dax_query": {"type": "string"}
+                }
+            },
+            "context": {
+                "type": "object",
+                "description": "Optional additional context"
+            }
+        },
+        "required": ["workflow"]
+    },
+
+    'list_workflows': {
+        "type": "object",
+        "properties": {},
+        "required": []
+    },
+
+    'suggest_workflow': {
+        "type": "object",
+        "properties": {
+            "request": {
+                "type": "string",
+                "description": "Natural language request to find matching workflow"
+            }
+        },
+        "required": ["request"]
+    },
+
+    'smart_request': {
+        "type": "object",
+        "properties": {
+            "request": {
+                "type": "string",
+                "description": "Natural language request - will be intelligently routed to the best tool or workflow"
+            },
+            "context": {
+                "type": "object",
+                "description": "Optional context (previously used tools, objects, etc.)"
+            }
+        },
+        "required": ["request"]
     }
 }

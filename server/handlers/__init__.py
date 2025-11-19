@@ -16,6 +16,7 @@ from server.handlers.tmdl_handler import register_tmdl_handlers
 from server.handlers.dax_context_handler import register_dax_handlers
 from server.handlers.user_guide_handler import register_user_guide_handlers
 from server.handlers.hybrid_analysis_handler import register_hybrid_analysis_handlers
+from server.handlers.workflow_handler import register_workflow_handlers
 
 def register_all_handlers(registry):
     """Register all handlers with the registry"""
@@ -34,6 +35,7 @@ def register_all_handlers(registry):
     register_dax_handlers(registry)
     register_user_guide_handlers(registry)
     register_hybrid_analysis_handlers(registry)
+    register_workflow_handlers(registry)
 
 __all__ = [
     'register_all_handlers',
