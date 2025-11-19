@@ -39,28 +39,51 @@ def register_relationship_operations_handler(registry):
                     "type": "string",
                     "description": "Table name to find relationships for (required for: find operation)"
                 },
+                "from_table": {
+                    "type": "string",
+                    "description": "Source table name (required for: create)"
+                },
+                "from_column": {
+                    "type": "string",
+                    "description": "Source column name (required for: create)"
+                },
+                "to_table": {
+                    "type": "string",
+                    "description": "Target table name (required for: create)"
+                },
+                "to_column": {
+                    "type": "string",
+                    "description": "Target column name (required for: create)"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Relationship name (optional for: create - auto-generated if not provided)"
+                },
+                "from_cardinality": {
+                    "type": "string",
+                    "enum": ["One", "Many"],
+                    "description": "Source cardinality (optional for: create, default: Many)",
+                    "default": "Many"
+                },
+                "to_cardinality": {
+                    "type": "string",
+                    "enum": ["One", "Many"],
+                    "description": "Target cardinality (optional for: create, default: One)",
+                    "default": "One"
+                },
+                "cross_filtering_behavior": {
+                    "type": "string",
+                    "enum": ["OneDirection", "BothDirections", "Automatic"],
+                    "description": "Cross-filtering direction (optional for: create/update, default: OneDirection)",
+                    "default": "OneDirection"
+                },
+                "is_active": {
+                    "type": "boolean",
+                    "description": "Whether relationship is active (optional for: create/update, default: True)"
+                },
                 "new_name": {
                     "type": "string",
-                    "description": "New relationship name (required for: rename)"
-                },
-                "definition": {
-                    "type": "object",
-                    "description": "Relationship definition (required for: create, update)",
-                    "properties": {
-                        "from_table": {"type": "string"},
-                        "from_column": {"type": "string"},
-                        "to_table": {"type": "string"},
-                        "to_column": {"type": "string"},
-                        "cardinality": {
-                            "type": "string",
-                            "enum": ["OneToMany", "ManyToOne", "OneToOne", "ManyToMany"]
-                        },
-                        "cross_filtering_behavior": {
-                            "type": "string",
-                            "enum": ["OneDirection", "BothDirections"]
-                        },
-                        "is_active": {"type": "boolean"}
-                    }
+                    "description": "New relationship name (optional for: update)"
                 },
                 "active_only": {
                     "type": "boolean",

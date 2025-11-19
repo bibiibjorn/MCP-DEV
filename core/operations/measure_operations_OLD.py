@@ -34,14 +34,7 @@ class MeasureOperationsHandler(BaseOperationsHandler):
         if not qe:
             return ErrorHandler.handle_manager_unavailable('query_executor')
 
-        # Support both 'table_name' and 'table' for backward compatibility
-        table_name = args.get('table_name') or args.get('table')
-
-        # Apply default page_size (backward compatibility)
-        from core.infrastructure.limits_manager import get_limits
-        if 'page_size' not in args or args['page_size'] is None:
-            limits = get_limits()
-            args['page_size'] = limits.query.default_page_size
+        table_name = args.get('table_name')
 
         result = qe.execute_info_query("MEASURES", table_name=table_name, exclude_columns=['Expression'])
 
@@ -63,14 +56,13 @@ class MeasureOperationsHandler(BaseOperationsHandler):
         if not qe:
             return ErrorHandler.handle_manager_unavailable('query_executor')
 
-        # Support both old and new parameter names
-        table_name = args.get('table_name') or args.get('table')
-        measure_name = args.get('measure_name') or args.get('measure')
+        table_name = args.get('table_name')
+        measure_name = args.get('measure_name')
 
         if not table_name or not measure_name:
             return {
                 'success': False,
-                'error': 'table_name (or table) and measure_name (or measure) are required for operation: get'
+                'error': 'table_name and measure_name are required for operation: get'
             }
 
         result = qe.get_measure_details_with_fallback(table_name, measure_name)
@@ -85,12 +77,9 @@ class MeasureOperationsHandler(BaseOperationsHandler):
         if not dax_injector:
             return ErrorHandler.handle_manager_unavailable('dax_injector')
 
-        # Support both old and new parameter names
-        table_name = args.get('table_name') or args.get('table')
-        measure_name = args.get('measure_name') or args.get('measure')
+        table_name = args.get('table_name')
+        measure_name = args.get('measure_name')
         expression = args.get('expression')
-        # Support both 'format' and 'format_string'
-        format_string = args.get('format_string') or args.get('format')
 
         if not table_name or not measure_name or not expression:
             return {
@@ -103,7 +92,7 @@ class MeasureOperationsHandler(BaseOperationsHandler):
             measure_name=measure_name,
             dax_expression=expression,
             description=args.get('description'),
-            format_string=format_string,
+            format_string=args.get('format_string'),
             display_folder=args.get('display_folder')
         )
 
@@ -121,14 +110,13 @@ class MeasureOperationsHandler(BaseOperationsHandler):
         if not dax_injector:
             return ErrorHandler.handle_manager_unavailable('dax_injector')
 
-        # Support both old and new parameter names
-        table_name = args.get('table_name') or args.get('table')
-        measure_name = args.get('measure_name') or args.get('measure')
+        table_name = args.get('table_name')
+        measure_name = args.get('measure_name')
 
         if not table_name or not measure_name:
             return {
                 'success': False,
-                'error': 'table_name (or table) and measure_name (or measure) are required for operation: delete'
+                'error': 'table_name and measure_name are required for operation: delete'
             }
 
         return dax_injector.delete_measure(
@@ -136,18 +124,18 @@ class MeasureOperationsHandler(BaseOperationsHandler):
             measure_name=measure_name
         )
 
+
     def _rename_measure(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Rename a measure"""
         if not connection_state.is_connected():
             return ErrorHandler.handle_not_connected()
 
-        measure_crud = connection_state.measure_crud_manager
-        if not measure_crud:
-            return ErrorHandler.handle_manager_unavailable('measure_crud_manager')
+        dax_injector = connection_state.dax_injector
+        if not dax_injector:
+            return ErrorHandler.handle_manager_unavailable('dax_injector')
 
-        # Support both old and new parameter names
-        table_name = args.get('table_name') or args.get('table')
-        measure_name = args.get('measure_name') or args.get('measure')
+        table_name = args.get('table_name')
+        measure_name = args.get('measure_name')
         new_name = args.get('new_name')
 
         if not table_name or not measure_name or not new_name:
@@ -156,26 +144,26 @@ class MeasureOperationsHandler(BaseOperationsHandler):
                 'error': 'table_name, measure_name, and new_name are required for operation: rename'
             }
 
-        return measure_crud.rename_measure(table_name, measure_name, new_name)
+        return dax_injector.rename_measure(table_name, measure_name, new_name)
 
     def _move_measure(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Move measure to a different table"""
+        """Move a measure between tables"""
         if not connection_state.is_connected():
             return ErrorHandler.handle_not_connected()
 
-        measure_crud = connection_state.measure_crud_manager
-        if not measure_crud:
-            return ErrorHandler.handle_manager_unavailable('measure_crud_manager')
+        dax_injector = connection_state.dax_injector
+        if not dax_injector:
+            return ErrorHandler.handle_manager_unavailable('dax_injector')
 
-        # Support both old and new parameter names
-        source_table = args.get('source_table') or args.get('table_name') or args.get('table')
-        target_table = args.get('target_table') or args.get('new_table')
-        measure_name = args.get('measure_name') or args.get('measure')
+        source_table = args.get('source_table') or args.get('table_name')
+        measure_name = args.get('measure_name')
+        target_table = args.get('target_table')
 
-        if not source_table or not target_table or not measure_name:
+        if not source_table or not measure_name or not target_table:
             return {
                 'success': False,
-                'error': 'source_table, target_table, and measure_name are required for operation: move'
+                'error': 'source_table (or table_name), measure_name, and target_table are required for operation: move'
             }
 
-        return measure_crud.move_measure(source_table, measure_name, target_table)
+        return dax_injector.move_measure(source_table, measure_name, target_table)
+

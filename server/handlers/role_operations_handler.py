@@ -59,7 +59,7 @@ def register_role_operations_handler(registry):
             "required": ["operation"]
         },
         category="model_operations",
-        sort_order=26
+        sort_order=21
     )
 
     registry.register(tool)

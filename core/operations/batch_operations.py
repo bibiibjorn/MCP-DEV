@@ -28,7 +28,7 @@ class BatchOperationsHandler(BaseOperationsHandler):
             return ErrorHandler.handle_not_connected()
 
         operation = args.get('batch_operation')  # create, update, delete, etc.
-        items = args.get('items', [])
+        items = args.get('items', []) or args.get('measures', [])
         options = args.get('options', {})
 
         if not operation:

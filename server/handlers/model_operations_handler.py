@@ -218,94 +218,12 @@ def register_model_operations_handlers(registry):
 
     tools = [
         ToolDefinition(
-            name="upsert_measure",
-            description="Create or update a measure",
-            handler=handle_upsert_measure,
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "table": {"type": "string", "description": "Table name for the measure"},
-                    "measure": {"type": "string", "description": "Measure name"},
-                    "expression": {"type": "string", "description": "DAX expression for the measure"},
-                    "description": {"type": "string", "description": "Optional description"},
-                    "format": {"type": "string", "description": "Optional format string"},
-                    "display_folder": {"type": "string", "description": "Optional display folder"}
-                },
-                "required": ["table", "measure", "expression"]
-            },
-            category="model_operations",
-            sort_order=18
-        ),
-        ToolDefinition(
-            name="delete_measure",
-            description="Delete a measure",
-            handler=handle_delete_measure,
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "table": {"type": "string", "description": "Table name"},
-                    "measure": {"type": "string", "description": "Measure name to delete"}
-                },
-                "required": ["table", "measure"]
-            },
-            category="model_operations",
-            sort_order=19
-        ),
-        ToolDefinition(
-            name="bulk_create_measures",
-            description="Bulk create multiple measures",
-            handler=handle_bulk_create_measures,
-            input_schema=TOOL_SCHEMAS.get('bulk_create_measures', {}),
-            category="model_operations",
-            sort_order=20
-        ),
-        ToolDefinition(
-            name="bulk_delete_measures",
-            description="Bulk delete multiple measures",
-            handler=handle_bulk_delete_measures,
-            input_schema=TOOL_SCHEMAS.get('bulk_delete_measures', {}),
-            category="model_operations",
-            sort_order=21
-        ),
-        ToolDefinition(
-            name="list_calculation_groups",
-            description="List calculation groups",
-            handler=handle_list_calculation_groups,
-            input_schema=TOOL_SCHEMAS.get('list_calculation_groups', {}),
-            category="model_operations",
-            sort_order=22
-        ),
-        ToolDefinition(
-            name="create_calculation_group",
-            description="Create a calculation group",
-            handler=handle_create_calculation_group,
-            input_schema=TOOL_SCHEMAS.get('create_calculation_group', {}),
-            category="model_operations",
-            sort_order=23
-        ),
-        ToolDefinition(
-            name="delete_calculation_group",
-            description="Delete a calculation group",
-            handler=handle_delete_calculation_group,
-            input_schema=TOOL_SCHEMAS.get('delete_calculation_group', {}),
-            category="model_operations",
-            sort_order=24
-        ),
-        ToolDefinition(
             name="list_partitions",
             description="List table partitions",
             handler=handle_list_partitions,
             input_schema=TOOL_SCHEMAS.get('list_partitions', {}),
             category="model_operations",
             sort_order=25
-        ),
-        ToolDefinition(
-            name="list_roles",
-            description="List RLS roles",
-            handler=handle_list_roles,
-            input_schema=TOOL_SCHEMAS.get('list_roles', {}),
-            category="model_operations",
-            sort_order=26
         ),
     ]
 

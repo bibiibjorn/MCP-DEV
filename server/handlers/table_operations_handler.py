@@ -21,7 +21,19 @@ def register_table_operations_handler(registry):
 
     tool = ToolDefinition(
         name="table_operations",
-        description="Unified table operations: list, describe, preview, and CRUD (create/update/delete/rename/refresh)",
+        description=(
+            "Unified table operations handler. USE THIS WHEN:\n"
+            "• User asks 'list tables' / 'show all tables' / 'what tables exist' → operation='list'\n"
+            "• User asks 'describe table X' / 'tell me about table X' / 'what's in table X' → operation='describe' (requires table_name)\n"
+            "• User asks 'preview table X' / 'show sample data from table X' → operation='preview' (requires table_name)\n"
+            "• User wants to create/update/delete/rename tables → operation='create'/'update'/'delete'/'rename'\n"
+            "\n"
+            "OPERATIONS:\n"
+            "• list: Returns all table names with counts (columns, measures, partitions)\n"
+            "• describe: Returns comprehensive table details (columns, measures, relationships) - USE THIS for 'show me table details'\n"
+            "• preview: Returns sample data rows from the table\n"
+            "• create/update/delete/rename/refresh: Modify table structure"
+        ),
         handler=handle_table_operations,
         input_schema={
             "type": "object",
@@ -29,7 +41,13 @@ def register_table_operations_handler(registry):
                 "operation": {
                     "type": "string",
                     "enum": ["list", "describe", "preview", "create", "update", "delete", "rename", "refresh"],
-                    "description": "Operation to perform on tables"
+                    "description": (
+                        "Operation to perform:\n"
+                        "• 'list' - List all tables (use when: 'show tables', 'list tables', 'what tables exist')\n"
+                        "• 'describe' - Get table details (use when: 'describe table X', 'tell me about table X', 'show table X details')\n"
+                        "• 'preview' - Show sample data (use when: 'preview table X', 'show data from table X')\n"
+                        "• 'create', 'update', 'delete', 'rename', 'refresh' - Modify tables"
+                    )
                 },
                 "table_name": {
                     "type": "string",

@@ -36,8 +36,15 @@ class ColumnOperationsHandler(BaseOperationsHandler):
         if not qe:
             return ErrorHandler.handle_manager_unavailable('query_executor')
 
-        table_name = args.get('table_name')
+        # Support both 'table_name' and 'table' for backward compatibility
+        table_name = args.get('table_name') or args.get('table')
         column_type = args.get('column_type', 'all')  # 'all', 'data', 'calculated'
+
+        # Apply default page_size (backward compatibility)
+        from core.infrastructure.limits_manager import get_limits
+        if 'page_size' not in args or args['page_size'] is None:
+            limits = get_limits()
+            args['page_size'] = limits.query.default_page_size
 
         # Build filter expression based on column_type
         filter_expr = None
@@ -67,13 +74,14 @@ class ColumnOperationsHandler(BaseOperationsHandler):
         if not agent_policy:
             return ErrorHandler.handle_manager_unavailable('agent_policy')
 
-        table_name = args.get('table_name')
-        column_name = args.get('column_name')
+        # Support both old and new parameter names
+        table_name = args.get('table_name') or args.get('table')
+        column_name = args.get('column_name') or args.get('column')
 
         if not table_name or not column_name:
             return {
                 'success': False,
-                'error': 'table_name and column_name are required for operation: statistics'
+                'error': 'table_name (or table) and column_name (or column) are required for operation: statistics'
             }
 
         # Create DAX query to get column statistics
@@ -101,13 +109,14 @@ class ColumnOperationsHandler(BaseOperationsHandler):
         if not agent_policy:
             return ErrorHandler.handle_manager_unavailable('agent_policy')
 
-        table_name = args.get('table_name')
-        column_name = args.get('column_name')
+        # Support both old and new parameter names
+        table_name = args.get('table_name') or args.get('table')
+        column_name = args.get('column_name') or args.get('column')
 
         if not table_name or not column_name:
             return {
                 'success': False,
-                'error': 'table_name and column_name are required for operation: distribution'
+                'error': 'table_name (or table) and column_name (or column) are required for operation: distribution'
             }
 
         top_n = args.get('top_n', 10)

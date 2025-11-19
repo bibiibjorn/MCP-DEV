@@ -43,7 +43,7 @@ class CalculationGroupOperationsHandler(BaseOperationsHandler):
         if not calc_group_mgr:
             return ErrorHandler.handle_manager_unavailable('calc_group_manager')
 
-        group_name = args.get('group_name')
+        group_name = args.get('group_name') or args.get('name')
         if not group_name:
             return {
                 'success': False,
@@ -102,7 +102,7 @@ class CalculationGroupOperationsHandler(BaseOperationsHandler):
         if not calc_group_mgr:
             return ErrorHandler.handle_manager_unavailable('calc_group_manager')
 
-        group_name = args.get('group_name')
+        group_name = args.get('group_name') or args.get('name')
         if not group_name:
             return {
                 'success': False,
@@ -120,7 +120,7 @@ class CalculationGroupOperationsHandler(BaseOperationsHandler):
         if not calc_group_mgr:
             return ErrorHandler.handle_manager_unavailable('calc_group_manager')
 
-        group_name = args.get('group_name')
+        group_name = args.get('group_name') or args.get('name')
         if not group_name:
             return {
                 'success': False,

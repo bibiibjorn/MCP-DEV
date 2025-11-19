@@ -18,7 +18,14 @@ class ToolDispatcher:
         '01_detect_pbi_instances': 'detect_powerbi_desktop',
         '01_connect_to_instance': 'connect_to_powerbi',
 
-        # 02 - Schema/Metadata (8 tools)
+        # 02 - Schema/Metadata Operations (12 tools - consolidated + individual)
+        # Phase 1 Consolidated Operations (preferred)
+        '02_table_operations': 'table_operations',
+        '02_column_operations': 'column_operations',
+        '02_measure_operations': 'measure_operations',
+        '02_relationship_operations': 'relationship_operations',
+
+        # Legacy Individual Operations (for backward compatibility)
         '02_list_tables': 'list_tables',
         '02_describe_table': 'describe_table',
         '02_list_columns': 'list_columns',
@@ -28,8 +35,7 @@ class ToolDispatcher:
         '02_search_objects': 'search_objects',
         '02_search_string': 'search_string',
 
-        # 03 - Query & Data + DAX Intelligence (9 tools)
-        '03_preview_table_data': 'preview_table_data',
+        # 03 - Query & Data + DAX Intelligence (8 tools)
         '03_run_dax': 'run_dax',
         '03_standard_dax_analysis': 'dax_intelligence',  # Unified DAX analysis/debug/report
         '03_validate_dax_query': 'validate_dax_query',
@@ -39,7 +45,14 @@ class ToolDispatcher:
         '03_get_data_sources': 'get_data_sources',
         '03_get_m_expressions': 'get_m_expressions',
 
-        # 04 - Model Operations (9 tools)
+        # 04 - Model Operations (13 tools - consolidated + individual)
+        # Phase 2-3 Consolidated Operations (preferred)
+        '04_calculation_group_operations': 'calculation_group_operations',
+        '04_role_operations': 'role_operations',
+        '04_batch_operations': 'batch_operations',
+        '04_manage_transactions': 'manage_transactions',
+
+        # Legacy Individual Operations (for backward compatibility)
         '04_upsert_measure': 'upsert_measure',
         '04_delete_measure': 'delete_measure',
         '04_bulk_create_measures': 'bulk_create_measures',

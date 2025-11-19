@@ -55,12 +55,24 @@ class TableOperationsHandler(BaseOperationsHandler):
         if not qe:
             return ErrorHandler.handle_manager_unavailable('query_executor')
 
-        table_name = args.get('table_name')
+        # Support both 'table_name' and 'table' for backward compatibility
+        table_name = args.get('table_name') or args.get('table')
         if not table_name:
             return {
                 'success': False,
-                'error': 'table_name parameter is required for operation: describe'
+                'error': 'table_name (or table) parameter is required for operation: describe'
             }
+
+        # Apply default pagination limits (backward compatibility)
+        from core.infrastructure.limits_manager import get_limits
+        from server.middleware import apply_default_limits
+        limits = get_limits()
+        defaults = {
+            'columns_page_size': limits.token.describe_table_columns_page_size,
+            'measures_page_size': limits.token.describe_table_measures_page_size,
+            'relationships_page_size': limits.token.describe_table_relationships_page_size
+        }
+        args = apply_default_limits(args, defaults)
 
         # Check if method exists
         if not hasattr(qe, 'describe_table'):
@@ -85,11 +97,12 @@ class TableOperationsHandler(BaseOperationsHandler):
         if not agent_policy:
             return ErrorHandler.handle_manager_unavailable('agent_policy')
 
-        table_name = args.get('table_name')
+        # Support both 'table_name' and 'table' for backward compatibility
+        table_name = args.get('table_name') or args.get('table')
         if not table_name:
             return {
                 'success': False,
-                'error': 'table_name parameter is required for operation: preview'
+                'error': 'table_name (or table) parameter is required for operation: preview'
             }
 
         max_rows = args.get('max_rows', 10)

@@ -36,33 +36,6 @@ def handle_run_dax(args: Dict[str, Any]) -> Dict[str, Any]:
 
     return result
 
-def handle_preview_table_data(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Preview table rows with EVALUATE"""
-    if not connection_state.is_connected():
-        return ErrorHandler.handle_not_connected()
-
-    agent_policy = connection_state.agent_policy
-    if not agent_policy:
-        return ErrorHandler.handle_manager_unavailable('agent_policy')
-
-    table = args.get('table')
-    if not table:
-        return {'success': False, 'error': 'table parameter required'}
-
-    max_rows = args.get('max_rows', 10)
-
-    # Create EVALUATE query for table preview
-    query = f'EVALUATE TOPN({max_rows}, \'{table}\')'
-
-    result = agent_policy.safe_run_dax(
-        connection_state=connection_state,
-        query=query,
-        mode='simple',  # Use simple mode to get data without profiling
-        max_rows=max_rows
-    )
-
-    return result
-
 def handle_get_column_value_distribution(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get column value distribution (top N)"""
     if not connection_state.is_connected():
@@ -191,28 +164,6 @@ def register_query_handlers(registry):
     """Register all query execution handlers"""
     tools = [
         ToolDefinition(
-            name="preview_table_data",
-            description="Preview table rows with EVALUATE",
-            handler=handle_preview_table_data,
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "table": {
-                        "type": "string",
-                        "description": "Table name to preview"
-                    },
-                    "max_rows": {
-                        "type": "integer",
-                        "description": "Maximum rows to return (default: 10)",
-                        "default": 10
-                    }
-                },
-                "required": ["table"]
-            },
-            category="query",
-            sort_order=10
-        ),
-        ToolDefinition(
             name="run_dax",
             description="Execute DAX query with auto limits",
             handler=handle_run_dax,
@@ -239,71 +190,6 @@ def register_query_handlers(registry):
             },
             category="query",
             sort_order=11
-        ),
-        ToolDefinition(
-            name="get_column_value_distribution",
-            description="Get column value distribution (top N)",
-            handler=handle_get_column_value_distribution,
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "table": {
-                        "type": "string",
-                        "description": "Table name"
-                    },
-                    "column": {
-                        "type": "string",
-                        "description": "Column name"
-                    },
-                    "top_n": {
-                        "type": "integer",
-                        "description": "Number of top values (default: 10)",
-                        "default": 10
-                    }
-                },
-                "required": ["table", "column"]
-            },
-            category="query",
-            sort_order=13
-        ),
-        ToolDefinition(
-            name="get_column_summary",
-            description="Get column summary statistics",
-            handler=handle_get_column_summary,
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "table": {
-                        "type": "string",
-                        "description": "Table name"
-                    },
-                    "column": {
-                        "type": "string",
-                        "description": "Column name"
-                    }
-                },
-                "required": ["table", "column"]
-            },
-            category="query",
-            sort_order=14
-        ),
-        ToolDefinition(
-            name="list_relationships",
-            description="List relationships with optional active_only filter",
-            handler=handle_list_relationships,
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "active_only": {
-                        "type": "boolean",
-                        "description": "Only return active relationships (default: false)",
-                        "default": False
-                    }
-                },
-                "required": []
-            },
-            category="query",
-            sort_order=15
         ),
         ToolDefinition(
             name="get_data_sources",

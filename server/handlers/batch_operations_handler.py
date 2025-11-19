@@ -65,7 +65,7 @@ def register_batch_operations_handler(registry):
             "required": ["operation", "batch_operation", "items"]
         },
         category="model_operations",
-        sort_order=30
+        sort_order=22
     )
 
     registry.register(tool)

@@ -59,7 +59,8 @@ class QueryPolicy:
         notes: List[str] = []
         if effective_mode == "auto":
             q_upper = (query or "").strip().upper()
-            do_perf = not (q_upper.startswith("EVALUATE") and "TOPN(" not in q_upper)
+            # EVALUATE queries are for data preview, not performance analysis
+            do_perf = not q_upper.startswith("EVALUATE")
         else:
             # Support both "analyze" and "profile" modes for performance analysis
             # "simple" mode is treated as preview (no performance analysis)

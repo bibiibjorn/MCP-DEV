@@ -200,103 +200,18 @@ def register_metadata_handlers(registry):
     """Register all metadata-related handlers"""
     tools = [
         ToolDefinition(
-            name="list_tables",
-            description="List all tables in the model",
-            handler=handle_list_tables,
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "page_size": {"type": "integer"},
-                    "next_token": {"type": "string"}
-                },
-                "required": []
-            },
-            category="metadata",
-            sort_order=2
-        ),
-        ToolDefinition(
-            name="describe_table",
-            description="Get comprehensive table description with columns, measures, relationships",
-            handler=handle_describe_table,
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "table": {"type": "string"},
-                    "columns_page_size": {"type": "integer"},
-                    "measures_page_size": {"type": "integer"},
-                    "relationships_page_size": {"type": "integer"}
-                },
-                "required": ["table"]
-            },
-            category="metadata",
-            sort_order=3
-        ),
-        ToolDefinition(
-            name="list_columns",
-            description="List columns, optionally filtered by table",
-            handler=handle_list_columns,
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "table": {"type": "string"},
-                    "page_size": {"type": "integer"},
-                    "next_token": {"type": "string"}
-                },
-                "required": []
-            },
-            category="metadata",
-            sort_order=4
-        ),
-        ToolDefinition(
-            name="list_measures",
-            description="List measures, optionally filtered by table",
-            handler=handle_list_measures,
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "table": {"type": "string"},
-                    "page_size": {"type": "integer"},
-                    "next_token": {"type": "string"}
-                },
-                "required": []
-            },
-            category="metadata",
-            sort_order=5
-        ),
-        ToolDefinition(
-            name="get_measure_details",
-            description="Get detailed measure information including DAX formula",
-            handler=handle_get_measure_details,
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "table": {"type": "string"},
-                    "measure": {"type": "string"}
-                },
-                "required": ["table", "measure"]
-            },
-            category="metadata",
-            sort_order=6
-        ),
-        ToolDefinition(
-            name="list_calculated_columns",
-            description="List calculated columns",
-            handler=handle_list_calculated_columns,
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "table": {"type": "string"},
-                    "page_size": {"type": "integer"},
-                    "next_token": {"type": "string"}
-                },
-                "required": []
-            },
-            category="metadata",
-            sort_order=7
-        ),
-        ToolDefinition(
             name="search_objects",
-            description="Search across tables, columns, and measures",
+            description=(
+                "Search across tables, columns, and measures BY NAME. USE THIS WHEN:\n"
+                "• User asks 'find tables/columns/measures with name X' or 'search for objects named Y'\n"
+                "• User wants to find objects matching a pattern (wildcard search)\n"
+                "• IMPORTANT: This searches object NAMES only, NOT DAX expressions\n"
+                "• For searching inside DAX code/expressions, use 'search_string' instead\n"
+                "\n"
+                "Examples:\n"
+                "• 'Find all tables with Sales in the name' → search_objects(pattern='*Sales*', types=['tables'])\n"
+                "• 'Search for measures containing Total' → search_objects(pattern='*Total*', types=['measures'])"
+            ),
             handler=handle_search_objects,
             input_schema={
                 "type": "object",
@@ -316,7 +231,19 @@ def register_metadata_handlers(registry):
         ),
         ToolDefinition(
             name="search_string",
-            description="Search in measure names and/or expressions",
+            description=(
+                "Search inside measure DAX expressions and/or names. USE THIS WHEN:\n"
+                "• User asks 'find measures that use CALCULATE' or 'which measures contain SUM'\n"
+                "• User wants to search INSIDE the DAX code/formulas\n"
+                "• User wants to find specific functions or patterns in DAX expressions\n"
+                "• IMPORTANT: This searches DAX EXPRESSION content, not just names\n"
+                "• For searching object names only, use 'search_objects' instead\n"
+                "\n"
+                "Examples:\n"
+                "• 'Find measures using CALCULATE' → search_string(search_text='CALCULATE', search_in_expression=True)\n"
+                "• 'Which measures use the Sales table' → search_string(search_text='Sales', search_in_expression=True)\n"
+                "• 'Find measures with Total in name' → search_string(search_text='Total', search_in_name=True, search_in_expression=False)"
+            ),
             handler=handle_search_string,
             input_schema={
                 "type": "object",

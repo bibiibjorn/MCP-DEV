@@ -27,22 +27,6 @@ TOOL_SCHEMAS = {
         "required": ["query"]
     },
 
-    'preview_table_data': {
-        "type": "object",
-        "properties": {
-            "table": {
-                "type": "string",
-                "description": "Table name to preview"
-            },
-            "max_rows": {
-                "type": "integer",
-                "description": "Maximum rows to return (default: 10)",
-                "default": 10
-            }
-        },
-        "required": ["table"]
-    },
-
     'get_column_value_distribution': {
         "type": "object",
         "properties": {

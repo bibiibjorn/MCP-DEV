@@ -64,10 +64,6 @@
       "description": "[02-Schema] Search in measure names and/or expressions"
     },
     {
-      "name": "03_preview_table_data",
-      "description": "[03-Query] Preview table rows with EVALUATE"
-    },
-    {
       "name": "03_run_dax",
       "description": "[03-Query] Execute DAX query with auto limits"
     },
