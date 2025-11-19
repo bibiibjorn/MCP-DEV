@@ -82,7 +82,7 @@ Connection → List (tables) → GetStats (full model) → Detailed Operations (
 5. **Structured output** - Easy to parse and present
 6. **Flexible granularity** - User chooses level of detail
 
-### 1.3 Example Response Structure
+### 1.3 Example Response Structure (GetStats)
 
 ```json
 {
@@ -99,6 +99,9 @@ Connection → List (tables) → GetStats (full model) → Detailed Operations (
     "TotalPartitionCount": 109,
     "RelationshipCount": 91,
     "RoleCount": 1,
+    "DataSourceCount": 0,
+    "CultureCount": 1,
+    "PerspectiveCount": 0,
     "Tables": [
       {
         "name": "d_Company",
@@ -368,9 +371,10 @@ def simple_model_analysis(self, connection_state) -> Dict[str, Any]:
                 'relationships': 91,
                 'partitions': 109,
                 'roles': 1,
-                'calculation_groups': 5,
+                'data_sources': 0,
                 'cultures': 1,
-                'perspectives': 0
+                'perspectives': 0,
+                'calculation_groups': 5
             },
             'tables': [
                 {
@@ -379,10 +383,16 @@ def simple_model_analysis(self, connection_state) -> Dict[str, Any]:
                     'column_count': 6,
                     'measure_count': 0,
                     'partition_count': 1,
-                    'is_hidden': False,
-                    'has_relationships': True
+                    'is_hidden': False
                 },
-                ...
+                {
+                    'name': 'm_Measures',
+                    'type': 'measure',
+                    'column_count': 1,
+                    'measure_count': 224,
+                    'partition_count': 1,
+                    'is_hidden': False
+                }
             ],
             'summary': {
                 'total_objects': 1237,
@@ -414,27 +424,35 @@ Use existing DMV queries (already implemented in query_executor):
 # 1. Get model metadata
 model_info = executor.execute_info_query('MODEL')
 
-# 2. Get tables with counts
+# 2. Get all object counts (matching Microsoft MCP GetStats)
 tables = executor.execute_info_query('TABLES')
-
-# 3. Get aggregate counts
 measures = executor.execute_info_query('MEASURES')
 columns = executor.execute_info_query('COLUMNS')
 relationships = executor.execute_info_query('RELATIONSHIPS')
 partitions = executor.execute_info_query('PARTITIONS')
 roles = executor.execute_info_query('ROLES')
+data_sources = executor.execute_info_query('DATA_SOURCES')
+cultures = executor.execute_info_query('CULTURES')
+perspectives = executor.execute_info_query('PERSPECTIVES')
 calc_groups = executor.execute_info_query('CALCULATION_GROUPS')
 ```
 
 #### Step 2: Data Aggregation
 
 ```python
-# Aggregate counts
-total_tables = len(tables.get('rows', []))
-total_columns = len(columns.get('rows', []))
-total_measures = len(measures.get('rows', []))
-total_relationships = len(relationships.get('rows', []))
-# ... etc
+# Aggregate counts (matching Microsoft MCP GetStats exactly)
+counts = {
+    'tables': len(tables.get('rows', [])),
+    'columns': len(columns.get('rows', [])),
+    'measures': len(measures.get('rows', [])),
+    'relationships': len(relationships.get('rows', [])),
+    'partitions': len(partitions.get('rows', [])),
+    'roles': len(roles.get('rows', [])),
+    'data_sources': len(data_sources.get('rows', [])),
+    'cultures': len(cultures.get('rows', [])),
+    'perspectives': len(perspectives.get('rows', [])),
+    'calculation_groups': len(calc_groups.get('rows', []))
+}
 ```
 
 #### Step 3: Per-Table Analysis
@@ -452,24 +470,24 @@ for table in tables.get('rows', []):
     table_measures = [m for m in measures.get('rows', [])
                       if m.get('TableName') == table_name]
 
-    # Check if table has relationships
-    has_relationships = any(
-        r.get('FromTable') == table_name or r.get('ToTable') == table_name
-        for r in relationships.get('rows', [])
-    )
-
-    # Infer table type from prefix
+    # Infer table type from prefix (our addition for categorization)
     table_type = _infer_table_type(table_name)
 
-    tables_detailed.append({
+    # Build table info matching Microsoft MCP GetStats format
+    table_info = {
         'name': table_name,
-        'type': table_type,
+        'type': table_type,  # Our enhancement for categorization
         'column_count': len(table_columns),
-        'measure_count': len(table_measures),
         'partition_count': table.get('PartitionCount', 1),
-        'is_hidden': table.get('IsHidden', False),
-        'has_relationships': has_relationships
-    })
+        'is_hidden': table.get('IsHidden', False)
+    }
+
+    # Include measure_count only if > 0 (matching Microsoft MCP behavior)
+    measure_count = len(table_measures)
+    if measure_count > 0:
+        table_info['measure_count'] = measure_count
+
+    tables_detailed.append(table_info)
 ```
 
 #### Step 4: Summary Generation
