@@ -2,7 +2,7 @@
 
 **Version 5.01** - Production-ready MCP server for comprehensive Power BI analysis
 
-Enables Claude and other AI assistants to analyze Power BI models locally—browse schema, inspect DAX and M code, run performance checks, export documentation, edit TMDL, debug DAX context, and more. Everything runs locally over stdio with no exposed ports.
+Enables Claude and other AI assistants to analyze Power BI models locally—browse schema, inspect DAX and M code, run performance checks, export documentation, edit TMDL, debug DAX context, and more. Everything runs locally over stdio with no exposed ports. Features 45+ tools across 13 categories.
 
 **NEW in v5.01:** Hybrid Analysis with BI Expert Insights, Unified Analysis Tools, and Concrete Performance Optimization Recommendations
 
@@ -186,11 +186,11 @@ Configure in Claude Desktop (`claude_desktop_config.json`):
 
 ---
 
-## Available Tools (40+)
+## Available Tools (45+)
 
 All tools are organized with numerical prefixes for easy discovery (01_ for Connection, 02_ for Schema, etc.)
 
-**v5.01 Update:** Streamlined tool count through consolidation - unified tools replace multiple individual tools
+**v5.01 Update:** Streamlined tool count through consolidation - unified tools replace multiple individual tools. Tools are now organized across 13 categories (previously 14).
 
 | Category | Count | Key Tools |
 |----------|-------|-----------|
@@ -400,10 +400,10 @@ Power BI Desktop (Analysis Services instance)
 - Analysis domain: BPA, performance, dependencies
 - Documentation domain: export and reporting
 
-**Tool Organization** (v4.0+): Numbered prefix system for discoverability:
+**Tool Organization** (v4.0+): Numbered prefix system for discoverability (13 categories):
 - 01_ Connection, 02_ Schema, 03_ Query, 04_ Operations
 - 05_ Analysis, 06_ Dependencies, 07_ Export, 08_ Documentation
-- 09_ Comparison, 10_ PBIP, 11_ TMDL, 12_ DAX Context, 13_ Help
+- 09_ Comparison, 10_ PBIP, 11_ TMDL, 12_ Help, 13_ Hybrid Analysis
 
 **Security Hardening**:
 - Input validation (DAX injection, path traversal)
@@ -738,7 +738,7 @@ All dependencies are bundled in the `.mcpb` package for reproducible deployment.
 
 ### v5.01 (Latest) - Major Feature Release
 
-**NEW: Hybrid Analysis (Category 13/14)**
+**NEW: Hybrid Analysis (Category 13)**
 - `13_export_hybrid_analysis` - Export hybrid packages combining TMDL from PBIP with live metadata/sample data
 - `13_analyze_hybrid_model` - BI Expert analysis with:
   - Smart analysis: Natural language intent recognition
@@ -794,8 +794,9 @@ All dependencies are bundled in the `.mcpb` package for reproducible deployment.
 - Token usage estimation and warnings
 
 **Tool Reorganization**
+- Categories consolidated from 14 to 13 (workflow tools internalized)
 - Categories renumbered (Help → 12, Hybrid Analysis → 13)
-- Streamlined from 50+ to 40+ tools through consolidation
+- Streamlined from 50+ to 45+ tools through consolidation
 - Improved tool naming and descriptions
 - Enhanced parameter documentation
 
