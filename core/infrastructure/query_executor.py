@@ -765,16 +765,32 @@ class OptimizedQueryExecutor:
             if not tables:
                 return {}
 
+            # Get column counts per table to identify measures-only tables
+            columns_result = self.execute_info_query("COLUMNS")
+            tables_with_columns = set()
+            if columns_result.get('success'):
+                for col in columns_result.get('rows', []):
+                    table_name = col.get('Table') or col.get('[Table]') or col.get('TableName') or col.get('[TableName]')
+                    if table_name:
+                        tables_with_columns.add(table_name)
+
             table_names = []
             for table in tables:
                 table_name = table.get('Name') or table.get('[Name]')
-                if table_name:
-                    table_names.append(table_name)
+                if not table_name:
+                    continue
+
+                # Skip tables with no columns (measures-only tables)
+                if table_name not in tables_with_columns:
+                    logger.debug(f"Skipping measures-only table: {table_name}")
+                    continue
+
+                table_names.append(table_name)
 
             if not table_names:
                 return {}
 
-            logger.info(f"Starting batched row count query for {len(table_names)} tables")
+            logger.info(f"Starting batched row count query for {len(table_names)} tables (skipped measures-only tables)")
 
             # Build batched UNION query
             # EVALUATE UNION(
@@ -855,12 +871,27 @@ class OptimizedQueryExecutor:
             tables = tables_result.get('rows', [])
             row_counts = {}
 
+            # Get column counts per table to identify measures-only tables
+            columns_result = self.execute_info_query("COLUMNS")
+            tables_with_columns = set()
+            if columns_result.get('success'):
+                for col in columns_result.get('rows', []):
+                    table_name = col.get('Table') or col.get('[Table]') or col.get('TableName') or col.get('[TableName]')
+                    if table_name:
+                        tables_with_columns.add(table_name)
+
             logger.info(f"Starting sequential row count query for {len(tables)} tables")
 
             # Query each table's row count using COUNTROWS
             for table in tables:
                 table_name = table.get('Name') or table.get('[Name]')
                 if not table_name:
+                    continue
+
+                # Skip tables with no columns (measures-only tables)
+                if table_name not in tables_with_columns:
+                    logger.debug(f"Skipping measures-only table: {table_name}")
+                    row_counts[table_name] = 0
                     continue
 
                 # Escape single quotes in table name

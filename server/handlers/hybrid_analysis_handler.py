@@ -401,10 +401,15 @@ def _operation_read_metadata(reader: HybridReader) -> Dict[str, Any]:
         "_format_type": reader.format_type
     }
 
-    # Add relationship summary if available
+    # Add relationships data AND analysis if available
     if relationships:
         rel_analysis = BIExpertAnalyzer.analyze_relationships(relationships)
-        response_data["relationships_analysis"] = rel_analysis
+        response_data["relationships"] = {
+            "data": relationships,
+            "count": len(relationships),
+            "analysis": rel_analysis,
+            "_note": "Complete relationships data parsed from TMDL - no file reading needed"
+        }
 
     return {
         "data": response_data,
@@ -1223,7 +1228,7 @@ def register_hybrid_analysis_handlers(registry):
 
     registry.register(ToolDefinition(
         name='analyze_hybrid_model',
-        description='⚠️ SELF-CONTAINED MCP TOOL: BI Expert Analysis - reads and analyzes hybrid model (TMDL + JSON + sample data) with expert insights. 🔧 All file operations handled internally by this server tool. 🚫 Claude: Do NOT use Read, Glob, List, or any filesystem tools - just provide the analysis_path! Supports fuzzy search (e.g., "base scenario" finds "PL-AMT-BASE Scenario").',
+        description='⚠️ 100% AUTOMATED MCP SERVER TOOL ⚠️: This tool AUTOMATICALLY reads ALL TMDL files, relationships, JSON files, and parquet data INTERNALLY. 🚫🚫🚫 NEVER use Read, Glob, Grep, or any filesystem tools - this tool returns COMPLETE data including full relationships list parsed from TMDL. Just provide analysis_path and operation - everything else is automatic! Returns: complete relationships data, metadata, measures with DAX expressions, all parsed from TMDL internally.',
         handler=make_handler(handle_analyze_hybrid_model),
         input_schema=TOOL_SCHEMAS['analyze_hybrid_model'],
         category='14 - Hybrid Analysis',

@@ -261,17 +261,26 @@ TOOL_SCHEMAS = {
         "properties": {
             "mode": {
                 "type": "string",
-                "enum": ["tables", "stats", "measures", "measure", "relationships", "calculation_groups"],
+                "enum": ["all", "tables", "stats", "measures", "measure", "columns", "relationships", "roles", "database", "calculation_groups"],
                 "description": (
                     "Analysis mode - Microsoft Official MCP Server operations:\n"
                     "\n"
-                    "**Table Operations:**\n"
-                    "- 'tables': Ultra-fast table list (< 500ms) - Microsoft MCP List operation\n"
-                    "  Returns: table names with column/measure/partition counts\n"
+                    "**ALL OPERATIONS (Recommended):**\n"
+                    "- 'all': Run ALL 9 core Microsoft MCP operations + generate expert analysis\n"
+                    "  Returns: Complete model overview with detailed Power BI expert insights\n"
+                    "  Execution time: ~2-5 seconds (all operations combined)\n"
+                    "\n"
+                    "**Database Operations:**\n"
+                    "- 'database': List databases - Microsoft MCP Database List operation\n"
+                    "  Returns: database ID, name, compatibilityLevel, state, estimated size\n"
                     "\n"
                     "**Model Operations:**\n"
                     "- 'stats': Fast model statistics (< 1s) - Microsoft MCP GetStats operation\n"
                     "  Returns: complete model metadata + all aggregate counts + per-table breakdown\n"
+                    "\n"
+                    "**Table Operations:**\n"
+                    "- 'tables': Ultra-fast table list (< 500ms) - Microsoft MCP List operation\n"
+                    "  Returns: table names with column/measure/partition counts\n"
                     "\n"
                     "**Measure Operations:**\n"
                     "- 'measures': List measures - Microsoft MCP Measure List operation\n"
@@ -281,6 +290,11 @@ TOOL_SCHEMAS = {
                     "  Required params: table, measure_name\n"
                     "  Returns: full measure metadata including DAX expression\n"
                     "\n"
+                    "**Column Operations:**\n"
+                    "- 'columns': List columns - Microsoft MCP Column List operation\n"
+                    "  Optional params: table (filter), max_results (limit)\n"
+                    "  Returns: columns grouped by table with dataType\n"
+                    "\n"
                     "**Relationship Operations:**\n"
                     "- 'relationships': List all relationships - Microsoft MCP Relationship List operation\n"
                     "  Optional params: active_only (boolean)\n"
@@ -288,16 +302,22 @@ TOOL_SCHEMAS = {
                     "\n"
                     "**Calculation Group Operations:**\n"
                     "- 'calculation_groups': List calculation groups - Microsoft MCP ListGroups operation\n"
-                    "  Returns: all calculation groups with their items (ordinal + name)"
+                    "  Returns: all calculation groups with their items (ordinal + name)\n"
+                    "\n"
+                    "**Security Operations:**\n"
+                    "- 'roles': List security roles - Microsoft MCP Role List operation\n"
+                    "  Returns: role names with modelPermission and table permission count"
                 ),
-                "default": "stats"
+                "default": "all"
             },
             "table": {
                 "type": "string",
                 "description": (
                     "Table name - used by:\n"
                     "- mode='measures': Filter measures by table (optional)\n"
-                    "- mode='measure': Table containing measure (required)"
+                    "- mode='measure': Table containing measure (required)\n"
+                    "- mode='columns': Filter columns by table (optional)\n"
+                    "- mode='partitions': Filter partitions by table (optional)"
                 )
             },
             "measure_name": {
@@ -306,7 +326,7 @@ TOOL_SCHEMAS = {
             },
             "max_results": {
                 "type": "integer",
-                "description": "Maximum results to return - used by mode='measures' (optional)"
+                "description": "Maximum results to return - used by mode='measures' and mode='columns' (optional)"
             },
             "active_only": {
                 "type": "boolean",
@@ -703,11 +723,11 @@ TOOL_SCHEMAS = {
         "properties": {
             "analysis_path": {
                 "type": "string",
-                "description": "⚠️ IMPORTANT: Path to exported analysis folder - provide ONLY THIS PATH. This MCP server tool automatically reads ALL TMDL, JSON, and parquet files internally. 🚫 NEVER use Read, Glob, or filesystem tools - the server handles all file operations! Example: 'c:\\path\\to\\Model_analysis'"
+                "description": "⚠️ ONLY PARAMETER NEEDED: Path to exported analysis folder. This MCP server tool AUTOMATICALLY & INTERNALLY reads ALL files (TMDL relationships, measures with DAX, JSON metadata, parquet data). 🚫🚫🚫 CRITICAL: DO NOT use Read, Glob, Grep, or any filesystem tools - this tool returns COMPLETE data with full relationships list already parsed from TMDL! Example: 'c:\\path\\to\\Model_analysis'"
             },
             "operation": {
                 "type": "string",
-                "description": "🔧 FULLY AUTOMATED - Operation to perform (server automatically reads all files): 'read_metadata' (parses TMDL + JSON internally), 'find_objects' (searches TMDL files), 'get_object_definition' (extracts DAX from TMDL), 'analyze_dependencies' (parses dependencies), 'analyze_performance' (scans all measures), 'get_sample_data' (reads parquet), 'get_unused_columns' (reads JSON), 'get_report_dependencies' (reads JSON), or 'smart_analyze' (NL query). 🚫 NO file reading required from Claude!",
+                "description": "🔧 100% AUTOMATED OPERATIONS (all file I/O handled internally): 'read_metadata' (returns: full metadata + complete relationships list parsed from TMDL + expert analysis), 'find_objects' (searches all TMDL internally), 'get_object_definition' (returns: complete DAX from TMDL), 'analyze_dependencies', 'analyze_performance', 'get_sample_data' (reads parquet internally), 'get_unused_columns' (reads JSON internally), 'get_report_dependencies' (reads JSON internally), 'smart_analyze' (NL query). 🚫 NEVER read files - all data is returned complete!",
                 "enum": ["read_metadata", "find_objects", "get_object_definition", "analyze_dependencies", "analyze_performance", "get_sample_data", "get_unused_columns", "get_report_dependencies", "smart_analyze"],
                 "default": "read_metadata"
             },

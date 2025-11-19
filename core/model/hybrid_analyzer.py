@@ -353,9 +353,26 @@ class HybridAnalyzer:
         )
         self._write_json(self.analysis_dir / "metadata.json", metadata.to_dict())
 
-        # Generate catalog
+        # Extract row count dictionary from metadata
+        metadata_dict = metadata.to_dict()
+        row_count_dict = {}
+        for row_info in metadata_dict.get("row_counts", {}).get("by_table", []):
+            table_name = row_info.get("table")
+            row_count = row_info.get("row_count", 0)
+            if table_name:
+                row_count_dict[table_name] = row_count
+
+        # Generate relationships FIRST (needed for catalog)
+        report_progress("relationships", 0.40, "Generating relationships")
+        relationships = self._generate_relationships()
+        self._write_json(
+            self.analysis_dir / "relationships.json",
+            relationships.to_dict()
+        )
+
+        # Generate catalog (now with row counts and relationship counts)
         report_progress("catalog", 0.45, "Generating catalog")
-        catalog = self._generate_catalog(tables, roles)
+        catalog = self._generate_catalog(tables, roles, row_count_dict, relationships)
         self._write_json_with_splitting(
             self.analysis_dir / "catalog.json",
             catalog.to_dict(),
@@ -402,14 +419,6 @@ class HybridAnalyzer:
                 report_deps,
                 "report_dependencies"
             )
-
-        # Generate relationships
-        report_progress("relationships", 0.70, "Generating relationships")
-        relationships = self._generate_relationships()
-        self._write_json(
-            self.analysis_dir / "relationships.json",
-            relationships.to_dict()
-        )
 
         # Step 4: Extract sample data (ALWAYS extract when connection is available)
         parquet_file_count = 0
@@ -546,8 +555,9 @@ class HybridAnalyzer:
 
             if table_names:
                 # Use optimized batched row counting (single UNION query instead of N sequential queries)
+                # use_batch=None enables automatic fallback to sequential if batch fails (e.g., measures-only tables)
                 try:
-                    row_count_dict = self.query_executor.get_table_row_counts(use_batch=True)
+                    row_count_dict = self.query_executor.get_table_row_counts(use_batch=None)
 
                     # Build row_counts_data structure from batched results
                     for table_name in table_names:
@@ -810,12 +820,23 @@ class HybridAnalyzer:
             total_count=len(all_measures)
         )
 
-    def _generate_catalog(self, tables: List[str], roles: List[str]) -> Catalog:
+    def _generate_catalog(self, tables: List[str], roles: List[str], row_count_dict: Optional[Dict[str, int]] = None, relationships_data: Optional[Any] = None) -> Catalog:
         """Generate catalog.json structure with table and column details (measures moved to separate file)"""
         table_infos = []
 
         # Extract columns from cached metadata (OPTIMIZATION) or TMDL fallback
         columns_by_table = {}
+
+        # Build relationship count per table if relationships_data is provided
+        relationship_count_by_table = {}
+        if relationships_data and hasattr(relationships_data, 'relationships'):
+            for rel in relationships_data.relationships:
+                from_table = rel.from_table
+                to_table = rel.to_table
+
+                # Count relationships for each table
+                relationship_count_by_table[from_table] = relationship_count_by_table.get(from_table, 0) + 1
+                relationship_count_by_table[to_table] = relationship_count_by_table.get(to_table, 0) + 1
 
         if self.query_executor and self._metadata_cache["columns"]:
             # Use cached columns
@@ -878,12 +899,21 @@ class HybridAnalyzer:
         for table in tables:
             columns = columns_by_table.get(table, [])
 
+            # Get row count for this table (if available)
+            row_count = None
+            if row_count_dict:
+                row_count = row_count_dict.get(table)
+
+            # Get relationship count for this table
+            relationship_count = relationship_count_by_table.get(table, 0)
+
             table_info = TableInfo(
                 name=table,
                 type="dimension",  # Can be enhanced to detect fact vs dimension
                 tmdl_path=f"tmdl/tables/{table}.tmdl",
                 column_count=len(columns),
-                relationship_count=0,  # TODO: Count from relationships
+                row_count=row_count,
+                relationship_count=relationship_count,
                 has_sample_data=self.has_connection,
                 columns=columns
             )
