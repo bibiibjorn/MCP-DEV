@@ -177,17 +177,35 @@ class TMDLParser:
                     to_table = parts[0].strip("' ")
                     to_col = parts[1].strip("] '")
 
+            # Map fromCardinality and toCardinality to standard cardinality field
+            from_card = from_card_match.group(1) if from_card_match else "many"
+            to_card = to_card_match.group(1) if to_card_match else "one"
+
+            # Standard cardinality mapping
+            cardinality_map = {
+                ("one", "one"): "OneToOne",
+                ("one", "many"): "OneToMany",
+                ("many", "one"): "ManyToOne",
+                ("many", "many"): "ManyToMany"
+            }
+            cardinality = cardinality_map.get((from_card.lower(), to_card.lower()), "ManyToOne")
+
+            # Generate a meaningful name from table and column names
+            name = f"{from_table or 'Unknown'}.{from_col or 'Unknown'} -> {to_table or 'Unknown'}.{to_col or 'Unknown'}"
+
             relationships.append({
-                "hash": rel_hash,
+                "name": name,  # Add name field (generated from relationship details)
+                "hash": rel_hash,  # Keep hash for reference
                 "fromTable": from_table,
                 "fromColumn": from_col,
                 "toTable": to_table,
                 "toColumn": to_col,
-                "fromCardinality": from_card_match.group(1) if from_card_match else None,
-                "toCardinality": to_card_match.group(1) if to_card_match else None,
-                "crossFilteringBehavior": cross_filter_match.group(1) if cross_filter_match else None,
+                "fromCardinality": from_card,  # Keep original for reference
+                "toCardinality": to_card,  # Keep original for reference
+                "cardinality": cardinality,  # Add standard cardinality field
+                "crossFilteringBehavior": cross_filter_match.group(1) if cross_filter_match else "OneDirection",
                 "isActive": active_match.group(1) == 'true' if active_match else True,
-                "securityFilteringBehavior": security_match.group(1) if security_match else None
+                "securityFilteringBehavior": security_match.group(1) if security_match else "OneDirection"
             })
 
         logger.info(f"Parsed {len(relationships)} relationships from TMDL")

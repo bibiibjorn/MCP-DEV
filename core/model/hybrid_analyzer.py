@@ -668,6 +668,67 @@ class HybridAnalyzer:
             else:
                 total_relationships = 0
                 logger.warning(f"    ✗ No cached relationships available")
+        else:
+            # FALLBACK: No connection - read from TMDL files
+            logger.info("  - No connection available, reading statistics from TMDL files...")
+            from core.model.tmdl_parser import TMDLParser
+
+            # Count measures and columns from TMDL
+            total_measures = 0
+            total_columns = 0
+            for table in tables:
+                try:
+                    table_tmdl_path = self.tmdl_dir / "tables" / f"{table}.tmdl"
+                    if table_tmdl_path.exists():
+                        with open(table_tmdl_path, 'r', encoding='utf-8') as f:
+                            tmdl_content = f.read()
+                        columns = TMDLParser.parse_all_columns(tmdl_content)
+                        measures = TMDLParser.parse_all_measures(tmdl_content)
+                        total_columns += len(columns)
+                        total_measures += len(measures)
+                except Exception as e:
+                    logger.debug(f"    Error counting columns/measures for table '{table}': {e}")
+
+            logger.info(f"    ✓ Found {total_measures} measures (from TMDL)")
+            logger.info(f"    ✓ Found {total_columns} columns (from TMDL)")
+
+            # Count relationships from TMDL
+            total_relationships = 0
+            active_relationships = 0
+            inactive_relationships = 0
+            bidirectional_relationships = 0
+
+            try:
+                # Check for relationships.tmdl in multiple locations
+                rel_paths = [
+                    self.pbip_reader.definition_path / "relationships.tmdl",
+                    self.pbip_reader.definition_path.parent / "relationships.tmdl",
+                    self.pbip_reader.pbip_path / "relationships.tmdl",
+                ]
+
+                for rel_path in rel_paths:
+                    if rel_path.exists():
+                        with open(rel_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                        parsed_rels = TMDLParser.parse_relationships(content)
+
+                        total_relationships = len(parsed_rels)
+                        for rel in parsed_rels:
+                            if rel.get('isActive', True):
+                                active_relationships += 1
+                            else:
+                                inactive_relationships += 1
+
+                            if rel.get('crossFilteringBehavior', '').lower() == 'bothdirections':
+                                bidirectional_relationships += 1
+
+                        logger.info(f"    ✓ Found {total_relationships} relationships ({active_relationships} active, from TMDL)")
+                        break
+                else:
+                    logger.warning(f"    ✗ No relationships.tmdl found")
+
+            except Exception as e:
+                logger.warning(f"    Error reading relationships from TMDL: {e}")
 
         statistics = StatisticsSummary(
             tables={
@@ -753,7 +814,7 @@ class HybridAnalyzer:
         """Generate catalog.json structure with table and column details (measures moved to separate file)"""
         table_infos = []
 
-        # Extract columns from cached metadata (OPTIMIZATION)
+        # Extract columns from cached metadata (OPTIMIZATION) or TMDL fallback
         columns_by_table = {}
 
         if self.query_executor and self._metadata_cache["columns"]:
@@ -783,6 +844,35 @@ class HybridAnalyzer:
                 )
                 columns_by_table[table_name].append(column_info)
             logger.info(f"    ✓ Extracted {sum(len(cols) for cols in columns_by_table.values())} columns across {len(columns_by_table)} tables")
+        else:
+            # Fallback: Read columns from TMDL files
+            logger.info("  - No connection available, reading columns from TMDL files...")
+            from core.model.tmdl_parser import TMDLParser
+
+            for table in tables:
+                try:
+                    table_tmdl_path = self.tmdl_dir / "tables" / f"{table}.tmdl"
+                    if table_tmdl_path.exists():
+                        with open(table_tmdl_path, 'r', encoding='utf-8') as f:
+                            tmdl_content = f.read()
+
+                        columns = TMDLParser.parse_all_columns(tmdl_content)
+                        columns_by_table[table] = []
+
+                        for col in columns:
+                            column_info = ColumnInfo(
+                                name=col.get('name', ''),
+                                data_type=col.get('dataType', 'Unknown'),
+                                is_key=col.get('isKey', False),
+                                is_hidden=col.get('isHidden', False)
+                            )
+                            columns_by_table[table].append(column_info)
+                except Exception as e:
+                    logger.warning(f"    Error reading columns from TMDL for table '{table}': {e}")
+                    columns_by_table[table] = []
+
+            total_cols = sum(len(cols) for cols in columns_by_table.values())
+            logger.info(f"    ✓ Extracted {total_cols} columns from TMDL files across {len(columns_by_table)} tables")
 
         # Build table infos
         for table in tables:
