@@ -43,21 +43,81 @@ class AgentPolicy:
         self.rate_limiter = rate_limiter
         self.limits_manager = limits_manager
 
-        # Initialize orchestrators
-        self.connection_orch = ConnectionOrchestrator(config)
-        self.query_orch = QueryOrchestrator(config)
-        self.documentation_orch = DocumentationOrchestrator(config)
-        self.analysis_orch = AnalysisOrchestrator(config)
-        self.pbip_orch = PbipOrchestrator(config)
-        self.cache_orch = CacheOrchestrator(config)
-        self.hybrid_orch = HybridAnalysisOrchestrator(config)
+        # Lazy-initialized orchestrators (created on-demand for faster startup)
+        self._connection_orch = None
+        self._query_orch = None
+        self._documentation_orch = None
+        self._analysis_orch = None
+        self._pbip_orch = None
+        self._cache_orch = None
+        self._hybrid_orch = None
+        self._query_policy = None
 
-        # Initialize query policy for the query orchestrator
-        try:
-            self.query_policy: Optional[QueryPolicy] = QueryPolicy(config)
-            self.query_orch.query_policy = self.query_policy
-        except Exception:
-            self.query_policy = None
+    @property
+    def connection_orch(self):
+        """Lazy-load connection orchestrator"""
+        if self._connection_orch is None:
+            self._connection_orch = ConnectionOrchestrator(self.config)
+        return self._connection_orch
+
+    @property
+    def query_orch(self):
+        """Lazy-load query orchestrator"""
+        if self._query_orch is None:
+            self._query_orch = QueryOrchestrator(self.config)
+            # Initialize query policy if needed
+            if self._query_policy is None:
+                try:
+                    self._query_policy = QueryPolicy(self.config)
+                except Exception:
+                    self._query_policy = None
+            self._query_orch.query_policy = self._query_policy
+        return self._query_orch
+
+    @property
+    def documentation_orch(self):
+        """Lazy-load documentation orchestrator"""
+        if self._documentation_orch is None:
+            self._documentation_orch = DocumentationOrchestrator(self.config)
+        return self._documentation_orch
+
+    @property
+    def analysis_orch(self):
+        """Lazy-load analysis orchestrator"""
+        if self._analysis_orch is None:
+            self._analysis_orch = AnalysisOrchestrator(self.config)
+        return self._analysis_orch
+
+    @property
+    def pbip_orch(self):
+        """Lazy-load PBIP orchestrator"""
+        if self._pbip_orch is None:
+            self._pbip_orch = PbipOrchestrator(self.config)
+        return self._pbip_orch
+
+    @property
+    def cache_orch(self):
+        """Lazy-load cache orchestrator"""
+        if self._cache_orch is None:
+            self._cache_orch = CacheOrchestrator(self.config)
+        return self._cache_orch
+
+    @property
+    def hybrid_orch(self):
+        """Lazy-load hybrid analysis orchestrator"""
+        if self._hybrid_orch is None:
+            self._hybrid_orch = HybridAnalysisOrchestrator(self.config)
+        return self._hybrid_orch
+
+    @property
+    def query_policy(self):
+        """Lazy-load query policy"""
+        if self._query_policy is None:
+            try:
+                self._query_policy = QueryPolicy(self.config)
+            except Exception:
+                pass
+        return self._query_policy
 
     # ==================== CONNECTION ORCHESTRATOR DELEGATES ====================
 

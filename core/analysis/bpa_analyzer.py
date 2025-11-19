@@ -77,13 +77,40 @@ class BPAAnalyzer:
 
         if rules_file_path:
             self.load_rules(rules_file_path)
-    
+
+    def _precompile_common_patterns(self):
+        """Eagerly compile common regex patterns used in BPA rules for performance"""
+        # Common patterns found in BPA rules - precompile them at initialization
+        common_patterns = [
+            (r'\bCOUNT(ROWS)?\s*\(', 0),
+            (r'\bSUM\s*\(', 0),
+            (r'\bAVERAGE\s*\(', 0),
+            (r'\bCALCULATE\s*\(', 0),
+            (r'\bFILTER\s*\(', 0),
+            (r'\bALL\s*\(', 0),
+            (r'\bVALUES\s*\(', 0),
+            (r'^\s*IF\s*\(', 0),
+            (r'\bRELATED\s*\(', 0),
+            (r'\bSUMX\s*\(', 0),
+            (r'\bUNION\s*\(', 0),
+            (r'Key|ID|Code', re.IGNORECASE),
+            (r'^_', 0),
+            (r'\s{2,}', 0)
+        ]
+        for pattern, flags in common_patterns:
+            key = f"{pattern}__{flags}"
+            if key not in self._regex_cache:
+                try:
+                    self._regex_cache[key] = re.compile(pattern, flags)
+                except re.error:
+                    pass
+
     def load_rules(self, rules_file_path: str) -> None:
         """Load BPA rules from JSON file"""
         try:
             with open(rules_file_path, 'r', encoding='utf-8') as f:
                 rules_data = json.load(f)
-            
+
             self.rules = []
             for rule_data in rules_data.get('rules', []):
                 rule = BPARule(
@@ -98,9 +125,12 @@ class BPAAnalyzer:
                     compatibility_level=rule_data.get('CompatibilityLevel', 1200)
                 )
                 self.rules.append(rule)
-                
+
             logger.info(f"Loaded {len(self.rules)} BPA rules")
-            
+
+            # Eagerly compile common patterns for performance
+            self._precompile_common_patterns()
+
         except (FileNotFoundError, json.JSONDecodeError) as e:
             logger.error(f"Error loading BPA rules: {str(e)}")
             raise

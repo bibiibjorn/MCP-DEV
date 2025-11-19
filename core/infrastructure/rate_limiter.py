@@ -21,37 +21,42 @@ class RateLimiter:
     def __init__(self, config: Optional[dict] = None):
         """
         Initialize rate limiter.
-        
+
         Args:
             config: Configuration dict with:
+                - enabled: Whether rate limiting is enabled (default: True)
                 - global_calls_per_second: Max calls/sec across all tools (default: 10)
                 - global_burst: Max burst size (default: 20)
                 - tool_limits: Dict of tool_name -> calls_per_second
                 - tool_bursts: Dict of tool_name -> burst_size
         """
         self.config = config or {}
-        
+
+        # Check if rate limiting is enabled
+        self.enabled = self.config.get('enabled', True)
+
         # Global limits
         self.global_rate = float(self.config.get('global_calls_per_second', 10))
         self.global_burst = int(self.config.get('global_burst', 20))
         self.global_tokens = float(self.global_burst)
         self.global_last_update = time.time()
-        
+
         # Per-tool limits
         self.tool_limits = self.config.get('tool_limits', {})
         self.tool_bursts = self.config.get('tool_bursts', {})
         self.tool_tokens: Dict[str, float] = {}
         self.tool_last_update: Dict[str, float] = {}
-        
+
         # Request tracking for metrics
         self.request_history = deque(maxlen=1000)
         self.tool_request_counts = defaultdict(int)
         self.tool_throttle_counts = defaultdict(int)
-        
+
         # Thread safety
         self.lock = threading.RLock()
-        
-        logger.info(f"Rate limiter initialized: {self.global_rate} calls/sec (burst {self.global_burst})")
+
+        status = "enabled" if self.enabled else "disabled"
+        logger.info(f"Rate limiter {status}: {self.global_rate} calls/sec (burst {self.global_burst})")
     
     def _refill_tokens(self, current_time: float):
         """Refill token buckets based on elapsed time."""
@@ -139,6 +144,9 @@ class RateLimiter:
 
         Returns True if tokens were available and consumed; False if throttled.
         """
+        # Fast path: If rate limiting is disabled, always allow
+        if not self.enabled:
+            return True
         acquired, _ = self.acquire(tool_name, cost=cost, timeout=0.0)
         return acquired
 
