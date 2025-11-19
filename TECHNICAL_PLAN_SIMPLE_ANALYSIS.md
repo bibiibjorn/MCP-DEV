@@ -24,24 +24,63 @@ This document outlines the technical implementation plan for adding a **simplifi
 
 ### 1.1 Key Operations Used
 
-The Microsoft MCP server uses a clean, structured approach for model analysis:
+The Microsoft MCP server uses a **progressive disclosure** approach with three analysis tiers:
 
 ```
-Connection → GetStats → Detailed Operations (as needed)
+Connection → List (tables) → GetStats (full model) → Detailed Operations (as needed)
 ```
+
+#### Tier 1: List Operation (Ultra-fast)
+
+**Purpose**: Quick table inventory
+**Speed**: < 50ms even for large models
+**Request**: `{"operation": "List"}`
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Found 109 tables",
+  "operation": "List",
+  "data": [
+    {"name": "d_Company", "columnCount": 5, "partitionCount": 1},
+    {"name": "s_ReportLines", "columnCount": 21, "partitionCount": 1},
+    {"name": "m_Measures", "columnCount": 1, "measureCount": 224, "partitionCount": 1}
+  ]
+}
+```
+
+**Provides**:
+- Table names only
+- Column counts per table
+- Partition counts per table
+- Measure counts (if table has measures)
+
+#### Tier 2: GetStats Operation (Fast)
+
+**Purpose**: Complete model overview
+**Speed**: < 100ms even for large models
 
 **GetStats Operation** provides:
 - Model metadata (name, database, compatibility level)
 - Aggregate counts (tables, measures, columns, partitions, relationships, roles)
 - Per-table breakdown (name, column count, measure count, partition count, visibility)
 
+#### Tier 3: Detailed Operations (Comprehensive)
+
+- Get specific measure DAX
+- Analyze dependencies
+- Run BPA rules
+- Performance profiling
+
 ### 1.2 Benefits of This Approach
 
-1. **Single API call** - All basic metadata in one operation
-2. **Lightweight** - Only counts and metadata, no DAX expressions or detailed data
-3. **Fast execution** - Typically < 100ms even for large models
-4. **Structured output** - Easy to parse and present
-5. **Progressive disclosure** - Start simple, drill down as needed
+1. **Progressive disclosure** - Start ultra-simple, add detail as needed
+2. **Single API call** - All basic metadata in one operation
+3. **Lightweight** - Only counts and metadata, no DAX expressions or detailed data
+4. **Fast execution** - Typically < 100ms even for large models
+5. **Structured output** - Easy to parse and present
+6. **Flexible granularity** - User chooses level of detail
 
 ### 1.3 Example Response Structure
 
@@ -125,11 +164,27 @@ def comprehensive_analysis(
 
 ## 3. Proposed Solution: Simple Analysis Mode
 
-### 3.1 New Analysis Mode
+### 3.1 New Analysis Modes (Two Tiers)
 
-Add a new `scope` option: **`"simple"`** or **`"stats"`**
+Add two new `scope` options following Microsoft MCP's progressive disclosure pattern:
 
-**Purpose**: Provide Microsoft MCP-style model statistics in < 1 second
+#### Tier 1: `scope="tables"` or `scope="list"` (Ultra-fast)
+
+**Purpose**: Quick table inventory (Microsoft MCP List operation equivalent)
+**Target Speed**: < 500ms
+**Returns**: Just table names with column/measure/partition counts
+
+**When to use**:
+- Quick inventory of what tables exist
+- Need just table names and counts
+- Ultra-fast checks (< 500ms)
+- Table discovery before detailed queries
+
+#### Tier 2: `scope="simple"` or `scope="stats"` (Fast)
+
+**Purpose**: Complete model overview (Microsoft MCP GetStats operation equivalent)
+**Target Speed**: < 1 second
+**Returns**: Model metadata + all aggregate counts + per-table breakdown + summary
 
 **When to use**:
 - Initial model overview
@@ -152,12 +207,13 @@ Add a new `scope` option: **`"simple"`** or **`"stats"`**
 ```python
 def comprehensive_analysis(
     connection_state,
-    scope: str = "all",           # Add: "simple" | "stats"
+    scope: str = "all",           # Add: "tables" | "list" | "simple" | "stats"
     depth: str = "balanced",
     include_bpa: bool = True,
     include_performance: bool = True,
     include_integrity: bool = True,
     include_simple_stats: bool = False,  # NEW: Include simple stats in any scope
+    include_table_list: bool = False,    # NEW: Include table list in any scope
     max_seconds: Optional[int] = None
 )
 ```
@@ -182,15 +238,105 @@ def simple_model_analysis(self, connection_state) -> Dict[str, Any]:
 
 #### Recommended Approach: Hybrid (A + B)
 
-1. Create `simple_model_analysis()` as a standalone function
-2. Add `scope="simple"` to `comprehensive_analysis()` that calls `simple_model_analysis()`
-3. Add `include_simple_stats=True` parameter to inject simple stats into any analysis
+1. Create `list_tables_simple()` as a standalone function (ultra-fast tier)
+2. Create `simple_model_analysis()` as a standalone function (fast tier)
+3. Add `scope="tables"` and `scope="simple"` to `comprehensive_analysis()`
+4. Add `include_table_list=True` and `include_simple_stats=True` parameters to inject into any analysis
 
 ---
 
 ## 4. Detailed Implementation Specification
 
-### 4.1 New Function: simple_model_analysis()
+### 4.1 New Function: list_tables_simple()
+
+**Location**: `/core/orchestration/analysis_orchestrator.py`
+
+**Function Signature**:
+
+```python
+def list_tables_simple(self, connection_state) -> Dict[str, Any]:
+    """
+    Ultra-fast table list (< 500ms).
+
+    Similar to Microsoft MCP Server's List operation.
+    Returns table names with basic counts only.
+
+    Returns:
+        {
+            'success': True,
+            'analysis_type': 'table_list',
+            'execution_time_seconds': 0.25,
+            'message': 'Found 109 tables',
+            'table_count': 109,
+            'tables': [
+                {
+                    'name': 'd_Company',
+                    'column_count': 5,
+                    'partition_count': 1
+                },
+                {
+                    'name': 'm_Measures',
+                    'column_count': 1,
+                    'measure_count': 224,
+                    'partition_count': 1
+                }
+            ]
+        }
+    """
+```
+
+**Implementation**:
+
+```python
+def list_tables_simple(self, connection_state) -> Dict[str, Any]:
+    """Ultra-fast table list."""
+    from core.validation.error_handler import ErrorHandler
+    import time
+
+    if not connection_state.is_connected():
+        return ErrorHandler.handle_not_connected()
+
+    start_time = time.time()
+    executor = connection_state.query_executor
+
+    if not executor:
+        return ErrorHandler.handle_manager_unavailable('query_executor')
+
+    # Get tables (already cached in most cases)
+    tables_result = executor.execute_info_query('TABLES')
+
+    if not tables_result.get('success'):
+        return tables_result
+
+    # Build simple table list
+    tables = []
+    for table in tables_result.get('rows', []):
+        table_info = {
+            'name': table.get('Name', ''),
+            'column_count': table.get('ColumnCount', 0),
+            'partition_count': table.get('PartitionCount', 1)
+        }
+
+        # Include measure count if > 0
+        measure_count = table.get('MeasureCount', 0)
+        if measure_count > 0:
+            table_info['measure_count'] = measure_count
+
+        tables.append(table_info)
+
+    execution_time = round(time.time() - start_time, 2)
+
+    return {
+        'success': True,
+        'analysis_type': 'table_list',
+        'execution_time_seconds': execution_time,
+        'message': f'Found {len(tables)} tables',
+        'table_count': len(tables),
+        'tables': tables
+    }
+```
+
+### 4.2 New Function: simple_model_analysis()
 
 **Location**: `/core/orchestration/analysis_orchestrator.py`
 
@@ -385,7 +531,7 @@ def _infer_table_type(table_name: str) -> str:
 
 ### 4.4 Integration with comprehensive_analysis
 
-**Modify comprehensive_analysis** to support simple mode:
+**Modify comprehensive_analysis** to support both new modes:
 
 ```python
 def comprehensive_analysis(
@@ -396,15 +542,17 @@ def comprehensive_analysis(
     include_bpa: bool = True,
     include_performance: bool = True,
     include_integrity: bool = True,
-    include_simple_stats: bool = False,  # NEW
+    include_simple_stats: bool = False,  # NEW: Include GetStats-style overview
+    include_table_list: bool = False,    # NEW: Include List-style table list
     max_seconds: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     Unified comprehensive model analysis.
 
     Args:
-        scope: "all", "best_practices", "performance", "integrity", "simple"
+        scope: "all", "best_practices", "performance", "integrity", "tables", "simple"
         include_simple_stats: Add simple stats to any analysis scope
+        include_table_list: Add table list to any analysis scope
     """
     from core.validation.error_handler import ErrorHandler
 
@@ -413,7 +561,11 @@ def comprehensive_analysis(
 
     scope = (scope or "all").lower()
 
-    # NEW: Handle simple mode
+    # NEW: Handle table list mode (ultra-fast)
+    if scope == "tables" or scope == "list":
+        return self.list_tables_simple(connection_state)
+
+    # NEW: Handle simple stats mode (fast)
     if scope == "simple" or scope == "stats":
         return self.simple_model_analysis(connection_state)
 
@@ -425,6 +577,18 @@ def comprehensive_analysis(
         'analyses': {},
         'start_time': time.time()
     }
+
+    # NEW: Optionally include table list in any analysis
+    if include_table_list:
+        try:
+            table_list_result = self.list_tables_simple(connection_state)
+            results['analyses']['table_list'] = table_list_result
+        except Exception as e:
+            logger.error(f"Table list failed: {e}")
+            results['analyses']['table_list'] = {
+                'success': False,
+                'error': f'Table list failed: {str(e)}'
+            }
 
     # NEW: Optionally include simple stats in any analysis
     if include_simple_stats:
@@ -457,26 +621,32 @@ def comprehensive_analysis(
     "properties": {
         "scope": {
             "type": "string",
-            "enum": ["all", "best_practices", "performance", "integrity", "simple"],  # ADD "simple"
+            "enum": ["all", "best_practices", "performance", "integrity", "tables", "simple"],  # ADD "tables" and "simple"
             "description": (
                 "Analysis scope:\n"
                 "- 'all': Full analysis (BPA + performance + integrity)\n"
                 "- 'best_practices': BPA and M practices only\n"
                 "- 'performance': Cardinality analysis only\n"
                 "- 'integrity': Model validation only\n"
-                "- 'simple': Fast model statistics (< 1s, similar to Microsoft MCP GetStats)"  # NEW
+                "- 'tables': Ultra-fast table list (< 500ms, Microsoft MCP List operation)\n"  # NEW
+                "- 'simple': Fast model statistics (< 1s, Microsoft MCP GetStats operation)"  # NEW
             ),
             "default": "all"
         },
         "depth": {
             "type": "string",
             "enum": ["fast", "balanced", "deep"],
-            "description": "Analysis depth (ignored for scope='simple')",
+            "description": "Analysis depth (ignored for scope='tables' or 'simple')",
             "default": "balanced"
+        },
+        "include_table_list": {  # NEW
+            "type": "boolean",
+            "description": "Include ultra-fast table list in any scope (< 500ms, just table names + counts)",
+            "default": False
         },
         "include_simple_stats": {  # NEW
             "type": "boolean",
-            "description": "Include simple model statistics in any scope (adds lightweight stats section)",
+            "description": "Include simple model statistics in any scope (< 1s, adds GetStats-style overview)",
             "default": False
         },
         # ... existing parameters
@@ -491,12 +661,13 @@ def comprehensive_analysis(
 
 ### 6.1 Execution Time Goals
 
-| Scope | Target Time | Max Acceptable |
-|-------|-------------|----------------|
-| simple | < 1 second | 2 seconds |
-| fast | < 10 seconds | 15 seconds |
-| balanced | < 30 seconds | 45 seconds |
-| deep | < 120 seconds | 180 seconds |
+| Scope | Target Time | Max Acceptable | Description |
+|-------|-------------|----------------|-------------|
+| tables | < 500ms | 1 second | Ultra-fast table list |
+| simple | < 1 second | 2 seconds | Fast model statistics |
+| fast | < 10 seconds | 15 seconds | Quick BPA scan |
+| balanced | < 30 seconds | 45 seconds | Standard analysis |
+| deep | < 120 seconds | 180 seconds | Comprehensive analysis |
 
 ### 6.2 Optimization Strategies
 
@@ -514,6 +685,37 @@ def comprehensive_analysis(
 **Location**: `/tests/test_simple_analysis.py`
 
 ```python
+# Test Tier 1: Ultra-fast table list
+def test_list_tables_simple_basic():
+    """Test table list returns required fields."""
+    result = orchestrator.list_tables_simple(connection_state)
+
+    assert result['success'] is True
+    assert 'tables' in result
+    assert 'table_count' in result
+    assert result['analysis_type'] == 'table_list'
+
+def test_list_tables_simple_performance():
+    """Test table list completes in < 1 second."""
+    start = time.time()
+    result = orchestrator.list_tables_simple(connection_state)
+    elapsed = time.time() - start
+
+    assert result['success'] is True
+    assert elapsed < 1.0
+
+def test_comprehensive_analysis_tables_scope():
+    """Test comprehensive_analysis with scope='tables'."""
+    result = orchestrator.comprehensive_analysis(
+        connection_state,
+        scope="tables"
+    )
+
+    assert result['success'] is True
+    assert result['analysis_type'] == 'table_list'
+    assert 'tables' in result
+
+# Test Tier 2: Fast model statistics
 def test_simple_model_analysis_basic():
     """Test simple analysis returns required fields."""
     result = orchestrator.simple_model_analysis(connection_state)
@@ -543,6 +745,18 @@ def test_comprehensive_analysis_simple_scope():
     assert result['success'] is True
     assert result['analysis_type'] == 'simple_stats'
 
+# Test combined modes
+def test_comprehensive_analysis_with_table_list():
+    """Test include_table_list parameter."""
+    result = orchestrator.comprehensive_analysis(
+        connection_state,
+        scope="integrity",
+        include_table_list=True
+    )
+
+    assert result['success'] is True
+    assert 'table_list' in result['analyses']
+
 def test_comprehensive_analysis_with_simple_stats():
     """Test include_simple_stats parameter."""
     result = orchestrator.comprehensive_analysis(
@@ -552,6 +766,19 @@ def test_comprehensive_analysis_with_simple_stats():
     )
 
     assert result['success'] is True
+    assert 'simple_stats' in result['analyses']
+
+def test_comprehensive_analysis_with_both():
+    """Test both table_list and simple_stats together."""
+    result = orchestrator.comprehensive_analysis(
+        connection_state,
+        scope="all",
+        include_table_list=True,
+        include_simple_stats=True
+    )
+
+    assert result['success'] is True
+    assert 'table_list' in result['analyses']
     assert 'simple_stats' in result['analyses']
 ```
 
@@ -690,13 +917,31 @@ result = orchestrator.comprehensive_analysis(connection_state, depth="fast")
 
 **New calls are additive**:
 ```python
-# New simple mode
+# New ultra-fast table list (< 500ms)
+result = orchestrator.comprehensive_analysis(connection_state, scope="tables")
+
+# New fast model statistics (< 1s)
 result = orchestrator.comprehensive_analysis(connection_state, scope="simple")
+
+# Add table list to any analysis
+result = orchestrator.comprehensive_analysis(
+    connection_state,
+    scope="integrity",
+    include_table_list=True
+)
 
 # Add simple stats to any analysis
 result = orchestrator.comprehensive_analysis(
     connection_state,
     scope="integrity",
+    include_simple_stats=True
+)
+
+# Add both table list and simple stats
+result = orchestrator.comprehensive_analysis(
+    connection_state,
+    scope="all",
+    include_table_list=True,
     include_simple_stats=True
 )
 ```
@@ -713,23 +958,41 @@ result = orchestrator.comprehensive_analysis(
 
 ### Phase 1: Core Implementation (Week 1)
 
+**Tier 1: Ultra-fast table list**
+- [ ] Implement `list_tables_simple()` function in `analysis_orchestrator.py`
+- [ ] Add table list data collection logic (DMV TABLES query)
+- [ ] Add table count aggregation
+- [ ] Performance test (target < 500ms)
+
+**Tier 2: Fast model statistics**
 - [ ] Implement `simple_model_analysis()` function in `analysis_orchestrator.py`
 - [ ] Implement `_infer_table_type()` helper function
-- [ ] Add data collection logic (DMV queries)
+- [ ] Add data collection logic (DMV queries for all objects)
 - [ ] Add data aggregation logic
 - [ ] Add per-table analysis logic
 - [ ] Add summary generation logic
+- [ ] Performance test (target < 1s)
 
 ### Phase 2: Integration (Week 1)
 
+- [ ] Update `comprehensive_analysis()` to support `scope="tables"`
 - [ ] Update `comprehensive_analysis()` to support `scope="simple"`
+- [ ] Add `include_table_list` parameter
 - [ ] Add `include_simple_stats` parameter
 - [ ] Update tool schema in `tool_schemas.py`
-- [ ] Add new enum value for scope
+- [ ] Add new enum values for scope ("tables", "simple")
 - [ ] Test integration with existing scopes
 
 ### Phase 3: Testing (Week 2)
 
+**Tier 1 Tests**
+- [ ] Write unit tests for `list_tables_simple()`
+- [ ] Write integration tests for scope="tables"
+- [ ] Write integration tests for include_table_list
+- [ ] Performance benchmarking (target < 500ms)
+- [ ] Comparison testing with Microsoft MCP List operation
+
+**Tier 2 Tests**
 - [ ] Write unit tests for `simple_model_analysis()`
 - [ ] Write unit tests for `_infer_table_type()`
 - [ ] Write integration tests for scope="simple"
@@ -737,6 +1000,11 @@ result = orchestrator.comprehensive_analysis(
 - [ ] Test with small/medium/large models
 - [ ] Performance benchmarking (target < 1s)
 - [ ] Comparison testing with Microsoft MCP GetStats
+
+**Combined Tests**
+- [ ] Test include_table_list + include_simple_stats together
+- [ ] Test all scope values work correctly
+- [ ] Backward compatibility testing
 
 ### Phase 4: Documentation (Week 2)
 
