@@ -50,8 +50,9 @@ class ToolDispatcher:
         '04_list_partitions': 'list_partitions',
         '04_list_roles': 'list_roles',
 
-        # 05 - Analysis (1 tool)
-        '05_comprehensive_analysis': 'comprehensive_analysis',
+        # 05 - Analysis (2 tools)
+        '05_simple_analysis': 'simple_analysis',
+        '05_full_analysis': 'full_analysis',
 
         # 06 - Dependencies (2 tools)
         '06_analyze_measure_dependencies': 'analyze_measure_dependencies',

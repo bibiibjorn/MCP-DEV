@@ -1,6 +1,6 @@
 """
 Analysis Handler
-Handles model analysis tools including BPA, performance, validation, and VertiPaq stats
+Handles model analysis tools including simple analysis, full analysis, BPA, performance, and validation
 """
 from typing import Dict, Any
 import logging
@@ -11,11 +11,37 @@ from core.utilities.business_impact import enrich_issue_with_impact, add_impact_
 
 logger = logging.getLogger(__name__)
 
-def handle_comprehensive_analysis(args: Dict[str, Any]) -> Dict[str, Any]:
+def handle_simple_analysis(args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Fast model statistics overview based on Microsoft Official MCP Server operations.
+
+    Two modes:
+    - 'tables': Ultra-fast table list (< 500ms) - Microsoft MCP List operation
+    - 'stats': Fast model statistics (< 1s) - Microsoft MCP GetStats operation
+    """
+    if not connection_state.is_connected():
+        return ErrorHandler.handle_not_connected()
+
+    agent_policy = connection_state.agent_policy
+    if not agent_policy:
+        return ErrorHandler.handle_manager_unavailable('agent_policy')
+
+    # Extract mode parameter (default: stats)
+    mode = args.get('mode', 'stats')
+
+    # Route to appropriate function
+    if mode == 'tables':
+        result = agent_policy.analysis_orch.list_tables_simple(connection_state)
+    else:  # mode == 'stats'
+        result = agent_policy.analysis_orch.simple_model_analysis(connection_state)
+
+    return result
+
+def handle_full_analysis(args: Dict[str, Any]) -> Dict[str, Any]:
     """
     Unified comprehensive model analysis combining best practices, performance, and integrity.
 
-    Replaces and consolidates: full_analysis, analyze_best_practices, analyze_performance
+    Formerly known as comprehensive_analysis.
     """
     if not connection_state.is_connected():
         return ErrorHandler.handle_not_connected()
@@ -68,10 +94,18 @@ def register_analysis_handlers(registry):
 
     tools = [
         ToolDefinition(
-            name="comprehensive_analysis",
-            description="Unified comprehensive analysis: best practices, performance, and integrity validation",
-            handler=handle_comprehensive_analysis,
-            input_schema=TOOL_SCHEMAS.get('comprehensive_analysis', {}),
+            name="simple_analysis",
+            description="Fast model statistics (< 1s) based on Microsoft MCP operations: table list or full GetStats overview",
+            handler=handle_simple_analysis,
+            input_schema=TOOL_SCHEMAS.get('simple_analysis', {}),
+            category="analysis",
+            sort_order=26
+        ),
+        ToolDefinition(
+            name="full_analysis",
+            description="Comprehensive analysis: best practices (BPA), performance, and integrity validation (10-180s)",
+            handler=handle_full_analysis,
+            input_schema=TOOL_SCHEMAS.get('full_analysis', {}),
             category="analysis",
             sort_order=27
         ),

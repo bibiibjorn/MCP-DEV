@@ -700,3 +700,298 @@ class AnalysisOrchestrator(BaseOrchestrator):
             return integrity_result
 
         return result
+
+    def _infer_table_type(self, table_name: str) -> str:
+        """
+        Infer table type from naming convention.
+
+        Common prefixes in Power BI models:
+        - d_: dimension tables
+        - f_: fact tables
+        - m_: measure tables
+        - s_: support/slicer tables
+        - c_: calculation groups
+        - r_: RLS (Row-Level Security) tables
+        - sfp_/dfp_: field parameters
+        - dyn_: dynamic tables
+
+        Args:
+            table_name: Name of the table
+
+        Returns:
+            Table type category as string
+        """
+        name_lower = table_name.lower()
+
+        if name_lower.startswith('d_'):
+            return 'dimension'
+        elif name_lower.startswith('f_'):
+            return 'fact'
+        elif name_lower.startswith('m_'):
+            return 'measure'
+        elif name_lower.startswith('s_'):
+            return 'support'
+        elif name_lower.startswith('c_'):
+            return 'calculation_group'
+        elif name_lower.startswith('r_'):
+            return 'rls'
+        elif name_lower.startswith('sfp_') or name_lower.startswith('dfp_'):
+            return 'field_parameter'
+        elif name_lower.startswith('dyn_'):
+            return 'dynamic'
+        else:
+            return 'other'
+
+    def list_tables_simple(self, connection_state) -> Dict[str, Any]:
+        """
+        Ultra-fast table list (< 500ms).
+
+        Similar to Microsoft MCP Server's List operation.
+        Returns table names with basic counts only.
+
+        Args:
+            connection_state: Current connection state
+
+        Returns:
+            {
+                'success': True,
+                'analysis_type': 'table_list',
+                'execution_time_seconds': 0.25,
+                'message': 'Found 109 tables',
+                'table_count': 109,
+                'tables': [
+                    {
+                        'name': 'd_Company',
+                        'column_count': 5,
+                        'partition_count': 1
+                    },
+                    {
+                        'name': 'm_Measures',
+                        'column_count': 1,
+                        'measure_count': 224,
+                        'partition_count': 1
+                    }
+                ]
+            }
+        """
+        from core.validation.error_handler import ErrorHandler
+
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+
+        start_time = time.time()
+        executor = connection_state.query_executor
+
+        if not executor:
+            return ErrorHandler.handle_manager_unavailable('query_executor')
+
+        try:
+            # Get tables (already cached in most cases)
+            tables_result = executor.execute_info_query('TABLES')
+
+            if not tables_result.get('success'):
+                return tables_result
+
+            # Build simple table list
+            tables = []
+            for table in tables_result.get('rows', []):
+                table_info = {
+                    'name': table.get('Name', ''),
+                    'column_count': table.get('ColumnCount', 0),
+                    'partition_count': table.get('PartitionCount', 1)
+                }
+
+                # Include measure count if > 0 (matching Microsoft MCP behavior)
+                measure_count = table.get('MeasureCount', 0)
+                if measure_count > 0:
+                    table_info['measure_count'] = measure_count
+
+                tables.append(table_info)
+
+            execution_time = round(time.time() - start_time, 2)
+
+            return {
+                'success': True,
+                'analysis_type': 'table_list',
+                'execution_time_seconds': execution_time,
+                'message': f'Found {len(tables)} tables',
+                'table_count': len(tables),
+                'tables': tables
+            }
+
+        except Exception as e:
+            logger.error(f"Table list failed: {e}")
+            return {
+                'success': False,
+                'error': f'Table list failed: {str(e)}'
+            }
+
+    def simple_model_analysis(self, connection_state) -> Dict[str, Any]:
+        """
+        Fast model statistics overview (< 1 second).
+
+        Similar to Microsoft MCP Server's GetStats operation.
+        Provides comprehensive model metadata and counts without heavy analysis.
+
+        Args:
+            connection_state: Current connection state
+
+        Returns:
+            {
+                'success': True,
+                'analysis_type': 'simple_stats',
+                'execution_time_seconds': 0.45,
+                'model': {
+                    'name': 'Model',
+                    'database': 'guid',
+                    'compatibility_level': 1601,
+                    'compatibility_version': 'Power BI 2025'
+                },
+                'counts': {
+                    'tables': 109,
+                    'columns': 833,
+                    'measures': 239,
+                    'relationships': 91,
+                    'partitions': 109,
+                    'roles': 1,
+                    'data_sources': 0,
+                    'cultures': 1,
+                    'perspectives': 0,
+                    'calculation_groups': 5
+                },
+                'tables': [...],
+                'summary': {...}
+            }
+        """
+        from core.validation.error_handler import ErrorHandler
+
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+
+        start_time = time.time()
+        executor = connection_state.query_executor
+
+        if not executor:
+            return ErrorHandler.handle_manager_unavailable('query_executor')
+
+        try:
+            # Step 1: Get all object counts (matching Microsoft MCP GetStats)
+            model_info = executor.execute_info_query('MODEL')
+            tables = executor.execute_info_query('TABLES')
+            measures = executor.execute_info_query('MEASURES')
+            columns = executor.execute_info_query('COLUMNS')
+            relationships = executor.execute_info_query('RELATIONSHIPS')
+            partitions = executor.execute_info_query('PARTITIONS')
+            roles = executor.execute_info_query('ROLES')
+            calc_groups = executor.execute_info_query('CALCULATION_GROUPS')
+
+            # Try to get optional counts (may not be available in all model versions)
+            data_sources = executor.execute_info_query('DATA_SOURCES')
+            cultures = executor.execute_info_query('CULTURES')
+            perspectives = executor.execute_info_query('PERSPECTIVES')
+
+            # Step 2: Extract model metadata
+            model_data = model_info.get('rows', [{}])[0] if model_info.get('success') else {}
+            model = {
+                'name': model_data.get('Name', 'Model'),
+                'database': model_data.get('Database', ''),
+                'compatibility_level': model_data.get('CompatibilityLevel', 0)
+            }
+
+            # Add compatibility version description
+            compat_level = model['compatibility_level']
+            if compat_level >= 1601:
+                model['compatibility_version'] = 'Power BI 2025'
+            elif compat_level >= 1600:
+                model['compatibility_version'] = 'Power BI 2021+'
+            elif compat_level >= 1500:
+                model['compatibility_version'] = 'SQL Server 2019 / Power BI'
+            elif compat_level >= 1400:
+                model['compatibility_version'] = 'SQL Server 2017 / Power BI'
+            elif compat_level >= 1200:
+                model['compatibility_version'] = 'SQL Server 2016 / Power BI'
+            else:
+                model['compatibility_version'] = 'Unknown'
+
+            # Step 3: Aggregate counts (matching Microsoft MCP GetStats exactly)
+            counts = {
+                'tables': len(tables.get('rows', [])),
+                'columns': len(columns.get('rows', [])),
+                'measures': len(measures.get('rows', [])),
+                'relationships': len(relationships.get('rows', [])),
+                'partitions': len(partitions.get('rows', [])),
+                'roles': len(roles.get('rows', [])),
+                'data_sources': len(data_sources.get('rows', [])) if data_sources.get('success') else 0,
+                'cultures': len(cultures.get('rows', [])) if cultures.get('success') else 1,
+                'perspectives': len(perspectives.get('rows', [])) if perspectives.get('success') else 0,
+                'calculation_groups': len(calc_groups.get('rows', []))
+            }
+
+            # Step 4: Per-table analysis
+            tables_detailed = []
+            for table in tables.get('rows', []):
+                table_name = table.get('Name', '')
+
+                # Infer table type from prefix (our enhancement for categorization)
+                table_type = self._infer_table_type(table_name)
+
+                # Build table info matching Microsoft MCP GetStats format
+                table_info = {
+                    'name': table_name,
+                    'type': table_type,  # Our enhancement
+                    'column_count': table.get('ColumnCount', 0),
+                    'partition_count': table.get('PartitionCount', 1),
+                    'is_hidden': table.get('IsHidden', False)
+                }
+
+                # Include measure_count only if > 0 (matching Microsoft MCP behavior)
+                measure_count = table.get('MeasureCount', 0)
+                if measure_count > 0:
+                    table_info['measure_count'] = measure_count
+
+                tables_detailed.append(table_info)
+
+            # Step 5: Generate summary
+            # Identify measure tables (tables with high measure:column ratio)
+            measure_tables = [t['name'] for t in tables_detailed
+                             if t.get('measure_count', 0) > 0 and t['column_count'] < 5]
+
+            # Find largest tables by column count
+            largest_tables = sorted(tables_detailed,
+                                   key=lambda t: t['column_count'],
+                                   reverse=True)[:5]
+            largest_tables = [{'name': t['name'], 'column_count': t['column_count']}
+                             for t in largest_tables]
+
+            # Count table types
+            table_types = {}
+            for t in tables_detailed:
+                table_type = t['type']
+                table_types[table_type] = table_types.get(table_type, 0) + 1
+
+            summary = {
+                'total_objects': (counts['tables'] + counts['columns'] +
+                                 counts['measures'] + counts['relationships']),
+                'measure_tables': measure_tables,
+                'largest_tables': largest_tables,
+                'table_types': table_types
+            }
+
+            execution_time = round(time.time() - start_time, 2)
+
+            return {
+                'success': True,
+                'analysis_type': 'simple_stats',
+                'execution_time_seconds': execution_time,
+                'model': model,
+                'counts': counts,
+                'tables': tables_detailed,
+                'summary': summary
+            }
+
+        except Exception as e:
+            logger.error(f"Simple model analysis failed: {e}")
+            return {
+                'success': False,
+                'error': f'Simple model analysis failed: {str(e)}'
+            }

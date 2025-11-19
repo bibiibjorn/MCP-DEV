@@ -219,8 +219,29 @@ TOOL_SCHEMAS = {
         "required": []
     },
 
-    # Analysis (1 tool)
-    'comprehensive_analysis': {
+    # Analysis (2 tools)
+    'simple_analysis': {
+        "type": "object",
+        "properties": {
+            "mode": {
+                "type": "string",
+                "enum": ["tables", "stats"],
+                "description": (
+                    "Analysis mode:\n"
+                    "- 'tables': Ultra-fast table list (< 500ms) - table names with column/measure/partition counts\n"
+                    "- 'stats': Fast model statistics (< 1s) - complete model overview with metadata + all aggregate counts + per-table breakdown\n"
+                    "\n"
+                    "Based on Microsoft Official MCP Server operations:\n"
+                    "- 'tables' = List operation (quick inventory)\n"
+                    "- 'stats' = GetStats operation (full model overview)"
+                ),
+                "default": "stats"
+            }
+        },
+        "required": []
+    },
+
+    'full_analysis': {
         "type": "object",
         "properties": {
             "scope": {
