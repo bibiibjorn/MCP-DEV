@@ -1,6 +1,7 @@
 # Microsoft PowerBI MCP Integration Analysis & Plan
 
 **Generated**: November 19, 2025
+**Updated**: November 19, 2025
 **Purpose**: Detailed analysis of integrating Microsoft's official PowerBI MCP capabilities into the existing MCP-DEV server
 
 ---
@@ -10,8 +11,7 @@
 This document provides a comprehensive comparison between Microsoft's official PowerBI MCP server and the current MCP-DEV implementation, identifying integration opportunities with a focus on:
 - **Batch operations** (primary focus)
 - **Transaction management** for atomic operations
-- **Additional object types** (perspectives, cultures, hierarchies)
-- **Trace operations** for performance monitoring
+- **CRUD operations** for core model objects
 - **Tool consolidation** to avoid tool bloat
 
 ### Key Findings
@@ -20,7 +20,6 @@ This document provides a comprehensive comparison between Microsoft's official P
 - Extensive batch operations across all object types
 - Transaction management for ACID compliance
 - Comprehensive CRUD for all TOM objects
-- Trace operations with VertiPaq SE analysis
 - Advanced object types (perspectives, cultures, translations, hierarchies, calendars)
 - Object-level TMDL/TMSL export
 
@@ -106,22 +105,12 @@ This document provides a comprehensive comparison between Microsoft's official P
 | Rename Calc Group | ✅ RenameGroup | ❌ Missing | **Microsoft better** |
 | Calc Item CRUD | ✅ Full CRUD on items | ⚠️ Only at group level | **Microsoft better** |
 | Reorder Items | ✅ ReorderItems | ❌ Missing | **Microsoft better** |
-| **Hierarchies** |
-| List/Get/Create Hierarchies | ✅ Full CRUD | ❌ Missing | **GAP** |
-| Level Operations | ✅ Add/Remove/Update/Reorder | ❌ Missing | **GAP** |
-| **Calendars** |
-| List/Get/Create Calendars | ✅ Full CRUD | ❌ Missing | **GAP** |
-| Column Group Operations | ✅ Full CRUD | ❌ Missing | **GAP** |
 | **Partitions** |
 | List Partitions | ✅ List | ✅ list_partitions | **Parity** |
 | Get Partition | ✅ Get | ❌ Missing | **Microsoft better** |
 | Create Partition | ✅ Create (M/SQL/Calc/Entity) | ❌ Missing | **Microsoft better** |
 | Update/Delete Partition | ✅ Update/Delete | ❌ Missing | **Microsoft better** |
 | Refresh Partition | ✅ Refresh | ❌ Missing (removed) | **Microsoft better** |
-| **Perspectives** |
-| List/Get/Create Perspectives | ✅ Full CRUD | ❌ Missing | **GAP** |
-| Perspective Member Ops | ✅ Add/Remove Tables/Cols/Measures | ❌ Missing | **GAP** |
-| **Batch Perspective Ops** | ✅ BatchAdd/Remove members | ❌ Missing | **GAP** |
 | **Security Roles (RLS)** |
 | List Roles | ✅ List | ✅ list_roles | **Parity** |
 | Create Role | ✅ Create | ❌ Missing | **Microsoft better** |
@@ -129,19 +118,6 @@ This document provides a comprehensive comparison between Microsoft's official P
 | Table Permissions | ✅ Full CRUD on permissions | ✅ list_roles (read-only) | **Microsoft better** |
 | Test Role | ✅ GetEffectivePermissions | ✅ test_role_filter | **Parity** |
 | RLS Coverage | ❌ Missing | ✅ validate_rls_coverage | **MCP-DEV better** |
-| **Cultures & Translations** |
-| List/Get/Create Cultures | ✅ Full CRUD | ❌ Missing | **GAP** |
-| Object Translations | ✅ Full CRUD (all objects) | ❌ Missing | **GAP** |
-| **Batch Translation Ops** | ✅ BatchCreate/Update/Delete | ❌ Missing | **GAP** |
-| **Query Groups & Named Expressions** |
-| Query Groups | ✅ Full CRUD | ❌ Missing | **GAP** |
-| Named Expressions | ✅ Full CRUD (M/DAX) | ✅ get_m_expressions (read-only) | **Microsoft better** |
-| Parameters | ✅ CreateParameter (with meta) | ❌ Missing | **Microsoft better** |
-| **Trace Operations** |
-| Start/Stop/Pause Trace | ✅ Full control | ❌ Missing | **GAP** |
-| Fetch Events | ✅ Fetch (with columns) | ❌ Missing | **GAP** |
-| Export Trace JSON | ✅ ExportJSON | ❌ Missing | **GAP** |
-| VertiPaq SE Analysis | ✅ Via trace events | ❌ Missing | **GAP** |
 | **Transaction Management** |
 | Begin/Commit/Rollback | ✅ Full ACID support | ❌ Missing | **GAP** |
 | Transaction Status | ✅ GetStatus/ListActive | ❌ Missing | **GAP** |
@@ -195,7 +171,7 @@ This document provides a comprehensive comparison between Microsoft's official P
 1. **Add Unified Batch Tool** (instead of 6 separate tools):
    - `batch_operations` - Single tool with operation type parameter
    - Supports: tables, columns, measures, functions, relationships
-   - Options: `useTransaction`, `continueOnError`
+   - Options: `useTransaction`, `continueOnError`, `dryRun`
 
 2. **Keep Existing Tools** for backward compatibility:
    - `bulk_create_measures` → Keep as-is
@@ -232,40 +208,9 @@ This document provides a comprehensive comparison between Microsoft's official P
 
 ---
 
-#### 3. **Trace Operations** ⭐ MEDIUM-HIGH PRIORITY
-**Gap**: No query tracing for performance diagnostics
-
-**Microsoft Has:**
-- `trace_operations`: Start/Stop/Pause/Resume/Clear/Get/List/Fetch/ExportJSON
-- VertiPaq SE query analysis
-- DirectQuery monitoring
-- Execution metrics with timing breakdown
-
-**Current MCP-DEV Has:**
-- ⚠️ `run_dax` has basic execution metrics
-- ❌ No full trace capture
-- ❌ No VertiPaq SE analysis
-
-**Integration Strategy:**
-1. **Add Trace Management Tool**:
-   - `manage_query_trace` - Start/Stop/Fetch/Export traces
-   - Capture VertiPaq SE queries
-   - Event filtering (current session only)
-   - Export to JSON for analysis
-
-**Use Cases:**
-- Performance troubleshooting
-- VertiPaq SE optimization
-- DirectQuery monitoring
-- Cache hit analysis
-
-**Implementation Priority**: **MEDIUM-HIGH** - Valuable for performance analysis
-
----
-
 ### Important Gaps (Medium Priority)
 
-#### 4. **Object CRUD Operations**
+#### 3. **Object CRUD Operations**
 **Gap**: Limited CRUD operations for most objects
 
 **Missing Operations:**
@@ -278,35 +223,13 @@ This document provides a comprehensive comparison between Microsoft's official P
 - **RLS Roles**: Create, Update, Delete, Permission CRUD
 
 **Integration Strategy:**
-**Option 1**: Add individual CRUD tools (14+ new tools) ❌ TOO MANY
-**Option 2**: Add unified CRUD tools by category (3-4 tools) ✅ RECOMMENDED
-  - `manage_tables` - CRUD for tables
-  - `manage_columns` - CRUD for columns
-  - `manage_relationships` - CRUD for relationships
-  - `manage_security_roles` - CRUD for RLS roles
+**Add unified CRUD tools by category (4 tools)**:
+- `manage_tables` - CRUD for tables
+- `manage_columns` - CRUD for columns
+- `manage_relationships` - CRUD for relationships
+- `manage_security_roles` - CRUD for RLS roles
 
 **Implementation Priority**: **MEDIUM** - Useful but not critical
-
----
-
-#### 5. **Advanced Object Types**
-**Gap**: No support for advanced object types
-
-**Missing:**
-- **Hierarchies**: Full CRUD + Level operations
-- **Calendars**: Full CRUD + Column Group operations
-- **Perspectives**: Full CRUD + Member operations
-- **Cultures & Translations**: Full CRUD + Batch operations
-- **Query Groups**: Full CRUD
-- **Named Expressions**: Full CRUD (currently read-only)
-
-**Integration Strategy:**
-**Option 1**: Add comprehensive tools for all types (8+ tools) ❌ TOO MANY
-**Option 2**: Add selectively based on user demand ✅ RECOMMENDED
-  - Start with: Perspectives, Hierarchies (common use cases)
-  - Defer: Cultures/Translations (enterprise-only), Calendars (rarely used)
-
-**Implementation Priority**: **MEDIUM-LOW** - Nice to have, not urgent
 
 ---
 
@@ -350,7 +273,7 @@ This document provides a comprehensive comparison between Microsoft's official P
 ### Phase 1: Core Batch Operations (CRITICAL)
 **Goal**: Add essential batch operations without tool bloat
 
-#### New Tools (3 tools)
+#### New Tools (2 tools)
 1. **`batch_operations`** - Unified batch tool
    - Operations: create, update, delete, rename
    - Object types: tables, columns, measures, functions, relationships
@@ -361,18 +284,12 @@ This document provides a comprehensive comparison between Microsoft's official P
    - Operations: begin, commit, rollback, status
    - Enables atomic batch operations
 
-3. **`manage_query_trace`** - Query tracing
-   - Operations: start, stop, pause, resume, fetch, export
-   - Events: Query, VertiPaq SE, DirectQuery, ExecutionMetrics
-   - Valuable for performance analysis
+**Tool Count Impact**: +2 tools (47 total)
 
-**Tool Count Impact**: +3 tools (48 total)
-
-**Implementation Effort**: ~3-5 days
-- Day 1: Transaction management infrastructure
+**Implementation Effort**: ~3-4 days
+- Day 1-2: Transaction management infrastructure
 - Day 2-3: Batch operations unified tool
-- Day 4: Query trace operations
-- Day 5: Testing and documentation
+- Day 4: Testing and documentation
 
 ---
 
@@ -380,186 +297,101 @@ This document provides a comprehensive comparison between Microsoft's official P
 **Goal**: Add missing CRUD operations with minimal tool count increase
 
 #### New Tools (4 tools)
-4. **`manage_tables`** - Table CRUD
+3. **`manage_tables`** - Table CRUD
    - Operations: create, update, delete, rename, refresh, get
 
-5. **`manage_columns`** - Column CRUD
+4. **`manage_columns`** - Column CRUD
    - Operations: create, update, delete, rename, get
 
-6. **`manage_relationships`** - Relationship CRUD
+5. **`manage_relationships`** - Relationship CRUD
    - Operations: create, update, delete, rename, activate, deactivate, get
 
-7. **`manage_security_roles`** - RLS CRUD
+6. **`manage_security_roles`** - RLS CRUD
    - Operations: create, update, delete, rename, create_permission, update_permission, delete_permission
 
-**Tool Count Impact**: +4 tools (52 total)
+**Tool Count Impact**: +4 tools (51 total)
 
 **Implementation Effort**: ~4-6 days
-
----
-
-### Phase 3: Advanced Object Types (LOW)
-**Goal**: Add support for less common but valuable object types
-
-#### New Tools (2-3 tools)
-8. **`manage_perspectives`** - Perspective CRUD
-   - Operations: create, update, delete, rename, add_member, remove_member
-
-9. **`manage_hierarchies`** - Hierarchy CRUD
-   - Operations: create, update, delete, rename, add_level, remove_level, reorder_levels
-
-10. **`manage_cultures`** (Optional) - Culture & Translation CRUD
-   - Operations: create_culture, delete_culture, create_translation, update_translation, delete_translation
-
-**Tool Count Impact**: +2-3 tools (54-55 total)
-
-**Implementation Effort**: ~3-5 days
-
----
-
-### Phase 4: Advanced Features (OPTIONAL)
-**Goal**: Add remaining Microsoft features based on demand
-
-#### Potential Tools (2 tools)
-11. **`clear_dax_cache`** - Cache management
-    - Operations: clear_cache
-
-12. **`manage_functions`** - User-defined function CRUD
-    - Operations: create, update, delete, rename, get, list
-
-**Tool Count Impact**: +2 tools (56-57 total)
-
-**Implementation Effort**: ~2-3 days
 
 ---
 
 ## Tool Count Management Strategy
 
 ### Current State: 45 tools
-### After Phase 1: 48 tools (+3) ✅ ACCEPTABLE
-### After Phase 2: 52 tools (+7) ✅ ACCEPTABLE
-### After Phase 3: 54-55 tools (+9-10) ⚠️ GETTING LARGE
-### After Phase 4: 56-57 tools (+11-12) ⚠️ LARGE
+### After Phase 1: 47 tools (+2) ✅ EXCELLENT
+### After Phase 2: 51 tools (+6) ✅ ACCEPTABLE
 
 ### Consolidation Opportunities
 
-To keep tool count manageable, consider consolidating:
+To keep tool count manageable, we're using a **unified batch operations tool** instead of 6+ separate batch tools:
 
-#### Option A: Unified Object Management Tool
-**Single Tool**: `manage_model_objects`
+#### Unified Batch Tool Approach (IMPLEMENTED)
+**Single Tool**: `batch_operations`
 - Parameters:
-  - `object_type`: table, column, measure, relationship, function, role, perspective, hierarchy
-  - `operation`: create, update, delete, rename, get, list
-  - `definition`: Object-specific definition
+  - `object_type`: tables, columns, measures, functions, relationships
+  - `operation`: create, update, delete, rename
+  - `items`: List of object definitions
+  - `options`: useTransaction, continueOnError, dryRun
 
 **Pros**:
-- Single tool for all CRUD operations
+- Single tool for all batch operations (not 6+ tools)
 - Consistent interface
 - Easy to extend
+- Transaction support built-in
 
 **Cons**:
-- Complex parameter validation
-- Large tool definition
-- Less discoverable
+- Complex parameter validation (mitigated by good schema)
+- Larger tool definition (acceptable tradeoff)
 
-**Tool Count Impact**: +1 tool instead of +10 tools (46 total) ✅ EXCELLENT
-
----
-
-#### Option B: Unified Object Management + Batch Tool (RECOMMENDED)
-**Two Tools**:
-1. `manage_model_objects` - Single object CRUD
-2. `batch_operations` - Batch operations with transactions
-
-**Pros**:
-- Clean separation (single vs batch)
-- Manageable tool count
-- Consistent interface
-
-**Cons**:
-- Still requires complex parameter validation
-
-**Tool Count Impact**: +2 tools (47 total) ✅ EXCELLENT
-
----
-
-#### Option C: Category-Based Tools (CURRENT RECOMMENDATION)
-**Keep separate tools by category**:
-- `manage_tables`, `manage_columns`, `manage_relationships`, etc.
-- Each tool has focused scope
-- Easy to discover and use
-
-**Pros**:
-- Clear separation of concerns
-- Easy to discover
-- Focused documentation
-
-**Cons**:
-- More tools overall
-- Some duplication in code
-
-**Tool Count Impact**: +10-12 tools (55-57 total) ⚠️ ACCEPTABLE
+**Tool Count Impact**: +1 tool instead of +6 tools ✅ EXCELLENT
 
 ---
 
 ## Recommended Implementation Plan
 
-### Immediate Priority (Week 1-2): PHASE 1
+### Immediate Priority (Week 1): PHASE 1
 **Focus**: Batch operations with transactions
 
-1. **Implement Transaction Management** (2 days)
+1. **Implement Transaction Management** (1.5 days)
    - Add `manage_transactions` tool
    - Begin/Commit/Rollback/Status operations
    - Integration with existing infrastructure
 
-2. **Implement Unified Batch Operations** (3 days)
+2. **Implement Unified Batch Operations** (2 days)
    - Add `batch_operations` tool
    - Support: tables, columns, measures, functions, relationships
    - Options: useTransaction, continueOnError, dryRun
    - Reuse existing bulk_operations code
 
-3. **Implement Query Trace** (2 days)
-   - Add `manage_query_trace` tool
-   - Start/Stop/Fetch/Export operations
-   - VertiPaq SE event capture
+3. **Testing and Documentation** (0.5 days)
+   - Unit tests for transaction manager
+   - Integration tests for batch operations
+   - Update user guide
 
-**Deliverable**: 3 new tools, +40% batch operation coverage
+**Deliverable**: 2 new tools, comprehensive batch operation coverage
 
 ---
 
-### Short-term Priority (Week 3-5): PHASE 2
+### Short-term Priority (Week 2-3): PHASE 2
 **Focus**: Essential CRUD operations
 
-4. **Implement Table Management** (2 days)
+4. **Implement Table Management** (1.5 days)
    - Add `manage_tables` tool
    - Create/Update/Delete/Rename/Refresh operations
 
-5. **Implement Column Management** (2 days)
+5. **Implement Column Management** (1.5 days)
    - Add `manage_columns` tool
    - Create/Update/Delete/Rename operations
 
-6. **Implement Relationship Management** (2 days)
+6. **Implement Relationship Management** (1.5 days)
    - Add `manage_relationships` tool
    - Create/Update/Delete/Rename/Activate/Deactivate
 
-7. **Implement RLS Management** (2 days)
+7. **Implement RLS Management** (1.5 days)
    - Add `manage_security_roles` tool
    - Full CRUD for roles and permissions
 
 **Deliverable**: 4 new tools, full CRUD coverage for core objects
-
----
-
-### Medium-term Priority (Week 6-8): PHASE 3 (OPTIONAL)
-**Focus**: Advanced object types based on user demand
-
-8. **Implement Perspective Management** (2 days)
-   - Add `manage_perspectives` tool
-
-9. **Implement Hierarchy Management** (2 days)
-   - Add `manage_hierarchies` tool
-
-**Deliverable**: 2 new tools, advanced object support
 
 ---
 
@@ -579,22 +411,34 @@ class TransactionManager:
 
     def begin_transaction(self, connection_name: str = None) -> str:
         """Begin a new transaction, returns transaction ID"""
+        # Get TOM server from connection
+        # Create transaction on server
+        # Return unique transaction ID
         pass
 
     def commit_transaction(self, txn_id: str):
         """Commit pending changes"""
+        # Get transaction by ID
+        # Commit changes to server
+        # Update model (SaveChanges)
+        # Remove from active transactions
         pass
 
     def rollback_transaction(self, txn_id: str):
         """Rollback pending changes"""
+        # Get transaction by ID
+        # Discard all pending changes
+        # Remove from active transactions
         pass
 
     def get_transaction_status(self, txn_id: str) -> dict:
         """Get transaction status"""
+        # Return transaction metadata (started, operation count, etc.)
         pass
 
     def list_active_transactions(self) -> list:
         """List all active transactions"""
+        # Return list of all active transaction IDs
         pass
 ```
 
@@ -602,6 +446,27 @@ class TransactionManager:
 - `batch_operations` tool will use transactions automatically if `useTransaction: true`
 - Existing tools can be wrapped in transactions via context manager
 - Error handling will auto-rollback on exceptions
+
+**Usage Pattern**:
+```python
+# Context manager approach (recommended)
+with transaction_manager.transaction() as txn:
+    # All operations within this block are atomic
+    create_table(...)
+    create_columns(...)
+    create_relationship(...)
+    # Automatic commit on success, rollback on exception
+
+# Manual approach
+txn_id = transaction_manager.begin_transaction()
+try:
+    create_table(...)
+    create_columns(...)
+    transaction_manager.commit_transaction(txn_id)
+except Exception as e:
+    transaction_manager.rollback_transaction(txn_id)
+    raise
+```
 
 ---
 
@@ -621,6 +486,10 @@ class BatchOperationsHandler:
         'relationships': ['create', 'update', 'delete', 'rename', 'activate', 'deactivate']
     }
 
+    def __init__(self, connection_manager, transaction_manager):
+        self.connection_manager = connection_manager
+        self.transaction_manager = transaction_manager
+
     async def execute_batch(
         self,
         object_type: str,      # 'tables', 'columns', 'measures', etc.
@@ -629,7 +498,94 @@ class BatchOperationsHandler:
         options: dict = None  # {useTransaction, continueOnError, dryRun}
     ):
         """Execute batch operation"""
-        pass
+
+        # Validate object_type and operation
+        if object_type not in self.SUPPORTED_OPERATIONS:
+            raise ValueError(f"Unsupported object type: {object_type}")
+
+        if operation not in self.SUPPORTED_OPERATIONS[object_type]:
+            raise ValueError(f"Unsupported operation '{operation}' for {object_type}")
+
+        # Parse options
+        use_transaction = options.get('useTransaction', True)
+        continue_on_error = options.get('continueOnError', False)
+        dry_run = options.get('dryRun', False)
+
+        results = []
+
+        # Execute within transaction if requested
+        if use_transaction and not dry_run:
+            with self.transaction_manager.transaction() as txn:
+                results = await self._execute_items(
+                    object_type, operation, items,
+                    continue_on_error, dry_run
+                )
+        else:
+            results = await self._execute_items(
+                object_type, operation, items,
+                continue_on_error, dry_run
+            )
+
+        return {
+            'success': all(r['success'] for r in results),
+            'total': len(items),
+            'succeeded': sum(1 for r in results if r['success']),
+            'failed': sum(1 for r in results if not r['success']),
+            'results': results
+        }
+
+    async def _execute_items(self, object_type, operation, items,
+                            continue_on_error, dry_run):
+        """Execute operation on all items"""
+        results = []
+
+        for idx, item in enumerate(items):
+            try:
+                # Validate item definition
+                self._validate_item(object_type, operation, item)
+
+                if dry_run:
+                    result = {'success': True, 'message': 'Validation passed (dry run)'}
+                else:
+                    # Delegate to specific handler
+                    result = await self._execute_single_item(
+                        object_type, operation, item
+                    )
+
+                results.append({
+                    'index': idx,
+                    'success': True,
+                    'item': item.get('name', f'item_{idx}'),
+                    **result
+                })
+
+            except Exception as e:
+                results.append({
+                    'index': idx,
+                    'success': False,
+                    'item': item.get('name', f'item_{idx}'),
+                    'error': str(e)
+                })
+
+                if not continue_on_error:
+                    raise
+
+        return results
+
+    async def _execute_single_item(self, object_type, operation, item):
+        """Execute single operation based on object type"""
+
+        # Delegate to appropriate handler
+        if object_type == 'tables':
+            return await self._handle_table_operation(operation, item)
+        elif object_type == 'columns':
+            return await self._handle_column_operation(operation, item)
+        elif object_type == 'measures':
+            return await self._handle_measure_operation(operation, item)
+        elif object_type == 'functions':
+            return await self._handle_function_operation(operation, item)
+        elif object_type == 'relationships':
+            return await self._handle_relationship_operation(operation, item)
 ```
 
 **Tool Schema**:
@@ -647,12 +603,13 @@ class BatchOperationsHandler:
       },
       "operation": {
         "type": "string",
-        "enum": ["create", "update", "delete", "rename"],
-        "description": "Operation to perform"
+        "enum": ["create", "update", "delete", "rename", "move", "activate", "deactivate", "refresh"],
+        "description": "Operation to perform (available operations depend on object type)"
       },
       "items": {
         "type": "array",
-        "description": "List of object definitions for the operation"
+        "description": "List of object definitions for the operation",
+        "minItems": 1
       },
       "options": {
         "type": "object",
@@ -660,17 +617,17 @@ class BatchOperationsHandler:
           "useTransaction": {
             "type": "boolean",
             "default": true,
-            "description": "Use transaction for atomic operation"
+            "description": "Use transaction for atomic operation (all-or-nothing)"
           },
           "continueOnError": {
             "type": "boolean",
             "default": false,
-            "description": "Continue processing on error"
+            "description": "Continue processing remaining items on error (only with useTransaction=false)"
           },
           "dryRun": {
             "type": "boolean",
             "default": false,
-            "description": "Validate without executing"
+            "description": "Validate definitions without executing (test mode)"
           }
         }
       }
@@ -680,43 +637,32 @@ class BatchOperationsHandler:
 }
 ```
 
----
+**Example Usage**:
 
-### 3. Query Trace Handler
-
-**Location**: `server/handlers/trace_handler.py`
-
-```python
-class TraceHandler:
-    """Manages query tracing for performance analysis"""
-
-    def start_trace(
-        self,
-        events: list = None,  # ['QueryBegin', 'QueryEnd', 'VertiPaqSEQueryEnd']
-        filter_current_session: bool = True
-    ):
-        """Start trace capture"""
-        pass
-
-    def stop_trace(self):
-        """Stop trace capture"""
-        pass
-
-    def fetch_events(
-        self,
-        columns: list = None,  # ['EventClassName', 'Duration', 'TextData']
-        clear_after_fetch: bool = False
-    ) -> list:
-        """Fetch captured events"""
-        pass
-
-    def export_trace_json(
-        self,
-        file_path: str,
-        clear_after_fetch: bool = True
-    ):
-        """Export trace to JSON file"""
-        pass
+```json
+{
+  "object_type": "measures",
+  "operation": "create",
+  "items": [
+    {
+      "name": "Total Sales",
+      "table_name": "_Measures",
+      "expression": "SUM(FactSales[SalesAmount])",
+      "format_string": "$#,0.00"
+    },
+    {
+      "name": "Total Quantity",
+      "table_name": "_Measures",
+      "expression": "SUM(FactSales[Quantity])",
+      "format_string": "#,0"
+    }
+  ],
+  "options": {
+    "useTransaction": true,
+    "continueOnError": false,
+    "dryRun": false
+  }
+}
 ```
 
 ---
@@ -726,69 +672,74 @@ class TraceHandler:
 ### Unit Tests
 - Transaction manager: Begin/Commit/Rollback/Error handling
 - Batch operations: Each object type + operation combination
-- Query trace: Start/Stop/Fetch/Export
+- Validation: Item definition validation
+- Dry-run mode: Validation without execution
 
 ### Integration Tests
 - Batch operations with transactions (atomic)
 - Batch operations without transactions (individual)
 - Error handling (continueOnError true/false)
 - Rollback on error
+- Mixed success/failure scenarios
 
 ### Performance Tests
 - Batch operation performance vs individual operations
 - Transaction overhead measurement
-- Trace capture overhead
+- Large batch sizes (100+ items)
 
 ### Safety Tests
 - Dry-run mode validation
 - Cascade delete behavior
 - Transaction isolation
+- Concurrent transaction handling
 
 ---
 
 ## Documentation Requirements
 
 ### User Guide Updates
-1. Add section: "Batch Operations"
+1. **Add section: "Batch Operations"**
    - Examples for each object type
    - Transaction vs non-transaction scenarios
    - Best practices
-
-2. Add section: "Transaction Management"
-   - When to use transactions
+   - Performance considerations
    - Error handling patterns
 
-3. Add section: "Performance Monitoring"
-   - Query tracing setup
-   - VertiPaq SE analysis
-   - Trace export and analysis
+2. **Add section: "Transaction Management"**
+   - When to use transactions
+   - Manual vs automatic transaction handling
+   - Error handling patterns
+   - Rollback behavior
+
+3. **Update existing tool documentation**
+   - Link to batch operations where applicable
+   - Migration examples (individual → batch)
 
 ### API Documentation
 - New tool schemas
 - Parameter descriptions
 - Example requests/responses
+- Error codes and messages
 
 ### Migration Guide
 - How to convert existing individual operations to batch
 - Transaction integration patterns
 - Performance benefits quantification
+- Common pitfalls and solutions
 
 ---
 
 ## Risk Assessment
 
-### Low Risk
-- ✅ Transaction management (well-understood pattern)
-- ✅ Query trace (Microsoft provides clear API)
-- ✅ Batch operations for existing objects (extending existing code)
+### Low Risk ✅
+- Transaction management (well-understood pattern)
+- Batch operations for measures (extending existing code)
+- Dry-run mode validation
 
-### Medium Risk
-- ⚠️ CRUD operations for new object types (requires TOM knowledge)
-- ⚠️ Batch operations for relationships (complex validation)
-
-### High Risk
-- ❌ Cultures & Translations (enterprise feature, limited testing ability)
-- ❌ Perspectives (complex member management)
+### Medium Risk ⚠️
+- CRUD operations for new object types (requires TOM knowledge)
+- Batch operations for relationships (complex validation)
+- Transaction isolation edge cases
 
 ### Mitigation Strategies
 1. **Start with well-understood features** (Phase 1)
@@ -796,7 +747,7 @@ class TraceHandler:
 3. **Comprehensive validation** before execution
 4. **Rollback support** via transactions
 5. **Extensive testing** with real-world models
-6. **Defer high-risk features** to later phases
+6. **Incremental rollout** (Phase 1 → Phase 2)
 
 ---
 
@@ -805,19 +756,16 @@ class TraceHandler:
 ### Phase 1 Success Metrics
 - ✅ Transaction management operational
 - ✅ Batch operations support 5+ object types
-- ✅ Query tracing captures VertiPaq SE events
 - ✅ 95%+ test coverage for new code
 - ✅ Performance improvement: 3-5x faster than individual operations
+- ✅ Zero data corruption incidents
+- ✅ Documentation complete with examples
 
 ### Phase 2 Success Metrics
 - ✅ Full CRUD for tables, columns, relationships, roles
 - ✅ Comprehensive validation for all operations
 - ✅ User guide updated with examples
 - ✅ No production incidents
-
-### Phase 3 Success Metrics
-- ✅ Perspective and hierarchy management operational
-- ✅ User adoption of advanced features
 - ✅ Positive user feedback
 
 ---
@@ -843,7 +791,7 @@ class TraceHandler:
 ---
 
 ### Alternative 2: Minimal Integration
-**Approach**: Only add transaction management, skip other features
+**Approach**: Only add transaction management, skip batch operations
 
 **Pros**:
 - Minimal tool count increase (+1 tool)
@@ -880,52 +828,47 @@ class TraceHandler:
 
 ### Recommended Path Forward
 
-**PHASE 1 (CRITICAL - Week 1-2)**:
-- Add 3 tools: `batch_operations`, `manage_transactions`, `manage_query_trace`
+**PHASE 1 (CRITICAL - Week 1)**:
+- Add 2 tools: `batch_operations`, `manage_transactions`
 - Addresses primary gap: batch operations
 - Enables safe atomic operations via transactions
-- Adds performance monitoring via query trace
-- **Impact**: Major improvement, minimal tool bloat (+3 tools)
+- **Impact**: Major improvement, minimal tool bloat (+2 tools)
 
-**PHASE 2 (MEDIUM - Week 3-5)**:
+**PHASE 2 (MEDIUM - Week 2-3)**:
 - Add 4 tools: `manage_tables`, `manage_columns`, `manage_relationships`, `manage_security_roles`
 - Full CRUD for core objects
 - **Impact**: Complete modeling capabilities (+4 tools)
 
-**PHASE 3 (OPTIONAL - Week 6-8)**:
-- Add 2 tools: `manage_perspectives`, `manage_hierarchies`
-- Advanced object support
-- **Impact**: Enterprise features for power users (+2 tools)
-
-**TOTAL TOOL COUNT**: 45 → 54 tools (+9 tools, +20% increase) ✅ ACCEPTABLE
+**TOTAL TOOL COUNT**: 45 → 51 tools (+6 tools, +13% increase) ✅ EXCELLENT
 
 ### Key Benefits
 1. ✅ **Batch Operations**: 5x faster than individual operations
 2. ✅ **Transaction Safety**: Atomic changes, rollback on error
-3. ✅ **Performance Monitoring**: VertiPaq SE trace analysis
-4. ✅ **Complete CRUD**: Full modeling capabilities
-5. ✅ **Tool Count Control**: Unified tools vs 20+ individual tools
+3. ✅ **Complete CRUD**: Full modeling capabilities
+4. ✅ **Tool Count Control**: Unified batch tool vs 6+ individual tools
+5. ✅ **Backward Compatible**: Existing tools remain unchanged
 
 ### Implementation Effort
-- **Phase 1**: 7-10 days (critical path)
-- **Phase 2**: 8-12 days (optional)
-- **Phase 3**: 4-6 days (nice to have)
-- **Total**: 19-28 days (4-6 weeks)
+- **Phase 1**: 3-4 days (critical path)
+- **Phase 2**: 4-6 days (optional)
+- **Total**: 7-10 days (1.5-2 weeks)
 
 ### Return on Investment
 - **High value**: Batch operations + transactions (Phase 1)
 - **Medium value**: CRUD operations (Phase 2)
-- **Low value**: Advanced objects (Phase 3)
+- **Low risk**: Building on existing infrastructure
+- **High demand**: Primary user request addressed
 
 ---
 
 ## Next Steps
 
-1. **Review this plan** with stakeholders
-2. **Prioritize features** based on user needs
-3. **Start with Phase 1** (batch operations + transactions)
-4. **Gather user feedback** before proceeding to Phase 2
-5. **Iterate based on adoption** and feature requests
+1. **Approve Phase 1** - Batch operations + transactions
+2. **Begin implementation** - Transaction manager infrastructure
+3. **Develop batch operations tool** - Unified approach
+4. **Test thoroughly** - Unit, integration, performance tests
+5. **Update documentation** - User guide + API docs
+6. **Gather feedback** - Before proceeding to Phase 2
 
 ---
 
