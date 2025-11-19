@@ -582,7 +582,7 @@ class HybridAnalyzer:
 
                     logger.info(f"    ✓ Found row counts for {len(row_count_dict)} tables (total: {total_rows:,} rows) [BATCHED]")
                     if row_counts_data['largest_fact_tables']:
-                        logger.info(f"      Top 3 tables: {', '.join([f'{t['name']} ({t['rows']:,})' for t in row_counts_data['largest_fact_tables'][:3]])}")
+                        logger.info(f"      Top 3 tables: {', '.join(['{} ({:,})'.format(t['name'], t['rows']) for t in row_counts_data['largest_fact_tables'][:3]])}")
 
                 except Exception as e:
                     # Fallback to sequential counting if batched fails
