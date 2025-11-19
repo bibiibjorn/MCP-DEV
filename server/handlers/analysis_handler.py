@@ -8,7 +8,6 @@ from server.registry import ToolDefinition
 from core.infrastructure.connection_state import connection_state
 from core.validation.error_handler import ErrorHandler
 from core.utilities.business_impact import enrich_issue_with_impact, add_impact_summary
-from core.utilities.suggested_actions import add_suggested_actions
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +59,6 @@ def handle_comprehensive_analysis(args: Dict[str, Any]) -> Dict[str, Any]:
         except Exception as e:
             logger.error(f"Error enriching issues with business impact: {e}", exc_info=True)
             # Don't fail the analysis if enrichment fails
-
-    # Add suggested next actions
-    result = add_suggested_actions(result, 'comprehensive_analysis', args)
 
     return result
 

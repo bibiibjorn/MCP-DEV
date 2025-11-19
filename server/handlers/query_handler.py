@@ -8,7 +8,6 @@ from server.registry import ToolDefinition
 from core.infrastructure.connection_state import connection_state
 from core.validation.error_handler import ErrorHandler
 from core.infrastructure.limits_manager import get_limits
-from core.utilities.suggested_actions import add_suggested_actions
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +34,7 @@ def handle_run_dax(args: Dict[str, Any]) -> Dict[str, Any]:
         max_rows=top_n
     )
 
-    # Add suggested next actions
-    return add_suggested_actions(result, 'run_dax', args)
+    return result
 
 def handle_preview_table_data(args: Dict[str, Any]) -> Dict[str, Any]:
     """Preview table rows with EVALUATE"""
@@ -63,8 +61,7 @@ def handle_preview_table_data(args: Dict[str, Any]) -> Dict[str, Any]:
         max_rows=max_rows
     )
 
-    # Add suggested next actions
-    return add_suggested_actions(result, 'preview_table_data', {'table': table})
+    return result
 
 def handle_get_column_value_distribution(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get column value distribution (top N)"""
@@ -188,8 +185,7 @@ def handle_list_relationships(args: Dict[str, Any]) -> Dict[str, Any]:
         active_rows = [r for r in rows if r.get('IsActive') or r.get('[IsActive]')]
         result['rows'] = active_rows
 
-    # Add suggested next actions
-    return add_suggested_actions(result, 'list_relationships', args)
+    return result
 
 def register_query_handlers(registry):
     """Register all query execution handlers"""

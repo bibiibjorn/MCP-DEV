@@ -58,14 +58,10 @@ class ConnectionState:
         self._table_mapping_timestamp: Optional[float] = None
         self._table_mapping_ttl: int = config.get('performance.table_mapping_cache_ttl', 600)  # 10 minutes default
 
-        # Initialize intelligent analysis components
-        from core.infrastructure.context_tracker import ContextTracker
-        from core.intelligence.suggestion_engine import SuggestionEngine
-        from core.utilities.smart_defaults import SmartDefaults
-
-        self.context_tracker = ContextTracker()
-        self.suggestion_engine = SuggestionEngine()
-        self.smart_defaults = SmartDefaults(self)
+        # Intelligent analysis components (lazy loaded only when needed)
+        self.context_tracker = None
+        self.suggestion_engine = None
+        self.smart_defaults = None
     
     def is_connected(self) -> bool:
         """Check if currently connected to Power BI."""

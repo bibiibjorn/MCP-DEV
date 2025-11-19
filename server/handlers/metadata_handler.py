@@ -11,7 +11,6 @@ from core.validation.error_handler import ErrorHandler
 from core.infrastructure.limits_manager import get_limits
 from core.validation.constants import QueryLimits
 from core.infrastructure.query_executor import COLUMN_TYPE_CALCULATED
-from core.utilities.suggested_actions import add_suggested_actions
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +26,7 @@ def handle_list_tables(args: Dict[str, Any]) -> Dict[str, Any]:
     result = qe.execute_info_query("TABLES")
     result = paginate(result, args.get('page_size'), args.get('next_token'), ['rows'])
 
-    # Add suggested next actions
-    return add_suggested_actions(result, 'list_tables', args)
+    return result
 
 def handle_list_columns(args: Dict[str, Any]) -> Dict[str, Any]:
     """List columns, optionally filtered by table"""
@@ -49,8 +47,7 @@ def handle_list_columns(args: Dict[str, Any]) -> Dict[str, Any]:
     result = qe.execute_info_query("COLUMNS", table_name=table)
     result = paginate(result, args.get('page_size'), args.get('next_token'), ['rows'])
 
-    # Add suggested next actions
-    return add_suggested_actions(result, 'list_columns', args)
+    return result
 
 def handle_list_measures(args: Dict[str, Any]) -> Dict[str, Any]:
     """List measures, optionally filtered by table"""
@@ -71,8 +68,7 @@ def handle_list_measures(args: Dict[str, Any]) -> Dict[str, Any]:
     result = qe.execute_info_query("MEASURES", table_name=table, exclude_columns=['Expression'])
     result = paginate(result, args.get('page_size'), args.get('next_token'), ['rows'])
 
-    # Add suggested next actions
-    return add_suggested_actions(result, 'list_measures', args)
+    return result
 
 def handle_describe_table(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get comprehensive table description with columns, measures, relationships"""
@@ -108,8 +104,7 @@ def handle_describe_table(args: Dict[str, Any]) -> Dict[str, Any]:
 
     try:
         result = qe.describe_table(table, args)
-        # Add suggested next actions
-        return add_suggested_actions(result, 'describe_table', {'table': table})
+        return result
     except AttributeError as e:
         logger.error(f"AttributeError in describe_table: {e}", exc_info=True)
         return {
@@ -138,8 +133,7 @@ def handle_get_measure_details(args: Dict[str, Any]) -> Dict[str, Any]:
         return {'success': False, 'error': 'table and measure parameters required'}
 
     result = qe.get_measure_details_with_fallback(table, measure)
-    # Add suggested next actions
-    return add_suggested_actions(result, 'get_measure_details', {'table': table, 'measure': measure})
+    return result
 
 def handle_search_string(args: Dict[str, Any]) -> Dict[str, Any]:
     """Search in measure names and/or expressions"""
@@ -163,8 +157,7 @@ def handle_search_string(args: Dict[str, Any]) -> Dict[str, Any]:
     result = qe.search_measures_dax(search_text, search_in_expression, search_in_name)
     result = paginate(result, args.get('page_size'), args.get('next_token'), ['rows'])
 
-    # Add suggested next actions (use list_measures suggestions as they're similar)
-    return add_suggested_actions(result, 'list_measures', args)
+    return result
 
 def handle_list_calculated_columns(args: Dict[str, Any]) -> Dict[str, Any]:
     """List calculated columns"""
@@ -201,8 +194,7 @@ def handle_search_objects(args: Dict[str, Any]) -> Dict[str, Any]:
     result = qe.search_objects_dax(pattern, types)
     result = paginate(result, args.get('page_size'), args.get('next_token'), ['rows', 'items'])
 
-    # Add suggested next actions
-    return add_suggested_actions(result, 'search_objects', args)
+    return result
 
 def register_metadata_handlers(registry):
     """Register all metadata-related handlers"""

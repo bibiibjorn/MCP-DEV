@@ -7,8 +7,6 @@ import logging
 from server.registry import ToolDefinition
 from core.infrastructure.connection_state import connection_state
 from core.validation.error_handler import ErrorHandler
-from core.utilities.proactive_recommendations import get_connection_recommendations
-from core.utilities.suggested_actions import add_suggested_actions
 
 logger = logging.getLogger(__name__)
 
@@ -64,26 +62,6 @@ def handle_connect_to_powerbi(args: Dict[str, Any]) -> Dict[str, Any]:
             except Exception as cache_error:
                 logger.warning(f"Failed to pre-warm cache (non-critical): {cache_error}")
                 # Don't fail connection if cache pre-warming fails
-
-            # Add proactive recommendations based on model characteristics
-            try:
-                recommendations = get_connection_recommendations(connection_state)
-                if recommendations:
-                    result['recommendations'] = recommendations
-                    result['recommendation_count'] = len(recommendations)
-
-                    # Add a summary of high-priority recommendations
-                    high_priority = [r for r in recommendations if r.get('priority') == 'high']
-                    if high_priority:
-                        result['high_priority_count'] = len(high_priority)
-                        result['note'] = f"Found {len(high_priority)} high-priority recommendations - review recommended actions"
-
-            except Exception as rec_error:
-                logger.warning(f"Failed to generate recommendations: {rec_error}")
-                # Don't fail the connection if recommendations fail
-
-            # Add suggested next actions
-            result = add_suggested_actions(result, 'connect_to_powerbi', args)
 
         return result
 
