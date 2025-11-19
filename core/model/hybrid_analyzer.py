@@ -23,7 +23,7 @@ from .hybrid_structures import *
 from core.utilities.json_utils import dumps_json, HAS_ORJSON
 from core.pbip.pbip_dependency_engine import PbipDependencyEngine
 from core.pbip.pbip_report_analyzer import PbirReportAnalyzer
-from core.model.tmdl_model_analyzer import TmdlModelAnalyzer
+from core.pbip.pbip_model_analyzer import TmdlModelAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +66,14 @@ class HybridAnalyzer:
         # Connection for querying active model (for JSON analysis & sample data)
         self.query_executor = None
         self.has_connection = False
+
+        # Metadata cache to avoid redundant DMV queries
+        self._metadata_cache = {
+            "tables": None,
+            "columns": None,
+            "measures": None,
+            "relationships": None
+        }
 
         # Step 1: Try to establish connection (ALWAYS auto-detect if not explicitly provided)
         if connection_string or (server and database):
@@ -208,6 +216,44 @@ class HybridAnalyzer:
         if self.has_connection:
             self.sample_data_dir.mkdir(exist_ok=True)
 
+    def _fetch_all_metadata(self):
+        """
+        Fetch all metadata from live model once and cache it
+        (Optimization: Consolidate DMV queries to reduce network round-trips)
+        """
+        if not self.query_executor:
+            return
+
+        logger.info("  - Fetching all metadata from live model (consolidated queries)...")
+
+        # Fetch tables
+        if self._metadata_cache["tables"] is None:
+            tables_result = self.query_executor.validate_and_execute_dax("EVALUATE INFO.TABLES()", top_n=0, bypass_cache=True)
+            if tables_result.get('success'):
+                self._metadata_cache["tables"] = tables_result.get('rows', [])
+                logger.info(f"    ✓ Cached {len(self._metadata_cache['tables'])} tables")
+
+        # Fetch columns
+        if self._metadata_cache["columns"] is None:
+            columns_result = self.query_executor.validate_and_execute_dax("EVALUATE INFO.COLUMNS()", top_n=0, bypass_cache=True)
+            if columns_result.get('success'):
+                self._metadata_cache["columns"] = columns_result.get('rows', [])
+                logger.info(f"    ✓ Cached {len(self._metadata_cache['columns'])} columns")
+
+        # Fetch measures
+        if self._metadata_cache["measures"] is None:
+            measures_result = self.query_executor.validate_and_execute_dax("EVALUATE INFO.MEASURES()", top_n=0, bypass_cache=True)
+            if measures_result.get('success'):
+                self._metadata_cache["measures"] = measures_result.get('rows', [])
+                logger.info(f"    ✓ Cached {len(self._metadata_cache['measures'])} measures")
+
+        # Fetch relationships
+        if self._metadata_cache["relationships"] is None:
+            relationships_result = self.query_executor.validate_and_execute_dax("EVALUATE INFO.RELATIONSHIPS()", top_n=0, bypass_cache=True)
+            if relationships_result.get('success'):
+                self._metadata_cache["relationships"] = relationships_result.get('rows', [])
+                logger.info(f"    ✓ Cached {len(self._metadata_cache['relationships'])} relationships")
+
     def export(
         self,
         include_sample_data: bool = True,
@@ -245,6 +291,9 @@ class HybridAnalyzer:
             strategy=tmdl_strategy
         )
 
+        # Store tmdl_dir for use in _get_physical_columns
+        self.tmdl_dir = tmdl_path
+
         # Step 2: Generate PBIP source info
         logger.info("Step 2: Generating PBIP source info...")
         pbip_metadata = self.pbip_reader.get_pbip_metadata()
@@ -268,8 +317,13 @@ class HybridAnalyzer:
             pbip_source_info.to_dict()
         )
 
-        # Step 3: Generate analysis files from active model (if connected)
-        logger.info("Step 3: Generating analysis files...")
+        # Step 3: Fetch all metadata once (if connected) - OPTIMIZATION
+        if self.has_connection:
+            logger.info("Step 3a: Fetching metadata from live model (consolidated queries)...")
+            self._fetch_all_metadata()
+
+        # Step 3b: Generate analysis files from active model (if connected)
+        logger.info("Step 3b: Generating analysis files...")
 
         # Discover structure from PBIP
         tables = self.pbip_reader.discover_tables()
@@ -445,25 +499,22 @@ class HybridAnalyzer:
         row_counts_data = {"by_table": [], "total_rows": 0, "largest_fact_tables": []}
 
         if self.query_executor:
-            # EXACT CODE FROM test_metadata_extraction (tool 015) - VERIFIED WORKING
+            # Use cached metadata (OPTIMIZATION: Avoid redundant queries)
 
-            # Step 1: Get table names from live model using INFO.TABLES() - most reliable!
-            logger.info("  - Extracting tables from live model...")
-            tables_query = "EVALUATE INFO.TABLES()"
-            tables_result = self.query_executor.validate_and_execute_dax(tables_query, top_n=0, bypass_cache=True)
-
+            # Step 1: Get table names from cached metadata
+            logger.info("  - Extracting tables from cached metadata...")
             table_names = []
-            if tables_result.get('success'):
-                table_rows = tables_result.get('rows', [])
+            if self._metadata_cache["tables"]:
+                table_rows = self._metadata_cache["tables"]
                 table_names = [row.get('[Name]', row.get('Name', '')) for row in table_rows if row.get('[Name]') or row.get('Name')]
-                logger.info(f"    ✓ Found {len(table_names)} tables")
+                logger.info(f"    ✓ Found {len(table_names)} tables (from cache)")
             else:
-                logger.warning(f"    ✗ Could not extract tables: {tables_result.get('error')}")
+                logger.warning(f"    ✗ No cached tables available")
                 # Fallback to TMDL table names
                 table_names = tables
 
-            # Step 2: Get row counts using COUNTROWS for each table (most reliable method)
-            logger.info("  - Extracting row counts (using COUNTROWS per table)...")
+            # Step 2: Get row counts using COUNTROWS for each table (SEQUENTIAL - ADOMD not thread-safe)
+            logger.info(f"  - Extracting row counts (using COUNTROWS per table)...")
 
             row_count_dict = {}
             total_rows = 0
@@ -523,32 +574,28 @@ class HybridAnalyzer:
             else:
                 logger.warning("    ✗ No tables found, skipping row count extraction")
 
-            # Get measures
-            logger.info("  - Extracting measures...")
-            measures_result = self.query_executor.validate_and_execute_dax("EVALUATE INFO.MEASURES()", top_n=0, bypass_cache=True)
-            if measures_result.get('success'):
-                total_measures = len(measures_result.get('rows', []))
-                logger.info(f"    ✓ Found {total_measures} measures")
+            # Get measures from cache
+            logger.info("  - Extracting measures from cached metadata...")
+            if self._metadata_cache["measures"]:
+                total_measures = len(self._metadata_cache["measures"])
+                logger.info(f"    ✓ Found {total_measures} measures (from cache)")
             else:
                 total_measures = 0
-                logger.warning("    ✗ Could not extract measures")
+                logger.warning("    ✗ No cached measures available")
 
-            # Get columns
-            logger.info("  - Extracting columns...")
-            columns_result = self.query_executor.validate_and_execute_dax("EVALUATE INFO.COLUMNS()", top_n=0, bypass_cache=True)
-            if columns_result.get('success'):
-                total_columns = len(columns_result.get('rows', []))
-                logger.info(f"    ✓ Found {total_columns} columns")
+            # Get columns from cache
+            logger.info("  - Extracting columns from cached metadata...")
+            if self._metadata_cache["columns"]:
+                total_columns = len(self._metadata_cache["columns"])
+                logger.info(f"    ✓ Found {total_columns} columns (from cache)")
             else:
                 total_columns = 0
-                logger.warning("    ✗ Could not extract columns")
+                logger.warning("    ✗ No cached columns available")
 
-            # Get relationships
-            logger.info("  - Extracting relationships...")
-            relationships_query = "EVALUATE INFO.RELATIONSHIPS()"
-            relationships_result = self.query_executor.validate_and_execute_dax(relationships_query, top_n=0, bypass_cache=True)
-            if relationships_result.get('success'):
-                rel_rows = relationships_result.get('rows', [])
+            # Get relationships from cache
+            logger.info("  - Extracting relationships from cached metadata...")
+            if self._metadata_cache["relationships"]:
+                rel_rows = self._metadata_cache["relationships"]
                 total_relationships = len(rel_rows)
                 # Extract IsActive and CrossFilterDirection with column name variations
                 active_relationships = 0
@@ -572,10 +619,10 @@ class HybridAnalyzer:
                     if str(cross_filter).lower() == 'both':
                         bidirectional_relationships += 1
 
-                logger.info(f"    ✓ Found {total_relationships} relationships ({active_relationships} active)")
+                logger.info(f"    ✓ Found {total_relationships} relationships ({active_relationships} active, from cache)")
             else:
                 total_relationships = 0
-                logger.warning(f"    ✗ Could not extract relationships: {relationships_result.get('error')}")
+                logger.warning(f"    ✗ No cached relationships available")
 
         statistics = StatisticsSummary(
             tables={
@@ -635,24 +682,22 @@ class HybridAnalyzer:
         """Generate measures.json structure with all measure details"""
         all_measures = []
 
-        if self.query_executor:
-            # Get all measures
-            logger.info("  - Extracting measures for measures.json...")
-            measures_result = self.query_executor.validate_and_execute_dax("EVALUATE INFO.MEASURES()", top_n=0, bypass_cache=True)
-            if measures_result.get('success'):
-                for row in measures_result.get('rows', []):
-                    measure_name = row.get('[Name]', row.get('Name', ''))
-                    table_name = row.get('[TableName]', row.get('TableName', ''))
-                    display_folder = row.get('[DisplayFolder]', row.get('DisplayFolder', ''))
+        if self.query_executor and self._metadata_cache["measures"]:
+            # Use cached measures (OPTIMIZATION)
+            logger.info("  - Extracting measures for measures.json (from cache)...")
+            for row in self._metadata_cache["measures"]:
+                measure_name = row.get('[Name]', row.get('Name', ''))
+                table_name = row.get('[TableName]', row.get('TableName', ''))
+                display_folder = row.get('[DisplayFolder]', row.get('DisplayFolder', ''))
 
-                    measure_info = MeasureInfo(
-                        name=measure_name,
-                        table=table_name,
-                        display_folder=display_folder if display_folder else None,
-                        tmdl_path=f"tmdl/tables/{table_name}.tmdl"
-                    )
-                    all_measures.append(measure_info)
-                logger.info(f"    ✓ Extracted {len(all_measures)} measures")
+                measure_info = MeasureInfo(
+                    name=measure_name,
+                    table=table_name,
+                    display_folder=display_folder if display_folder else None,
+                    tmdl_path=f"tmdl/tables/{table_name}.tmdl"
+                )
+                all_measures.append(measure_info)
+            logger.info(f"    ✓ Extracted {len(all_measures)} measures")
 
         return Measures(
             measures=all_measures,
@@ -663,38 +708,36 @@ class HybridAnalyzer:
         """Generate catalog.json structure with table and column details (measures moved to separate file)"""
         table_infos = []
 
-        # Extract columns from live model if connected
+        # Extract columns from cached metadata (OPTIMIZATION)
         columns_by_table = {}
 
-        if self.query_executor:
-            # Get all columns
-            logger.info("  - Extracting columns for catalog...")
-            columns_result = self.query_executor.validate_and_execute_dax("EVALUATE INFO.COLUMNS()", top_n=0, bypass_cache=True)
-            if columns_result.get('success'):
-                for row in columns_result.get('rows', []):
-                    table_name = row.get('[TableName]', row.get('TableName', ''))
-                    column_name = row.get('[Name]', row.get('Name', ''))
-                    data_type = row.get('[DataType]', row.get('DataType', 'Unknown'))
-                    is_hidden = row.get('[IsHidden]', row.get('IsHidden', False))
-                    is_key = row.get('[IsKey]', row.get('IsKey', False))
+        if self.query_executor and self._metadata_cache["columns"]:
+            # Use cached columns
+            logger.info("  - Extracting columns for catalog (from cache)...")
+            for row in self._metadata_cache["columns"]:
+                table_name = row.get('[TableName]', row.get('TableName', ''))
+                column_name = row.get('[Name]', row.get('Name', ''))
+                data_type = row.get('[DataType]', row.get('DataType', 'Unknown'))
+                is_hidden = row.get('[IsHidden]', row.get('IsHidden', False))
+                is_key = row.get('[IsKey]', row.get('IsKey', False))
 
-                    # Convert string boolean to bool
-                    if isinstance(is_hidden, str):
-                        is_hidden = is_hidden.lower() == 'true'
-                    if isinstance(is_key, str):
-                        is_key = is_key.lower() == 'true'
+                # Convert string boolean to bool
+                if isinstance(is_hidden, str):
+                    is_hidden = is_hidden.lower() == 'true'
+                if isinstance(is_key, str):
+                    is_key = is_key.lower() == 'true'
 
-                    if table_name not in columns_by_table:
-                        columns_by_table[table_name] = []
+                if table_name not in columns_by_table:
+                    columns_by_table[table_name] = []
 
-                    column_info = ColumnInfo(
-                        name=column_name,
-                        data_type=data_type,
-                        is_key=is_key,
-                        is_hidden=is_hidden
-                    )
-                    columns_by_table[table_name].append(column_info)
-                logger.info(f"    ✓ Extracted {sum(len(cols) for cols in columns_by_table.values())} columns across {len(columns_by_table)} tables")
+                column_info = ColumnInfo(
+                    name=column_name,
+                    data_type=data_type,
+                    is_key=is_key,
+                    is_hidden=is_hidden
+                )
+                columns_by_table[table_name].append(column_info)
+            logger.info(f"    ✓ Extracted {sum(len(cols) for cols in columns_by_table.values())} columns across {len(columns_by_table)} tables")
 
         # Build table infos
         for table in tables:
@@ -745,23 +788,30 @@ class HybridAnalyzer:
         try:
             # Parse TMDL model data
             logger.info("    - Parsing TMDL model...")
-            tmdl_analyzer = TmdlModelAnalyzer(str(self.pbip_reader.definition_dir))
-            model_data = tmdl_analyzer.analyze()
+            tmdl_analyzer = TmdlModelAnalyzer()
+            model_data = tmdl_analyzer.analyze_model(str(self.pbip_reader.pbip_path))
 
             # Parse report data if PBIR exists
             report_data = None
-            pbir_path = self.pbip_reader.definition_dir.parent.parent / "report.pbir"
+            # Look for .Report folder next to .SemanticModel folder
+            semantic_model_path = self.pbip_reader.pbip_path  # e.g., "Model.SemanticModel"
+            report_folder_name = semantic_model_path.name.replace('.SemanticModel', '.Report')
+            pbir_path = semantic_model_path.parent / report_folder_name / "definition.pbir"
+
             if pbir_path.exists():
-                logger.info("    - Parsing PBIR report...")
+                logger.info(f"    - Parsing PBIR report from {report_folder_name}...")
                 try:
-                    report_analyzer = PbirReportAnalyzer(str(pbir_path))
-                    report_data = report_analyzer.analyze()
+                    report_analyzer = PbirReportAnalyzer()
+                    # Pass the .Report folder path (parent of definition.pbir file)
+                    report_folder_path = pbir_path.parent
+                    report_data = report_analyzer.analyze_report(str(report_folder_path))
                     logger.info(f"      ✓ Found {len(report_data.get('pages', []))} pages")
                 except Exception as e:
                     logger.warning(f"      ✗ Could not parse report: {e}")
+                    logger.debug(f"      Report parsing error details:", exc_info=True)
                     report_data = None
             else:
-                logger.info("    - No report.pbir found, skipping visual dependencies")
+                logger.info(f"    - No report.pbir found at {pbir_path}, skipping visual dependencies")
 
             # Store report data for later use
             self.report = report_data
@@ -1007,63 +1057,19 @@ class HybridAnalyzer:
         """Generate relationships.json structure with relationship details from both live model and TMDL"""
         relationship_infos = []
 
-        if self.query_executor:
-            # Get relationships from live model using INFO.RELATIONSHIPS()
-            logger.info("  - Extracting relationships from live model...")
-            relationships_result = self.query_executor.validate_and_execute_dax(
-                "EVALUATE INFO.RELATIONSHIPS()",
-                top_n=0,
-                bypass_cache=True
-            )
+        # DISABLED: Cached relationships - column names don't match INFO.RELATIONSHIPS() format
+        # Always use TMDL for relationships (more reliable)
 
-            if relationships_result.get('success'):
-                for row in relationships_result.get('rows', []):
-                    # Extract relationship info with multiple column name variations
-                    name = row.get('[Name]', row.get('Name', ''))
-                    from_table = row.get('[FromTable]', row.get('FromTable', row.get('[From Table]', row.get('From Table', ''))))
-                    from_column = row.get('[FromColumn]', row.get('FromColumn', row.get('[From Column]', row.get('From Column', ''))))
-                    to_table = row.get('[ToTable]', row.get('ToTable', row.get('[To Table]', row.get('To Table', ''))))
-                    to_column = row.get('[ToColumn]', row.get('ToColumn', row.get('[To Column]', row.get('To Column', ''))))
-                    is_active = row.get('[IsActive]', row.get('IsActive', True))
-                    cross_filter = row.get('[CrossFilterDirection]', row.get('CrossFilterDirection', 'OneDirection'))
-                    cardinality = row.get('[Cardinality]', row.get('Cardinality', 'ManyToOne'))
-                    security_filtering = row.get('[SecurityFilteringBehavior]', row.get('SecurityFilteringBehavior', 'OneDirection'))
-                    referential_integrity = row.get('[ReliesOnReferentialIntegrity]', row.get('ReliesOnReferentialIntegrity', False))
-
-                    # Convert string booleans to bool
-                    if isinstance(is_active, str):
-                        is_active = is_active.lower() == 'true'
-                    if isinstance(referential_integrity, str):
-                        referential_integrity = referential_integrity.lower() == 'true'
-
-                    rel_info = RelationshipInfo(
-                        name=name,
-                        from_table=from_table,
-                        from_column=from_column,
-                        to_table=to_table,
-                        to_column=to_column,
-                        is_active=is_active,
-                        cross_filter_direction=cross_filter,
-                        cardinality=cardinality,
-                        security_filtering_behavior=security_filtering,
-                        relies_on_referential_integrity=referential_integrity
-                    )
-                    relationship_infos.append(rel_info)
-
-                logger.info(f"    ✓ Extracted {len(relationship_infos)} relationships from live model")
-            else:
-                logger.warning(f"    ✗ Could not extract relationships from live model: {relationships_result.get('error')}")
-
-        # If no connection or failed, try to get from TMDL
-        if not relationship_infos and self.pbip_reader:
+        # Get relationships from TMDL
+        if self.pbip_reader:
             logger.info("  - Extracting relationships from TMDL...")
             try:
                 from core.model.tmdl_parser import TMDLParser
 
                 # Check for relationships.tmdl in multiple locations
                 rel_paths = [
-                    self.pbip_reader.definition_dir / "relationships.tmdl",
-                    self.pbip_reader.definition_dir.parent / "relationships.tmdl"
+                    self.pbip_reader.definition_path / "relationships.tmdl",
+                    self.pbip_reader.definition_path.parent / "relationships.tmdl"
                 ]
 
                 for rel_path in rel_paths:
@@ -1197,92 +1203,106 @@ class HybridAnalyzer:
 
     def _generate_report_dependencies(self, dependency_engine_result: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Generate report_dependencies.json with visual-level dependencies
+        Generate report_dependencies.json with SIMPLIFIED usage summary
+        (Shows if columns/measures are used in visuals/pages/field parameters - no detailed visual info)
 
         Args:
             dependency_engine_result: Result from PbipDependencyEngine
 
         Returns:
-            Dictionary with report dependency information
+            Dictionary with simplified usage summary for columns and measures
         """
         visual_dependencies = dependency_engine_result.get("visual_dependencies", {})
         page_dependencies = dependency_engine_result.get("page_dependencies", {})
 
-        # Build visual-level dependencies
-        visuals_by_page = {}
-        all_visuals = []
+        # Build simplified usage tracking (count how many times each field is used)
+        measure_usage = {}
+        column_usage = {}
 
+        # Track usage from visuals
         for visual_key, visual_data in visual_dependencies.items():
-            page = visual_data.get("page", "Unknown")
-            visual_id = visual_data.get("visual_id", "")
-            visual_type = visual_data.get("visual_type", "")
             measures = visual_data.get("measures", [])
             columns = visual_data.get("columns", [])
-            tables = visual_data.get("tables", [])
 
-            visual_detail = {
-                "visual_id": visual_id,
-                "visual_key": visual_key,
-                "visual_type": visual_type,
-                "page": page,
-                "measures_used": measures,
-                "columns_used": columns,
-                "tables_used": tables,
-                "total_fields": len(measures) + len(columns)
-            }
+            for measure in measures:
+                if measure not in measure_usage:
+                    measure_usage[measure] = {
+                        "used_in_visuals": 0,
+                        "used_in_page_filters": 0,
+                        "used_in_field_parameters": 0
+                    }
+                measure_usage[measure]["used_in_visuals"] += 1
 
-            # Group by page
-            if page not in visuals_by_page:
-                visuals_by_page[page] = []
-            visuals_by_page[page].append(visual_detail)
-            all_visuals.append(visual_detail)
+            for column in columns:
+                if column not in column_usage:
+                    column_usage[column] = {
+                        "used_in_visuals": 0,
+                        "used_in_page_filters": 0,
+                        "used_in_field_parameters": 0
+                    }
+                column_usage[column]["used_in_visuals"] += 1
 
-        # Build page-level summary
-        page_summaries = {}
+        # Track usage from page filters
         for page, page_data in page_dependencies.items():
-            page_summaries[page] = {
-                "measures": page_data.get("measures", []),
-                "columns": page_data.get("columns", []),
-                "tables": page_data.get("tables", []),
-                "visual_count": page_data.get("visual_count", 0),
-                "filter_count": page_data.get("filter_count", 0),
-                "total_measures": len(page_data.get("measures", [])),
-                "total_columns": len(page_data.get("columns", [])),
-                "total_tables": len(page_data.get("tables", []))
-            }
+            page_measures = page_data.get("measures", [])
+            page_columns = page_data.get("columns", [])
+
+            for measure in page_measures:
+                if measure not in measure_usage:
+                    measure_usage[measure] = {
+                        "used_in_visuals": 0,
+                        "used_in_page_filters": 0,
+                        "used_in_field_parameters": 0
+                    }
+                measure_usage[measure]["used_in_page_filters"] += 1
+
+            for column in page_columns:
+                if column not in column_usage:
+                    column_usage[column] = {
+                        "used_in_visuals": 0,
+                        "used_in_page_filters": 0,
+                        "used_in_field_parameters": 0
+                    }
+                column_usage[column]["used_in_page_filters"] += 1
 
         # Build summary
+        total_measures_used = len(measure_usage)
+        total_columns_used = len(column_usage)
+        measures_in_visuals_only = sum(1 for m in measure_usage.values() if m["used_in_visuals"] > 0 and m["used_in_page_filters"] == 0)
+        columns_in_visuals_only = sum(1 for c in column_usage.values() if c["used_in_visuals"] > 0 and c["used_in_page_filters"] == 0)
+
         summary = {
             "total_pages": len(page_dependencies),
             "total_visuals": len(visual_dependencies),
-            "visuals_per_page": round(len(visual_dependencies) / len(page_dependencies), 2) if page_dependencies else 0,
-            "top_pages_by_visual_count": sorted(
-                [{"page": page, "visual_count": data["visual_count"]}
-                 for page, data in page_summaries.items()],
-                key=lambda x: x["visual_count"],
-                reverse=True
-            )[:10],
-            "total_measures_in_visuals": dependency_engine_result['summary'].get('total_measures', 0),
-            "total_columns_in_visuals": dependency_engine_result['summary'].get('total_columns', 0)
+            "total_measures_used": total_measures_used,
+            "total_columns_used": total_columns_used,
+            "measures_in_visuals_only": measures_in_visuals_only,
+            "measures_in_page_filters": sum(1 for m in measure_usage.values() if m["used_in_page_filters"] > 0),
+            "columns_in_visuals_only": columns_in_visuals_only,
+            "columns_in_page_filters": sum(1 for c in column_usage.values() if c["used_in_page_filters"] > 0)
         }
 
         result = {
             "summary": summary,
-            "visual_dependencies": all_visuals,
-            "visuals_by_page": visuals_by_page,
-            "page_summaries": page_summaries,
+            "measure_usage": measure_usage,
+            "column_usage": column_usage,
             "analysis_notes": {
+                "format": "SIMPLIFIED - Shows usage summary only (not detailed visual info)",
                 "detection_method": "Comprehensive analysis via PbipDependencyEngine",
                 "data_sources": [
                     "Visual field mappings from report.pbir",
-                    "Page-level filters and slicers",
-                    "Aggregated page-level dependencies"
+                    "Page-level filters and slicers"
                 ],
-                "recommendation": "Use this data to understand field usage patterns and identify opportunities for optimization"
+                "usage_counts": {
+                    "used_in_visuals": "Number of visuals where this field is used",
+                    "used_in_page_filters": "Number of pages where this field is in filters",
+                    "used_in_field_parameters": "Number of field parameters using this field"
+                },
+                "recommendation": "Use this summary to quickly identify which columns/measures are used in reports"
             }
         }
 
-        logger.info(f"      ✓ Analyzed {len(all_visuals)} visuals across {len(page_dependencies)} pages")
+        logger.info(f"      ✓ Analyzed usage: {total_measures_used} measures, {total_columns_used} columns across {len(visual_dependencies)} visuals")
 
         return result
 
@@ -1410,6 +1430,29 @@ class HybridAnalyzer:
                         logger.debug(f"  [{idx}/{len(tables)}] - SELECTCOLUMNS failed, trying simple EVALUATE...")
                         dax_query = f"EVALUATE '{escaped_table}'"
                         result = self.query_executor.validate_and_execute_dax(dax_query, top_n=sample_rows, bypass_cache=True)
+
+                    # If calculated column error, exclude calculated columns and query only physical columns
+                    if not result.get('success') and 'calculated column' in error_msg:
+                        logger.info(f"  [{idx}/{len(tables)}] - Calculated column error in '{table}', retrying with physical columns only...")
+
+                        # Get physical columns (if not already retrieved)
+                        if not physical_columns:
+                            physical_columns = self._get_physical_columns(table)
+
+                        if physical_columns:
+                            # Build SELECTCOLUMNS with ONLY physical columns (no calculated columns)
+                            # Limit to first 100 columns to avoid query too long
+                            columns_to_query = physical_columns[:100]
+                            column_selects = ", ".join([f'"{col}", [{col}]' for col in columns_to_query])
+                            dax_query = f"EVALUATE SELECTCOLUMNS('{escaped_table}', {column_selects})"
+                            result = self.query_executor.validate_and_execute_dax(dax_query, top_n=sample_rows, bypass_cache=True)
+
+                            # If SELECTCOLUMNS still fails, try with fewer rows
+                            if not result.get('success'):
+                                logger.info(f"  [{idx}/{len(tables)}] - Still failing, retrying with 100 rows...")
+                                result = self.query_executor.validate_and_execute_dax(dax_query, top_n=100, bypass_cache=True)
+                        else:
+                            logger.warning(f"  [{idx}/{len(tables)}] - Could not determine physical columns for '{table}'")
 
                     if not result.get('success'):
                         logger.warning(f"  [{idx}/{len(tables)}] ✗ Failed to extract from '{table}': {result.get('error')}")
@@ -1666,15 +1709,36 @@ class HybridAnalyzer:
                 part_num += 1
 
         elif file_type == "report_dependencies":
-            # Split by visual dependencies
-            visuals = data.get("visual_dependencies", [])
-            items_per_part = max(1, len(visuals) // ((total_size // MAX_FILE_SIZE) + 1))
+            # Split by measure/column usage entries
+            measure_usage = data.get("measure_usage", {})
+            column_usage = data.get("column_usage", {})
 
-            for i in range(0, len(visuals), items_per_part):
+            # Combine both for splitting
+            total_entries = len(measure_usage) + len(column_usage)
+            items_per_part = max(10, total_entries // ((total_size // MAX_FILE_SIZE) + 1))
+
+            measure_items = list(measure_usage.items())
+            column_items = list(column_usage.items())
+
+            # Split measures first, then columns
+            all_items = measure_items + column_items
+
+            for i in range(0, len(all_items), items_per_part):
+                batch = all_items[i:i + items_per_part]
+
+                # Separate back into measures and columns
+                part_measures = {}
+                part_columns = {}
+
+                for key, value in batch:
+                    if key in measure_usage:
+                        part_measures[key] = value
+                    else:
+                        part_columns[key] = value
+
                 part_data = {
-                    "visual_dependencies": visuals[i:i + items_per_part],
-                    "visuals_by_page": data.get("visuals_by_page", {}) if i == 0 else {},
-                    "page_summaries": data.get("page_summaries", {}) if i == 0 else {},
+                    "measure_usage": part_measures,
+                    "column_usage": part_columns,
                     "summary": data.get("summary", {}) if i == 0 else {},
                     "analysis_notes": data.get("analysis_notes", {}) if i == 0 else {}
                 }
@@ -1687,7 +1751,7 @@ class HybridAnalyzer:
                     part_number=part_num,
                     filename=part_path.name,
                     size_bytes=part_size,
-                    content_range=f"visual_dependencies[{i}:{i+items_per_part}]"
+                    content_range=f"entries[{i}:{i+items_per_part}]"
                 ))
                 part_num += 1
 
@@ -1696,7 +1760,7 @@ class HybridAnalyzer:
             "catalog": "table_boundary",
             "measures": "measure_boundary",
             "dependencies": "measure_boundary",
-            "report_dependencies": "visual_boundary"
+            "report_dependencies": "usage_entry_boundary"
         }
 
         manifest = FileManifest(

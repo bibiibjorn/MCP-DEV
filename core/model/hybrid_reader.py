@@ -272,6 +272,101 @@ class HybridReader:
 
         return self._cache["relationships"]
 
+    def read_unused_columns(self) -> Dict[str, Any]:
+        """
+        Read unused_columns.json
+
+        Returns:
+            Unused columns dictionary with 'summary', 'unused_columns', and 'unused_by_table'
+        """
+        if "unused_columns" not in self._cache:
+            if self.format_type == "test_metadata":
+                # Not available in test_metadata format
+                self._cache["unused_columns"] = {
+                    "summary": {
+                        "total_unused_columns": 0,
+                        "total_columns": 0,
+                        "unused_percentage": 0.0
+                    },
+                    "unused_columns": [],
+                    "unused_by_table": {},
+                    "note": "Unused columns not available in test_metadata format"
+                }
+            else:
+                # Full hybrid analysis format
+                unused_columns_path = self.analysis_dir / "unused_columns.json"
+
+                if unused_columns_path.exists():
+                    # Read from JSON file
+                    self._cache["unused_columns"] = self._read_json(unused_columns_path)
+                    logger.debug(f"Loaded unused_columns from {unused_columns_path}")
+                else:
+                    # File doesn't exist
+                    logger.warning("unused_columns.json not found - may not have been generated during export")
+                    self._cache["unused_columns"] = {
+                        "summary": {
+                            "total_unused_columns": 0,
+                            "total_columns": 0,
+                            "unused_percentage": 0.0
+                        },
+                        "unused_columns": [],
+                        "unused_by_table": {},
+                        "note": "unused_columns.json not found - ensure export was run with dependency analysis enabled"
+                    }
+
+        return self._cache["unused_columns"]
+
+    def read_report_dependencies(self) -> Dict[str, Any]:
+        """
+        Read report_dependencies.json (visual-level dependencies)
+
+        Returns:
+            Report dependencies dictionary with 'summary', 'visual_dependencies', 'visuals_by_page', and 'page_summaries'
+        """
+        if "report_dependencies" not in self._cache:
+            if self.format_type == "test_metadata":
+                # Not available in test_metadata format
+                self._cache["report_dependencies"] = {
+                    "summary": {
+                        "total_pages": 0,
+                        "total_visuals": 0
+                    },
+                    "visual_dependencies": [],
+                    "visuals_by_page": {},
+                    "page_summaries": {},
+                    "note": "Report dependencies not available in test_metadata format"
+                }
+            else:
+                # Full hybrid analysis format
+                report_deps_path = self.analysis_dir / "report_dependencies.json"
+
+                if report_deps_path.exists():
+                    # Check if it's a multipart file
+                    manifest_path = self.analysis_dir / "report_dependencies.manifest.json"
+                    if manifest_path.exists():
+                        # Read and reassemble multipart file
+                        self._cache["report_dependencies"] = self._reassemble_multipart("report_dependencies")
+                        logger.debug(f"Loaded report_dependencies from multipart files")
+                    else:
+                        # Single file
+                        self._cache["report_dependencies"] = self._read_json(report_deps_path)
+                        logger.debug(f"Loaded report_dependencies from {report_deps_path}")
+                else:
+                    # File doesn't exist
+                    logger.warning("report_dependencies.json not found - may not have been generated during export")
+                    self._cache["report_dependencies"] = {
+                        "summary": {
+                            "total_pages": 0,
+                            "total_visuals": 0
+                        },
+                        "visual_dependencies": [],
+                        "visuals_by_page": {},
+                        "page_summaries": {},
+                        "note": "report_dependencies.json not found - ensure export was run with a report.pbir file"
+                    }
+
+        return self._cache["report_dependencies"]
+
     def read_tmdl_file(self, relative_path: str) -> str:
         """
         Read TMDL file content
@@ -600,6 +695,8 @@ class HybridReader:
             return self._merge_measures_parts(parts_data)
         elif file_type == "dependencies":
             return self._merge_dependencies_parts(parts_data)
+        elif file_type == "report_dependencies":
+            return self._merge_report_dependencies_parts(parts_data)
         else:
             raise ValueError(f"Unknown file type: {file_type}")
 
@@ -657,6 +754,30 @@ class HybridReader:
                 merged["tables"] = part["tables"]
             if part.get("summary"):
                 merged["summary"] = part["summary"]
+
+        return merged
+
+    def _merge_report_dependencies_parts(self, parts: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Merge report_dependencies parts into single structure"""
+        merged = {
+            "visual_dependencies": [],
+            "visuals_by_page": {},
+            "page_summaries": {},
+            "summary": {},
+            "analysis_notes": {}
+        }
+
+        for part in parts:
+            merged["visual_dependencies"].extend(part.get("visual_dependencies", []))
+            # Only take visuals_by_page, page_summaries, summary, analysis_notes from first part
+            if part.get("visuals_by_page"):
+                merged["visuals_by_page"] = part["visuals_by_page"]
+            if part.get("page_summaries"):
+                merged["page_summaries"] = part["page_summaries"]
+            if part.get("summary"):
+                merged["summary"] = part["summary"]
+            if part.get("analysis_notes"):
+                merged["analysis_notes"] = part["analysis_notes"]
 
         return merged
 

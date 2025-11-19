@@ -537,7 +537,7 @@ TOOL_SCHEMAS = {
         "properties": {
             "pbip_folder_path": {
                 "type": "string",
-                "description": "Path to .SemanticModel folder (for TMDL files)"
+                "description": "Path to .SemanticModel folder or parent PBIP folder (will auto-detect .SemanticModel folder if parent folder is provided)"
             },
             "output_dir": {
                 "type": "string",
@@ -606,12 +606,12 @@ TOOL_SCHEMAS = {
         "properties": {
             "analysis_path": {
                 "type": "string",
-                "description": "Path to exported analysis folder - the ONLY parameter you need to provide. The tool automatically reads all TMDL, JSON, and parquet files from subdirectories. DO NOT manually list directories or read files!"
+                "description": "⚠️ IMPORTANT: Path to exported analysis folder - provide ONLY THIS PATH. This MCP server tool automatically reads ALL TMDL, JSON, and parquet files internally. 🚫 NEVER use Read, Glob, or filesystem tools - the server handles all file operations! Example: 'c:\\path\\to\\Model_analysis'"
             },
             "operation": {
                 "type": "string",
-                "description": "Operation to perform (ALL operations automatically read files internally - NO manual file operations needed): 'read_metadata' (reads metadata.json + parses TMDL for relationships), 'find_objects' (searches tables/measures in TMDL), 'get_object_definition' (parses DAX from TMDL files), 'analyze_dependencies' (auto-parses TMDL dependencies), 'analyze_performance' (auto-reads all TMDL measures), 'get_sample_data' (auto-reads parquet files), or 'smart_analyze' (natural language)",
-                "enum": ["read_metadata", "find_objects", "get_object_definition", "analyze_dependencies", "analyze_performance", "get_sample_data", "smart_analyze"],
+                "description": "🔧 FULLY AUTOMATED - Operation to perform (server automatically reads all files): 'read_metadata' (parses TMDL + JSON internally), 'find_objects' (searches TMDL files), 'get_object_definition' (extracts DAX from TMDL), 'analyze_dependencies' (parses dependencies), 'analyze_performance' (scans all measures), 'get_sample_data' (reads parquet), 'get_unused_columns' (reads JSON), 'get_report_dependencies' (reads JSON), or 'smart_analyze' (NL query). 🚫 NO file reading required from Claude!",
+                "enum": ["read_metadata", "find_objects", "get_object_definition", "analyze_dependencies", "analyze_performance", "get_sample_data", "get_unused_columns", "get_report_dependencies", "smart_analyze"],
                 "default": "read_metadata"
             },
             "intent": {

@@ -62,7 +62,7 @@ def handle_export_hybrid_analysis(
         Export result dictionary
     """
     try:
-        # Validate PBIP folder
+        # Validate and auto-detect PBIP folder
         pbip_path = Path(pbip_folder_path)
         if not pbip_path.exists():
             return {
@@ -70,6 +70,35 @@ def handle_export_hybrid_analysis(
                 'error': f'PBIP folder not found: {pbip_folder_path}',
                 'error_type': 'not_found'
             }
+
+        # Auto-detect .SemanticModel folder if parent folder is provided
+        if not pbip_path.name.endswith('.SemanticModel'):
+            # Search for .SemanticModel folders
+            semantic_folders = list(pbip_path.rglob('*.SemanticModel'))
+
+            if len(semantic_folders) == 0:
+                return {
+                    'success': False,
+                    'error': f'No .SemanticModel folder found in: {pbip_folder_path}',
+                    'error_type': 'not_found',
+                    'hint': 'Please provide the path to a .SemanticModel folder or a parent folder containing one'
+                }
+            elif len(semantic_folders) == 1:
+                pbip_path = semantic_folders[0]
+                logger.info(f"Auto-detected .SemanticModel folder: {pbip_path}")
+            else:
+                # Multiple .SemanticModel folders found
+                folder_names = [str(f.relative_to(pbip_folder_path)) for f in semantic_folders]
+                return {
+                    'success': False,
+                    'error': f'Multiple .SemanticModel folders found in: {pbip_folder_path}',
+                    'error_type': 'multiple_found',
+                    'found_folders': folder_names,
+                    'hint': 'Please specify which .SemanticModel folder to use'
+                }
+
+        # Update pbip_folder_path to the detected path
+        pbip_folder_path = str(pbip_path)
 
         # Auto-determine output directory if not provided
         if not output_dir:
@@ -271,6 +300,12 @@ def handle_analyze_hybrid_model(
                 priority,
                 detailed
             )
+
+        elif actual_operation == "get_unused_columns":
+            result = _operation_get_unused_columns(reader)
+
+        elif actual_operation == "get_report_dependencies":
+            result = _operation_get_report_dependencies(reader)
 
         else:
             return {
@@ -1138,6 +1173,35 @@ def _estimate_total_gain(dax_optimizations: List[Dict[str, Any]]) -> str:
         return "10-20% overall performance improvement expected"
 
 
+def _operation_get_unused_columns(reader: HybridReader) -> Dict[str, Any]:
+    """
+    Get unused columns from unused_columns.json
+
+    Returns:
+        Dictionary with unused columns data
+    """
+    unused_columns_data = reader.read_unused_columns()
+
+    return {
+        "data": unused_columns_data,
+        "count": unused_columns_data.get("summary", {}).get("total_unused_columns", 0)
+    }
+
+
+def _operation_get_report_dependencies(reader: HybridReader) -> Dict[str, Any]:
+    """
+    Get report dependencies (visual-level dependencies) from report_dependencies.json
+
+    Returns:
+        Dictionary with report dependencies data
+    """
+    report_deps_data = reader.read_report_dependencies()
+
+    return {
+        "data": report_deps_data,
+        "count": report_deps_data.get("summary", {}).get("total_visuals", 0)
+    }
+
 
 def register_hybrid_analysis_handlers(registry):
     """Register hybrid analysis tool handlers"""
@@ -1159,7 +1223,7 @@ def register_hybrid_analysis_handlers(registry):
 
     registry.register(ToolDefinition(
         name='analyze_hybrid_model',
-        description='BI Expert Analysis: Read and analyze hybrid model (TMDL + JSON + sample data) with expert insights. Automatically reads TMDL files for accurate measure DAX and relationships. Supports fuzzy search (e.g., "base scenario" finds "PL-AMT-BASE Scenario"). No manual file reading needed!',
+        description='⚠️ SELF-CONTAINED MCP TOOL: BI Expert Analysis - reads and analyzes hybrid model (TMDL + JSON + sample data) with expert insights. 🔧 All file operations handled internally by this server tool. 🚫 Claude: Do NOT use Read, Glob, List, or any filesystem tools - just provide the analysis_path! Supports fuzzy search (e.g., "base scenario" finds "PL-AMT-BASE Scenario").',
         handler=make_handler(handle_analyze_hybrid_model),
         input_schema=TOOL_SCHEMAS['analyze_hybrid_model'],
         category='14 - Hybrid Analysis',

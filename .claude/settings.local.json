@@ -55,7 +55,10 @@
       "Bash(dir:*)",
       "Bash(mkdir:*)",
       "Bash(./package.bat)",
-      "Bash(./build/package.bat)"
+      "Bash(./build/package.bat)",
+      "Bash(timeout 10 python:*)",
+      "Bash(Get-Content \"c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\MCP-PowerBi-Finvision\\logs\\mcp_server.log\" -Tail 500)",
+      "Bash(Select-String -Pattern \"(dependency|unused|visual|report_dependencies|_run_dependency)\" -Context 2)"
     ],
     "deny": [],
     "ask": []
