@@ -84,13 +84,7 @@ class ToolDispatcher:
 
         # 13 - Hybrid Analysis (2 tools)
         '13_export_hybrid_analysis': 'export_hybrid_analysis',
-        '13_analyze_hybrid_model': 'analyze_hybrid_model',
-
-        # 14 - Workflows & Intelligence (4 tools)
-        '14_execute_workflow': 'execute_workflow',
-        '14_list_workflows': 'list_workflows',
-        '14_suggest_workflow': 'suggest_workflow',
-        '14_smart_request': 'smart_request'
+        '13_analyze_hybrid_model': 'analyze_hybrid_model'
     }
 
     def __init__(self):
