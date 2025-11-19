@@ -1,6 +1,6 @@
 """
-Enhanced Performance Analyzer with AMO Trace Support
-Provides SE/FE timing analysis for DAX queries
+Enhanced Performance Analyzer
+Provides query timing analysis for DAX queries
 """
 import logging
 from typing import Dict, Any, Optional, Tuple
@@ -11,10 +11,9 @@ logger = logging.getLogger(__name__)
 
 class EnhancedAMOTraceAnalyzer:
     """
-    Performance analyzer with Storage Engine / Formula Engine breakdown.
+    Performance analyzer for DAX query timing.
 
-    Provides query performance analysis with SE/FE timing when available.
-    Falls back to basic timing when AMO/trace is unavailable.
+    Provides query performance analysis with execution timing statistics.
     """
 
     def __init__(self, connection_string: str):
@@ -107,7 +106,7 @@ class EnhancedAMOTraceAnalyzer:
             include_event_counts: Include detailed event counts
 
         Returns:
-            Performance analysis results with SE/FE breakdown
+            Performance analysis results with timing statistics
         """
         if not query_executor:
             return {
@@ -119,8 +118,6 @@ class EnhancedAMOTraceAnalyzer:
             logger.info(f"Starting performance analysis: {runs} runs, clear_cache={clear_cache}")
 
             timings = []
-            se_timings = []
-            fe_timings = []
 
             # Warm-up run
             logger.debug("Executing warm-up run...")
@@ -158,17 +155,6 @@ class EnhancedAMOTraceAnalyzer:
                 total_ms = (end_time - start_time) * 1000
                 timings.append(total_ms)
 
-                # Try to extract SE/FE timing if available
-                execution_time = result.get("execution_time_ms", total_ms)
-
-                # Estimate SE/FE split (typically SE is ~30-70% of total)
-                # This is a rough estimate when detailed profiling isn't available
-                se_ms = execution_time * 0.5  # Rough estimate
-                fe_ms = execution_time * 0.5  # Rough estimate
-
-                se_timings.append(se_ms)
-                fe_timings.append(fe_ms)
-
                 logger.debug(f"Run {i+1}: Total={total_ms:.2f}ms")
 
             if not timings:
@@ -182,25 +168,14 @@ class EnhancedAMOTraceAnalyzer:
             min_total = min(timings)
             max_total = max(timings)
 
-            avg_se = sum(se_timings) / len(se_timings) if se_timings else 0
-            avg_fe = sum(fe_timings) / len(fe_timings) if fe_timings else 0
-
             summary = {
                 "avg_execution_ms": round(avg_total, 2),
                 "min_execution_ms": round(min_total, 2),
                 "max_execution_ms": round(max_total, 2),
-                "runs_completed": len(timings),
-                "avg_se_ms": round(avg_se, 2),
-                "avg_fe_ms": round(avg_fe, 2),
-                "se_percentage": round((avg_se / avg_total * 100), 1) if avg_total > 0 else 0,
-                "fe_percentage": round((avg_fe / avg_total * 100), 1) if avg_total > 0 else 0
+                "runs_completed": len(timings)
             }
 
-            # Add note about estimation
             notes = []
-            if not self.amo_available:
-                notes.append("⚠️ SE/FE timings are estimates - AMO tracing not available for precise measurements")
-                notes.append("For accurate SE/FE breakdown, ensure Microsoft.AnalysisServices is installed")
 
             return {
                 "success": True,

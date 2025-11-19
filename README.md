@@ -362,7 +362,7 @@ Power BI Desktop (Analysis Services instance)
 - HTML dashboard generation
 
 **Performance** (`core/performance/`):
-- Query profiling (SE/FE breakdown)
+- Query profiling and timing analysis
 - Cardinality analysis
 - VertiPaq statistics
 - Storage optimization
@@ -629,7 +629,7 @@ MCP-PowerBi-Finvision/
 │   │   ├── report_analyzer.py        # PBIR parsing
 │   │   └── dependency_engine.py      # Dependency analysis
 │   ├── performance/                  # Performance domain
-│   │   ├── query_profiler.py         # SE/FE breakdown
+│   │   ├── query_profiler.py         # Query timing analysis
 │   │   ├── cardinality_analyzer.py   # Cardinality checks
 │   │   └── vertipaq_stats.py         # VertiPaq statistics
 │   ├── validation/                   # Validation domain

@@ -66,7 +66,7 @@ class QueryOrchestrator(BaseOrchestrator):
 
         plan["notes"] = [
             "Use SUMMARIZECOLUMNS / SELECTCOLUMNS for shaped previews",
-            "Switch to mode=analyze for SE/FE breakdown",
+            "Switch to mode=analyze for performance timing analysis",
         ]
         return plan
 
@@ -148,12 +148,12 @@ class QueryOrchestrator(BaseOrchestrator):
             actions.append({"action": "optimize_variants", "result": bench})
             return {"success": bench.get("success", False), "decision": "optimize_variants", "reason": "Multiple candidates provided; benchmarking to pick the fastest", "actions": actions, "final": bench}
 
-        if any(k in text for k in ["analyze", "performance", "perf", "se/fe", "storage engine", "formula engine"]):
+        if any(k in text for k in ["analyze", "performance", "perf", "timing"]):
             if not query:
                 return {"success": False, "error": "No query provided for performance analysis", "phase": "input_validation", "actions": actions}
             res = self.safe_run_dax(connection_state, query, mode="analyze", runs=runs, max_rows=max_rows, verbose=verbose)
             actions.append({"action": "safe_run_dax(analyze)", "result": res})
-            return {"success": res.get("success", False), "decision": "analyze", "reason": "Goal indicates performance focus; running analyzer for FE/SE breakdown", "actions": actions, "final": res}
+            return {"success": res.get("success", False), "decision": "analyze", "reason": "Goal indicates performance focus; running performance timing analysis", "actions": actions, "final": res}
 
         # Default to preview for speed
         res = self.safe_run_dax(connection_state, query or "", mode="preview", runs=runs, max_rows=max_rows, verbose=verbose)
@@ -241,7 +241,7 @@ class QueryOrchestrator(BaseOrchestrator):
             return {"success": True, "actions": actions, "final": summary}
 
         # Performance analysis intents
-        if any(k in text for k in ["analyze performance", "performance", "perf", "se/fe", "storage engine", "formula engine"]):
+        if any(k in text for k in ["analyze performance", "performance", "perf", "timing"]):
             if not query:
                 return {"success": False, "error": "No query provided for performance analysis", "phase": "input_validation", "actions": actions}
             res = self.safe_run_dax(connection_state, query, mode="analyze", runs=runs, max_rows=max_rows, verbose=verbose)
@@ -249,7 +249,7 @@ class QueryOrchestrator(BaseOrchestrator):
             return {"success": res.get("success", False), "actions": actions, "final": res}
 
         # If user asks to analyze the model without specifics, propose options (fast vs normal)
-        if any(k in text for k in ["analyze", "analysis"]) and not query and not any(k in text for k in ["performance", "perf", "se/fe", "storage engine", "formula engine"]):
+        if any(k in text for k in ["analyze", "analysis"]) and not query and not any(k in text for k in ["performance", "perf", "timing"]):
             analysis_orch = AnalysisOrchestrator(self.config)
             proposal = analysis_orch.propose_analysis_options(connection_state, goal)
             actions.append({"action": "propose_analysis_options", "result": proposal})

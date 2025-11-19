@@ -94,7 +94,7 @@ If you see "AMO SessionTrace not available":
 
 ### With ADOMD + AMO
 ✓ All above features
-✓ Performance tracing (SE/FE split)
+✓ Performance tracing and timing analysis
 ✓ TMSL/TMDL export
 ✓ Calculation group management
 ✓ Advanced BPA checks

@@ -78,7 +78,7 @@ class QueryPolicy:
                 if not result.get("success"):
                     raise RuntimeError(result.get("error") or "analysis_failed")
                 result.setdefault("decision", "analyze")
-                result.setdefault("reason", "Performance analysis selected to obtain FE/SE breakdown and average timings")
+                result.setdefault("reason", "Performance analysis selected to obtain execution timing statistics")
                 return result
             except Exception as _e:
                 q_upper = (query or "").strip().upper()

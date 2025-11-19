@@ -591,7 +591,7 @@
       "Description": "Date tables must be continuous (no gaps), include all dates in the data, and be marked as a date table. They should also have year, month, and quarter columns.",
       "Severity": 2,
       "Scope": "Table",
-      "Expression": "DataCategory == \"Time\" and not (Columns.Any(Name == \"Year\") and Columns.Any(Name == \"Month\"))",
+      "Expression": "DataCategory == \"Time\" and not (Columns.Any(RegEx.IsMatch(Name, \"Year\", \"(?i)\")) and Columns.Any(RegEx.IsMatch(Name, \"Month\", \"(?i)\")))",
       "CompatibilityLevel": 1200
     },
     {

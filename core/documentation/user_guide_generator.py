@@ -227,7 +227,7 @@ def generate_comprehensive_user_guide(category: str = "all", format_type: str = 
                     "purpose": "Execute DAX query with performance metrics",
                     "when_to_use": "Test measure calculations or query performance",
                     "example": '{"query": "EVALUATE TOPN(10, Sales)", "mode": "auto"}',
-                    "returns": "Query results + execution time + SE/FE breakdown",
+                    "returns": "Query results + execution time statistics",
                     "tips": ["Mode 'preview' limits rows", "Mode 'analyze' focuses on performance", "'auto' chooses best mode"]
                 }
             ]

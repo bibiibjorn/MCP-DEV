@@ -19,7 +19,7 @@ TOOL_SCHEMAS = {
             },
             "mode": {
                 "type": "string",
-                "description": "Execution mode: 'auto' (smart choice), 'analyze' or 'profile' (with SE/FE timing), 'simple' (preview only)",
+                "description": "Execution mode: 'auto' (smart choice), 'analyze' or 'profile' (with timing analysis), 'simple' (preview only)",
                 "enum": ["auto", "analyze", "profile", "simple"],
                 "default": "auto"
             }

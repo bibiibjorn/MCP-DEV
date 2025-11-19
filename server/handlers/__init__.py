@@ -18,10 +18,39 @@ from server.handlers.user_guide_handler import register_user_guide_handlers
 from server.handlers.hybrid_analysis_handler import register_hybrid_analysis_handlers
 # Workflow handlers are internalized and not registered as public tools
 
+# Phase 1 Consolidated Operations (Tool Consolidation Plan)
+from server.handlers.table_operations_handler import register_table_operations_handler
+from server.handlers.column_operations_handler import register_column_operations_handler
+from server.handlers.measure_operations_handler import register_measure_operations_handler
+
+# Phase 2 Extended CRUD Operations
+from server.handlers.relationship_operations_handler import register_relationship_operations_handler
+from server.handlers.calculation_group_operations_handler import register_calculation_group_operations_handler
+from server.handlers.role_operations_handler import register_role_operations_handler
+
+# Phase 3 Batch Operations & Transactions
+from server.handlers.batch_operations_handler import register_batch_operations_handler
+from server.handlers.transaction_management_handler import register_transaction_management_handler
+
 def register_all_handlers(registry):
     """Register all handlers with the registry"""
     # Register all proper handlers (no more bridge!)
     register_connection_handlers(registry)
+
+    # Phase 1: Consolidated operations (replaces parts of metadata handlers)
+    register_table_operations_handler(registry)
+    register_column_operations_handler(registry)
+    register_measure_operations_handler(registry)
+
+    # Phase 2: Extended CRUD operations
+    register_relationship_operations_handler(registry)
+    register_calculation_group_operations_handler(registry)
+    register_role_operations_handler(registry)
+
+    # Phase 3: Batch operations & transactions
+    register_batch_operations_handler(registry)
+    register_transaction_management_handler(registry)
+
     register_metadata_handlers(registry)
     register_query_handlers(registry)
     register_model_operations_handlers(registry)

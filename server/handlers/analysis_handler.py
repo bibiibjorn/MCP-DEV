@@ -36,19 +36,53 @@ def _generate_operation_analysis(op_id: str, result: Dict[str, Any]) -> Dict[str
             data = result.get('data', [{}])[0]
             compat = data.get('compatibilityLevel', 0)
             size_mb = round(data.get('estimatedSize', 0) / (1024 * 1024), 2) if data.get('estimatedSize') else 0
+            db_name = data.get('name', 'Unknown')
+            db_id = data.get('id', 'Unknown')
 
-            analysis['insights'].append(f"Database compatibility level: {compat}")
-            if compat >= 1600:
-                analysis['insights'].append("Power BI Desktop format (modern)")
+            analysis['key_findings'].append(f"Database: {db_name}")
+            analysis['key_findings'].append(f"Compatibility Level: {compat}")
+
+            # Detailed compatibility level interpretation
+            if compat >= 1604:
+                analysis['insights'].append(f"✅ Latest Power BI compatibility level ({compat})")
+                analysis['insights'].append("   Supports: Calculation groups, enhanced refresh, DirectQuery improvements")
+            elif compat >= 1600:
+                analysis['insights'].append(f"✅ Power BI Desktop format ({compat})")
+                analysis['insights'].append("   Supports: Calculation groups, object-level security")
             elif compat >= 1500:
-                analysis['insights'].append("Azure Analysis Services format")
+                analysis['insights'].append(f"ℹ️ Azure Analysis Services format ({compat})")
+                analysis['insights'].append("   Consider upgrading to 1600+ for Power BI features")
+            elif compat >= 1400:
+                analysis['insights'].append(f"⚠️ SQL Server 2017 format ({compat})")
+                analysis['recommendations'].append("Upgrade compatibility level to access modern Power BI features")
+            else:
+                analysis['insights'].append(f"⚠️ Legacy format ({compat})")
+                analysis['recommendations'].append("IMPORTANT: Upgrade compatibility level for better performance and features")
 
+            # Size analysis with detailed recommendations
             if size_mb > 0:
                 analysis['key_findings'].append(f"Model size: {size_mb} MB")
-                if size_mb > 1000:
-                    analysis['recommendations'].append("Large model - consider incremental refresh and data reduction strategies")
+
+                if size_mb > 2000:
+                    size_category = "Very Large (>2GB)"
+                    analysis['insights'].append(f"🔴 {size_category} - Performance critical")
+                    analysis['recommendations'].append("CRITICAL: Implement incremental refresh, aggregations, and column optimization")
+                    analysis['recommendations'].append("Consider splitting into multiple models or using composite models")
+                elif size_mb > 1000:
+                    size_category = "Large (1-2GB)"
+                    analysis['insights'].append(f"🟡 {size_category} - Monitor performance")
+                    analysis['recommendations'].append("Implement incremental refresh for fact tables")
+                    analysis['recommendations'].append("Review and remove unused columns and high-cardinality text fields")
                 elif size_mb > 500:
-                    analysis['recommendations'].append("Medium-sized model - monitor refresh times and consider optimization")
+                    size_category = "Medium (500MB-1GB)"
+                    analysis['insights'].append(f"🟢 {size_category} - Good range")
+                    analysis['recommendations'].append("Monitor refresh times and consider optimization strategies")
+                elif size_mb > 100:
+                    size_category = "Small-Medium (100-500MB)"
+                    analysis['insights'].append(f"✅ {size_category} - Optimal size")
+                else:
+                    size_category = "Small (<100MB)"
+                    analysis['insights'].append(f"✅ {size_category} - Excellent performance expected")
 
         # Stats operation analysis
         elif op_id == '02_stats':
@@ -58,27 +92,84 @@ def _generate_operation_analysis(op_id: str, result: Dict[str, Any]) -> Dict[str
             columns = counts.get('columns', 0)
             rels = counts.get('relationships', 0)
             calc_groups = counts.get('calculation_groups', 0)
+            roles = counts.get('roles', 0)
+            partitions = counts.get('partitions', 0)
 
             analysis['key_findings'] = [
-                f"{tables} tables",
-                f"{columns} columns",
-                f"{measures} measures",
-                f"{rels} relationships"
+                f"📋 {tables} tables",
+                f"📐 {columns} columns",
+                f"📏 {measures} measures",
+                f"🔗 {rels} relationships"
             ]
 
-            # Complexity assessment
-            if tables > 100:
-                analysis['insights'].append("Large model with many tables - ensure proper naming conventions")
-            if measures > 200:
-                analysis['insights'].append("High measure count - use display folders for organization")
             if calc_groups > 0:
-                analysis['insights'].append(f"Using {calc_groups} calculation groups - advanced time intelligence pattern")
+                analysis['key_findings'].append(f"⚡ {calc_groups} calculation groups")
+            if roles > 0:
+                analysis['key_findings'].append(f"🔒 {roles} security roles")
 
-            # Ratio analysis
+            # Complexity assessment
+            complexity_score = 0
+            if tables > 100:
+                complexity_score += 2
+                analysis['insights'].append("⚠️ Large model with many tables - ensure proper naming conventions")
+            elif tables > 50:
+                complexity_score += 1
+                analysis['insights'].append("ℹ️ Moderate table count - good organization is important")
+            else:
+                analysis['insights'].append("✅ Manageable table count")
+
+            if measures > 500:
+                complexity_score += 3
+                analysis['insights'].append("⚠️ Very high measure count - display folders are critical")
+                analysis['recommendations'].append("IMPORTANT: Organize measures with hierarchical display folders")
+            elif measures > 200:
+                complexity_score += 2
+                analysis['insights'].append("⚠️ High measure count - use display folders for organization")
+                analysis['recommendations'].append("Ensure measures are organized in logical display folder hierarchies")
+            elif measures > 100:
+                complexity_score += 1
+                analysis['insights'].append("ℹ️ Moderate measure count - maintain good organization")
+
+            if calc_groups > 0:
+                analysis['insights'].append(f"✅ Using {calc_groups} calculation groups - advanced DAX pattern")
+                analysis['insights'].append("   This indicates sophisticated time intelligence or scenario analysis")
+
+            # Ratio analysis with interpretation
             if tables > 0:
                 cols_per_table = round(columns / tables, 1)
                 measures_per_table = round(measures / tables, 1)
-                analysis['insights'].append(f"Average {cols_per_table} columns and {measures_per_table} measures per table")
+                rels_per_table = round(rels / tables, 1)
+
+                analysis['insights'].append(f"Model ratios:")
+                analysis['insights'].append(f"   • Avg {cols_per_table} columns per table")
+                analysis['insights'].append(f"   • Avg {measures_per_table} measures per table")
+                analysis['insights'].append(f"   • Avg {rels_per_table} relationships per table")
+
+                # Interpret ratios
+                if cols_per_table > 50:
+                    analysis['recommendations'].append("High column-to-table ratio - review for denormalization or unused columns")
+                elif cols_per_table < 5:
+                    analysis['insights'].append("   ℹ️ Low column count per table - may indicate highly normalized structure")
+
+                if measures_per_table > 30:
+                    analysis['insights'].append("   ℹ️ Many measures per table - likely using dedicated measure tables (good!)")
+
+            # Overall complexity assessment
+            if complexity_score >= 5:
+                analysis['insights'].append("🔴 Model Complexity: HIGH - requires strong governance and organization")
+            elif complexity_score >= 3:
+                analysis['insights'].append("🟡 Model Complexity: MEDIUM - good practices important")
+            else:
+                analysis['insights'].append("🟢 Model Complexity: LOW - easy to maintain")
+
+            # Security and partitioning insights
+            if roles > 0:
+                analysis['insights'].append(f"✅ Security: {roles} RLS roles implemented")
+            else:
+                analysis['insights'].append("ℹ️ No RLS roles - data is accessible to all users")
+
+            if partitions > tables:
+                analysis['insights'].append(f"ℹ️ {partitions} partitions across {tables} tables - likely using incremental refresh")
 
         # Tables operation analysis
         elif op_id == '03_tables':
@@ -88,12 +179,39 @@ def _generate_operation_analysis(op_id: str, result: Dict[str, Any]) -> Dict[str
             # Identify measure tables
             measure_tables = [t for t in data if t.get('measureCount', 0) > 10 and t.get('columnCount', 0) < 5]
             large_tables = [t for t in data if t.get('columnCount', 0) > 50]
+            hidden_tables = [t for t in data if t.get('isHidden', False)]
+
+            # Classify tables by type (fact, dimension, etc.)
+            fact_tables = [t for t in data if 'fact' in t.get('name', '').lower()]
+            dim_tables = [t for t in data if any(prefix in t.get('name', '').lower() for prefix in ['dim', 'dimension'])]
+
+            # Calculate statistics
+            total_columns = sum(t.get('columnCount', 0) for t in data)
+            total_measures = sum(t.get('measureCount', 0) for t in data)
+            avg_cols_per_table = round(total_columns / table_count, 1) if table_count > 0 else 0
 
             analysis['key_findings'].append(f"{table_count} tables in model")
+            analysis['key_findings'].append(f"{total_columns} total columns (avg {avg_cols_per_table} per table)")
+            analysis['key_findings'].append(f"{total_measures} total measures distributed across tables")
+
             if measure_tables:
-                analysis['insights'].append(f"{len(measure_tables)} dedicated measure tables (best practice)")
+                measure_table_names = [t.get('name', '') for t in measure_tables[:3]]
+                analysis['insights'].append(f"✅ {len(measure_tables)} dedicated measure tables (best practice)")
+                analysis['insights'].append(f"   Examples: {', '.join(measure_table_names)}")
+
+            if fact_tables:
+                analysis['insights'].append(f"Found {len(fact_tables)} fact tables (likely transactional data)")
+            if dim_tables:
+                analysis['insights'].append(f"Found {len(dim_tables)} dimension tables (lookup/reference data)")
+
             if large_tables:
-                analysis['insights'].append(f"{len(large_tables)} tables with >50 columns - review for normalization")
+                large_table_details = [f"{t.get('name', '')} ({t.get('columnCount', 0)} cols)" for t in large_tables[:3]]
+                analysis['insights'].append(f"⚠️ {len(large_tables)} tables with >50 columns")
+                analysis['insights'].append(f"   Examples: {', '.join(large_table_details)}")
+                analysis['recommendations'].append("Review large tables for potential normalization or column hiding")
+
+            if hidden_tables:
+                analysis['insights'].append(f"ℹ️ {len(hidden_tables)} hidden tables (good for backend calculations)")
 
         # Measures operation analysis
         elif op_id == '04_measures':
@@ -104,13 +222,65 @@ def _generate_operation_analysis(op_id: str, result: Dict[str, Any]) -> Dict[str
             with_folders = [m for m in data if m.get('displayFolder')]
             folder_usage = round(len(with_folders) / measure_count * 100, 1) if measure_count > 0 else 0
 
+            # Analyze folder structure
+            folders = set()
+            top_level_folders = set()
+            for m in data:
+                folder = m.get('displayFolder', '')
+                if folder:
+                    folders.add(folder)
+                    top_level_folders.add(folder.split('\\')[0])
+
+            # Detect naming patterns and measure types
+            time_intel_measures = [m for m in data if any(x in m.get('name', '').lower() for x in ['ytd', 'mtd', 'qtd', 'py', 'ly', 'yoy', 'mom'])]
+            calc_measures = [m for m in data if any(x in m.get('name', '').lower() for x in ['calc', 'calculated'])]
+            base_measures = [m for m in data if 'base' in m.get('name', '').lower()]
+            kpi_measures = [m for m in data if 'kpi' in m.get('name', '').lower()]
+
+            # Group measures by table
+            measures_by_table = {}
+            for m in data:
+                table = m.get('table', 'Unknown')
+                measures_by_table[table] = measures_by_table.get(table, 0) + 1
+
+            top_tables = sorted(measures_by_table.items(), key=lambda x: x[1], reverse=True)[:5]
+
             analysis['key_findings'].append(f"{measure_count} measures analyzed")
+            analysis['key_findings'].append(f"{len(folders)} unique display folders used")
+            analysis['key_findings'].append(f"{len(top_level_folders)} top-level folder categories")
+
+            # Organization assessment
             if folder_usage > 80:
-                analysis['insights'].append(f"{folder_usage}% measures use display folders - excellent organization")
+                analysis['insights'].append(f"✅ Excellent organization: {folder_usage}% measures use display folders")
             elif folder_usage > 50:
-                analysis['insights'].append(f"{folder_usage}% measures use display folders - good organization")
+                analysis['insights'].append(f"✔️ Good organization: {folder_usage}% measures use display folders")
+                analysis['recommendations'].append(f"Improve organization: {100-folder_usage}% of measures lack display folders")
             else:
-                analysis['recommendations'].append("Consider organizing measures with display folders for better UX")
+                analysis['insights'].append(f"⚠️ Poor organization: Only {folder_usage}% measures use display folders")
+                analysis['recommendations'].append("IMPORTANT: Organize measures with display folders for better user experience")
+
+            # Pattern analysis
+            if time_intel_measures:
+                examples = [m.get('name', '') for m in time_intel_measures[:3]]
+                analysis['insights'].append(f"Found {len(time_intel_measures)} time intelligence measures")
+                analysis['insights'].append(f"   Examples: {', '.join(examples)}")
+
+            if calc_measures or base_measures:
+                total_calc = len(calc_measures) + len(base_measures)
+                analysis['insights'].append(f"Found {total_calc} calculated/base measures (good DAX layering pattern)")
+
+            if kpi_measures:
+                analysis['insights'].append(f"Found {len(kpi_measures)} KPI measures")
+
+            # Table distribution
+            analysis['insights'].append(f"Measures distributed across {len(measures_by_table)} tables")
+            if top_tables:
+                top_table_info = [f"{table} ({count})" for table, count in top_tables[:3]]
+                analysis['insights'].append(f"   Top tables: {', '.join(top_table_info)}")
+
+            # Recommendations
+            if len(measures_by_table) > 10 and not any('measure' in table.lower() for table in measures_by_table.keys()):
+                analysis['recommendations'].append("Consider consolidating measures into dedicated measure tables")
 
         # Columns operation analysis
         elif op_id == '05_columns':
@@ -118,18 +288,63 @@ def _generate_operation_analysis(op_id: str, result: Dict[str, Any]) -> Dict[str
             total_columns = sum(len(t.get('columns', [])) for t in data)
             table_count = len(data)
 
-            analysis['key_findings'].append(f"{total_columns} columns across {table_count} tables")
+            # Extract all columns
+            all_columns = [col for table in data for col in table.get('columns', [])]
 
             # Data type analysis
-            all_columns = [col for table in data for col in table.get('columns', [])]
             data_types = {}
             for col in all_columns:
                 dt = col.get('dataType', 'Unknown')
                 data_types[dt] = data_types.get(dt, 0) + 1
 
+            # Identify calculated columns vs regular columns
+            calculated_cols = [col for col in all_columns if col.get('type') == 'calculated']
+            regular_cols = [col for col in all_columns if col.get('type') != 'calculated']
+
+            # Identify hidden columns
+            hidden_cols = [col for col in all_columns if col.get('isHidden', False)]
+
+            # Find key columns (common patterns)
+            key_cols = [col for col in all_columns if any(x in col.get('name', '').lower() for x in ['key', 'id', 'sk', 'pk'])]
+            date_cols = [col for col in all_columns if col.get('dataType') == 'DateTime']
+
+            analysis['key_findings'].append(f"{total_columns} columns across {table_count} tables")
+            if calculated_cols:
+                calc_pct = round(len(calculated_cols) / total_columns * 100, 1)
+                analysis['key_findings'].append(f"{len(calculated_cols)} calculated columns ({calc_pct}%)")
+
+            # Data type breakdown
             if data_types:
-                top_type = max(data_types.items(), key=lambda x: x[1])
-                analysis['insights'].append(f"Most common data type: {top_type[0]} ({top_type[1]} columns)")
+                data_type_summary = []
+                sorted_types = sorted(data_types.items(), key=lambda x: x[1], reverse=True)
+                for dt, count in sorted_types[:5]:
+                    pct = round(count / total_columns * 100, 1)
+                    data_type_summary.append(f"{dt}: {count} ({pct}%)")
+
+                analysis['insights'].append(f"Data type distribution:")
+                for dt_info in data_type_summary:
+                    analysis['insights'].append(f"   • {dt_info}")
+
+            # Column patterns
+            if hidden_cols:
+                hidden_pct = round(len(hidden_cols) / total_columns * 100, 1)
+                analysis['insights'].append(f"✅ {len(hidden_cols)} hidden columns ({hidden_pct}%) - good for data cleanliness")
+
+            if key_cols:
+                analysis['insights'].append(f"Found {len(key_cols)} key/ID columns for relationships")
+
+            if date_cols:
+                date_table_names = set([col.get('table', '') for col in date_cols])
+                analysis['insights'].append(f"Found {len(date_cols)} date/time columns across {len(date_table_names)} tables")
+
+            # Calculated column warnings
+            if calculated_cols:
+                if len(calculated_cols) > 50:
+                    analysis['recommendations'].append("⚠️ HIGH: Many calculated columns detected - consider moving logic to source or using measures")
+                elif len(calculated_cols) > 20:
+                    analysis['recommendations'].append("Review calculated columns - some may be better as measures for performance")
+                else:
+                    analysis['insights'].append(f"ℹ️ {len(calculated_cols)} calculated columns (reasonable amount)")
 
         # Relationships operation analysis - ENHANCED with detailed cardinality patterns
         elif op_id == '06_relationships':
@@ -209,17 +424,64 @@ def _generate_operation_analysis(op_id: str, result: Dict[str, Any]) -> Dict[str
             total_items = sum(len(cg.get('calculationItems', [])) for cg in data)
 
             if group_count > 0:
-                analysis['key_findings'].append(f"{group_count} calculation groups with {total_items} items")
-                analysis['insights'].append("Using calculation groups - advanced DAX pattern for time intelligence")
+                analysis['key_findings'].append(f"{group_count} calculation groups with {total_items} items total")
 
-                # Analyze group names for patterns
-                group_names = [cg.get('name', '') for cg in data]
-                if any('time' in name.lower() for name in group_names):
-                    analysis['insights'].append("Time-based calculation groups detected")
-                if any('currency' in name.lower() or 'fx' in name.lower() for name in group_names):
-                    analysis['insights'].append("Currency conversion calculation groups detected")
+                # Detailed group analysis
+                group_details = []
+                time_groups = []
+                currency_groups = []
+                scenario_groups = []
+
+                for cg in data:
+                    name = cg.get('name', '')
+                    items = cg.get('calculationItems', [])
+                    item_count = len(items)
+                    item_names = [item.get('name', '') for item in items[:5]]
+
+                    group_details.append(f"{name} ({item_count} items)")
+
+                    # Categorize by pattern
+                    name_lower = name.lower()
+                    if any(x in name_lower for x in ['time', 'date', 'period', 'ytd', 'mtd']):
+                        time_groups.append(name)
+                    if any(x in name_lower for x in ['currency', 'fx', 'exchange']):
+                        currency_groups.append(name)
+                    if any(x in name_lower for x in ['scenario', 'variance', 'comparison']):
+                        scenario_groups.append(name)
+
+                analysis['insights'].append("✅ Advanced DAX implementation with calculation groups")
+
+                # Show group details
+                if len(group_details) <= 5:
+                    for detail in group_details:
+                        analysis['insights'].append(f"   • {detail}")
+                else:
+                    for detail in group_details[:3]:
+                        analysis['insights'].append(f"   • {detail}")
+                    analysis['insights'].append(f"   • ... and {len(group_details) - 3} more")
+
+                # Pattern analysis
+                patterns_found = []
+                if time_groups:
+                    patterns_found.append(f"Time intelligence ({len(time_groups)})")
+                if currency_groups:
+                    patterns_found.append(f"Currency conversion ({len(currency_groups)})")
+                if scenario_groups:
+                    patterns_found.append(f"Scenario analysis ({len(scenario_groups)})")
+
+                if patterns_found:
+                    analysis['insights'].append(f"Patterns detected: {', '.join(patterns_found)}")
+
+                # Recommendations
+                if total_items < 10:
+                    analysis['insights'].append("ℹ️ Simple calculation group setup - good for focused scenarios")
+                elif total_items > 30:
+                    analysis['insights'].append("✅ Comprehensive calculation group implementation")
+                    analysis['recommendations'].append("Ensure calculation items are well-documented for team understanding")
+
             else:
-                analysis['insights'].append("No calculation groups - consider using them for time intelligence patterns")
+                analysis['insights'].append("ℹ️ No calculation groups found")
+                analysis['recommendations'].append("Consider calculation groups for time intelligence (YTD, MTD, PY) to reduce measure count")
 
         # Roles analysis
         elif op_id == '08_roles':
@@ -228,16 +490,59 @@ def _generate_operation_analysis(op_id: str, result: Dict[str, Any]) -> Dict[str
 
             if role_count > 0:
                 analysis['key_findings'].append(f"{role_count} security roles configured")
-                analysis['insights'].append("Row-level security (RLS) is implemented")
 
-                # Check for table permissions
+                # Analyze role details
                 with_permissions = [r for r in data if r.get('tablePermissionCount', 0) > 0]
+                read_only = [r for r in data if r.get('modelPermission', '') == 'Read']
+                admin_roles = [r for r in data if r.get('modelPermission', '') == 'Administrator']
+
+                total_permissions = sum(r.get('tablePermissionCount', 0) for r in data)
+
+                analysis['insights'].append("✅ Row-level security (RLS) is implemented")
+
+                # Role details
+                role_names = [r.get('name', '') for r in data[:5]]
+                if len(role_names) <= 5:
+                    analysis['insights'].append(f"Roles: {', '.join(role_names)}")
+                else:
+                    analysis['insights'].append(f"Roles: {', '.join(role_names[:3])}, ... and {role_count - 3} more")
+
+                # Permission analysis
                 if with_permissions:
-                    avg_perms = round(sum(r.get('tablePermissionCount', 0) for r in with_permissions) / len(with_permissions), 1)
-                    analysis['insights'].append(f"Average {avg_perms} table permissions per role")
+                    avg_perms = round(total_permissions / len(with_permissions), 1)
+                    analysis['insights'].append(f"{len(with_permissions)} roles with table-level filters")
+                    analysis['insights'].append(f"   • Average {avg_perms} table permissions per role")
+                    analysis['insights'].append(f"   • {total_permissions} total table permissions across all roles")
+
+                    # Security complexity assessment
+                    if total_permissions > 30:
+                        analysis['insights'].append("🟡 Complex RLS implementation - ensure thorough testing")
+                        analysis['recommendations'].append("Document RLS logic and test with different user contexts")
+                    elif total_permissions > 10:
+                        analysis['insights'].append("ℹ️ Moderate RLS complexity")
+                        analysis['recommendations'].append("Test RLS with representative user accounts")
+                    else:
+                        analysis['insights'].append("✅ Simple RLS implementation - easy to maintain")
+                else:
+                    analysis['insights'].append("⚠️ Roles exist but no table permissions defined")
+                    analysis['recommendations'].append("Define table permissions for roles to enforce data security")
+
+                # Permission types
+                if read_only:
+                    analysis['insights'].append(f"ℹ️ {len(read_only)} read-only roles (standard pattern)")
+                if admin_roles:
+                    analysis['insights'].append(f"ℹ️ {len(admin_roles)} administrator roles")
+
+                # Best practices
+                if role_count > 20:
+                    analysis['recommendations'].append("Many roles defined - consider role consolidation or dynamic RLS with user tables")
+                elif role_count > 10:
+                    analysis['insights'].append("ℹ️ Multiple roles - good for different user groups")
+
             else:
-                analysis['insights'].append("No security roles - model is open to all users")
-                analysis['recommendations'].append("Consider implementing RLS if data access should be restricted")
+                analysis['insights'].append("ℹ️ No security roles - model is open to all users")
+                analysis['recommendations'].append("Consider implementing RLS if data should be restricted by user/group")
+                analysis['recommendations'].append("Common RLS scenarios: regional filtering, department access, customer-specific data")
 
     except Exception as e:
         logger.error(f"Error generating analysis for {op_id}: {e}")

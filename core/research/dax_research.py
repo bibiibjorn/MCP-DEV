@@ -234,20 +234,6 @@ class DaxResearchProvider:
         matched_patterns.sort(key=lambda x: x[0])
         recommendations.extend([msg for _, msg in matched_patterns])
 
-        # Add performance-based recommendations if data available
-        if performance_data:
-            se_percentage = performance_data.get('se_percentage', 0)
-            fe_percentage = performance_data.get('fe_percentage', 0)
-
-            if fe_percentage > 70:
-                recommendations.insert(0,
-                    f"⚠️ CRITICAL: Formula Engine: {fe_percentage}% - Focus on eliminating iterators and using Storage Engine operations"
-                )
-            elif fe_percentage > 50:
-                recommendations.insert(0,
-                    f"⚠️ WARNING: Formula Engine: {fe_percentage}% - Consider optimizing for Storage Engine pushdown"
-                )
-
         # Add general best practice if no specific issues found
         if not recommendations:
             recommendations.append(

@@ -57,7 +57,7 @@ def handle_preview_table_data(args: Dict[str, Any]) -> Dict[str, Any]:
     result = agent_policy.safe_run_dax(
         connection_state=connection_state,
         query=query,
-        mode='auto',
+        mode='simple',  # Use simple mode to get data without profiling
         max_rows=max_rows
     )
 
@@ -230,7 +230,7 @@ def register_query_handlers(registry):
                     },
                     "mode": {
                         "type": "string",
-                        "description": "Execution mode: 'auto' (smart choice), 'analyze' or 'profile' (with SE/FE timing), 'simple' (preview only)",
+                        "description": "Execution mode: 'auto' (smart choice), 'analyze' or 'profile' (with timing analysis), 'simple' (preview only)",
                         "enum": ["auto", "analyze", "profile", "simple"],
                         "default": "auto"
                     }

@@ -29,6 +29,9 @@ class ConnectionState:
         self.calc_group_manager = None
         self.partition_manager = None
         self.rls_manager = None
+        self.table_crud_manager = None
+        self.column_crud_manager = None
+        self.relationship_crud_manager = None
         self.model_exporter = None
         self.performance_optimizer = None
         self.model_validator = None
@@ -207,6 +210,9 @@ class ConnectionState:
                 from core.operations.calculation_group_manager import CalculationGroupManager
                 from core.operations.partition_manager import PartitionManager
                 from core.operations.rls_manager import RLSManager
+                from core.operations.table_crud_manager import TableCRUDManager
+                from core.operations.column_crud_manager import ColumnCRUDManager
+                from core.operations.relationship_crud_manager import RelationshipCRUDManager
                 from core.model.model_exporter import ModelExporter
                 from core.performance.performance_optimizer import PerformanceOptimizer
                 from core.model.model_validator import ModelValidator
@@ -279,6 +285,18 @@ class ConnectionState:
                 if not self.rls_manager or force_reinit:
                     self.rls_manager = RLSManager(conn, self.query_executor)
                     logger.debug("[OK] RLS manager initialized")
+
+                if not self.table_crud_manager or force_reinit:
+                    self.table_crud_manager = TableCRUDManager(conn)
+                    logger.debug("[OK] Table CRUD manager initialized")
+
+                if not self.column_crud_manager or force_reinit:
+                    self.column_crud_manager = ColumnCRUDManager(conn)
+                    logger.debug("[OK] Column CRUD manager initialized")
+
+                if not self.relationship_crud_manager or force_reinit:
+                    self.relationship_crud_manager = RelationshipCRUDManager(conn)
+                    logger.debug("[OK] Relationship CRUD manager initialized")
 
                 if not self.model_exporter or force_reinit:
                     self.model_exporter = ModelExporter(conn)
@@ -378,6 +396,9 @@ class ConnectionState:
         self.calc_group_manager = None
         self.partition_manager = None
         self.rls_manager = None
+        self.table_crud_manager = None
+        self.column_crud_manager = None
+        self.relationship_crud_manager = None
         self.model_exporter = None
         self.performance_optimizer = None
         self.model_validator = None

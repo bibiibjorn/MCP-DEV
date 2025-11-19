@@ -765,10 +765,10 @@ CALCULATE(
     Table[Column] > Value  -- Add filter conditions as CALCULATE arguments
 )
 
--- Original (Formula Engine materialization):
+-- Original (less efficient pattern):
 -- {original_dax[:200]}...
 
--- Expected improvement: 3-5x faster, leverages Storage Engine
+-- Expected improvement: 3-5x faster
 """
 
     elif pattern_key == "divide_zero_check":
@@ -858,7 +858,7 @@ def _get_expected_improvement(pattern_key: str) -> str:
         "countrows_filter": "5-10x faster execution",
         "unnecessary_iterators": "2-4x faster",
         "multiple_context_transitions": "1.5-2x faster",
-        "measure_in_filter": "5-15x faster, enables Storage Engine",
+        "measure_in_filter": "5-15x faster, better query optimization",
         "values_in_calculate": "1.5-2x faster"
     }
     return improvements.get(pattern_key, "Moderate performance improvement expected")

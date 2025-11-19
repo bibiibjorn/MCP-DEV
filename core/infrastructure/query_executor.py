@@ -2154,7 +2154,7 @@ class OptimizedQueryExecutor:
         """
         Execute DAX query with performance profiling using C# DaxExecutor.
 
-        This method provides SE/FE breakdown and detailed event traces for
+        This method provides detailed performance traces for
         performance optimization workflows.
 
         Args:

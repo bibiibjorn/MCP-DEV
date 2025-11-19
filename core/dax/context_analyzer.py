@@ -469,19 +469,16 @@ class DaxContextAnalyzer:
             research_provider = DaxResearchProvider()
             results = research_provider.get_optimization_guidance(
                 query=dax_expression,
-                performance_data=None  # No SE/FE data needed for pattern detection
+                performance_data=None  # No performance data needed for pattern detection
             )
 
-            # Extract just the pattern-based information (exclude SE/FE recommendations)
+            # Extract pattern-based information
             pattern_matches = results.get('pattern_matches', {})
             articles = results.get('articles', [])
 
-            # Filter recommendations to only include pattern-based ones
+            # Get pattern-based recommendations
             all_recommendations = results.get('recommendations', [])
-            pattern_recommendations = [
-                rec for rec in all_recommendations
-                if not any(keyword in rec.lower() for keyword in ['se%', 'storage engine', 'formula engine', 'se query'])
-            ]
+            pattern_recommendations = all_recommendations
 
             return {
                 'success': True,
