@@ -120,6 +120,42 @@ TOOL_SCHEMAS = {
         "required": []
     },
 
+    # Measures (2 tools - Microsoft MCP operations)
+    'list_measures': {
+        "type": "object",
+        "properties": {
+            "table": {
+                "type": "string",
+                "description": "Filter measures by table name (optional - if not provided, returns all measures)"
+            },
+            "page_size": {
+                "type": "integer",
+                "description": "Maximum number of measures to return (default: 100)",
+                "default": 100
+            },
+            "next_token": {
+                "type": "string",
+                "description": "Pagination token for next page"
+            }
+        },
+        "required": []
+    },
+
+    'get_measure_details': {
+        "type": "object",
+        "properties": {
+            "table": {
+                "type": "string",
+                "description": "Table name containing the measure"
+            },
+            "measure": {
+                "type": "string",
+                "description": "Measure name to retrieve"
+            }
+        },
+        "required": ["table", "measure"]
+    },
+
     # Model Management (7 tools - upsert_measure and delete_measure moved to model_operations_handler.py)
 
     'bulk_create_measures': {
@@ -219,8 +255,69 @@ TOOL_SCHEMAS = {
         "required": []
     },
 
-    # Analysis (1 tool)
-    'comprehensive_analysis': {
+    # Analysis (2 tools)
+    'simple_analysis': {
+        "type": "object",
+        "properties": {
+            "mode": {
+                "type": "string",
+                "enum": ["tables", "stats", "measures", "measure", "relationships", "calculation_groups"],
+                "description": (
+                    "Analysis mode - Microsoft Official MCP Server operations:\n"
+                    "\n"
+                    "**Table Operations:**\n"
+                    "- 'tables': Ultra-fast table list (< 500ms) - Microsoft MCP List operation\n"
+                    "  Returns: table names with column/measure/partition counts\n"
+                    "\n"
+                    "**Model Operations:**\n"
+                    "- 'stats': Fast model statistics (< 1s) - Microsoft MCP GetStats operation\n"
+                    "  Returns: complete model metadata + all aggregate counts + per-table breakdown\n"
+                    "\n"
+                    "**Measure Operations:**\n"
+                    "- 'measures': List measures - Microsoft MCP Measure List operation\n"
+                    "  Optional params: table (filter), max_results (limit)\n"
+                    "  Returns: measure names with displayFolder\n"
+                    "- 'measure': Get measure details - Microsoft MCP Measure Get operation\n"
+                    "  Required params: table, measure_name\n"
+                    "  Returns: full measure metadata including DAX expression\n"
+                    "\n"
+                    "**Relationship Operations:**\n"
+                    "- 'relationships': List all relationships - Microsoft MCP Relationship List operation\n"
+                    "  Optional params: active_only (boolean)\n"
+                    "  Returns: all relationships with full metadata (fromTable, toTable, cardinality, etc.)\n"
+                    "\n"
+                    "**Calculation Group Operations:**\n"
+                    "- 'calculation_groups': List calculation groups - Microsoft MCP ListGroups operation\n"
+                    "  Returns: all calculation groups with their items (ordinal + name)"
+                ),
+                "default": "stats"
+            },
+            "table": {
+                "type": "string",
+                "description": (
+                    "Table name - used by:\n"
+                    "- mode='measures': Filter measures by table (optional)\n"
+                    "- mode='measure': Table containing measure (required)"
+                )
+            },
+            "measure_name": {
+                "type": "string",
+                "description": "Measure name - required for mode='measure'"
+            },
+            "max_results": {
+                "type": "integer",
+                "description": "Maximum results to return - used by mode='measures' (optional)"
+            },
+            "active_only": {
+                "type": "boolean",
+                "description": "Only return active relationships - used by mode='relationships' (default: false)",
+                "default": False
+            }
+        },
+        "required": []
+    },
+
+    'full_analysis': {
         "type": "object",
         "properties": {
             "scope": {

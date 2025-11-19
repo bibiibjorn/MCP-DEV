@@ -132,8 +132,12 @@
       "description": "[04-Model Operations] List RLS roles"
     },
     {
-      "name": "05_comprehensive_analysis",
-      "description": "[05-Analysis] Unified comprehensive analysis: best practices (BPA + M), performance (cardinality), and integrity validation (relationships, duplicates, nulls, circular refs). Configurable scope and depth"
+      "name": "05_simple_analysis",
+      "description": "[05-Analysis] Microsoft Official MCP Server operations. Modes: 'tables' (table list <500ms), 'stats' (model GetStats <1s), 'measures' (measure list), 'measure' (measure Get with DAX), 'relationships' (relationship list), 'calculation_groups' (calc group ListGroups). All operations return Microsoft MCP-formatted responses."
+    },
+    {
+      "name": "05_full_analysis",
+      "description": "[05-Analysis] Comprehensive analysis (10-180s): best practices (BPA + M), performance (cardinality), and integrity validation (relationships, duplicates, nulls, circular refs). Configurable scope and depth"
     },
     {
       "name": "06_analyze_measure_dependencies",
