@@ -54,6 +54,17 @@ def handle_connect_to_powerbi(args: Dict[str, Any]) -> Dict[str, Any]:
             connection_state.set_connection_manager(connection_manager)
             connection_state.initialize_managers()
 
+            # PERFORMANCE: Pre-warm table mapping cache to eliminate first-request latency
+            try:
+                qe = connection_state.query_executor
+                if qe and hasattr(qe, '_ensure_table_mappings'):
+                    logger.info("Pre-warming table mapping cache...")
+                    qe._ensure_table_mappings()
+                    logger.info("Table mapping cache pre-warmed successfully")
+            except Exception as cache_error:
+                logger.warning(f"Failed to pre-warm cache (non-critical): {cache_error}")
+                # Don't fail connection if cache pre-warming fails
+
             # Add proactive recommendations based on model characteristics
             try:
                 recommendations = get_connection_recommendations(connection_state)

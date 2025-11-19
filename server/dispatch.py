@@ -1,16 +1,34 @@
 """
 Central Tool Dispatcher
-Routes tool calls to appropriate handlers with error handling
+Routes tool calls to appropriate handlers with error handling and intelligent middleware
 """
 from typing import Dict, Any
 import logging
 from server.registry import get_registry
 from core.validation.error_handler import ErrorHandler
+from server.intelligent_middleware import get_intelligent_middleware
 
 logger = logging.getLogger(__name__)
 
 class ToolDispatcher:
     """Dispatches tool calls to registered handlers"""
+
+    # Fast tools that don't need intelligent middleware overhead
+    # These are simple read operations that benefit from skipping pre/post processing
+    FAST_TOOLS = {
+        'detect_powerbi_desktop',
+        'list_tables',
+        'list_measures',
+        'list_columns',
+        'list_calculated_columns',
+        'list_relationships',
+        'list_calculation_groups',
+        'list_partitions',
+        'list_roles',
+        'get_data_sources',
+        'search_objects',
+        'list_workflows'
+    }
 
     # Mapping of numbered tool names (from manifest.json) to internal handler names
     TOOL_NAME_MAP = {
@@ -93,9 +111,11 @@ class ToolDispatcher:
         '14_smart_request': 'smart_request'
     }
 
-    def __init__(self):
+    def __init__(self, enable_intelligence: bool = True):
         self.registry = get_registry()
         self._call_count = 0
+        self.enable_intelligence = enable_intelligence
+        self.intelligent_middleware = get_intelligent_middleware() if enable_intelligence else None
 
     def _resolve_tool_name(self, tool_name: str) -> str:
         """
@@ -110,14 +130,14 @@ class ToolDispatcher:
 
     def dispatch(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Dispatch a tool call to its handler
+        Dispatch a tool call to its handler with intelligent middleware
 
         Args:
             tool_name: Name of the tool to invoke (numbered or legacy)
-            arguments: Tool arguments
+            arguments: Tool arguments (supports _skip_middleware=True to bypass intelligence)
 
         Returns:
-            Result dictionary from the handler
+            Result dictionary from the handler with intelligent enhancements
         """
         self._call_count += 1
 
@@ -135,17 +155,59 @@ class ToolDispatcher:
                     'available_tools': [t.name for t in self.registry.get_all_tools()[:10]]
                 }
 
+            # INTELLIGENT PRE-PROCESSING (skip for fast tools OR if explicitly disabled to reduce overhead)
+            enhanced_args = arguments
+
+            # Check skip conditions:
+            # 1. Tool is in FAST_TOOLS list (simple read operations)
+            # 2. Client explicitly passed _skip_middleware=True (performance optimization)
+            skip_middleware = (
+                internal_name in self.FAST_TOOLS or
+                arguments.get('_skip_middleware', False)
+            )
+
+            # Remove internal flag before passing to handler
+            if '_skip_middleware' in enhanced_args:
+                enhanced_args = {k: v for k, v in enhanced_args.items() if k != '_skip_middleware'}
+
+            if self.enable_intelligence and self.intelligent_middleware and not skip_middleware:
+                try:
+                    pre_process_result = self.intelligent_middleware.pre_process_request(internal_name, arguments)
+
+                    # Use enhanced arguments if provided
+                    if 'enhanced_arguments' in pre_process_result:
+                        enhanced_args = pre_process_result['enhanced_arguments']
+
+                    # Log any pre-processing suggestions (e.g., workflow recommendations)
+                    if pre_process_result.get('suggestions'):
+                        logger.info(f"Pre-processing suggestions for {internal_name}: {len(pre_process_result['suggestions'])} available")
+
+                except Exception as e:
+                    logger.warning(f"Error in intelligent pre-processing: {e}")
+                    # Continue with original arguments on error
+                    enhanced_args = arguments
+            elif skip_middleware:
+                logger.debug(f"Skipping middleware for: {internal_name} ({'fast tool' if internal_name in self.FAST_TOOLS else 'client requested'})")
+
             # Get handler
             handler = self.registry.get_handler(internal_name)
 
             # Execute handler
             logger.debug(f"Dispatching tool: {tool_name} -> {internal_name}")
-            result = handler(arguments)
+            result = handler(enhanced_args)
 
             # Ensure result is a dict
             if not isinstance(result, dict):
                 logger.warning(f"Handler for {internal_name} returned non-dict: {type(result)}")
                 result = {'success': True, 'result': result}
+
+            # INTELLIGENT POST-PROCESSING (skip for fast tools OR if explicitly disabled to reduce overhead)
+            if self.enable_intelligence and self.intelligent_middleware and not skip_middleware:
+                try:
+                    result = self.intelligent_middleware.post_process_result(internal_name, enhanced_args, result)
+                except Exception as e:
+                    logger.warning(f"Error in intelligent post-processing: {e}")
+                    # Continue with original result on error
 
             return result
 
