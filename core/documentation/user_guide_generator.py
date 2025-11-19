@@ -360,9 +360,6 @@ def generate_comprehensive_user_guide(category: str = "all", format_type: str = 
                     "example": '{"page_size": 50}',
                     "returns": "M expressions for all queries/partitions",
                     "tips": ["Full M code included", "Can be very large"]
-                }',
-                    "returns": "Column sizes, cardinality, compression ratios",
-                    "tips": ["Shows actual memory usage", "Identifies bloat"]
                 },
                 {
                     "name": "analyze_column_usage",
