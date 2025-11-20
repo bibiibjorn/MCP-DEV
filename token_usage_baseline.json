@@ -1,0 +1,494 @@
+{
+  "total_tools": 42,
+  "total_startup_tokens": 6943,
+  "tools": [
+    {
+      "name": "13_analyze_hybrid_model",
+      "name_tokens": 6,
+      "description_tokens": 81,
+      "schema_tokens": 1290,
+      "schema_compact_tokens": 984,
+      "total_tokens": 1377,
+      "description_length": 285,
+      "schema_length": 4515
+    },
+    {
+      "name": "05_simple_analysis",
+      "name_tokens": 5,
+      "description_tokens": 92,
+      "schema_tokens": 898,
+      "schema_compact_tokens": 821,
+      "total_tokens": 995,
+      "description_length": 323,
+      "schema_length": 3146
+    },
+    {
+      "name": "13_export_hybrid_analysis",
+      "name_tokens": 7,
+      "description_tokens": 39,
+      "schema_tokens": 674,
+      "schema_compact_tokens": 530,
+      "total_tokens": 720,
+      "description_length": 138,
+      "schema_length": 2362
+    },
+    {
+      "name": "05_full_analysis",
+      "name_tokens": 4,
+      "description_tokens": 58,
+      "schema_tokens": 415,
+      "schema_compact_tokens": 322,
+      "total_tokens": 477,
+      "description_length": 205,
+      "schema_length": 1455
+    },
+    {
+      "name": "04_create_calculation_group",
+      "name_tokens": 7,
+      "description_tokens": 13,
+      "schema_tokens": 229,
+      "schema_compact_tokens": 158,
+      "total_tokens": 249,
+      "description_length": 48,
+      "schema_length": 803
+    },
+    {
+      "name": "11_tmdl_bulk_rename",
+      "name_tokens": 5,
+      "description_tokens": 12,
+      "schema_tokens": 232,
+      "schema_compact_tokens": 152,
+      "total_tokens": 249,
+      "description_length": 44,
+      "schema_length": 812
+    },
+    {
+      "name": "03_run_dax",
+      "name_tokens": 2,
+      "description_tokens": 12,
+      "schema_tokens": 178,
+      "schema_compact_tokens": 129,
+      "total_tokens": 192,
+      "description_length": 45,
+      "schema_length": 624
+    },
+    {
+      "name": "11_tmdl_find_replace",
+      "name_tokens": 5,
+      "description_tokens": 15,
+      "schema_tokens": 166,
+      "schema_compact_tokens": 124,
+      "total_tokens": 186,
+      "description_length": 53,
+      "schema_length": 584
+    },
+    {
+      "name": "11_tmdl_generate_script",
+      "name_tokens": 6,
+      "description_tokens": 13,
+      "schema_tokens": 146,
+      "schema_compact_tokens": 106,
+      "total_tokens": 165,
+      "description_length": 46,
+      "schema_length": 511
+    },
+    {
+      "name": "02_list_measures",
+      "name_tokens": 4,
+      "description_tokens": 15,
+      "schema_tokens": 132,
+      "schema_compact_tokens": 102,
+      "total_tokens": 151,
+      "description_length": 55,
+      "schema_length": 465
+    },
+    {
+      "name": "04_bulk_create_measures",
+      "name_tokens": 6,
+      "description_tokens": 14,
+      "schema_tokens": 131,
+      "schema_compact_tokens": 72,
+      "total_tokens": 151,
+      "description_length": 51,
+      "schema_length": 461
+    },
+    {
+      "name": "03_get_column_value_distribution",
+      "name_tokens": 9,
+      "description_tokens": 13,
+      "schema_tokens": 108,
+      "schema_compact_tokens": 74,
+      "total_tokens": 130,
+      "description_length": 48,
+      "schema_length": 379
+    },
+    {
+      "name": "09_compare_pbi_models",
+      "name_tokens": 6,
+      "description_tokens": 12,
+      "schema_tokens": 112,
+      "schema_compact_tokens": 92,
+      "total_tokens": 130,
+      "description_length": 43,
+      "schema_length": 392
+    },
+    {
+      "name": "10_analyze_pbip_repository",
+      "name_tokens": 7,
+      "description_tokens": 16,
+      "schema_tokens": 93,
+      "schema_compact_tokens": 71,
+      "total_tokens": 116,
+      "description_length": 59,
+      "schema_length": 327
+    },
+    {
+      "name": "02_get_measure_details",
+      "name_tokens": 6,
+      "description_tokens": 18,
+      "schema_tokens": 83,
+      "schema_compact_tokens": 59,
+      "total_tokens": 107,
+      "description_length": 66,
+      "schema_length": 291
+    },
+    {
+      "name": "07_get_live_model_schema",
+      "name_tokens": 6,
+      "description_tokens": 32,
+      "schema_tokens": 65,
+      "schema_compact_tokens": 51,
+      "total_tokens": 103,
+      "description_length": 112,
+      "schema_length": 230
+    },
+    {
+      "name": "08_update_model_documentation_word",
+      "name_tokens": 9,
+      "description_tokens": 14,
+      "schema_tokens": 76,
+      "schema_compact_tokens": 53,
+      "total_tokens": 99,
+      "description_length": 51,
+      "schema_length": 266
+    },
+    {
+      "name": "06_analyze_measure_dependencies",
+      "name_tokens": 8,
+      "description_tokens": 14,
+      "schema_tokens": 73,
+      "schema_compact_tokens": 49,
+      "total_tokens": 95,
+      "description_length": 51,
+      "schema_length": 256
+    },
+    {
+      "name": "06_get_measure_impact",
+      "name_tokens": 6,
+      "description_tokens": 12,
+      "schema_tokens": 73,
+      "schema_compact_tokens": 49,
+      "total_tokens": 91,
+      "description_length": 42,
+      "schema_length": 256
+    },
+    {
+      "name": "03_get_column_summary",
+      "name_tokens": 6,
+      "description_tokens": 11,
+      "schema_tokens": 72,
+      "schema_compact_tokens": 48,
+      "total_tokens": 89,
+      "description_length": 40,
+      "schema_length": 253
+    },
+    {
+      "name": "04_bulk_delete_measures",
+      "name_tokens": 6,
+      "description_tokens": 14,
+      "schema_tokens": 67,
+      "schema_compact_tokens": 45,
+      "total_tokens": 87,
+      "description_length": 51,
+      "schema_length": 236
+    },
+    {
+      "name": "03_list_relationships",
+      "name_tokens": 6,
+      "description_tokens": 17,
+      "schema_tokens": 60,
+      "schema_compact_tokens": 46,
+      "total_tokens": 83,
+      "description_length": 62,
+      "schema_length": 212
+    },
+    {
+      "name": "03_standard_dax_analysis",
+      "name_tokens": 6,
+      "description_tokens": 54,
+      "schema_tokens": 17,
+      "schema_compact_tokens": 13,
+      "total_tokens": 77,
+      "description_length": 192,
+      "schema_length": 60
+    },
+    {
+      "name": "08_generate_model_documentation_word",
+      "name_tokens": 10,
+      "description_tokens": 15,
+      "schema_tokens": 45,
+      "schema_compact_tokens": 33,
+      "total_tokens": 70,
+      "description_length": 53,
+      "schema_length": 159
+    },
+    {
+      "name": "08_export_model_explorer_html",
+      "name_tokens": 8,
+      "description_tokens": 16,
+      "schema_tokens": 45,
+      "schema_compact_tokens": 33,
+      "total_tokens": 69,
+      "description_length": 58,
+      "schema_length": 159
+    },
+    {
+      "name": "04_delete_calculation_group",
+      "name_tokens": 7,
+      "description_tokens": 13,
+      "schema_tokens": 47,
+      "schema_compact_tokens": 33,
+      "total_tokens": 67,
+      "description_length": 48,
+      "schema_length": 167
+    },
+    {
+      "name": "03_get_m_expressions",
+      "name_tokens": 5,
+      "description_tokens": 11,
+      "schema_tokens": 45,
+      "schema_compact_tokens": 32,
+      "total_tokens": 61,
+      "description_length": 41,
+      "schema_length": 158
+    },
+    {
+      "name": "07_export_tmdl",
+      "name_tokens": 4,
+      "description_tokens": 9,
+      "schema_tokens": 45,
+      "schema_compact_tokens": 32,
+      "total_tokens": 58,
+      "description_length": 34,
+      "schema_length": 158
+    },
+    {
+      "name": "02_describe_table",
+      "name_tokens": 4,
+      "description_tokens": 24,
+      "schema_tokens": 17,
+      "schema_compact_tokens": 13,
+      "total_tokens": 45,
+      "description_length": 85,
+      "schema_length": 60
+    },
+    {
+      "name": "01_connect_to_instance",
+      "name_tokens": 6,
+      "description_tokens": 18,
+      "schema_tokens": 17,
+      "schema_compact_tokens": 13,
+      "total_tokens": 41,
+      "description_length": 63,
+      "schema_length": 60
+    },
+    {
+      "name": "01_detect_pbi_instances",
+      "name_tokens": 6,
+      "description_tokens": 16,
+      "schema_tokens": 17,
+      "schema_compact_tokens": 13,
+      "total_tokens": 39,
+      "description_length": 57,
+      "schema_length": 60
+    },
+    {
+      "name": "02_list_columns",
+      "name_tokens": 4,
+      "description_tokens": 15,
+      "schema_tokens": 17,
+      "schema_compact_tokens": 13,
+      "total_tokens": 36,
+      "description_length": 54,
+      "schema_length": 60
+    },
+    {
+      "name": "02_search_objects",
+      "name_tokens": 4,
+      "description_tokens": 15,
+      "schema_tokens": 17,
+      "schema_compact_tokens": 13,
+      "total_tokens": 36,
+      "description_length": 55,
+      "schema_length": 60
+    },
+    {
+      "name": "02_search_string",
+      "name_tokens": 4,
+      "description_tokens": 15,
+      "schema_tokens": 17,
+      "schema_compact_tokens": 13,
+      "total_tokens": 36,
+      "description_length": 54,
+      "schema_length": 60
+    },
+    {
+      "name": "03_get_data_sources",
+      "name_tokens": 5,
+      "description_tokens": 14,
+      "schema_tokens": 17,
+      "schema_compact_tokens": 13,
+      "total_tokens": 36,
+      "description_length": 49,
+      "schema_length": 60
+    },
+    {
+      "name": "04_list_calculation_groups",
+      "name_tokens": 7,
+      "description_tokens": 12,
+      "schema_tokens": 17,
+      "schema_compact_tokens": 13,
+      "total_tokens": 36,
+      "description_length": 45,
+      "schema_length": 60
+    },
+    {
+      "name": "02_list_calculated_columns",
+      "name_tokens": 7,
+      "description_tokens": 10,
+      "schema_tokens": 17,
+      "schema_compact_tokens": 13,
+      "total_tokens": 34,
+      "description_length": 35,
+      "schema_length": 60
+    },
+    {
+      "name": "04_upsert_measure",
+      "name_tokens": 4,
+      "description_tokens": 13,
+      "schema_tokens": 17,
+      "schema_compact_tokens": 13,
+      "total_tokens": 34,
+      "description_length": 48,
+      "schema_length": 60
+    },
+    {
+      "name": "12_show_user_guide",
+      "name_tokens": 5,
+      "description_tokens": 11,
+      "schema_tokens": 17,
+      "schema_compact_tokens": 13,
+      "total_tokens": 33,
+      "description_length": 39,
+      "schema_length": 60
+    },
+    {
+      "name": "02_list_tables",
+      "name_tokens": 4,
+      "description_tokens": 11,
+      "schema_tokens": 17,
+      "schema_compact_tokens": 13,
+      "total_tokens": 32,
+      "description_length": 40,
+      "schema_length": 60
+    },
+    {
+      "name": "04_delete_measure",
+      "name_tokens": 4,
+      "description_tokens": 10,
+      "schema_tokens": 17,
+      "schema_compact_tokens": 13,
+      "total_tokens": 31,
+      "description_length": 38,
+      "schema_length": 60
+    },
+    {
+      "name": "04_list_roles",
+      "name_tokens": 3,
+      "description_tokens": 10,
+      "schema_tokens": 17,
+      "schema_compact_tokens": 13,
+      "total_tokens": 30,
+      "description_length": 36,
+      "schema_length": 60
+    }
+  ],
+  "categories": {
+    "13-Hybrid Analysis": {
+      "count": 2,
+      "tokens": 2097
+    },
+    "05-Analysis": {
+      "count": 2,
+      "tokens": 1472
+    },
+    "04-Model Operations": {
+      "count": 8,
+      "tokens": 685
+    },
+    "11-TMDL": {
+      "count": 3,
+      "tokens": 600
+    },
+    "03-Query": {
+      "count": 6,
+      "tokens": 591
+    },
+    "02-Schema": {
+      "count": 8,
+      "tokens": 477
+    },
+    "09-Comparison": {
+      "count": 1,
+      "tokens": 130
+    },
+    "10-PBIP": {
+      "count": 1,
+      "tokens": 116
+    },
+    "07-Export": {
+      "count": 2,
+      "tokens": 161
+    },
+    "08-Documentation": {
+      "count": 3,
+      "tokens": 238
+    },
+    "06-Dependencies": {
+      "count": 2,
+      "tokens": 186
+    },
+    "03-DAX Analysis": {
+      "count": 1,
+      "tokens": 77
+    },
+    "01-Connection": {
+      "count": 2,
+      "tokens": 80
+    },
+    "12-Help": {
+      "count": 1,
+      "tokens": 33
+    }
+  },
+  "optimization_potential": {
+    "compact_json": 1360,
+    "description_compression": 0,
+    "schema_deduplication": 1463,
+    "progressive_disclosure": 2182,
+    "conservative_total_savings": 2823,
+    "aggressive_total_savings": 2182,
+    "conservative_optimized": 4119,
+    "aggressive_optimized": 4761
+  }
+}
