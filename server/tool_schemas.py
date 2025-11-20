@@ -706,5 +706,19 @@ TOOL_SCHEMAS = {
             }
         },
         "required": ["analysis_path", "operation"]
+    },
+
+    # Token Usage Tracking (1 tool)
+    'get_token_usage': {
+        "type": "object",
+        "properties": {
+            "format": {
+                "type": "string",
+                "enum": ["json", "summary", "detailed"],
+                "description": "Output format: 'json' (full statistics), 'summary' (brief overview), 'detailed' (comprehensive report). Default: 'json'",
+                "default": "json"
+            }
+        },
+        "required": []
     }
 }

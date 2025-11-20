@@ -181,16 +181,33 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
         _dur = round((time.time() - _t0) * 1000, 2)
         logger.debug("Tool %s completed in %sms", name, _dur)
 
-        # Quick estimate: Skip expensive token checks for obviously small responses
+        # Token tracking and limits awareness for all responses
         if isinstance(result, dict):
-            # Fast path for small results (skip token overhead checking)
+            # Check response size for optimization decisions
             result_str = str(result)
             is_likely_small = len(result_str) < 4000  # ~1000 tokens estimate
 
-            # Only add limits awareness for potentially large results
-            if not is_likely_small:
-                result = agent_policy.wrap_response_with_limits_info(result, name)
+            # Always add limits info and track (even for small responses)
+            result = agent_policy.wrap_response_with_limits_info(result, name)
 
+            # Track token usage for ALL tool calls
+            try:
+                from core.infrastructure.token_usage_tracker import get_token_tracker
+                if '_limits_info' in result and 'token_usage' in result['_limits_info']:
+                    token_info = result['_limits_info']['token_usage']
+                    tracker = get_token_tracker()
+                    tracker.track(
+                        tool_name=name,
+                        tokens=token_info['estimated_tokens'],
+                        max_tokens=token_info['max_tokens'],
+                        percentage=token_info['percentage'],
+                        level=token_info['level']
+                    )
+            except Exception as e:
+                logger.debug(f"Failed to track token usage: {e}")
+
+            # Only do expensive checks for large responses
+            if not is_likely_small:
                 # Check for token overflow (only for high-token tools)
                 if result.get('_limits_info', {}).get('token_usage', {}).get('level') == 'over':
                     high_token_tools = {
@@ -220,7 +237,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                             )
                         }, separators=(',', ':')))]
 
-                # Add optimization suggestions (only for non-small results)
+                # Add optimization suggestions (only for large results)
                 suggestion = agent_policy.suggest_optimizations(name, result)
                 if suggestion:
                     if '_limits_info' not in result:
@@ -251,6 +268,22 @@ async def main():
     logger.info(f"MCP-PowerBi-Finvision Server v{__version__} - Clean Modular Edition")
     logger.info("=" * 80)
     logger.info(f"Registered {len(registry._handlers)} tools")
+
+    # Register token usage resource
+    try:
+        from core.infrastructure.token_usage_tracker import get_token_tracker
+        resource_manager = get_resource_manager()
+        tracker = get_token_tracker()
+        resource_manager.register_dynamic_resource(
+            uri="powerbi://monitoring/token-usage",
+            name="Token Usage Report",
+            description="Real-time token usage statistics for the current MCP session. Shows total tokens used, per-tool breakdown, and recent history.",
+            provider=tracker.get_resource_content,
+            mime_type="text/markdown"
+        )
+        logger.info("Token usage resource registered")
+    except Exception as e:
+        logger.warning(f"Failed to register token usage resource: {e}")
 
     # Build initialization instructions
     def _initial_instructions() -> str:

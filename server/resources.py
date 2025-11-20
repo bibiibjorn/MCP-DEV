@@ -5,7 +5,7 @@ Exposes exported model files as MCP resources for direct access by AI/MCP client
 import json
 import gzip
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Callable
 from pathlib import Path
 from mcp.types import Resource
 
@@ -19,6 +19,7 @@ class ResourceManager:
         """Initialize resource manager"""
         self._export_cache: Dict[str, Dict] = {}  # uri -> metadata
         self._latest_export: Optional[str] = None
+        self._dynamic_resources: Dict[str, Dict] = {}  # uri -> {provider, metadata}
 
     def register_export(self, file_path: str, metadata: Dict) -> str:
         """
@@ -57,9 +58,38 @@ class ResourceManager:
         """Get URI of the most recent export"""
         return self._latest_export
 
+    def register_dynamic_resource(self, uri: str, name: str, description: str,
+                                  provider: Callable[[], str], mime_type: str = "text/markdown"):
+        """
+        Register a dynamic resource that generates content on-demand
+
+        Args:
+            uri: Resource URI
+            name: Resource name
+            description: Resource description
+            provider: Callable that returns the resource content
+            mime_type: MIME type of the content
+        """
+        self._dynamic_resources[uri] = {
+            'name': name,
+            'description': description,
+            'provider': provider,
+            'mime_type': mime_type
+        }
+        logger.info(f"Registered dynamic MCP resource: {uri}")
+
     def list_resources(self) -> List[Resource]:
         """List all available resources"""
         resources = []
+
+        # Add dynamic resources first (like token usage)
+        for uri, data in self._dynamic_resources.items():
+            resources.append(Resource(
+                uri=uri,
+                name=data['name'],
+                description=data['description'],
+                mimeType=data['mime_type']
+            ))
 
         # Add latest export as a special resource
         if self._latest_export:
@@ -93,6 +123,12 @@ class ResourceManager:
             Resource content as string
         """
         try:
+            # Check if it's a dynamic resource
+            if uri in self._dynamic_resources:
+                logger.info(f"Reading dynamic resource: {uri}")
+                provider = self._dynamic_resources[uri]['provider']
+                return provider()
+
             # Handle latest export alias
             if uri == "powerbi://export/latest":
                 if not self._latest_export:
