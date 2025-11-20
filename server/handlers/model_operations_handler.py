@@ -189,18 +189,6 @@ def handle_delete_calculation_group(args: Dict[str, Any]) -> Dict[str, Any]:
 
     return calc_group_mgr.delete_calculation_group(name)
 
-def handle_list_partitions(args: Dict[str, Any]) -> Dict[str, Any]:
-    """List table partitions"""
-    if not connection_state.is_connected():
-        return ErrorHandler.handle_not_connected()
-
-    partition_mgr = connection_state.partition_manager
-    if not partition_mgr:
-        return ErrorHandler.handle_manager_unavailable('partition_manager')
-
-    table = args.get('table')
-    return partition_mgr.list_table_partitions(table)
-
 def handle_list_roles(args: Dict[str, Any]) -> Dict[str, Any]:
     """List RLS roles"""
     if not connection_state.is_connected():
@@ -214,20 +202,6 @@ def handle_list_roles(args: Dict[str, Any]) -> Dict[str, Any]:
 
 def register_model_operations_handlers(registry):
     """Register all model operation handlers"""
-    from server.tool_schemas import TOOL_SCHEMAS
-
-    tools = [
-        ToolDefinition(
-            name="list_partitions",
-            description="List table partitions",
-            handler=handle_list_partitions,
-            input_schema=TOOL_SCHEMAS.get('list_partitions', {}),
-            category="model_operations",
-            sort_order=25
-        ),
-    ]
-
-    for tool in tools:
-        registry.register(tool)
-
-    logger.info(f"Registered {len(tools)} model operation handlers")
+    # No model operation handlers currently registered
+    # This function is kept for future model operation tools
+    logger.info("Model operation handlers registration (currently empty)")

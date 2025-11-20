@@ -228,7 +228,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ---
 
-## ⚙️ CATEGORY 04: MODEL OPERATIONS (9 tools)
+## ⚙️ CATEGORY 04: MODEL OPERATIONS (8 tools)
 
 ### 04_upsert_measure
 **Purpose**: Create or update a measure
@@ -289,13 +289,6 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
   - name: Calculation group name
 **Returns**: Success status
 
-### 04_list_partitions
-**Purpose**: List table partitions
-**When to use**: Understanding data loading structure
-**Parameters**:
-  - table (optional): Filter by table
-**Returns**: Partition names, modes, sources, queries
-
 ### 04_list_roles
 **Purpose**: List Row-Level Security (RLS) roles
 **When to use**: Understanding security configuration
@@ -355,34 +348,26 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ---
 
-## 💾 CATEGORY 07: EXPORT (3 tools)
+## 💾 CATEGORY 07: EXPORT (2 tools)
 
-### 07_export_model_schema
-**Purpose**: Export model schema in TMDL format
-**When to use**: Documentation, version control, backups
+### 07_get_live_model_schema
+**Purpose**: Get live model schema (inline, without DAX expressions)
+**When to use**: Quick model overview, structure analysis, lightweight documentation
 **Parameters**:
-  - section: 'compact' (lightweight) or 'all' (full TMDL)
-  - output_path (optional): Custom file path
-**Returns**:
-  - compact: Lightweight schema (~1-2k tokens) without DAX
-  - all: Complete TMDL export to file
-**Note**: 'all' mode creates file in exports/tmdl_exports/
-
-### 07_export_tmsl
-**Purpose**: Export model as TMSL (Tabular Model Scripting Language)
-**When to use**: Automation, deployment scripts
-**Parameters**:
-  - file_path (optional): Output file path
-**Returns**: TMSL JSON definition
-**Note**: TMSL is JSON-based scripting language for SSAS/Power BI
+  - include_hidden (optional): Include hidden objects (default: true)
+**Returns**: Lightweight schema (~1-2k tokens) with:
+  - Tables, columns, measures (names, data types, formats, folders)
+  - Relationships (endpoints, cardinality, direction)
+  - No DAX expressions (keeps token usage low)
+**Note**: Returned inline, not saved to file
 
 ### 07_export_tmdl
-**Purpose**: Export model as TMDL (Tabular Model Definition Language)
-**When to use**: Version control, Git-friendly format
+**Purpose**: Export complete model as TMDL to file (includes all DAX expressions)
+**When to use**: Full backup, version control, complete documentation
 **Parameters**:
-  - output_dir: Output directory path
-**Returns**: TMDL files in directory structure
-**Note**: TMDL is text-based, Git-friendly format (Power BI 2024+)
+  - output_dir (optional): Output directory path
+**Returns**: Full TMDL export file with all DAX expressions
+**Note**: Creates file in exports/tmdl_exports/ (can be large, 50k-200k+ tokens)
 
 ---
 
@@ -424,31 +409,29 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ---
 
-## 🔄 CATEGORY 09: COMPARISON (2 tools)
+## 🔄 CATEGORY 09: COMPARISON (1 tool)
 
-### 09_prepare_model_comparison (STEP 1)
-**Purpose**: Detect two Power BI models for comparison
-**When to use**: Before comparing models (must run first)
-**Parameters**: None
-**Returns**: List of detected models, prompts user to identify OLD and NEW
-**Workflow**:
-  1. Open both Power BI files
-  2. Run 09_prepare_model_comparison
-  3. User confirms which is OLD and which is NEW
-  4. Run 09_compare_pbi_models
-
-### 09_compare_pbi_models (STEP 2)
-**Purpose**: Compare two Power BI models
-**When to use**: After prepare_model_comparison
-**Parameters**:
+### 09_compare_pbi_models
+**Purpose**: Compare two live/open Power BI models - detects instances and compares OLD vs NEW
+**When to use**: When you want to compare two Power BI models
+**Parameters** (optional on first call):
   - old_port: Port number of OLD model
   - new_port: Port number of NEW model
+**How it works**:
+  1. First call: Detects all running Power BI instances (no parameters needed)
+  2. Returns list of detected models with their ports
+  3. Second call: Provide old_port and new_port to perform comparison
 **Returns**: Detailed comparison report:
   - Added/removed/modified tables
   - Added/removed/modified measures
   - Added/removed/modified columns
   - Relationship changes
   - DAX formula differences
+**Workflow**:
+  1. Open both Power BI files in separate Desktop instances
+  2. Run 09_compare_pbi_models (without parameters) to detect models
+  3. Identify which is OLD and which is NEW from the returned list
+  4. Run 09_compare_pbi_models again with old_port and new_port
 **Use cases**:
   - Version comparison
   - Development vs production
@@ -467,7 +450,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 **Returns**: HTML report with model analysis
 **Features**:
   - Works offline (no Power BI connection)
-  - Analyzes TMDL/TMSL definition
+  - Analyzes TMDL definition
   - Identifies tables, measures, relationships
   - Best practices from file analysis
   - Perfect for Git hooks and CI/CD
@@ -611,7 +594,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 2. 05_comprehensive_analysis (get full analysis)
 3. 08_generate_model_documentation_word
 4. 08_export_model_explorer_html (shareable version)
-5. 07_export_model_schema (section='all') (version control)
+5. 07_export_tmdl (full backup for version control)
 ```
 
 ### Workflow 4: Performance Optimization
@@ -625,10 +608,10 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ### Workflow 5: Model Comparison
 ```
-1. Open both Power BI files
-2. 09_prepare_model_comparison
-3. Confirm OLD and NEW
-4. 09_compare_pbi_models (old_port, new_port)
+1. Open both Power BI files in separate Desktop instances
+2. 09_compare_pbi_models (no parameters) - detects models
+3. Identify which is OLD and which is NEW from the list
+4. 09_compare_pbi_models (old_port, new_port) - performs comparison
 5. Review changes and impacts
 ```
 
@@ -691,7 +674,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 ### Safety Tips
 - Comprehensive_analysis backs up before changes
 - Check measure_impact before deleting
-- Use prepare_model_comparison before comparing
+- Use compare_pbi_models without parameters first to detect models
 - Test DAX with validate_dax_query first
 
 ---

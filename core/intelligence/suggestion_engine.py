@@ -417,7 +417,7 @@ class SuggestionEngine:
         # Suggest export for reporting
         suggestions.append({
             'action': 'export_results',
-            'tool': 'export_model_schema',
+            'tool': 'get_live_model_schema',
             'reason': 'Export analysis results and model schema for reporting',
             'priority': 5,
             'category': 'Export'

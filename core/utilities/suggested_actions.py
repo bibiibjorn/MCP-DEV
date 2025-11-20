@@ -276,8 +276,8 @@ def _suggest_after_run_dax(result: Dict[str, Any], context: Dict[str, Any]) -> L
         {
             'action': 'export_results',
             'description': 'Export model schema or TMDL for documentation',
-            'tool': 'export_model_schema',
-            'example': {'export_format': 'compact'}
+            'tool': 'get_live_model_schema',
+            'example': {'include_hidden': True}
         }
     ]
 

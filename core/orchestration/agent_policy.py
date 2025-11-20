@@ -496,7 +496,7 @@ class AgentPolicy:
             if tool_name == 'analyze_model_bpa':
                 suggestions.append("Use filtering parameters to reduce result size")
 
-            if tool_name == 'export_tmsl' or tool_name == 'export_tmdl':
+            if tool_name == 'export_tmdl':
                 suggestions.append("Export to file instead of returning full content")
 
             if suggestions:

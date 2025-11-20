@@ -194,8 +194,8 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 # Check for token overflow (only for high-token tools)
                 if result.get('_limits_info', {}).get('token_usage', {}).get('level') == 'over':
                     high_token_tools = {
-                        'full_analysis', 'export_tmsl', 'export_tmdl', 'analyze_model_bpa',
-                        '05_comprehensive_analysis', '07_export_tmsl', '07_export_tmdl'
+                        'full_analysis', 'export_tmdl', 'analyze_model_bpa',
+                        '05_comprehensive_analysis', '07_export_tmdl'
                     }
                     if name in high_token_tools:
                         token_info = result['_limits_info']['token_usage']
@@ -264,7 +264,7 @@ async def main():
                 "- Inspect tables/columns/measures and preview data",
                 "- Search objects and view data sources and M expressions",
                 "- Run Best Practice Analyzer (BPA) and relationship analysis",
-                "- Export compact schema, TMSL/TMDL, and documentation",
+                "- Export compact schema, TMDL, and documentation",
                 "",
                 "Quick start:",
                 "1) Run tool: detect_powerbi_desktop",

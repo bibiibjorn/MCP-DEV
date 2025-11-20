@@ -273,7 +273,7 @@ Correct: list_tables()
 | **Operations** | upsert_measure, delete_measure, bulk_create_measures, bulk_delete_measures | User wants to modify the model |
 | **Analysis** | simple_analysis, full_analysis | User wants insights about the model |
 | **Dependencies** | analyze_measure_dependencies, get_measure_impact | User wants to understand relationships between objects |
-| **Export** | export_model_schema, export_tmsl, export_tmdl | User wants to export model definitions |
+| **Export** | get_live_model_schema, export_tmdl | User wants to export model definitions |
 
 ---
 

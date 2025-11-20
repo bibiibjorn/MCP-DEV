@@ -60,7 +60,6 @@ class ToolDispatcher:
         '04_list_calculation_groups': 'list_calculation_groups',
         '04_create_calculation_group': 'create_calculation_group',
         '04_delete_calculation_group': 'delete_calculation_group',
-        '04_list_partitions': 'list_partitions',
         '04_list_roles': 'list_roles',
 
         # 05 - Analysis (2 tools)
@@ -71,9 +70,8 @@ class ToolDispatcher:
         '06_analyze_measure_dependencies': 'analyze_measure_dependencies',
         '06_get_measure_impact': 'get_measure_impact',
 
-        # 07 - Export (3 tools)
-        '07_export_model_schema': 'export_model_schema',
-        '07_export_tmsl': 'export_tmsl',
+        # 07 - Export (2 tools)
+        '07_get_live_model_schema': 'get_live_model_schema',
         '07_export_tmdl': 'export_tmdl',
 
         # 08 - Documentation (3 tools)
@@ -81,8 +79,7 @@ class ToolDispatcher:
         '08_update_model_documentation_word': 'update_model_documentation_word',
         '08_export_model_explorer_html': 'export_model_explorer_html',
 
-        # 09 - Comparison (2 tools)
-        '09_prepare_model_comparison': 'prepare_model_comparison',
+        # 09 - Comparison (1 tool)
         '09_compare_pbi_models': 'compare_pbi_models',
 
         # 10 - PBIP Offline Analysis (1 tool)

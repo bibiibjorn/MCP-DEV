@@ -1,6 +1,6 @@
 """
 Export Handler
-Handles TMSL, TMDL, and schema export operations
+Handles TMDL and schema export operations
 """
 from typing import Dict, Any
 import logging
@@ -9,19 +9,6 @@ from core.infrastructure.connection_state import connection_state
 from core.validation.error_handler import ErrorHandler
 
 logger = logging.getLogger(__name__)
-
-def handle_export_tmsl(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Export TMSL definition"""
-    if not connection_state.is_connected():
-        return ErrorHandler.handle_not_connected()
-
-    model_exporter = connection_state.model_exporter
-    if not model_exporter:
-        return ErrorHandler.handle_manager_unavailable('model_exporter')
-
-    file_path = args.get('file_path')
-
-    return model_exporter.export_tmsl(file_path)
 
 def handle_export_tmdl(args: Dict[str, Any]) -> Dict[str, Any]:
     """Export TMDL definition"""
@@ -36,8 +23,8 @@ def handle_export_tmdl(args: Dict[str, Any]) -> Dict[str, Any]:
 
     return model_exporter.export_tmdl(output_dir)
 
-def handle_export_model_schema(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Export model schema by section"""
+def handle_get_live_model_schema(args: Dict[str, Any]) -> Dict[str, Any]:
+    """Get live model schema (inline, without DAX expressions)"""
     if not connection_state.is_connected():
         return ErrorHandler.handle_not_connected()
 
@@ -45,10 +32,9 @@ def handle_export_model_schema(args: Dict[str, Any]) -> Dict[str, Any]:
     if not model_exporter:
         return ErrorHandler.handle_manager_unavailable('model_exporter')
 
-    section = args.get('section', 'all')
-    output_path = args.get('output_path')
+    include_hidden = args.get('include_hidden', True)
 
-    return model_exporter.export_schema(section, output_path)
+    return model_exporter.export_compact_schema(include_hidden=include_hidden)
 
 def register_export_handlers(registry):
     """Register all export handlers"""
@@ -56,28 +42,20 @@ def register_export_handlers(registry):
 
     tools = [
         ToolDefinition(
-            name="export_model_schema",
-            description="Export model schema by section",
-            handler=handle_export_model_schema,
-            input_schema=TOOL_SCHEMAS.get('export_model_schema', {}),
+            name="get_live_model_schema",
+            description="Get live model schema (inline, lightweight, without DAX expressions)",
+            handler=handle_get_live_model_schema,
+            input_schema=TOOL_SCHEMAS.get('get_live_model_schema', {}),
             category="export",
             sort_order=34
         ),
         ToolDefinition(
-            name="export_tmsl",
-            description="Export TMSL definition",
-            handler=handle_export_tmsl,
-            input_schema=TOOL_SCHEMAS.get('export_tmsl', {}),
-            category="export",
-            sort_order=35
-        ),
-        ToolDefinition(
             name="export_tmdl",
-            description="Export TMDL definition",
+            description="Export full TMDL definition to file (includes all DAX expressions)",
             handler=handle_export_tmdl,
             input_schema=TOOL_SCHEMAS.get('export_tmdl', {}),
             category="export",
-            sort_order=36
+            sort_order=35
         ),
     ]
 

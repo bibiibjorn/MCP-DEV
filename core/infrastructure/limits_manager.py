@@ -136,7 +136,6 @@ class TimeoutLimits:
         "analyze_model_bpa": 180,
         "full_analysis": 300,
         "analyze_queries_batch": 180,
-        "export_tmsl": 30,
         "export_tmdl": 60,
         "generate_documentation": 60,
     })

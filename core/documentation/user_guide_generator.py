@@ -373,14 +373,6 @@ def generate_comprehensive_user_guide(category: str = "all", format_type: str = 
                     "tips": ["Impact analysis", "Shows dependencies"]
                 },
                 {
-                    "name": "list_partitions",
-                    "purpose": "List partitions for a table",
-                    "when_to_use": "Review partition strategy, check refresh scope",
-                    "example": '{"table": "Sales"}',
-                    "returns": "Partition names, modes, sources",
-                    "tips": ["Shows Import vs DirectQuery", "Includes M expressions"]
-                },
-                {
                     "name": "list_roles",
                     "purpose": "List Row-Level Security (RLS) roles",
                     "when_to_use": "Audit security, document RLS",

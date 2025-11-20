@@ -222,17 +222,6 @@ TOOL_SCHEMAS = {
         "required": ["name"]
     },
 
-    'list_partitions': {
-        "type": "object",
-        "properties": {
-            "table": {
-                "type": "string",
-                "description": "Optional table filter"
-            }
-        },
-        "required": []
-    },
-
     'list_roles': {
         "type": "object",
         "properties": {},
@@ -392,18 +381,7 @@ TOOL_SCHEMAS = {
         "required": ["table", "measure"]
     },
 
-    # Export (3 tools)
-    'export_tmsl': {
-        "type": "object",
-        "properties": {
-            "file_path": {
-                "type": "string",
-                "description": "Optional output file path"
-            }
-        },
-        "required": []
-    },
-
+    # Export (2 tools)
     'export_tmdl': {
         "type": "object",
         "properties": {
@@ -415,18 +393,13 @@ TOOL_SCHEMAS = {
         "required": []
     },
 
-    'export_model_schema': {
+    'get_live_model_schema': {
         "type": "object",
         "properties": {
-            "section": {
-                "type": "string",
-                "description": "Section to export: 'compact' (lightweight schema without DAX expressions, ~1-2k tokens) or 'all' (full TMDL with all DAX, exports to file). Default: 'all'",
-                "enum": ["compact", "all"],
-                "default": "all"
-            },
-            "output_path": {
-                "type": "string",
-                "description": "Optional output file path. For section='all', file is auto-generated in exports/tmdl_exports/ if not specified. File can be read back using standard file operations."
+            "include_hidden": {
+                "type": "boolean",
+                "description": "Include hidden objects (tables, columns, measures). Default: true",
+                "default": True
             }
         },
         "required": []
@@ -471,26 +444,20 @@ TOOL_SCHEMAS = {
         "required": []
     },
 
-    # Comparison (2 tools)
-    'prepare_model_comparison': {
-        "type": "object",
-        "properties": {},
-        "required": []
-    },
-
+    # Comparison (1 tool)
     'compare_pbi_models': {
         "type": "object",
         "properties": {
             "old_port": {
                 "type": "integer",
-                "description": "Port of OLD model instance"
+                "description": "Port of OLD model instance (optional - if not provided, tool will detect instances and ask)"
             },
             "new_port": {
                 "type": "integer",
-                "description": "Port of NEW model instance"
+                "description": "Port of NEW model instance (optional - if not provided, tool will detect instances and ask)"
             }
         },
-        "required": ["old_port", "new_port"]
+        "required": []
     },
 
     # PBIP Offline Analysis (1 tool)

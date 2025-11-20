@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "mcp-powerbi-finvision",
   "display_name": "Power BI Analysis MCP Server",
-  "version": "5.01",
+  "version": "6.0.2",
   "description": "A production-ready MCP server for Power BI Desktop analysis with DAX debugging, TMDL editing, and comprehensive model operations",
   "long_description": "MCP-PowerBi-Finvision v5.01 enables AI-powered analysis of Power BI models with 45+ tools across 13 categories. Features include:\n\n**Core Analysis:**\n- Auto-detect and connect to Power BI Desktop instances\n- Browse tables, columns, measures, and relationships\n- Inspect DAX expressions and M queries\n- Run comprehensive analysis with consolidated tools\n\n**DAX Development (ENHANCED):**\n- Unified DAX analysis: syntax validation + context analysis in one tool\n- Debug DAX with context transition analysis\n- Visualize filter context flow through relationships\n- Step-by-step DAX debugging with detailed insights\n- Automatic syntax validation before analysis\n\n**Hybrid Analysis (NEW in v5.01):**\n- Export TMDL + metadata + sample data packages\n- BI Expert analysis with concrete recommendations\n- Pattern-based fuzzy search\n- Natural language query support\n- Token-optimized TOON format\n\n**TMDL Management:**\n- Validate TMDL syntax with linting\n- Find & replace with regex support\n- Bulk rename with automatic reference updates\n- Generate TMDL scripts\n\n**Model Operations:**\n- Create/manage calculation groups\n- View/manage partitions and RLS roles\n- Bulk measure operations\n\n**Performance & Quality:**\n- Performance analysis with DAX profiling and VertiPaq stats\n- Best practices analysis (120+ BPA rules)\n- Dependency analysis and impact assessment\n- Export to Word, Excel, PDF, HTML, TMSL/TMDL\n\nRequirements:\n- Windows 10/11 (64-bit)\n- Power BI Desktop installed and running\n- .NET Framework 4.7.2+\n\nEverything runs locally over stdio with no exposed ports.",
   "author": {
@@ -120,10 +120,6 @@
       "description": "[04-Model Operations] Delete a calculation group"
     },
     {
-      "name": "04_list_partitions",
-      "description": "[04-Model Operations] List table partitions"
-    },
-    {
       "name": "04_list_roles",
       "description": "[04-Model Operations] List RLS roles"
     },
@@ -144,12 +140,8 @@
       "description": "[06-Dependencies] Get measure usage impact"
     },
     {
-      "name": "07_export_model_schema",
-      "description": "[07-Export] Export model schema: 'compact' for lightweight preview (~1-2k tokens) or 'all' for full TMDL export to file (optimized for low token usage)"
-    },
-    {
-      "name": "07_export_tmsl",
-      "description": "[07-Export] Export TMSL definition"
+      "name": "07_get_live_model_schema",
+      "description": "[07-Export] Get live model schema (inline, lightweight, without DAX expressions - optimized for low token usage)"
     },
     {
       "name": "07_export_tmdl",
@@ -168,12 +160,8 @@
       "description": "[08-Documentation] Generate interactive HTML documentation"
     },
     {
-      "name": "09_prepare_model_comparison",
-      "description": "[09-Comparison] STEP 1: Detect both models for comparison"
-    },
-    {
       "name": "09_compare_pbi_models",
-      "description": "[09-Comparison] STEP 2: Compare models after user confirms OLD/NEW"
+      "description": "[09-Comparison] Compare 2 open/live PBI files"
     },
     {
       "name": "10_analyze_pbip_repository",

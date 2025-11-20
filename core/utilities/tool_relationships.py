@@ -86,7 +86,7 @@ TOOL_RELATIONSHIPS = {
         'workflow_stage': 'exploration'
     },
     'run_dax': {
-        'common_next_steps': ['dax_intelligence', 'export_model_schema'],
+        'common_next_steps': ['dax_intelligence', 'get_live_model_schema'],
         'prerequisites': ['connect_to_powerbi'],
         'alternatives': ['preview_table_data'],
         'category': 'query',
@@ -123,7 +123,7 @@ TOOL_RELATIONSHIPS = {
 
     # Analysis Tools
     'comprehensive_analysis': {
-        'common_next_steps': ['generate_model_documentation_word', 'export_model_explorer_html', 'export_model_schema'],
+        'common_next_steps': ['generate_model_documentation_word', 'export_model_explorer_html', 'get_live_model_schema'],
         'prerequisites': ['connect_to_powerbi'],
         'alternatives': [],
         'category': 'analysis',
@@ -177,24 +177,17 @@ TOOL_RELATIONSHIPS = {
     },
 
     # Export & Documentation
-    'export_model_schema': {
-        'common_next_steps': ['export_tmdl', 'export_tmsl'],
+    'get_live_model_schema': {
+        'common_next_steps': ['export_tmdl'],
         'prerequisites': ['connect_to_powerbi'],
-        'alternatives': ['export_tmdl', 'export_tmsl'],
-        'category': 'export',
-        'workflow_stage': 'documentation'
-    },
-    'export_tmsl': {
-        'common_next_steps': [],
-        'prerequisites': ['connect_to_powerbi'],
-        'alternatives': ['export_tmdl', 'export_model_schema'],
+        'alternatives': ['export_tmdl'],
         'category': 'export',
         'workflow_stage': 'documentation'
     },
     'export_tmdl': {
         'common_next_steps': ['tmdl_find_replace', 'tmdl_bulk_rename'],
         'prerequisites': ['connect_to_powerbi'],
-        'alternatives': ['export_tmsl', 'export_model_schema'],
+        'alternatives': ['get_live_model_schema'],
         'category': 'export',
         'workflow_stage': 'documentation'
     },
@@ -221,16 +214,9 @@ TOOL_RELATIONSHIPS = {
     },
 
     # Comparison
-    'prepare_model_comparison': {
-        'common_next_steps': ['compare_pbi_models'],
-        'prerequisites': [],  # Needs 2 Power BI instances open
-        'alternatives': [],
-        'category': 'comparison',
-        'workflow_stage': 'comparison'
-    },
     'compare_pbi_models': {
         'common_next_steps': ['generate_model_documentation_word'],
-        'prerequisites': ['prepare_model_comparison'],
+        'prerequisites': [],  # Needs 2 Power BI instances open, detects and compares in one tool
         'alternatives': [],
         'category': 'comparison',
         'workflow_stage': 'comparison'
@@ -374,7 +360,6 @@ def suggest_workflow(goal: str) -> List[str]:
             'upsert_measure'
         ],
         'compare': [
-            'prepare_model_comparison',
             'compare_pbi_models',
             'generate_model_documentation_word'
         ],
