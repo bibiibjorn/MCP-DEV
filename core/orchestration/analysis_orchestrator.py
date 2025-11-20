@@ -1756,7 +1756,8 @@ class AnalysisOrchestrator(BaseOrchestrator):
 
             for i, rel in enumerate(sorted_rels):
                 is_last = (i == len(sorted_rels) - 1)
-                connector = "└──>" if is_last else "├──>"
+                # Use ASCII characters instead of Unicode box-drawing for better compatibility
+                connector = "'-->" if is_last else "|-->"
 
                 # Build relationship line
                 rel_line = f"{connector} {rel['to']:<30} ({rel['cardinality']})"

@@ -31,6 +31,7 @@ class ConnectionState:
         self.rls_manager = None
         self.table_crud_manager = None
         self.column_crud_manager = None
+        self.measure_crud_manager = None
         self.relationship_crud_manager = None
         self.model_exporter = None
         self.performance_optimizer = None
@@ -212,6 +213,7 @@ class ConnectionState:
                 from core.operations.rls_manager import RLSManager
                 from core.operations.table_crud_manager import TableCRUDManager
                 from core.operations.column_crud_manager import ColumnCRUDManager
+                from core.operations.measure_crud_manager import MeasureCRUDManager
                 from core.operations.relationship_crud_manager import RelationshipCRUDManager
                 from core.model.model_exporter import ModelExporter
                 from core.performance.performance_optimizer import PerformanceOptimizer
@@ -293,6 +295,10 @@ class ConnectionState:
                 if not self.column_crud_manager or force_reinit:
                     self.column_crud_manager = ColumnCRUDManager(conn)
                     logger.debug("[OK] Column CRUD manager initialized")
+
+                if not self.measure_crud_manager or force_reinit:
+                    self.measure_crud_manager = MeasureCRUDManager(conn)
+                    logger.debug("[OK] Measure CRUD manager initialized")
 
                 if not self.relationship_crud_manager or force_reinit:
                     self.relationship_crud_manager = RelationshipCRUDManager(conn)
@@ -398,6 +404,7 @@ class ConnectionState:
         self.rls_manager = None
         self.table_crud_manager = None
         self.column_crud_manager = None
+        self.measure_crud_manager = None
         self.relationship_crud_manager = None
         self.model_exporter = None
         self.performance_optimizer = None

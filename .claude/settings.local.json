@@ -60,7 +60,9 @@
       "Bash(Get-Content \"c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\MCP-PowerBi-Finvision\\logs\\mcp_server.log\" -Tail 500)",
       "Bash(Select-String -Pattern \"(dependency|unused|visual|report_dependencies|_run_dependency)\" -Context 2)",
       "Bash(timeout 15 python:*)",
-      "Bash(timeout 20 python:*)"
+      "Bash(timeout 20 python:*)",
+      "Bash(Get-Content \"c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\MCP-PowerBi-Finvision\\logs\\mcp_server.log\" -Tail 100)",
+      "Bash(Select-String -Pattern \"(ERROR|Exception|Traceback|disconnect|failed)\" -Context 3)"
     ],
     "deny": [],
     "ask": []

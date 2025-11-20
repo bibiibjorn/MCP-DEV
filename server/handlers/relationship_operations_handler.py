@@ -21,7 +21,46 @@ def register_relationship_operations_handler(registry):
 
     tool = ToolDefinition(
         name="relationship_operations",
-        description="Unified relationship operations: list, get, find, and CRUD (create/update/delete/rename/activate/deactivate)",
+        description=(
+            "Unified relationship operations handler supporting ALL CRUD operations.\n"
+            "\n"
+            "━━━ READ OPERATIONS ━━━\n"
+            "• list: List all relationships → operation='list'\n"
+            "  Optional: active_only=true to filter active relationships only\n"
+            "  Example: {'operation': 'list', 'active_only': true}\n"
+            "\n"
+            "• get: Get relationship details → operation='get', relationship_name=X\n"
+            "  Example: {'operation': 'get', 'relationship_name': 'Sales-Customer'}\n"
+            "\n"
+            "• find: Find relationships for a table → operation='find', table_name=X\n"
+            "  Example: {'operation': 'find', 'table_name': 'Sales'}\n"
+            "\n"
+            "━━━ CREATE OPERATION ━━━\n"
+            "• create: Create new relationship → operation='create'\n"
+            "  Required: from_table, from_column, to_table, to_column\n"
+            "  Optional: name, from_cardinality, to_cardinality, cross_filtering_behavior, is_active\n"
+            "  Example: {'operation': 'create', 'from_table': 'Sales', 'from_column': 'CustomerID', 'to_table': 'Customer', 'to_column': 'ID', 'from_cardinality': 'Many', 'to_cardinality': 'One'}\n"
+            "\n"
+            "━━━ UPDATE OPERATION ━━━\n"
+            "• update: Update relationship properties → operation='update', relationship_name=X\n"
+            "  Required: relationship_name\n"
+            "  Optional: cross_filtering_behavior, is_active, new_name\n"
+            "  Example: {'operation': 'update', 'relationship_name': 'Sales-Customer', 'cross_filtering_behavior': 'BothDirections'}\n"
+            "\n"
+            "━━━ DELETE OPERATION ━━━\n"
+            "• delete: Delete relationship → operation='delete', relationship_name=X\n"
+            "  Required: relationship_name\n"
+            "  Example: {'operation': 'delete', 'relationship_name': 'OldRelationship'}\n"
+            "\n"
+            "━━━ ACTIVATE/DEACTIVATE OPERATIONS ━━━\n"
+            "• activate: Activate inactive relationship → operation='activate', relationship_name=X\n"
+            "  Example: {'operation': 'activate', 'relationship_name': 'Sales-Product'}\n"
+            "\n"
+            "• deactivate: Deactivate active relationship → operation='deactivate', relationship_name=X\n"
+            "  Example: {'operation': 'deactivate', 'relationship_name': 'Sales-Customer'}\n"
+            "\n"
+            "USE ALL OPERATIONS AS NEEDED - don't skip CREATE/UPDATE/DELETE/ACTIVATE/DEACTIVATE!"
+        ),
         handler=handle_relationship_operations,
         input_schema={
             "type": "object",
@@ -29,7 +68,17 @@ def register_relationship_operations_handler(registry):
                 "operation": {
                     "type": "string",
                     "enum": ["list", "get", "find", "create", "update", "delete", "activate", "deactivate"],
-                    "description": "Operation to perform on relationships"
+                    "description": (
+                        "Operation to perform (MUST USE ALL OPERATIONS - don't skip CRUD!):\n"
+                        "• 'list' - List all relationships (optional: active_only)\n"
+                        "• 'get' - Get relationship details (requires: relationship_name)\n"
+                        "• 'find' - Find relationships for a table (requires: table_name)\n"
+                        "• 'create' - CREATE new relationship (requires: from_table, from_column, to_table, to_column; optional: name, from_cardinality, to_cardinality, cross_filtering_behavior, is_active)\n"
+                        "• 'update' - UPDATE relationship (requires: relationship_name; optional: cross_filtering_behavior, is_active, new_name)\n"
+                        "• 'delete' - DELETE relationship (requires: relationship_name)\n"
+                        "• 'activate' - ACTIVATE inactive relationship (requires: relationship_name)\n"
+                        "• 'deactivate' - DEACTIVATE active relationship (requires: relationship_name)"
+                    )
                 },
                 "relationship_name": {
                     "type": "string",

@@ -22,17 +22,47 @@ def register_table_operations_handler(registry):
     tool = ToolDefinition(
         name="table_operations",
         description=(
-            "Unified table operations handler. USE THIS WHEN:\n"
-            "• User asks 'list tables' / 'show all tables' / 'what tables exist' → operation='list'\n"
-            "• User asks 'describe table X' / 'tell me about table X' / 'what's in table X' → operation='describe' (requires table_name)\n"
-            "• User asks 'preview table X' / 'show sample data from table X' → operation='preview' (requires table_name)\n"
-            "• User wants to create/update/delete/rename tables → operation='create'/'update'/'delete'/'rename'\n"
+            "Unified table operations handler supporting ALL CRUD operations.\n"
             "\n"
-            "OPERATIONS:\n"
-            "• list: Returns all table names with counts (columns, measures, partitions)\n"
-            "• describe: Returns comprehensive table details (columns, measures, relationships) - USE THIS for 'show me table details'\n"
-            "• preview: Returns sample data rows from the table\n"
-            "• create/update/delete/rename/refresh: Modify table structure"
+            "━━━ READ OPERATIONS ━━━\n"
+            "• list: List all tables with counts → operation='list'\n"
+            "  Example: {'operation': 'list'}\n"
+            "\n"
+            "• describe: Get table details (columns, measures, relationships) → operation='describe', table_name=X\n"
+            "  Example: {'operation': 'describe', 'table_name': 'Sales'}\n"
+            "\n"
+            "• preview: Show sample data → operation='preview', table_name=X, max_rows=N\n"
+            "  Example: {'operation': 'preview', 'table_name': 'Sales', 'max_rows': 10}\n"
+            "\n"
+            "━━━ CREATE OPERATION ━━━\n"
+            "• create: Create new table → operation='create', table_name=X\n"
+            "  Required: table_name\n"
+            "  Optional: description, expression (for calculated table), hidden\n"
+            "  Example: {'operation': 'create', 'table_name': 'NewTable', 'description': 'My new table'}\n"
+            "  Example (calculated): {'operation': 'create', 'table_name': 'TopCustomers', 'expression': 'TOPN(100, Customer, [Revenue], DESC)'}\n"
+            "\n"
+            "━━━ UPDATE OPERATION ━━━\n"
+            "• update: Update existing table → operation='update', table_name=X\n"
+            "  Required: table_name\n"
+            "  Optional: description, expression, hidden, new_name\n"
+            "  Example: {'operation': 'update', 'table_name': 'Sales', 'description': 'Updated description', 'hidden': true}\n"
+            "\n"
+            "━━━ DELETE OPERATION ━━━\n"
+            "• delete: Delete table → operation='delete', table_name=X\n"
+            "  Required: table_name\n"
+            "  Example: {'operation': 'delete', 'table_name': 'OldTable'}\n"
+            "\n"
+            "━━━ RENAME OPERATION ━━━\n"
+            "• rename: Rename table → operation='rename', table_name=X, new_name=Y\n"
+            "  Required: table_name, new_name\n"
+            "  Example: {'operation': 'rename', 'table_name': 'Sales', 'new_name': 'SalesData'}\n"
+            "\n"
+            "━━━ REFRESH OPERATION ━━━\n"
+            "• refresh: Refresh table data → operation='refresh', table_name=X\n"
+            "  Required: table_name\n"
+            "  Example: {'operation': 'refresh', 'table_name': 'Sales'}\n"
+            "\n"
+            "USE ALL OPERATIONS AS NEEDED - don't skip CREATE/UPDATE/DELETE/RENAME!"
         ),
         handler=handle_table_operations,
         input_schema={
@@ -42,24 +72,36 @@ def register_table_operations_handler(registry):
                     "type": "string",
                     "enum": ["list", "describe", "preview", "create", "update", "delete", "rename", "refresh"],
                     "description": (
-                        "Operation to perform:\n"
-                        "• 'list' - List all tables (use when: 'show tables', 'list tables', 'what tables exist')\n"
-                        "• 'describe' - Get table details (use when: 'describe table X', 'tell me about table X', 'show table X details')\n"
-                        "• 'preview' - Show sample data (use when: 'preview table X', 'show data from table X')\n"
-                        "• 'create', 'update', 'delete', 'rename', 'refresh' - Modify tables"
+                        "Operation to perform (MUST USE ALL OPERATIONS - don't skip CRUD!):\n"
+                        "• 'list' - List all tables\n"
+                        "• 'describe' - Get table details with columns/measures/relationships\n"
+                        "• 'preview' - Show sample data rows\n"
+                        "• 'create' - CREATE new table (requires: table_name; optional: description, expression, hidden)\n"
+                        "• 'update' - UPDATE table properties (requires: table_name; optional: description, expression, hidden, new_name)\n"
+                        "• 'delete' - DELETE table (requires: table_name)\n"
+                        "• 'rename' - RENAME table (requires: table_name, new_name)\n"
+                        "• 'refresh' - REFRESH table data (requires: table_name)"
                     )
                 },
                 "table_name": {
                     "type": "string",
-                    "description": "Table name (required for: describe, preview, update, delete, rename, refresh)"
+                    "description": "Table name (required for: describe, preview, create, update, delete, rename, refresh)"
                 },
                 "new_name": {
                     "type": "string",
-                    "description": "New table name (required for: rename)"
+                    "description": "New table name (required for: rename operation)"
                 },
-                "definition": {
-                    "type": "object",
-                    "description": "Table definition (required for: create, update)"
+                "description": {
+                    "type": "string",
+                    "description": "Table description (optional for: create, update)"
+                },
+                "expression": {
+                    "type": "string",
+                    "description": "DAX expression for calculated table (optional for: create, update). Example: 'TOPN(100, Customer, [Revenue], DESC)'"
+                },
+                "hidden": {
+                    "type": "boolean",
+                    "description": "Hide table from client tools (optional for: create, update)"
                 },
                 "max_rows": {
                     "type": "integer",

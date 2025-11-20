@@ -124,8 +124,7 @@ class RelationshipCRUDManager:
 
         cardinality_map = {
             'One': RelationshipEndCardinality.One,
-            'Many': RelationshipEndCardinality.Many,
-            'None': RelationshipEndCardinality.None_
+            'Many': RelationshipEndCardinality.Many
         }
 
         return cardinality_map.get(cardinality_str, RelationshipEndCardinality.Many)

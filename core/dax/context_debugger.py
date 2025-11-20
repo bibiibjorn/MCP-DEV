@@ -538,14 +538,16 @@ RETURN Result
         dax_expression: str,
         include_profiling: bool = True,
         include_optimization: bool = True,
+        connection_state=None
     ) -> str:
         """
-        Generate comprehensive debug report
+        Generate comprehensive debug report with all enhancements
 
         Args:
             dax_expression: DAX expression to analyze
             include_profiling: Include performance profiling
             include_optimization: Include optimization suggestions
+            connection_state: Optional connection state for advanced analysis
 
         Returns:
             Formatted debug report
@@ -553,7 +555,7 @@ RETURN Result
         lines = []
 
         lines.append("=" * 70)
-        lines.append("DAX CONTEXT DEBUG REPORT")
+        lines.append("DAX INTELLIGENCE ENHANCED ANALYSIS REPORT")
         lines.append("=" * 70)
         lines.append("")
 
@@ -687,8 +689,216 @@ RETURN Result
 
                     lines.append("")
 
+        # ===== NEW ENHANCEMENTS =====
+
+        # VertiPaq Column Analysis
+        if connection_state:
+            try:
+                from core.dax.vertipaq_analyzer import VertiPaqAnalyzer
+
+                vertipaq = VertiPaqAnalyzer(connection_state)
+                column_analysis = vertipaq.analyze_dax_columns(dax_expression)
+
+                if column_analysis.get('success') and column_analysis.get('columns_analyzed', 0) > 0:
+                    lines.append("VERTIPAQ COLUMN ANALYSIS")
+                    lines.append("=" * 70)
+                    lines.append(f"Columns analyzed: {column_analysis['columns_analyzed']}")
+                    lines.append(f"Total cardinality: {column_analysis.get('total_cardinality', 0):,}")
+                    lines.append(f"Total size: {column_analysis.get('total_size_mb', 0):.2f} MB")
+                    lines.append("")
+
+                    if column_analysis.get('high_cardinality_columns'):
+                        lines.append("⚠️  HIGH-CARDINALITY COLUMNS:")
+                        for col in column_analysis['high_cardinality_columns']:
+                            col_data = column_analysis['column_analysis'].get(col, {})
+                            lines.append(f"   • {col}")
+                            lines.append(f"     Cardinality: {col_data.get('cardinality', 0):,}")
+                            lines.append(f"     Size: {col_data.get('size_mb', 0):.2f} MB")
+                            lines.append(f"     Impact: {col_data.get('performance_impact', 'unknown').upper()}")
+                            lines.append(f"     💡 {col_data.get('recommendation', '')}")
+                            lines.append("")
+
+                    if column_analysis.get('optimizations'):
+                        lines.append("DATA TYPE OPTIMIZATIONS:")
+                        for opt in column_analysis['optimizations']:
+                            lines.append(f"   {opt['severity'].upper()}: {opt['issue']}")
+                            lines.append(f"   💡 {opt['recommendation']}")
+                            lines.append("")
+
+                    lines.append("")
+
+            except Exception as e:
+                logger.debug(f"VertiPaq analysis skipped: {e}")
+
+        # Call Tree Visualization
+        try:
+            from core.dax.call_tree_builder import CallTreeBuilder
+
+            call_tree_builder = CallTreeBuilder()
+            if connection_state:
+                try:
+                    from core.dax.vertipaq_analyzer import VertiPaqAnalyzer
+                    vertipaq = VertiPaqAnalyzer(connection_state)
+                    call_tree_builder.vertipaq_analyzer = vertipaq
+                except:
+                    pass
+
+            call_tree = call_tree_builder.build_call_tree(dax_expression)
+
+            lines.append("CALL TREE HIERARCHY")
+            lines.append("=" * 70)
+            tree_viz = call_tree_builder.visualize_tree(call_tree)
+            lines.append(tree_viz)
+            lines.append("")
+
+            # Show iteration estimates
+            def count_iterations(node):
+                total = node.estimated_iterations or 0
+                for child in node.children:
+                    total += count_iterations(child)
+                return total
+
+            total_iterations = count_iterations(call_tree)
+            if total_iterations > 0:
+                lines.append(f"📊 ESTIMATED ITERATIONS: {total_iterations:,}")
+                if total_iterations >= 1_000_000:
+                    lines.append("   🔴 CRITICAL: Over 1 million iterations!")
+                    lines.append("   This will cause severe performance issues.")
+                elif total_iterations >= 100_000:
+                    lines.append("   ⚠️  WARNING: Over 100,000 iterations")
+                    lines.append("   Consider optimization.")
+                lines.append("")
+
+        except Exception as e:
+            logger.debug(f"Call tree analysis skipped: {e}")
+
+        # Calculation Group Analysis
+        if connection_state:
+            try:
+                from core.dax.calculation_group_analyzer import CalculationGroupAnalyzer
+
+                calc_group_analyzer = CalculationGroupAnalyzer(connection_state)
+                calc_group_analysis = calc_group_analyzer.analyze_dax_with_calc_groups(dax_expression)
+
+                if calc_group_analysis.get('success') and calc_group_analysis.get('group_count', 0) > 0:
+                    lines.append("CALCULATION GROUP ANALYSIS")
+                    lines.append("=" * 70)
+                    lines.append(f"Calculation groups detected: {calc_group_analysis['group_count']}")
+                    lines.append(f"Groups: {', '.join(calc_group_analysis['groups_detected'])}")
+                    lines.append(f"Performance impact: {calc_group_analysis['performance_impact'].upper()}")
+                    lines.append("")
+
+                    if calc_group_analysis.get('precedence_conflicts'):
+                        lines.append("⚠️  PRECEDENCE CONFLICTS:")
+                        for conflict in calc_group_analysis['precedence_conflicts']:
+                            lines.append(f"   {conflict['severity'].upper()}: {conflict['warning']}")
+                            group_list = ', '.join([g['name'] + ' (prec: ' + str(g['precedence']) + ')' for g in conflict['groups']])
+                            lines.append(f"   Groups: {group_list}")
+                            lines.append("")
+
+                    if calc_group_analysis.get('issues'):
+                        lines.append("CALCULATION GROUP ISSUES:")
+                        for issue in calc_group_analysis['issues']:
+                            lines.append(f"   {issue['severity'].upper()}: {issue['message']}")
+                            lines.append(f"   💡 {issue['recommendation']}")
+                            lines.append("")
+
+                    if calc_group_analysis.get('recommendations'):
+                        lines.append("RECOMMENDATIONS:")
+                        for rec in calc_group_analysis['recommendations']:
+                            lines.append(f"   • {rec}")
+                        lines.append("")
+
+            except Exception as e:
+                logger.debug(f"Calculation group analysis skipped: {e}")
+
+        # SUMMARIZE Pattern Detection
+        summarize_analysis = self.analyzer.detect_summarize_patterns(dax_expression)
+        if summarize_analysis.get('has_summarize'):
+            lines.append("SUMMARIZE vs SUMMARIZECOLUMNS")
+            lines.append("=" * 70)
+            lines.append(f"⚠️  {summarize_analysis['recommendation']}")
+            lines.append("")
+            lines.append("Example conversion:")
+            lines.append(summarize_analysis['example_conversion'])
+            lines.append("")
+
+        # Variable Optimization Scanner
+        try:
+            from core.dax.code_rewriter import VariableOptimizationScanner
+
+            var_scanner = VariableOptimizationScanner()
+            var_analysis = var_scanner.scan_for_optimizations(dax_expression)
+
+            if var_analysis.get('success') and var_analysis.get('opportunities_found', 0) > 0:
+                lines.append("VARIABLE OPTIMIZATION OPPORTUNITIES")
+                lines.append("=" * 70)
+                lines.append(var_analysis['recommendation'])
+                lines.append("")
+
+                lines.append(f"Total potential savings: {var_analysis['total_potential_savings_percent']}%")
+                lines.append("")
+
+                for opp in var_analysis['opportunities'][:5]:  # Show top 5
+                    lines.append(f"   {opp['priority'].upper()}: {opp['type']}")
+                    lines.append(f"   {opp['suggestion']}")
+                    if opp.get('example_code'):
+                        lines.append(f"   Example:\n   {opp['example_code']}")
+                    lines.append("")
+
+        except Exception as e:
+            logger.debug(f"Variable optimization scan skipped: {e}")
+
+        # Code Rewriting Suggestions
+        if include_optimization:
+            try:
+                from core.dax.code_rewriter import DaxCodeRewriter
+
+                rewriter = DaxCodeRewriter()
+                rewrite_result = rewriter.rewrite_dax(dax_expression)
+
+                if rewrite_result.get('has_changes'):
+                    lines.append("CODE REWRITING SUGGESTIONS")
+                    lines.append("=" * 70)
+                    lines.append(f"Transformations applied: {rewrite_result['transformation_count']}")
+                    lines.append("")
+
+                    for trans in rewrite_result['transformations']:
+                        lines.append(f"   {trans['type'].upper()}:")
+                        lines.append(f"   {trans['explanation']}")
+                        lines.append(f"   Estimated improvement: {trans['estimated_improvement']}")
+                        lines.append(f"   Confidence: {trans['confidence']}")
+                        lines.append("")
+
+                    if rewrite_result.get('rewritten_code'):
+                        lines.append("   REWRITTEN CODE:")
+                        for line in rewrite_result['rewritten_code'].split('\n')[:20]:
+                            lines.append(f"   {line}")
+                        lines.append("")
+
+            except Exception as e:
+                logger.debug(f"Code rewriting skipped: {e}")
+
+        # Visual Context Flow Diagram
+        try:
+            from core.dax.visual_flow import VisualFlowDiagramGenerator
+
+            flow_gen = VisualFlowDiagramGenerator()
+            ascii_diagram = flow_gen.generate_ascii_diagram(analysis)
+
+            lines.append("")
+            lines.append("VISUAL CONTEXT FLOW DIAGRAM")
+            lines.append("=" * 70)
+            lines.append(ascii_diagram)
+            lines.append("")
+
+        except Exception as e:
+            logger.debug(f"Visual flow diagram skipped: {e}")
+
+        # ===== END NEW ENHANCEMENTS =====
+
         lines.append("=" * 70)
-        lines.append("END OF REPORT")
+        lines.append("END OF ENHANCED ANALYSIS REPORT")
         lines.append("=" * 70)
 
         return "\n".join(lines)

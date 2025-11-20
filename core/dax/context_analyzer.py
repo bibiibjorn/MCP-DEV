@@ -501,6 +501,46 @@ class DaxContextAnalyzer:
                 'error': str(e)
             }
 
+    def detect_summarize_patterns(self, dax_expression: str) -> Dict[str, Any]:
+        """
+        Detect SUMMARIZE vs SUMMARIZECOLUMNS usage
+
+        Returns suggestions to upgrade to SUMMARIZECOLUMNS for better performance
+        """
+        summarize_pattern = r'\bSUMMARIZE\s*\('
+        summarize_matches = list(re.finditer(summarize_pattern, dax_expression, re.IGNORECASE))
+
+        if not summarize_matches:
+            return {
+                'has_summarize': False,
+                'recommendation': None
+            }
+
+        return {
+            'has_summarize': True,
+            'occurrences': len(summarize_matches),
+            'severity': 'medium',
+            'recommendation': (
+                f"Found {len(summarize_matches)} SUMMARIZE function(s). "
+                "SUMMARIZECOLUMNS is newer and more optimized (2-10x faster). "
+                "Consider converting SUMMARIZE to SUMMARIZECOLUMNS for better performance."
+            ),
+            'example_conversion': """
+-- BEFORE (SUMMARIZE):
+SUMMARIZE(
+    Sales,
+    Sales[ProductID],
+    "Total", SUM(Sales[Amount])
+)
+
+-- AFTER (SUMMARIZECOLUMNS):
+SUMMARIZECOLUMNS(
+    Sales[ProductID],
+    "Total", [Total Sales]
+)
+"""
+        }
+
     def explain_context_flow(self, dax_expression: str) -> str:
         """
         Generate step-by-step explanation of context flow

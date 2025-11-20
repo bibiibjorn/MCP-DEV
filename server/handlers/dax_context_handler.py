@@ -507,7 +507,7 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                 }
 
         elif analysis_mode == 'report':
-            # Comprehensive debug report
+            # Comprehensive debug report with all enhancements
             from core.dax import DaxContextDebugger
             debugger = DaxContextDebugger()
 
@@ -517,7 +517,8 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
             result = debugger.generate_debug_report(
                 expression,
                 include_profiling=include_profiling,
-                include_optimization=include_optimization
+                include_optimization=include_optimization,
+                connection_state=connection_state  # Pass connection state for enhanced analysis
             )
 
             return {
@@ -556,7 +557,20 @@ def register_dax_handlers(registry):
     tools = [
         ToolDefinition(
             name="dax_intelligence",
-            description="[03-DAX Intelligence] Unified DAX analysis tool: Validates syntax + analyzes context transitions + detects anti-patterns + generates SPECIFIC IMPROVEMENTS with NEW/REWRITTEN DAX CODE. Provides before/after code examples and actionable optimization suggestions. Single tool for all DAX analysis needs.",
+            description=(
+                "[03-DAX Intelligence v4.0] Advanced DAX analysis tool with industry-standard features: "
+                "✓ DAX syntax validation "
+                "✓ Context transition analysis with call tree hierarchy "
+                "✓ VertiPaq metrics integration (cardinality, memory footprint, iteration estimates) "
+                "✓ Calculation group analysis (precedence conflicts, performance impact) "
+                "✓ Anti-pattern detection with research-backed recommendations "
+                "✓ Advanced code rewriting (actual DAX transformations, variable extraction) "
+                "✓ Variable optimization scanner (identifies repeated calculations with savings %) "
+                "✓ SUMMARIZE→SUMMARIZECOLUMNS detection (2-10x faster) "
+                "✓ Visual context flow diagrams (ASCII/HTML/Mermaid) "
+                "✓ Specific improvements with REWRITTEN DAX CODE. "
+                "Report mode includes 8 comprehensive analysis sections. Rivals DAX Studio & Tabular Editor analysis depth."
+            ),
             handler=handle_dax_intelligence,
             input_schema=TOOL_SCHEMAS.get('dax_intelligence', {}),
             category="dax",

@@ -69,7 +69,7 @@
     },
     {
       "name": "03_standard_dax_analysis",
-      "description": "[03-DAX Analysis] Standard DAX Analysis - Unified DAX analysis: validates syntax + analyzes context transitions + step-by-step debugging + comprehensive reporting (modes: analyze/debug/report)"
+      "description": "[03-DAX Intelligence v4.0] Advanced DAX analysis with industry-standard features: syntax validation, context transitions with call tree, VertiPaq metrics (cardinality/memory/iterations), calculation group analysis, anti-patterns, code rewriting (actual transformations), variable optimization, SUMMARIZE detection, visual flow diagrams. Report mode includes 8 comprehensive analysis sections."
     },
     {
       "name": "03_get_column_value_distribution",

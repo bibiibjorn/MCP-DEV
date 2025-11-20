@@ -11,6 +11,60 @@ from core.utilities.business_impact import enrich_issue_with_impact, add_impact_
 
 logger = logging.getLogger(__name__)
 
+def _extract_operation_summary(op_id: str, op_result: Dict[str, Any]) -> str:
+    """
+    Extract a concise success message from operation result.
+    Optimized helper to avoid repetitive if-elif chains.
+    """
+    if op_id == '01_database':
+        db_data = op_result.get('data', [{}])[0]
+        return f"[OK] SUCCESS: {db_data.get('name', 'N/A')} (Compatibility: {db_data.get('compatibilityLevel', 0)})"
+    elif op_id == '02_stats':
+        counts = op_result.get('counts', {})
+        return f"[OK] SUCCESS: {counts.get('tables', 0)} tables, {counts.get('measures', 0)} measures, {counts.get('columns', 0)} columns"
+    elif op_id == '03_tables':
+        return f"[OK] SUCCESS: Found {op_result.get('table_count', 0)} tables"
+    elif op_id == '04_measures':
+        return f"[OK] SUCCESS: Retrieved {len(op_result.get('data', []))} measures"
+    elif op_id == '05_columns':
+        data = op_result.get('data', [])
+        col_count = sum(len(t.get('columns', [])) for t in data)
+        return f"[OK] SUCCESS: Retrieved {col_count} columns across {len(data)} tables"
+    elif op_id == '06_relationships':
+        return f"[OK] SUCCESS: Found {len(op_result.get('data', []))} relationships"
+    elif op_id == '07_calculation_groups':
+        data = op_result.get('data', [])
+        total_items = sum(len(cg.get('calculationItems', [])) for cg in data)
+        return f"[OK] SUCCESS: Found {len(data)} calculation groups with {total_items} items"
+    elif op_id == '08_roles':
+        return f"[OK] SUCCESS: Found {len(op_result.get('data', []))} security roles"
+    else:
+        return "[OK] SUCCESS: Operation completed"
+
+def _format_analysis_to_log(op_analysis: Dict[str, Any], op_name: str, op_time: float) -> list:
+    """
+    Format operation analysis into execution log lines.
+    Optimized to consolidate formatting logic.
+    """
+    log_lines = ["", f"   === ANALYSIS SUMMARY FOR {op_name.upper()} ==="]
+
+    if op_analysis.get('key_findings'):
+        log_lines.append("   Key Findings:")
+        log_lines.extend([f"     * {finding}" for finding in op_analysis['key_findings']])
+
+    if op_analysis.get('insights'):
+        log_lines.append("   Insights:")
+        log_lines.extend([f"     - {insight}" for insight in op_analysis['insights']])
+
+    if op_analysis.get('recommendations'):
+        log_lines.append("   Recommendations:")
+        log_lines.extend([f"     ! {rec}" for rec in op_analysis['recommendations']])
+
+    log_lines.append(f"   [TIME] Execution time: {op_time}s")
+    log_lines.append("   " + "=" * 70)
+
+    return log_lines
+
 def _generate_operation_analysis(op_id: str, result: Dict[str, Any]) -> Dict[str, Any]:
     """
     Generate AI-optimized analysis summary for each operation.
@@ -629,66 +683,12 @@ def handle_simple_analysis(args: Dict[str, Any]) -> Dict[str, Any]:
 
             # PROMINENTLY show operation completion with details
             if op_result.get('success'):
-                # Extract key metrics from result
-                if op_id == '01_database':
-                    db_data = op_result.get('data', [{}])[0]
-                    msg = f"[OK] SUCCESS: {db_data.get('name', 'N/A')} (Compatibility: {db_data.get('compatibilityLevel', 0)})"
-                    execution_log.append(msg)
-                elif op_id == '02_stats':
-                    counts = op_result.get('counts', {})
-                    msg = f"[OK] SUCCESS: {counts.get('tables', 0)} tables, {counts.get('measures', 0)} measures, {counts.get('columns', 0)} columns"
-                    execution_log.append(msg)
-                elif op_id == '03_tables':
-                    table_count = op_result.get('table_count', 0)
-                    msg = f"[OK] SUCCESS: Found {table_count} tables"
-                    execution_log.append(msg)
-                elif op_id == '04_measures':
-                    data = op_result.get('data', [])
-                    msg = f"[OK] SUCCESS: Retrieved {len(data)} measures"
-                    execution_log.append(msg)
-                elif op_id == '05_columns':
-                    data = op_result.get('data', [])
-                    col_count = sum(len(t.get('columns', [])) for t in data)
-                    msg = f"[OK] SUCCESS: Retrieved {col_count} columns across {len(data)} tables"
-                    execution_log.append(msg)
-                elif op_id == '06_relationships':
-                    data = op_result.get('data', [])
-                    msg = f"[OK] SUCCESS: Found {len(data)} relationships"
-                    execution_log.append(msg)
-                elif op_id == '07_calculation_groups':
-                    data = op_result.get('data', [])
-                    total_items = sum(len(cg.get('calculationItems', [])) for cg in data)
-                    msg = f"[OK] SUCCESS: Found {len(data)} calculation groups with {total_items} items"
-                    execution_log.append(msg)
-                elif op_id == '08_roles':
-                    data = op_result.get('data', [])
-                    msg = f"[OK] SUCCESS: Found {len(data)} security roles"
-                    execution_log.append(msg)
-                else:
-                    msg = f"[OK] SUCCESS: Operation completed"
-                    execution_log.append(msg)
+                # Extract key metrics from result - optimized with helper function
+                msg = _extract_operation_summary(op_id, op_result)
+                execution_log.append(msg)
 
-                # Add DETAILED analysis insights to execution log
-                execution_log.append("")
-                execution_log.append(f"   === ANALYSIS SUMMARY FOR {op_name.upper()} ===")
-
-                if op_analysis.get('key_findings'):
-                    execution_log.append("   Key Findings:")
-                    for finding in op_analysis['key_findings']:
-                        execution_log.append(f"     * {finding}")
-
-                if op_analysis.get('insights'):
-                    execution_log.append("   Insights:")
-                    for insight in op_analysis['insights']:
-                        execution_log.append(f"     - {insight}")
-
-                if op_analysis.get('recommendations'):
-                    execution_log.append("   Recommendations:")
-                    for rec in op_analysis['recommendations']:
-                        execution_log.append(f"     ! {rec}")
-
-                execution_log.append(f"   [TIME] Execution time: {op_time}s")
-                execution_log.append("   " + "=" * 70)
+                # Add DETAILED analysis insights to execution log - optimized
+                execution_log.extend(_format_analysis_to_log(op_analysis, op_name, op_time))
             else:
                 error_msg = op_result.get('error', 'Unknown error')
                 execution_log.append(f"[FAIL] ERROR: {error_msg}")

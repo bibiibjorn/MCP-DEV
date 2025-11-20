@@ -21,15 +21,43 @@ def register_calculation_group_operations_handler(registry):
 
     tool = ToolDefinition(
         name="calculation_group_operations",
-        description="Unified calculation group operations: list, create, delete, list_items, and CRUD for groups and items",
+        description=(
+            "Unified calculation group operations handler supporting ALL CRUD operations.\n"
+            "\n"
+            "━━━ READ OPERATIONS ━━━\n"
+            "• list: List all calculation groups → operation='list'\n"
+            "  Example: {'operation': 'list'}\n"
+            "\n"
+            "• list_items: List calculation items in a group → operation='list_items', group_name=X\n"
+            "  Example: {'operation': 'list_items', 'group_name': 'Time Intelligence'}\n"
+            "\n"
+            "━━━ CREATE OPERATION ━━━\n"
+            "• create: Create new calculation group → operation='create', group_name=X, items=[...]\n"
+            "  Required: group_name, items (array of {name, expression, ordinal})\n"
+            "  Optional: description, precedence\n"
+            "  Example: {'operation': 'create', 'group_name': 'Time Intelligence', 'items': [{'name': 'YTD', 'expression': 'TOTALYTD([Value], Calendar[Date])', 'ordinal': 1}]}\n"
+            "\n"
+            "━━━ DELETE OPERATION ━━━\n"
+            "• delete: Delete calculation group → operation='delete', group_name=X\n"
+            "  Required: group_name\n"
+            "  Example: {'operation': 'delete', 'group_name': 'Old Group'}\n"
+            "\n"
+            "USE ALL OPERATIONS AS NEEDED - don't skip CREATE/DELETE!"
+        ),
         handler=handle_calculation_group_operations,
         input_schema={
             "type": "object",
             "properties": {
                 "operation": {
                     "type": "string",
-                    "enum": ["list", "create", "delete", "list_items"],  # Add more as implemented
-                    "description": "Operation to perform on calculation groups"
+                    "enum": ["list", "create", "delete", "list_items"],
+                    "description": (
+                        "Operation to perform (MUST USE ALL OPERATIONS - don't skip CRUD!):\n"
+                        "• 'list' - List all calculation groups\n"
+                        "• 'list_items' - List calculation items in a group (requires: group_name)\n"
+                        "• 'create' - CREATE new calculation group (requires: group_name, items; optional: description, precedence)\n"
+                        "• 'delete' - DELETE calculation group (requires: group_name)"
+                    )
                 },
                 "group_name": {
                     "type": "string",

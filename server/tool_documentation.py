@@ -101,20 +101,62 @@ TOOL_DOCS = {
         }
     },
 
-    # DAX Intelligence
+    # DAX Intelligence (Enhanced v4.0)
     'dax_intelligence': {
         'doc_url': 'docs/DAX_INTELLIGENCE_GUIDE.md',
-        'summary': 'DAX validation, analysis, and debugging tool',
+        'summary': 'Advanced DAX validation, analysis, debugging, and optimization tool with VertiPaq integration',
+        'version': '4.0.0 - Industry-standard analysis features',
         'modes': {
-            'analyze': 'Context transition analysis',
-            'debug': 'Step-by-step debugging with friendly output',
-            'report': 'Comprehensive report with optimization + profiling'
+            'analyze': 'Context transition analysis with anti-pattern detection and specific code improvements',
+            'debug': 'Step-by-step debugging with friendly output showing context transitions',
+            'report': 'Comprehensive enhanced report with 8 analysis modules (VertiPaq, call tree, calc groups, code rewriting, visual flow diagrams, and more)'
         },
+        'new_features_v4': [
+            'VertiPaq Metrics Integration - Column cardinality analysis, memory footprint, data type optimization suggestions',
+            'Call Tree Hierarchy - Hierarchical DAX breakdown with estimated iteration counts from actual model cardinality',
+            'Calculation Group Analysis - Precedence conflict detection, performance impact assessment, best practice validation',
+            'Advanced Code Rewriting - Actual DAX transformation (extracts repeated measures into variables, not just templates)',
+            'SUMMARIZE vs SUMMARIZECOLUMNS Detection - Auto-detect and suggest 2-10x faster alternative',
+            'Variable Optimization Scanner - Identifies repeated calculations with estimated savings percentage',
+            'Visual Context Flow Diagrams - ASCII, HTML, and Mermaid diagrams showing context transitions',
+            'Enhanced Iteration Analysis - Estimates actual row counts using VertiPaq cardinality data'
+        ],
         'key_points': [
             'Validates DAX syntax by default (skip with skip_validation=true)',
             'Debug mode provides friendly output with emojis or raw steps',
-            'Report mode includes optimization suggestions and performance profiling'
-        ]
+            'Report mode now includes 8 comprehensive analysis sections',
+            'VertiPaq integration requires connection to Power BI model',
+            'Calculation group analysis only runs when calc groups are detected',
+            'Code rewriter provides actual transformed DAX code, not just suggestions'
+        ],
+        'report_sections': {
+            'always_included': [
+                'Context Analysis - Transition detection and complexity scoring',
+                'Anti-Pattern Detection - Known DAX performance issues',
+                'Specific Improvements - Before/after code examples',
+                'SUMMARIZE Pattern Detection - Upgrade suggestions',
+                'Variable Optimization - Repeated calculation scanner',
+                'Code Rewriting - Actual DAX transformations',
+                'Visual Flow Diagram - ASCII visualization of context flow'
+            ],
+            'when_connected': [
+                'VertiPaq Column Analysis - Cardinality and memory impact',
+                'Call Tree Hierarchy - With estimated iterations from model data',
+                'Calculation Group Analysis - Precedence and performance analysis'
+            ]
+        },
+        'performance_metrics': {
+            'cardinality_warnings': {
+                'iterator_warning': '100,000+ rows',
+                'iterator_critical': '1,000,000+ rows',
+                'filter_warning': '500,000+ unique values'
+            },
+            'estimated_improvements': {
+                'variable_extraction': '10-50% faster',
+                'summarizecolumns': '2-10x faster',
+                'iterator_to_column': '10x-100x faster for large tables'
+            }
+        }
     },
 
     # Query Tools
@@ -163,6 +205,151 @@ TOOL_DOCS = {
         ],
         'defaults': {
             'dry_run': True
+        }
+    },
+
+    # Operations Tools
+    'table_operations': {
+        'summary': 'Complete CRUD operations for Power BI tables',
+        'key_points': [
+            'Supports ALL operations: list, describe, preview, create, update, delete, rename, refresh',
+            'Create calculated tables with DAX expressions',
+            'Update table properties (description, expression, hidden)',
+            'Delete and rename tables',
+            'Refresh table data'
+        ],
+        'operations': {
+            'list': 'List all tables with counts',
+            'describe': 'Get comprehensive table details (columns, measures, relationships)',
+            'preview': 'Show sample data rows from table',
+            'create': 'CREATE new table (data or calculated)',
+            'update': 'UPDATE table properties',
+            'delete': 'DELETE table',
+            'rename': 'RENAME table',
+            'refresh': 'REFRESH table data'
+        },
+        'examples': {
+            'create_calculated': "{'operation': 'create', 'table_name': 'TopCustomers', 'expression': 'TOPN(100, Customer, [Revenue], DESC)'}",
+            'update': "{'operation': 'update', 'table_name': 'Sales', 'description': 'Updated description', 'hidden': true}",
+            'delete': "{'operation': 'delete', 'table_name': 'OldTable'}",
+            'rename': "{'operation': 'rename', 'table_name': 'Sales', 'new_name': 'SalesData'}"
+        }
+    },
+
+    'column_operations': {
+        'summary': 'Complete CRUD operations for Power BI columns',
+        'key_points': [
+            'Supports ALL operations: list, get, statistics, distribution, create, update, delete, rename',
+            'Create data columns or calculated columns with DAX',
+            'Update column properties (expression, description, format, hidden)',
+            'Get column statistics (distinct count, total count, blank count)',
+            'Get value distribution (top N values with counts)',
+            'Delete and rename columns'
+        ],
+        'operations': {
+            'list': 'List columns (all/data/calculated)',
+            'get': 'Get detailed column metadata',
+            'statistics': 'Get column stats (distinct/total/blank counts)',
+            'distribution': 'Get top N values with counts',
+            'create': 'CREATE new column (data or calculated)',
+            'update': 'UPDATE column properties',
+            'delete': 'DELETE column',
+            'rename': 'RENAME column'
+        },
+        'examples': {
+            'create_data': "{'operation': 'create', 'table_name': 'Sales', 'column_name': 'NewColumn', 'data_type': 'String'}",
+            'create_calculated': "{'operation': 'create', 'table_name': 'Sales', 'column_name': 'TotalAmount', 'expression': '[Quantity] * [Price]'}",
+            'update': "{'operation': 'update', 'table_name': 'Sales', 'column_name': 'Amount', 'format_string': '$#,0.00'}",
+            'delete': "{'operation': 'delete', 'table_name': 'Sales', 'column_name': 'OldColumn'}",
+            'rename': "{'operation': 'rename', 'table_name': 'Sales', 'column_name': 'Amt', 'new_name': 'Amount'}"
+        }
+    },
+
+    'measure_operations': {
+        'summary': 'Complete CRUD operations for Power BI measures',
+        'key_points': [
+            'Supports ALL operations: list, get, create, update, delete, rename, move',
+            'Create measures with DAX expressions',
+            'Update measure properties (expression, description, format)',
+            'Get measure details including DAX expression',
+            'Delete, rename, and move measures between tables'
+        ],
+        'operations': {
+            'list': 'List measure names (no DAX)',
+            'get': 'Get measure details WITH DAX expression',
+            'create': 'CREATE new measure',
+            'update': 'UPDATE measure properties',
+            'delete': 'DELETE measure',
+            'rename': 'RENAME measure',
+            'move': 'MOVE measure to different table'
+        },
+        'examples': {
+            'create': "{'operation': 'create', 'table_name': 'Sales', 'measure_name': 'Total Revenue', 'expression': 'SUM(Sales[Amount])', 'format_string': '$#,0'}",
+            'update': "{'operation': 'update', 'table_name': 'Sales', 'measure_name': 'Total Revenue', 'expression': 'SUMX(Sales, [Quantity] * [Price])'}",
+            'delete': "{'operation': 'delete', 'table_name': 'Sales', 'measure_name': 'Old Measure'}",
+            'rename': "{'operation': 'rename', 'table_name': 'Sales', 'measure_name': 'Rev', 'new_name': 'Revenue'}",
+            'move': "{'operation': 'move', 'table_name': 'Sales', 'measure_name': 'Total Revenue', 'new_table': 'Measures'}"
+        }
+    },
+
+    'relationship_operations': {
+        'summary': 'Complete CRUD operations for Power BI relationships',
+        'key_points': [
+            'Supports ALL operations: list, get, find, create, update, delete, activate, deactivate',
+            'Create relationships between tables',
+            'Update relationship properties (cross-filtering, active/inactive)',
+            'Find all relationships for a table',
+            'Activate/deactivate relationships',
+            'Delete relationships'
+        ],
+        'operations': {
+            'list': 'List all relationships',
+            'get': 'Get relationship details',
+            'find': 'Find relationships for a table',
+            'create': 'CREATE new relationship',
+            'update': 'UPDATE relationship properties',
+            'delete': 'DELETE relationship',
+            'activate': 'ACTIVATE inactive relationship',
+            'deactivate': 'DEACTIVATE active relationship'
+        },
+        'examples': {
+            'create': "{'operation': 'create', 'from_table': 'Sales', 'from_column': 'CustomerID', 'to_table': 'Customer', 'to_column': 'ID', 'from_cardinality': 'Many', 'to_cardinality': 'One'}",
+            'update': "{'operation': 'update', 'relationship_name': 'Sales-Customer', 'cross_filtering_behavior': 'BothDirections'}",
+            'delete': "{'operation': 'delete', 'relationship_name': 'OldRelationship'}",
+            'activate': "{'operation': 'activate', 'relationship_name': 'Sales-Product'}"
+        }
+    },
+
+    'calculation_group_operations': {
+        'summary': 'CRUD operations for Power BI calculation groups',
+        'key_points': [
+            'Supports operations: list, list_items, create, delete',
+            'Create calculation groups with multiple items',
+            'Each item has name, expression (DAX), and ordinal (sort order)',
+            'Delete calculation groups'
+        ],
+        'operations': {
+            'list': 'List all calculation groups',
+            'list_items': 'List calculation items in a group',
+            'create': 'CREATE new calculation group',
+            'delete': 'DELETE calculation group'
+        },
+        'examples': {
+            'create': "{'operation': 'create', 'group_name': 'Time Intelligence', 'items': [{'name': 'YTD', 'expression': 'TOTALYTD([Value], Calendar[Date])', 'ordinal': 1}]}",
+            'delete': "{'operation': 'delete', 'group_name': 'Old Group'}"
+        }
+    },
+
+    'role_operations': {
+        'summary': 'RLS/OLS role operations for Power BI',
+        'key_points': [
+            'Currently supports: list operation',
+            'RLS = Row-Level Security (filter data rows)',
+            'OLS = Object-Level Security (hide objects)',
+            'Additional CRUD operations (create, update, delete) coming soon'
+        ],
+        'operations': {
+            'list': 'List all security roles'
         }
     }
 }

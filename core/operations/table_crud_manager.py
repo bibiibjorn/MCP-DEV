@@ -175,23 +175,28 @@ class TableCRUDManager:
             if hidden:
                 table.IsHidden = hidden
 
-            # If expression provided, create as calculated table
+            # Add partition (required for all tables)
+            # Import necessary type
+            from Microsoft.AnalysisServices.Tabular import Partition, PartitionSourceType
+
+            partition = Partition()
+            partition.Name = table_name
+
             if expression:
-                # Import necessary type
-                from Microsoft.AnalysisServices.Tabular import Partition, PartitionSourceType
-
-                # Create partition with calculated source
-                partition = Partition()
-                partition.Name = table_name
-                partition.Source = None  # Will be set via expression
-
                 # Set as calculated table
                 from Microsoft.AnalysisServices.Tabular import CalculatedPartitionSource
                 calc_source = CalculatedPartitionSource()
                 calc_source.Expression = expression
                 partition.Source = calc_source
+            else:
+                # For regular tables, create an M partition with empty source
+                # This allows the table structure to exist, columns can be added later
+                from Microsoft.AnalysisServices.Tabular import MPartitionSource
+                m_source = MPartitionSource()
+                m_source.Expression = ""  # Empty M expression
+                partition.Source = m_source
 
-                table.Partitions.Add(partition)
+            table.Partitions.Add(partition)
 
             model.Tables.Add(table)
             model.SaveChanges()
