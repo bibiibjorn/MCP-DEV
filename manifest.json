@@ -161,7 +161,7 @@
     },
     {
       "name": "09_compare_pbi_models",
-      "description": "[09-Comparison] Compare 2 open/live PBI files"
+      "description": "[09-Comparison] 09 Compare Open/Live Models"
     },
     {
       "name": "10_analyze_pbip_repository",
