@@ -154,7 +154,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                         'success': False,
                         'error': error,
                         'error_type': 'invalid_input'
-                    }, indent=2))]
+                    }, separators=(',', ':')))]
 
             if 'query' in arguments:
                 is_valid, error = InputValidator.validate_dax_query(arguments['query'])
@@ -163,7 +163,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                         'success': False,
                         'error': error,
                         'error_type': 'invalid_input'
-                    }, indent=2))]
+                    }, separators=(',', ':')))]
 
         # Rate limiting (only check if enabled and tool has limit)
         if rate_limiter and rate_limiter.enabled and not rate_limiter.allow_request(name):
@@ -172,7 +172,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 'error': 'Rate limit exceeded',
                 'error_type': 'rate_limit',
                 'retry_after': rate_limiter.get_retry_after(name)
-            }, indent=2))]
+            }, separators=(',', ':')))]
 
         # Dispatch to handler
         result = dispatcher.dispatch(name, arguments)
@@ -218,7 +218,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                                 f"\n  3. Export results to a file instead (use export tools)"
                                 f"\n  4. Ask me to proceed anyway (response will be truncated)"
                             )
-                        }, indent=2))]
+                        }, separators=(',', ':')))]
 
                 # Add optimization suggestions (only for non-small results)
                 suggestion = agent_policy.suggest_optimizations(name, result)
@@ -236,12 +236,12 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
         if name == "get_recent_logs" and isinstance(result, dict) and 'logs' in result:
             return [TextContent(type="text", text=result['logs'])]
 
-        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        return [TextContent(type="text", text=json.dumps(result, separators=(',', ':')))]
 
     except Exception as e:
         logger.error(f"Error in {name}: {e}", exc_info=True)
         return [TextContent(type="text", text=json.dumps(
-            ErrorHandler.handle_unexpected_error(name, e), indent=2
+            ErrorHandler.handle_unexpected_error(name, e), separators=(',', ':')
         ))]
 
 

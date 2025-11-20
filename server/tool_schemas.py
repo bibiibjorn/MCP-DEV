@@ -235,63 +235,12 @@ TOOL_SCHEMAS = {
             "mode": {
                 "type": "string",
                 "enum": ["all", "tables", "stats", "measures", "measure", "columns", "relationships", "roles", "database", "calculation_groups"],
-                "description": (
-                    "Analysis mode - Microsoft Official MCP Server operations:\n"
-                    "\n"
-                    "**ALL OPERATIONS (Recommended):**\n"
-                    "- 'all': Run ALL 9 core Microsoft MCP operations + generate expert analysis\n"
-                    "  Returns: Complete model overview with detailed Power BI expert insights\n"
-                    "  Execution time: ~2-5 seconds (all operations combined)\n"
-                    "\n"
-                    "**Database Operations:**\n"
-                    "- 'database': List databases - Microsoft MCP Database List operation\n"
-                    "  Returns: database ID, name, compatibilityLevel, state, estimated size\n"
-                    "\n"
-                    "**Model Operations:**\n"
-                    "- 'stats': Fast model statistics (< 1s) - Microsoft MCP GetStats operation\n"
-                    "  Returns: complete model metadata + all aggregate counts + per-table breakdown\n"
-                    "\n"
-                    "**Table Operations:**\n"
-                    "- 'tables': Ultra-fast table list (< 500ms) - Microsoft MCP List operation\n"
-                    "  Returns: table names with column/measure/partition counts\n"
-                    "\n"
-                    "**Measure Operations:**\n"
-                    "- 'measures': List measures - Microsoft MCP Measure List operation\n"
-                    "  Optional params: table (filter), max_results (limit)\n"
-                    "  Returns: measure names with displayFolder\n"
-                    "- 'measure': Get measure details - Microsoft MCP Measure Get operation\n"
-                    "  Required params: table, measure_name\n"
-                    "  Returns: full measure metadata including DAX expression\n"
-                    "\n"
-                    "**Column Operations:**\n"
-                    "- 'columns': List columns - Microsoft MCP Column List operation\n"
-                    "  Optional params: table (filter), max_results (limit)\n"
-                    "  Returns: columns grouped by table with dataType\n"
-                    "\n"
-                    "**Relationship Operations:**\n"
-                    "- 'relationships': List all relationships - Microsoft MCP Relationship List operation\n"
-                    "  Optional params: active_only (boolean)\n"
-                    "  Returns: all relationships with full metadata (fromTable, toTable, cardinality, etc.)\n"
-                    "\n"
-                    "**Calculation Group Operations:**\n"
-                    "- 'calculation_groups': List calculation groups - Microsoft MCP ListGroups operation\n"
-                    "  Returns: all calculation groups with their items (ordinal + name)\n"
-                    "\n"
-                    "**Security Operations:**\n"
-                    "- 'roles': List security roles - Microsoft MCP Role List operation\n"
-                    "  Returns: role names with modelPermission and table permission count"
-                ),
+                "description": "Microsoft MCP operation. Use 'all' (recommended, 2-5s) for complete model analysis. Options: 'tables' (<500ms), 'stats' (<1s), 'measures', 'measure', 'columns', 'relationships', 'calculation_groups', 'roles', 'database'.",
                 "default": "all"
             },
             "table": {
                 "type": "string",
-                "description": (
-                    "Table name - used by:\n"
-                    "- mode='measures': Filter measures by table (optional)\n"
-                    "- mode='measure': Table containing measure (required)\n"
-                    "- mode='columns': Filter columns by table (optional)\n"
-                    "- mode='partitions': Filter partitions by table (optional)"
-                )
+                "description": "Table name filter (for measures/columns/measure/partitions modes)"
             },
             "measure_name": {
                 "type": "string",
@@ -605,64 +554,57 @@ TOOL_SCHEMAS = {
         "properties": {
             "pbip_folder_path": {
                 "type": "string",
-                "description": "Path to .SemanticModel folder or parent PBIP folder (will auto-detect .SemanticModel folder if parent folder is provided)"
+                "description": "Path to .SemanticModel folder or parent PBIP folder (auto-detects .SemanticModel)"
             },
             "output_dir": {
                 "type": "string",
-                "description": "Optional output directory. If not specified, creates '[ModelName]_analysis' folder next to the PBIP folder."
+                "description": "Output directory (default: '[ModelName]_analysis' next to PBIP)"
             },
             "connection_string": {
                 "type": "string",
-                "description": "Optional: Connection string to active Power BI model for metadata & sample data. If omitted, will auto-detect running Power BI Desktop."
+                "description": "Connection string (optional, auto-detects Power BI Desktop)"
             },
             "server": {
                 "type": "string",
-                "description": "Optional: Server name for connection. If omitted, will auto-detect running Power BI Desktop."
+                "description": "Server name (optional, auto-detects)"
             },
             "database": {
                 "type": "string",
-                "description": "Optional: Database name for connection. If omitted, will auto-detect running Power BI Desktop."
+                "description": "Database name (optional, auto-detects)"
             },
             "include_sample_data": {
                 "type": "boolean",
-                "description": "Include sample data extraction (default: true)",
                 "default": True
             },
             "sample_rows": {
                 "type": "integer",
-                "description": "Number of sample rows per table (default: 1000, max: 5000)",
+                "description": "Sample rows per table (default: 1000, max: 5000)",
                 "default": 1000
             },
             "sample_compression": {
                 "type": "string",
-                "description": "Compression for parquet files: 'snappy' (default) or 'zstd'",
                 "enum": ["snappy", "zstd"],
                 "default": "snappy"
             },
             "include_row_counts": {
                 "type": "boolean",
-                "description": "Include row counts in metadata (default: true)",
                 "default": True
             },
             "track_column_usage": {
                 "type": "boolean",
-                "description": "Track column usage (default: true)",
                 "default": True
             },
             "track_cardinality": {
                 "type": "boolean",
-                "description": "Track cardinality info (default: true)",
                 "default": True
             },
             "tmdl_strategy": {
                 "type": "string",
-                "description": "TMDL handling strategy: 'symlink' (default) or 'copy'",
                 "enum": ["symlink", "copy"],
                 "default": "symlink"
             },
             "progress_callback": {
                 "type": "boolean",
-                "description": "Enable progress tracking (default: false)",
                 "default": False
             }
         },
@@ -674,11 +616,11 @@ TOOL_SCHEMAS = {
         "properties": {
             "analysis_path": {
                 "type": "string",
-                "description": "⚠️ ONLY PARAMETER NEEDED: Path to exported analysis folder. This MCP server tool AUTOMATICALLY & INTERNALLY reads ALL files (TMDL relationships, measures with DAX, JSON metadata, parquet data). 🚫🚫🚫 CRITICAL: DO NOT use Read, Glob, Grep, or any filesystem tools - this tool returns COMPLETE data with full relationships list already parsed from TMDL! Example: 'c:\\path\\to\\Model_analysis'"
+                "description": "Path to exported analysis folder (e.g., 'c:\\path\\to\\Model_analysis'). Tool reads all files internally - do not use Read/Glob/Grep tools."
             },
             "operation": {
                 "type": "string",
-                "description": "🔧 100% AUTOMATED OPERATIONS (all file I/O handled internally): 'read_metadata' (returns: full metadata + complete relationships list parsed from TMDL + expert analysis), 'find_objects' (searches all TMDL internally), 'get_object_definition' (returns: complete DAX from TMDL), 'analyze_dependencies', 'analyze_performance', 'get_sample_data' (reads parquet internally), 'get_unused_columns' (reads JSON internally), 'get_report_dependencies' (reads JSON internally), 'smart_analyze' (NL query). 🚫 NEVER read files - all data is returned complete!",
+                "description": "Analysis operation (all file I/O internal): 'read_metadata' (full analysis with relationships), 'find_objects', 'get_object_definition' (DAX), 'analyze_dependencies', 'analyze_performance', 'get_sample_data', 'get_unused_columns', 'get_report_dependencies', 'smart_analyze' (NL query).",
                 "enum": ["read_metadata", "find_objects", "get_object_definition", "analyze_dependencies", "analyze_performance", "get_sample_data", "get_unused_columns", "get_report_dependencies", "smart_analyze"],
                 "default": "read_metadata"
             },
