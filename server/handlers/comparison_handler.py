@@ -119,7 +119,7 @@ def register_comparison_handlers(registry):
     tools = [
         ToolDefinition(
             name="compare_pbi_models",
-            description="Compare 2 open/live PBI files",
+            description="09 Compare Open/Live Models",
             handler=handle_compare_pbi_models,
             input_schema=TOOL_SCHEMAS.get('compare_pbi_models', {}),
             category="comparison",

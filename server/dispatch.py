@@ -80,7 +80,7 @@ class ToolDispatcher:
         '08_export_model_explorer_html': 'export_model_explorer_html',
 
         # 09 - Comparison (1 tool)
-        '09_compare_pbi_models': 'compare_pbi_models',
+        '09_Compare_Open_Live_Models': 'compare_pbi_models',
 
         # 10 - PBIP Offline Analysis (1 tool)
         '10_analyze_pbip_repository': 'analyze_pbip_repository',
