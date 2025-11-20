@@ -227,7 +227,7 @@ def register_metadata_handlers(registry):
                 "required": []
             },
             category="metadata",
-            sort_order=8
+            sort_order=14
         ),
         ToolDefinition(
             name="search_string",
@@ -257,7 +257,7 @@ def register_metadata_handlers(registry):
                 "required": ["search_text"]
             },
             category="metadata",
-            sort_order=9
+            sort_order=15
         ),
     ]
 

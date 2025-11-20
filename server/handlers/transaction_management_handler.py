@@ -43,7 +43,7 @@ def register_transaction_management_handler(registry):
             "required": ["operation"]
         },
         category="model_operations",
-        sort_order=23
+        sort_order=33
     )
 
     registry.register(tool)

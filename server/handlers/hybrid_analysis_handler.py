@@ -1223,7 +1223,7 @@ def register_hybrid_analysis_handlers(registry):
         handler=make_handler(handle_export_hybrid_analysis),
         input_schema=TOOL_SCHEMAS['export_hybrid_analysis'],
         category='14 - Hybrid Analysis',
-        sort_order=140
+        sort_order=130
     ))
 
     registry.register(ToolDefinition(
@@ -1232,7 +1232,7 @@ def register_hybrid_analysis_handlers(registry):
         handler=make_handler(handle_analyze_hybrid_model),
         input_schema=TOOL_SCHEMAS['analyze_hybrid_model'],
         category='14 - Hybrid Analysis',
-        sort_order=141
+        sort_order=131
     ))
 
     logger.info("Registered 2 hybrid analysis handlers")

@@ -367,12 +367,6 @@ def _suggest_after_analysis(result: Dict[str, Any], context: Dict[str, Any]) -> 
             'description': 'Generate Word documentation with these findings',
             'tool': 'generate_model_documentation_word',
             'example': {'file_path': 'model_documentation.docx'}
-        },
-        {
-            'action': 'export_html',
-            'description': 'Generate interactive HTML documentation',
-            'tool': 'export_model_explorer_html',
-            'example': {'output_path': 'model_explorer.html'}
         }
     ])
 

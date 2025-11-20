@@ -330,18 +330,7 @@ TOOL_SCHEMAS = {
         "required": ["table", "measure"]
     },
 
-    # Export (2 tools)
-    'export_tmdl': {
-        "type": "object",
-        "properties": {
-            "output_dir": {
-                "type": "string",
-                "description": "Output directory path"
-            }
-        },
-        "required": []
-    },
-
+    # Export (1 tool)
     'get_live_model_schema': {
         "type": "object",
         "properties": {
@@ -382,17 +371,6 @@ TOOL_SCHEMAS = {
         "required": ["input_path"]
     },
 
-    'export_model_explorer_html': {
-        "type": "object",
-        "properties": {
-            "output_path": {
-                "type": "string",
-                "description": "Output HTML file path"
-            }
-        },
-        "required": []
-    },
-
     # Comparison (1 tool)
     'compare_pbi_models': {
         "type": "object",
@@ -425,75 +403,7 @@ TOOL_SCHEMAS = {
         "required": ["pbip_path"]
     },
 
-    # TMDL Automation (3 tools)
-    'tmdl_find_replace': {
-        "type": "object",
-        "properties": {
-            "tmdl_path": {
-                "type": "string",
-                "description": "Path to TMDL export folder (containing definition/ subfolder)"
-            },
-            "pattern": {
-                "type": "string",
-                "description": "Regex pattern to find"
-            },
-            "replacement": {
-                "type": "string",
-                "description": "Replacement text"
-            },
-            "dry_run": {
-                "type": "boolean",
-                "description": "Preview changes without applying them (default: true)",
-                "default": True
-            }
-        },
-        "required": ["tmdl_path", "pattern", "replacement"]
-    },
-
-    'tmdl_bulk_rename': {
-        "type": "object",
-        "properties": {
-            "tmdl_path": {
-                "type": "string",
-                "description": "Path to TMDL export folder (containing definition/ subfolder)"
-            },
-            "renames": {
-                "type": "array",
-                "description": "Array of rename operations with 'old_name' and 'new_name' properties",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "old_name": {"type": "string"},
-                        "new_name": {"type": "string"}
-                    },
-                    "required": ["old_name", "new_name"]
-                }
-            },
-            "dry_run": {
-                "type": "boolean",
-                "description": "Preview changes without applying them (default: true)",
-                "default": True
-            }
-        },
-        "required": ["tmdl_path", "renames"]
-    },
-
-    'tmdl_generate_script': {
-        "type": "object",
-        "properties": {
-            "object_type": {
-                "type": "string",
-                "description": "Type of object to generate: 'table', 'measure', 'relationship', or 'calc_group'",
-                "enum": ["table", "measure", "relationship", "calc_group"],
-                "default": "table"
-            },
-            "definition": {
-                "type": "object",
-                "description": "Object definition (varies by object_type - see handler for details)"
-            }
-        },
-        "required": ["definition"]
-    },
+    # TMDL Automation - Now handled by unified tmdl_operations handler (schema embedded in handler)
 
     # DAX Intelligence (1 unified tool) - Tool 03: Validation + Analysis + Debugging
     'dax_intelligence': {
@@ -501,17 +411,17 @@ TOOL_SCHEMAS = {
         "properties": {
             "expression": {
                 "type": "string",
-                "description": "DAX expression to analyze/debug (measure expression, calculated column, or table query)"
+                "description": "DAX expression OR measure name to analyze. SMART AUTO-DETECTION: (1) If you provide a MEASURE NAME (e.g., 'Total Revenue'), the tool will AUTOMATICALLY fetch the DAX expression from the model. (2) If you provide a full DAX EXPRESSION, it will analyze it directly. Examples: 'Total Revenue' (measure name - auto-fetched), 'SUM(Sales[Amount])' (DAX expression)"
             },
             "analysis_mode": {
                 "type": "string",
-                "description": "Analysis mode: 'analyze' (context transition analysis), 'debug' (step-by-step debugging with friendly output), 'report' (comprehensive report with optimization + profiling). Default: 'analyze'",
-                "enum": ["analyze", "debug", "report"],
-                "default": "analyze"
+                "description": "Analysis mode: 'all' (runs ALL modes: analyze + debug + report), 'analyze' (context transition analysis with anti-patterns and improvements), 'debug' (step-by-step debugging with friendly output), 'report' (comprehensive report with 8 analysis sections including VertiPaq metrics, call tree, optimization suggestions). Default: 'all'",
+                "enum": ["all", "analyze", "debug", "report"],
+                "default": "all"
             },
             "skip_validation": {
                 "type": "boolean",
-                "description": "Skip DAX syntax validation before analysis (default: false). Validation is performed by default.",
+                "description": "Skip DAX syntax validation before analysis (default: false). Set to true only when you know the syntax is valid and want to perform static analysis without execution.",
                 "default": False
             },
             "output_format": {

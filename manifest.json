@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "mcp-powerbi-finvision",
   "display_name": "Power BI Analysis MCP Server",
-  "version": "6.0.2",
+  "version": "6.0.3",
   "description": "A production-ready MCP server for Power BI Desktop analysis with DAX debugging, TMDL editing, and comprehensive model operations",
   "long_description": "MCP-PowerBi-Finvision v5.01 enables AI-powered analysis of Power BI models with 45+ tools across 13 categories. Features include:\n\n**Core Analysis:**\n- Auto-detect and connect to Power BI Desktop instances\n- Browse tables, columns, measures, and relationships\n- Inspect DAX expressions and M queries\n- Run comprehensive analysis with consolidated tools\n\n**DAX Development (ENHANCED):**\n- Unified DAX analysis: syntax validation + context analysis in one tool\n- Debug DAX with context transition analysis\n- Visualize filter context flow through relationships\n- Step-by-step DAX debugging with detailed insights\n- Automatic syntax validation before analysis\n\n**Hybrid Analysis (NEW in v5.01):**\n- Export TMDL + metadata + sample data packages\n- BI Expert analysis with concrete recommendations\n- Pattern-based fuzzy search\n- Natural language query support\n- Token-optimized TOON format\n\n**TMDL Management:**\n- Validate TMDL syntax with linting\n- Find & replace with regex support\n- Bulk rename with automatic reference updates\n- Generate TMDL scripts\n\n**Model Operations:**\n- Create/manage calculation groups\n- View/manage partitions and RLS roles\n- Bulk measure operations\n\n**Performance & Quality:**\n- Performance analysis with DAX profiling and VertiPaq stats\n- Best practices analysis (120+ BPA rules)\n- Dependency analysis and impact assessment\n- Export to Word, Excel, PDF, HTML, TMSL/TMDL\n\nRequirements:\n- Windows 10/11 (64-bit)\n- Power BI Desktop installed and running\n- .NET Framework 4.7.2+\n\nEverything runs locally over stdio with no exposed ports.",
   "author": {
@@ -69,7 +69,7 @@
     },
     {
       "name": "03_standard_dax_analysis",
-      "description": "[03-DAX Intelligence v4.0] Advanced DAX analysis with industry-standard features: syntax validation, context transitions with call tree, VertiPaq metrics (cardinality/memory/iterations), calculation group analysis, anti-patterns, code rewriting (actual transformations), variable optimization, SUMMARIZE detection, visual flow diagrams. Report mode includes 8 comprehensive analysis sections."
+      "description": "[03-DAX Intelligence v4.1] DEFAULT: Runs ALL modes (analyze + debug + report) for comprehensive DAX intelligence. Smart AUTO-DETECTION: provide a MEASURE NAME (e.g., 'Total Revenue') and automatically fetches DAX + skips validation, OR provide full DAX expression. Features: ONLINE RESEARCH (SQLBI articles), 11 anti-patterns, context transitions with call tree, VertiPaq metrics (cardinality/memory/iterations), calculation group analysis, code rewriting (actual transformations), variable optimization, SUMMARIZE detection, visual flow diagrams. Report mode includes 8 comprehensive analysis sections."
     },
     {
       "name": "03_get_column_value_distribution",
@@ -124,12 +124,12 @@
       "description": "[04-Model Operations] List RLS roles"
     },
     {
-      "name": "05_simple_analysis",
-      "description": "[05-Analysis] Microsoft Official MCP Server operations. Modes: 'tables' (table list <500ms), 'stats' (model GetStats <1s), 'measures' (measure list), 'measure' (measure Get with DAX), 'relationships' (relationship list), 'calculation_groups' (calc group ListGroups). All operations return Microsoft MCP-formatted responses."
+      "name": "05_live_model_simple_analysis",
+      "description": "[05-Live Model - Simple Analysis] Microsoft Official MCP Server operations. Modes: 'tables' (table list <500ms), 'stats' (model GetStats <1s), 'measures' (measure list), 'measure' (measure Get with DAX), 'relationships' (relationship list), 'calculation_groups' (calc group ListGroups). All operations return Microsoft MCP-formatted responses."
     },
     {
-      "name": "05_full_analysis",
-      "description": "[05-Analysis] Comprehensive analysis (10-180s): best practices (BPA + M), performance (cardinality), and integrity validation (relationships, duplicates, nulls, circular refs). Configurable scope and depth"
+      "name": "05_live_model_full_analysis",
+      "description": "[05-Live Model - Full Analysis] Comprehensive analysis (10-180s): best practices (BPA + M), performance (cardinality), and integrity validation (relationships, duplicates, nulls, circular refs). Configurable scope and depth"
     },
     {
       "name": "06_analyze_measure_dependencies",
@@ -156,16 +156,12 @@
       "description": "[08-Documentation] Update Word documentation report"
     },
     {
-      "name": "08_export_model_explorer_html",
-      "description": "[08-Documentation] Generate interactive HTML documentation"
-    },
-    {
       "name": "09_Compare_Open_Live_Models",
       "description": "[09-Comparison] 09 Compare Open/Live Models"
     },
     {
-      "name": "10_analyze_pbip_repository",
-      "description": "[10-PBIP] Offline PBIP repository analysis with HTML export"
+      "name": "10_pbip_analysis_html",
+      "description": "[10-PBIP Analysis - HTML Output] Offline PBIP repository analysis with HTML export"
     },
     {
       "name": "11_tmdl_find_replace",
@@ -184,12 +180,12 @@
       "description": "[12-Help] Show comprehensive user guide"
     },
     {
-      "name": "13_export_hybrid_analysis",
-      "description": "[13-Hybrid Analysis] Export Power BI model: TMDL from PBIP folder + metadata/sample data from active model (auto-detects Power BI Desktop)"
+      "name": "13_full_model_pbip_and_sample_export",
+      "description": "[13-Full Model (PBIP + Sample) Export] Export Power BI model: TMDL from PBIP folder + metadata/sample data from active model (auto-detects Power BI Desktop)"
     },
     {
-      "name": "13_analyze_hybrid_model",
-      "description": "[13-Hybrid Analysis] BI Expert Analysis: AUTOMATICALLY reads ALL files internally (TMDL, JSON, parquet). Just provide analysis_path - DO NOT manually list directories or read files! The tool handles: TMDL parsing (relationships, measures), metadata, sample data. Supports fuzzy search."
+      "name": "13_full_model_pbip_and_sample_analysis",
+      "description": "[13-Full Model (PBIP + Sample) Analysis] BI Expert Analysis: AUTOMATICALLY reads ALL files internally (TMDL, JSON, parquet). Just provide analysis_path - DO NOT manually list directories or read files! The tool handles: TMDL parsing (relationships, measures), metadata, sample data. Supports fuzzy search."
     }
   ],
   "keywords": [

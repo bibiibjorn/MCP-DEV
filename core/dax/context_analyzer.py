@@ -466,7 +466,8 @@ class DaxContextAnalyzer:
         try:
             from core.research.dax_research import DaxResearchProvider
 
-            research_provider = DaxResearchProvider()
+            # Enable online research for enhanced recommendations
+            research_provider = DaxResearchProvider(enable_online_research=True)
             results = research_provider.get_optimization_guidance(
                 query=dax_expression,
                 performance_data=None  # No performance data needed for pattern detection

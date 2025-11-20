@@ -147,7 +147,7 @@ def register_column_operations_handler(registry):
             "required": ["operation"]
         },
         category="metadata",
-        sort_order=3
+        sort_order=11
     )
 
     registry.register(tool)

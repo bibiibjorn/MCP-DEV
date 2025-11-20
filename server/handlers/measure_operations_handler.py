@@ -116,7 +116,7 @@ def register_measure_operations_handler(registry):
             "required": ["operation"]
         },
         category="metadata",
-        sort_order=4
+        sort_order=12
     )
 
     registry.register(tool)

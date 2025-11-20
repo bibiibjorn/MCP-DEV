@@ -100,7 +100,7 @@ def register_calculation_group_operations_handler(registry):
             "required": ["operation"]
         },
         category="model_operations",
-        sort_order=20
+        sort_order=30
     )
 
     registry.register(tool)

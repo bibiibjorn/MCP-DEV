@@ -123,7 +123,7 @@ def register_comparison_handlers(registry):
             handler=handle_compare_pbi_models,
             input_schema=TOOL_SCHEMAS.get('compare_pbi_models', {}),
             category="comparison",
-            sort_order=41
+            sort_order=80
         ),
     ]
 

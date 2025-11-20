@@ -30,48 +30,70 @@ def handle_analyze_pbip_repository(args: Dict[str, Any]) -> Dict[str, Any]:
         from core.pbip.pbip_model_analyzer import TmdlModelAnalyzer
         from core.pbip.pbip_dependency_engine import PbipDependencyEngine
 
-        # Step 1: Validate and scan the PBIP project
+        # Step 1: Normalize and validate the PBIP path
         from pathlib import Path
+        import re
 
-        pbip_path_obj = Path(pbip_path)
+        # Normalize the path - handle Unix-style paths like /mnt/c/... on Windows
+        normalized_path = pbip_path
+
+        # Convert WSL/Unix paths to Windows paths on Windows systems
+        if re.match(r'^/mnt/([a-z])/', pbip_path, re.IGNORECASE):
+            # Convert /mnt/c/... to C:\...
+            drive_letter = re.match(r'^/mnt/([a-z])/', pbip_path, re.IGNORECASE).group(1)
+            rest_of_path = pbip_path[7:].replace('/', '\\')  # Skip '/mnt/c/' and convert slashes
+            normalized_path = f"{drive_letter.upper()}:\\{rest_of_path}"
+        elif pbip_path.startswith('/'):
+            # Other Unix-style absolute paths - try to convert
+            normalized_path = pbip_path.replace('/', '\\')
+
+        pbip_path_obj = Path(normalized_path)
         if not pbip_path_obj.exists():
             return {
                 'success': False,
-                'error': f'PBIP path does not exist: {pbip_path}'
+                'error': f'PBIP path does not exist: {pbip_path} (normalized to: {normalized_path})'
             }
 
         scanner = PbipProjectScanner()
 
         # Determine if it's a single .pbip file or a directory
+        # Use the normalized path object
         if pbip_path_obj.is_file() and pbip_path_obj.suffix == '.pbip':
             # Single PBIP file - use its parent directory
-            repo_path = str(pbip_path_obj.parent)
+            repo_path = str(pbip_path_obj.parent.resolve())
         else:
             # Directory containing PBIP files
-            repo_path = str(pbip_path_obj)
+            repo_path = str(pbip_path_obj.resolve())
 
+        logger.info(f"Scanning PBIP repository at: {repo_path}")
         project_info = scanner.scan_repository(repo_path)
 
         if not project_info or (not project_info.get('semantic_models') and not project_info.get('reports')):
             return {
                 'success': False,
-                'error': f"No PBIP projects found in: {repo_path}"
+                'error': f"No PBIP projects found in: {repo_path}. Ensure the folder contains .pbip files and their associated .SemanticModel folders."
             }
 
         # Step 2: Parse model data from the first semantic model found
         semantic_models = project_info.get('semantic_models', [])
+        logger.info(f"Found {len(semantic_models)} semantic model(s)")
+
         if not semantic_models:
+            reports_count = len(project_info.get('reports', []))
             return {
                 'success': False,
-                'error': 'No semantic models found in PBIP project'
+                'error': f'No semantic models found in PBIP project. Found {reports_count} report(s) but no semantic models. Path: {repo_path}'
             }
 
         # Use the first semantic model
         model_folder = semantic_models[0].get('model_folder')
+        logger.info(f"Using semantic model folder: {model_folder}")
+
         if not model_folder:
+            model_info = semantic_models[0]
             return {
                 'success': False,
-                'error': 'Semantic model folder not found'
+                'error': f'Semantic model folder not found. Expected folder like "{{name}}.SemanticModel" next to the .pbip file at: {model_info.get("pbip_file")}'
             }
 
         # Verify definition path exists
@@ -79,7 +101,7 @@ def handle_analyze_pbip_repository(args: Dict[str, Any]) -> Dict[str, Any]:
         if not definition_path:
             return {
                 'success': False,
-                'error': 'Semantic model definition path not found'
+                'error': f'Semantic model definition path not found. Expected "definition" subfolder in: {model_folder}'
             }
 
         model_analyzer = TmdlModelAnalyzer()
@@ -193,7 +215,7 @@ def register_pbip_handlers(registry):
             handler=handle_analyze_pbip_repository,
             input_schema=TOOL_SCHEMAS.get('analyze_pbip_repository', {}),
             category="pbip",
-            sort_order=43
+            sort_order=90
         ),
     ]
 

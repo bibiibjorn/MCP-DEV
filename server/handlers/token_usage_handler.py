@@ -98,7 +98,7 @@ def register_token_usage_handlers(registry):
             handler=handle_get_token_usage,
             input_schema=TOOL_SCHEMAS.get('get_token_usage', {}),
             category="monitoring",
-            sort_order=100
+            sort_order=150
         ),
     ]
 

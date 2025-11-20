@@ -63,39 +63,38 @@ class ToolDispatcher:
         '04_list_roles': 'list_roles',
 
         # 05 - Analysis (2 tools)
-        '05_simple_analysis': 'simple_analysis',
-        '05_full_analysis': 'full_analysis',
+        '05_live_model_simple_analysis': 'simple_analysis',
+        '05_live_model_full_analysis': 'full_analysis',
 
         # 06 - Dependencies (2 tools)
         '06_analyze_measure_dependencies': 'analyze_measure_dependencies',
         '06_get_measure_impact': 'get_measure_impact',
 
-        # 07 - Export (2 tools)
+        # 07 - Export (1 tool)
         '07_get_live_model_schema': 'get_live_model_schema',
-        '07_export_tmdl': 'export_tmdl',
 
-        # 08 - Documentation (3 tools)
+        # 08 - Documentation (2 tools)
         '08_generate_model_documentation_word': 'generate_model_documentation_word',
         '08_update_model_documentation_word': 'update_model_documentation_word',
-        '08_export_model_explorer_html': 'export_model_explorer_html',
 
         # 09 - Comparison (1 tool)
         '09_Compare_Open_Live_Models': 'compare_pbi_models',
 
-        # 10 - PBIP Offline Analysis (1 tool)
-        '10_analyze_pbip_repository': 'analyze_pbip_repository',
+        # 10 - PBIP Analysis - HTML (1 tool)
+        '10_pbip_analysis_html': 'analyze_pbip_repository',
 
-        # 11 - TMDL Automation (3 tools)
-        '11_tmdl_find_replace': 'tmdl_find_replace',
-        '11_tmdl_bulk_rename': 'tmdl_bulk_rename',
-        '11_tmdl_generate_script': 'tmdl_generate_script',
+        # 11 - TMDL Operations (1 unified tool)
+        '11_tmdl_operations': 'tmdl_operations',
 
         # 12 - Help (1 tool)
         '12_show_user_guide': 'show_user_guide',
 
-        # 13 - Hybrid Analysis (2 tools)
-        '13_export_hybrid_analysis': 'export_hybrid_analysis',
-        '13_analyze_hybrid_model': 'analyze_hybrid_model'
+        # 13 - Full Model (PBIP + Sample) (2 tools)
+        '13_full_model_pbip_and_sample_export': 'export_hybrid_analysis',
+        '13_full_model_pbip_and_sample_analysis': 'analyze_hybrid_model',
+
+        # 14 - Monitoring & Token Usage (1 tool)
+        '14_get_token_usage': 'get_token_usage'
     }
 
     def __init__(self):

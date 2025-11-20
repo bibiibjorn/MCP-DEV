@@ -144,38 +144,65 @@ class TMDLParser:
     def parse_relationships(tmdl_content: str) -> List[Dict[str, Any]]:
         """Parse relationships from relationships.tmdl content"""
         relationships = []
-        rel_pattern = r"relationship\s+(\w+)\s*\n(.*?)(?=\n\s*relationship|\Z)"
+        # Fixed: Use [\w-]+ instead of \w+ to capture hashes with dashes
+        rel_pattern = r"relationship\s+([\w-]+)\s*\n(.*?)(?=\n\s*relationship|\Z)"
         matches = re.finditer(rel_pattern, tmdl_content, re.DOTALL | re.MULTILINE)
 
         for match in matches:
             rel_hash = match.group(1)
             rel_block = match.group(2)
 
-            from_match = re.search(r"fromColumn:\s*(['\"]?)([^'\"\n]+)\1", rel_block)
-            to_match = re.search(r"toColumn:\s*(['\"]?)([^'\"\n]+)\1", rel_block)
+            # Updated regex to handle TableName.'Column Name' format correctly
+            # Pattern: capture everything after fromColumn: until end of line
+            from_match = re.search(r"fromColumn:\s*(.+?)$", rel_block, re.MULTILINE)
+            to_match = re.search(r"toColumn:\s*(.+?)$", rel_block, re.MULTILINE)
             from_card_match = re.search(r"fromCardinality:\s*(\w+)", rel_block)
             to_card_match = re.search(r"toCardinality:\s*(\w+)", rel_block)
             cross_filter_match = re.search(r"crossFilteringBehavior:\s*(\w+)", rel_block)
             active_match = re.search(r"isActive:\s*(true|false)", rel_block)
             security_match = re.search(r"securityFilteringBehavior:\s*(\w+)", rel_block)
 
-            from_column = from_match.group(2).strip() if from_match else None
-            to_column = to_match.group(2).strip() if to_match else None
+            from_column = from_match.group(1).strip() if from_match else None
+            to_column = to_match.group(1).strip() if to_match else None
 
-            # Extract table names
+            # Extract table names - support multiple formats:
+            # - TableName.ColumnName
+            # - TableName.'Column Name'  (quoted column)
+            # - 'Table Name'.ColumnName  (quoted table)
+            # - TableName[ColumnName]  (bracket notation)
             from_table, from_col = None, None
             if from_column:
-                parts = from_column.split('[')
-                if len(parts) == 2:
-                    from_table = parts[0].strip("' ")
-                    from_col = parts[1].strip("] '")
+                # Try bracket format first: TableName[ColumnName]
+                if '[' in from_column:
+                    parts = from_column.split('[', 1)
+                    if len(parts) == 2:
+                        from_table = parts[0].strip("' \"")
+                        from_col = parts[1].rstrip(']').strip("' \"")
+                # Try dot format: TableName.ColumnName or TableName.'Column Name'
+                elif '.' in from_column:
+                    # Find the last dot that's not inside quotes
+                    # Simple approach: split on dot and handle quotes
+                    dot_idx = from_column.rfind('.')
+                    if dot_idx > 0:
+                        from_table = from_column[:dot_idx].strip("' \"")
+                        from_col = from_column[dot_idx+1:].strip("' \"")
 
             to_table, to_col = None, None
             if to_column:
-                parts = to_column.split('[')
-                if len(parts) == 2:
-                    to_table = parts[0].strip("' ")
-                    to_col = parts[1].strip("] '")
+                # Try bracket format first: TableName[ColumnName]
+                if '[' in to_column:
+                    parts = to_column.split('[', 1)
+                    if len(parts) == 2:
+                        to_table = parts[0].strip("' \"")
+                        to_col = parts[1].rstrip(']').strip("' \"")
+                # Try dot format: TableName.ColumnName or TableName.'Column Name'
+                elif '.' in to_column:
+                    # Find the last dot that's not inside quotes
+                    # Simple approach: split on dot and handle quotes
+                    dot_idx = to_column.rfind('.')
+                    if dot_idx > 0:
+                        to_table = to_column[:dot_idx].strip("' \"")
+                        to_col = to_column[dot_idx+1:].strip("' \"")
 
             # Map fromCardinality and toCardinality to standard cardinality field
             from_card = from_card_match.group(1) if from_card_match else "many"

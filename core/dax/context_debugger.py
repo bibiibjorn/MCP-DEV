@@ -702,9 +702,44 @@ RETURN Result
                 if column_analysis.get('success') and column_analysis.get('columns_analyzed', 0) > 0:
                     lines.append("VERTIPAQ COLUMN ANALYSIS")
                     lines.append("=" * 70)
-                    lines.append(f"Columns analyzed: {column_analysis['columns_analyzed']}")
-                    lines.append(f"Total cardinality: {column_analysis.get('total_cardinality', 0):,}")
-                    lines.append(f"Total size: {column_analysis.get('total_size_mb', 0):.2f} MB")
+
+                    # Show columns referenced with their metrics
+                    col_details = column_analysis.get('column_analysis', {})
+                    lines.append(f"Columns Referenced: {column_analysis['columns_analyzed']}")
+                    lines.append("")
+
+                    # Track if any columns were calculated vs DMV
+                    has_calculated = False
+
+                    # Show all columns with their cardinality
+                    for col_ref, col_data in col_details.items():
+                        if isinstance(col_data, dict) and 'cardinality' in col_data:
+                            cardinality = col_data.get('cardinality', 0)
+                            encoding = col_data.get('encoding', 'unknown')
+
+                            if encoding == 'calculated':
+                                lines.append(f"   • {col_ref} - Cardinality: {cardinality:,} (calculated)")
+                                has_calculated = True
+                            else:
+                                lines.append(f"   • {col_ref} - Cardinality: {cardinality:,}")
+                        else:
+                            # Column without metrics
+                            lines.append(f"   • {col_ref} - No metrics available")
+
+                    lines.append("")
+
+                    # Show totals
+                    total_cardinality = column_analysis.get('total_cardinality', 0)
+                    total_size_mb = column_analysis.get('total_size_mb', 0)
+
+                    lines.append(f"Total Cardinality: {total_cardinality:,}")
+
+                    # Note about size calculation
+                    if has_calculated:
+                        lines.append(f"Total Size: {total_size_mb:.2f} MB (estimated for calculated columns)")
+                    else:
+                        lines.append(f"Total Size: {total_size_mb:.2f} MB")
+
                     lines.append("")
 
                     if column_analysis.get('high_cardinality_columns'):

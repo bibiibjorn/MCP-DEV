@@ -7,8 +7,9 @@ echo MCP-PowerBi-Finvision Packager
 echo ========================================
 echo.
 
-:: Read version from __version__.py (hardcoded for reliability)
-set VERSION=5.01
+:: Read version from __version__.py
+for /f "tokens=3 delims==\"" %%a in ('findstr "__version__" src\__version__.py') do set VERSION=%%a
+set VERSION=%VERSION: =%
 echo Version: %VERSION%
 echo.
 

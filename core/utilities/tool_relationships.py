@@ -123,7 +123,7 @@ TOOL_RELATIONSHIPS = {
 
     # Analysis Tools
     'comprehensive_analysis': {
-        'common_next_steps': ['generate_model_documentation_word', 'export_model_explorer_html', 'get_live_model_schema'],
+        'common_next_steps': ['generate_model_documentation_word', 'get_live_model_schema'],
         'prerequisites': ['connect_to_powerbi'],
         'alternatives': [],
         'category': 'analysis',
@@ -194,7 +194,7 @@ TOOL_RELATIONSHIPS = {
     'generate_model_documentation_word': {
         'common_next_steps': ['update_model_documentation_word'],
         'prerequisites': ['connect_to_powerbi'],
-        'alternatives': ['export_model_explorer_html'],
+        'alternatives': [],
         'category': 'documentation',
         'workflow_stage': 'documentation'
     },
@@ -202,13 +202,6 @@ TOOL_RELATIONSHIPS = {
         'common_next_steps': [],
         'prerequisites': ['connect_to_powerbi', 'generate_model_documentation_word'],
         'alternatives': [],
-        'category': 'documentation',
-        'workflow_stage': 'documentation'
-    },
-    'export_model_explorer_html': {
-        'common_next_steps': [],
-        'prerequisites': ['connect_to_powerbi'],
-        'alternatives': ['generate_model_documentation_word'],
         'category': 'documentation',
         'workflow_stage': 'documentation'
     },
@@ -224,7 +217,7 @@ TOOL_RELATIONSHIPS = {
 
     # PBIP & TMDL
     'analyze_pbip_repository': {
-        'common_next_steps': ['export_model_explorer_html'],
+        'common_next_steps': [],
         'prerequisites': [],  # Offline tool, no connection needed
         'alternatives': [],
         'category': 'pbip',
@@ -349,8 +342,7 @@ def suggest_workflow(goal: str) -> List[str]:
         'document': [
             'connect_to_powerbi',
             'comprehensive_analysis',
-            'generate_model_documentation_word',
-            'export_model_explorer_html'
+            'generate_model_documentation_word'
         ],
         'develop': [
             'connect_to_powerbi',
@@ -364,8 +356,7 @@ def suggest_workflow(goal: str) -> List[str]:
             'generate_model_documentation_word'
         ],
         'offline': [
-            'analyze_pbip_repository',
-            'export_model_explorer_html'
+            'analyze_pbip_repository'
         ]
     }
 

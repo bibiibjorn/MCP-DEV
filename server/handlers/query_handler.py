@@ -189,7 +189,7 @@ def register_query_handlers(registry):
                 "required": ["query"]
             },
             category="query",
-            sort_order=11
+            sort_order=20
         ),
         ToolDefinition(
             name="get_data_sources",
@@ -201,7 +201,7 @@ def register_query_handlers(registry):
                 "required": []
             },
             category="query",
-            sort_order=16
+            sort_order=22
         ),
         ToolDefinition(
             name="get_m_expressions",
@@ -218,7 +218,7 @@ def register_query_handlers(registry):
                 "required": []
             },
             category="query",
-            sort_order=17
+            sort_order=23
         ),
     ]
 

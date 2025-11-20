@@ -132,7 +132,7 @@ def register_table_operations_handler(registry):
             "required": ["operation"]
         },
         category="metadata",
-        sort_order=2
+        sort_order=10
     )
 
     registry.register(tool)

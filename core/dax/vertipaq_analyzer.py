@@ -180,7 +180,16 @@ class VertiPaqAnalyzer:
 
         # Normalize column reference
         normalized = self._normalize_column_ref(column_ref)
-        return self._column_cache.get(normalized)
+        cached = self._column_cache.get(normalized)
+
+        # If not in cache, try to calculate cardinality directly
+        if not cached:
+            cached = self._calculate_column_cardinality(column_ref)
+            if cached:
+                # Add to cache for future use
+                self._column_cache[normalized] = cached
+
+        return cached
 
     def analyze_dax_columns(self, dax_expression: str) -> Dict[str, Any]:
         """
@@ -278,6 +287,99 @@ class VertiPaqAnalyzer:
         # Remove quotes
         col_ref = col_ref.replace("'", "")
         return col_ref
+
+    def _calculate_column_cardinality(self, column_ref: str) -> Optional[ColumnMetrics]:
+        """
+        Calculate column cardinality using DAX query (fallback when DMV data unavailable)
+
+        Args:
+            column_ref: Column reference like "Sales[Amount]"
+
+        Returns:
+            ColumnMetrics with calculated cardinality, or None if calculation fails
+        """
+        try:
+            if not self.connection_state or not self.connection_state.is_connected():
+                return None
+
+            qe = self.connection_state.query_executor
+            if not qe:
+                return None
+
+            # Parse table and column name
+            match = re.match(r"(?:'([^']+)'|(\w+))\[([^\]]+)\]", column_ref)
+            if not match:
+                logger.debug(f"Could not parse column reference: {column_ref}")
+                return None
+
+            table_name = match.group(1) or match.group(2)
+            column_name = match.group(3)
+
+            # Build DAX query to calculate cardinality
+            dax_query = f"""
+            EVALUATE
+            ROW(
+                "Cardinality", COUNTROWS(DISTINCT({column_ref})),
+                "TotalRows", COUNTROWS({table_name})
+            )
+            """
+
+            result = qe.validate_and_execute_dax(dax_query, top_n=1)
+
+            if result.get('success') and result.get('data'):
+                data = result['data']
+                if len(data) > 0:
+                    cardinality = int(data[0].get('Cardinality', 0))
+                    total_rows = int(data[0].get('TotalRows', 0))
+
+                    logger.info(f"Calculated cardinality for {column_ref}: {cardinality:,}")
+
+                    # Create metrics object with calculated cardinality
+                    # Note: Size estimation is approximate without DMV data
+                    estimated_size = self._estimate_column_size(cardinality, total_rows)
+
+                    return ColumnMetrics(
+                        table_name=table_name,
+                        column_name=column_name,
+                        cardinality=cardinality,
+                        size_bytes=estimated_size,
+                        data_type="unknown",  # Can't determine without DMV
+                        encoding="calculated",
+                        dictionary_size_bytes=0,
+                        hierarchy_size_bytes=0
+                    )
+
+            logger.debug(f"Failed to calculate cardinality for {column_ref}: {result.get('error', 'Unknown error')}")
+            return None
+
+        except Exception as e:
+            logger.debug(f"Error calculating cardinality for {column_ref}: {e}")
+            return None
+
+    def _estimate_column_size(self, cardinality: int, total_rows: int) -> int:
+        """
+        Estimate column size in bytes based on cardinality
+
+        This is a rough approximation when DMV data is unavailable:
+        - Dictionary size: cardinality * average_value_size (assume 20 bytes)
+        - Data column: total_rows * bytes_per_entry (4 bytes for integer references)
+
+        Args:
+            cardinality: Number of distinct values
+            total_rows: Total rows in table
+
+        Returns:
+            Estimated size in bytes
+        """
+        # Dictionary: cardinality * assumed average value size
+        avg_value_size = 20  # Conservative estimate for string values
+        dictionary_size = cardinality * avg_value_size
+
+        # Data column: references to dictionary (4 bytes per row for most cases)
+        data_column_size = total_rows * 4
+
+        # Total estimated size
+        return dictionary_size + data_column_size
 
     def _determine_usage_context(self, dax: str, column_ref: str) -> str:
         """Determine how a column is used in the DAX expression"""

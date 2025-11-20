@@ -72,6 +72,12 @@ class PbipProjectScanner:
                     elif project_info["type"] == "Report":
                         result["reports"].append(project_info)
 
+                        # Check for adjacent semantic model folder
+                        adjacent_sm = self._find_adjacent_semantic_model(pbip_file, repo_path)
+                        if adjacent_sm and not any(sm['name'] == adjacent_sm['name'] for sm in result["semantic_models"]):
+                            result["semantic_models"].append(adjacent_sm)
+                            self.logger.info(f"Found adjacent semantic model: {adjacent_sm['name']}")
+
             # Link reports to their semantic models
             self._link_reports_to_models(result)
 
@@ -268,6 +274,52 @@ class PbipProjectScanner:
         except Exception as e:
             self.logger.warning(f"Could not extract linked model: {e}")
             return None
+
+    def _find_adjacent_semantic_model(
+        self,
+        pbip_file: str,
+        repo_path: str
+    ) -> Optional[Dict[str, str]]:
+        """
+        Find semantic model folder adjacent to a report's .pbip file.
+
+        When a .pbip file references a report, check if there's a .SemanticModel
+        folder with the same base name in the same directory.
+
+        Args:
+            pbip_file: Path to the .pbip file
+            repo_path: Repository root path
+
+        Returns:
+            Dictionary with semantic model information or None
+        """
+        pbip_dir = os.path.dirname(pbip_file)
+        base_name = os.path.splitext(os.path.basename(pbip_file))[0]
+
+        # Look for .SemanticModel folder with same base name
+        model_folder = os.path.join(pbip_dir, f"{base_name}.SemanticModel")
+
+        if os.path.isdir(model_folder):
+            # Found adjacent semantic model folder
+            definition_path = os.path.join(model_folder, "definition")
+
+            if os.path.isdir(definition_path):
+                project_info = {
+                    "pbip_file": pbip_file,  # Use same pbip file
+                    "name": base_name,
+                    "type": "SemanticModel",
+                    "relative_path": os.path.relpath(pbip_file, repo_path),
+                    "model_folder": model_folder,
+                    "definition_path": definition_path,
+                    "has_tmdl": self._has_tmdl_format(model_folder)
+                }
+
+                self.logger.info(f"Found adjacent semantic model folder: {model_folder}")
+                return project_info
+            else:
+                self.logger.warning(f"Definition folder not found in {model_folder}")
+
+        return None
 
     def _link_reports_to_models(self, result: Dict) -> None:
         """

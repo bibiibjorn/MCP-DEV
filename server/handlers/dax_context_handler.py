@@ -363,15 +363,20 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
     Combines validation, analysis, and debugging into a single intelligent tool.
 
     Modes:
-    - 'analyze': Context transition analysis
+    - 'all' (DEFAULT): Runs ALL analysis modes - analyze + debug + report
+    - 'analyze': Context transition analysis with anti-patterns
     - 'debug': Step-by-step debugging with friendly/steps output
     - 'report': Comprehensive report with optimization + profiling
+
+    Smart measure detection: Automatically fetches measure expressions if a measure name is provided.
+    Auto-skips validation for auto-fetched measures (already in model, must be valid).
+    Online research enabled for DAX optimization articles and recommendations.
     """
     if not connection_state.is_connected():
         return ErrorHandler.handle_not_connected()
 
     expression = args.get('expression')
-    analysis_mode = args.get('analysis_mode', 'analyze')
+    analysis_mode = args.get('analysis_mode', 'all')  # Default to 'all' mode (analyze + debug + report)
     skip_validation = args.get('skip_validation', False)
 
     if not expression:
@@ -380,7 +385,120 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
             'error': 'expression parameter is required'
         }
 
+    # Smart measure detection: Check if expression looks like a measure name rather than DAX code
+    # Measure names are typically short and don't contain DAX keywords/operators
+    original_expression = expression
+    measure_name = None
+    measure_table = None
+
+    dax_keywords = [
+        'CALCULATE', 'FILTER', 'SUM', 'SUMX', 'AVERAGE', 'COUNT', 'COUNTROWS',
+        'IF', 'SWITCH', 'VAR', 'RETURN', 'ALL', 'VALUES', 'DISTINCT', 'RELATED',
+        'SELECTEDVALUE', 'DIVIDE', 'MAX', 'MIN', 'EVALUATE', '=', '+', '-', '*', '/',
+        '[', '(', ')', '{', '}', '&&', '||', '<', '>', '<=', '>=', '<>'
+    ]
+
+    # Check if this looks like a simple measure name (not a DAX expression)
+    is_likely_measure_name = (
+        len(expression) < 150 and  # Measure names are typically short
+        not any(keyword in expression.upper() for keyword in dax_keywords[:15]) and  # No major DAX keywords
+        expression.count('[') == 0 and  # No column references
+        expression.count('(') == 0  # No function calls
+    )
+
+    if is_likely_measure_name:
+        # Try to fetch the measure expression automatically
+        logger.info(f"Expression looks like a measure name: '{expression}'. Attempting auto-fetch...")
+
+        # Try to find the measure in the model
+        tom = connection_state.tom_wrapper
+        if tom:
+            try:
+                # Search for measure across all tables
+                found_measure = None
+                found_table = None
+
+                # Normalize search term for fuzzy matching
+                search_term = expression.lower().strip()
+                exact_matches = []
+                partial_matches = []
+
+                # Split search term into words, removing common separators
+                import re
+                search_words = [w for w in re.split(r'[\s\-_]+', search_term) if w]
+
+                for table in tom.model.Tables:
+                    for measure in table.Measures:
+                        measure_name_lower = measure.Name.lower()
+
+                        # Try exact match first (case-insensitive)
+                        if measure_name_lower == search_term:
+                            exact_matches.append((measure, table.Name))
+                        # Try partial/fuzzy match - check if all words in search term appear in measure name
+                        # Use word boundary matching to avoid false positives (e.g., "base" shouldn't match "database")
+                        else:
+                            # Split measure name into words
+                            measure_words = set(re.split(r'[\s\-_]+', measure_name_lower))
+                            # Check if all search words appear as complete words in measure name
+                            if all(
+                                any(search_word in measure_word or measure_word in search_word
+                                    for measure_word in measure_words)
+                                for search_word in search_words
+                            ):
+                                partial_matches.append((measure, table.Name))
+
+                # Prioritize exact matches, then partial matches
+                if exact_matches:
+                    found_measure, found_table = exact_matches[0]
+                elif partial_matches:
+                    # If multiple partial matches, use the shortest one (most specific)
+                    partial_matches.sort(key=lambda x: len(x[0].Name))
+                    found_measure, found_table = partial_matches[0]
+                    logger.info(f"Using fuzzy match: '{found_measure.Name}' for search term '{expression}'")
+
+                if found_measure:
+                    expression = found_measure.Expression
+                    measure_name = original_expression
+                    measure_table = found_table
+                    logger.info(f"Auto-fetched measure '{found_measure.Name}' from table '{found_table}'")
+                else:
+                    # Measure not found - provide helpful suggestions
+                    # Find similar measure names for suggestions
+                    all_measures = []
+                    for table in tom.model.Tables:
+                        for measure in table.Measures:
+                            all_measures.append((measure.Name, table.Name))
+
+                    # Find measures with any matching words
+                    suggestions = []
+                    search_words = set(search_term.split())
+                    for measure_name_str, table_name in all_measures:
+                        measure_words = set(measure_name_str.lower().split())
+                        if search_words & measure_words:  # Any word overlap
+                            suggestions.append(f"[{table_name}].[{measure_name_str}]")
+
+                    error_msg = f"The expression '{original_expression}' looks like a measure name, but no exact match was found in the model."
+                    if suggestions:
+                        error_msg += f"\n\nDid you mean one of these measures?\n" + "\n".join(f"  • {s}" for s in suggestions[:5])
+                    error_msg += f"\n\nPlease provide either:\n1. The full DAX expression to analyze, or\n2. A valid measure name"
+
+                    return {
+                        'success': False,
+                        'error': error_msg,
+                        'suggestions': suggestions[:10] if suggestions else None,
+                        'hint': 'Try using more specific keywords from the measure name'
+                    }
+            except Exception as e:
+                logger.warning(f"Error during auto-fetch: {e}")
+                # Continue with original expression
+                pass
+
     # Step 1: Validate DAX syntax (unless explicitly skipped)
+    # IMPORTANT: Auto-skip validation for auto-fetched measures (they're already in the model and must be valid)
+    if measure_name and not skip_validation:
+        logger.info(f"Auto-fetched measure '{measure_name}' - skipping validation (already in model)")
+        skip_validation = True
+
     validation_result = {'valid': True, 'message': 'Validation skipped'}
     if not skip_validation:
         is_valid, error_msg = _validate_dax_syntax(expression)
@@ -399,7 +517,85 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
 
     # Step 2: Route to appropriate analysis mode
     try:
-        if analysis_mode == 'analyze':
+        if analysis_mode == 'all':
+            # Run all modes: analyze, debug, and report
+            from core.dax import DaxContextAnalyzer, DaxContextDebugger
+            analyzer = DaxContextAnalyzer()
+            debugger = DaxContextDebugger()
+
+            # Run analyze mode
+            result_analyze = analyzer.analyze_context_transitions(expression)
+            anti_patterns = analyzer.detect_dax_anti_patterns(expression)
+            improvements = debugger.generate_improved_dax(
+                dax_expression=expression,
+                context_analysis=result_analyze,
+                anti_patterns=anti_patterns
+            )
+
+            # Run debug mode
+            steps = debugger.step_through(
+                dax_expression=expression,
+                breakpoints=args.get('breakpoints')
+            )
+
+            formatted_debug = None
+            if steps:
+                output_format = args.get('output_format', 'friendly')
+                if output_format == 'friendly':
+                    formatted_debug = _format_debug_steps_friendly(expression, steps)
+                    if validation_result['valid']:
+                        validation_header = "✅ DAX SYNTAX VALIDATION: PASSED\n\n"
+                        formatted_debug = validation_header + formatted_debug
+                    if measure_name:
+                        measure_header = f"📊 Analyzing measure: [{measure_table}].[{measure_name}]\n\n"
+                        formatted_debug = measure_header + formatted_debug
+
+            # Run report mode
+            result_report = debugger.generate_debug_report(
+                expression,
+                include_profiling=args.get('include_profiling', True),
+                include_optimization=args.get('include_optimization', True),
+                connection_state=connection_state
+            )
+
+            # Combine all results
+            response = {
+                'success': True,
+                'validation': validation_result,
+                'mode': 'all',
+                'analyze_results': {
+                    'analysis': result_analyze.to_dict() if hasattr(result_analyze, 'to_dict') else result_analyze,
+                    'anti_patterns': {
+                        'patterns_detected': anti_patterns.get('patterns_detected', 0),
+                        'pattern_matches': anti_patterns.get('pattern_matches', {}),
+                        'recommendations': anti_patterns.get('recommendations', []),
+                        'articles': anti_patterns.get('articles', [])
+                    } if anti_patterns.get('success') else None,
+                    'improvements': {
+                        'summary': improvements.get('summary'),
+                        'count': improvements.get('improvements_count'),
+                        'details': improvements.get('improvements'),
+                        'original_code': improvements.get('original_code'),
+                        'suggested_code': improvements.get('suggested_code')
+                    } if improvements.get('has_improvements') else None
+                },
+                'debug_results': {
+                    'formatted_output': formatted_debug,
+                    'total_steps': len(steps) if steps else 0
+                },
+                'report_results': result_report
+            }
+
+            if measure_name:
+                response['measure_info'] = {
+                    'name': measure_name,
+                    'table': measure_table,
+                    'note': f"Auto-fetched measure expression from [{measure_table}].[{measure_name}]"
+                }
+
+            return response
+
+        elif analysis_mode == 'analyze':
             # Context transition analysis with anti-pattern detection
             from core.dax import DaxContextAnalyzer, DaxContextDebugger
             analyzer = DaxContextAnalyzer()
@@ -423,6 +619,14 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                 'analysis': result.to_dict() if hasattr(result, 'to_dict') else result,
                 'mode': 'analyze'
             }
+
+            # Include measure info if auto-fetched
+            if measure_name:
+                response['measure_info'] = {
+                    'name': measure_name,
+                    'table': measure_table,
+                    'note': f"Auto-fetched measure expression from [{measure_table}].[{measure_name}]"
+                }
 
             # Include anti-pattern detection if successful
             if anti_patterns.get('success'):
@@ -459,7 +663,7 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
             )
 
             if not steps:
-                return {
+                result = {
                     'success': True,
                     'validation': validation_result,
                     'message': '✅ No context transitions detected in this DAX expression.',
@@ -467,6 +671,13 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                     'total_steps': 0,
                     'mode': 'debug'
                 }
+                if measure_name:
+                    result['measure_info'] = {
+                        'name': measure_name,
+                        'table': measure_table,
+                        'note': f"Auto-fetched measure expression from [{measure_table}].[{measure_name}]"
+                    }
+                return result
 
             # Format output based on requested format
             if output_format == 'friendly':
@@ -476,13 +687,25 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                     validation_header = "✅ DAX SYNTAX VALIDATION: PASSED\n\n"
                     formatted_output = validation_header + formatted_output
 
-                return {
+                # Add measure info header if auto-fetched
+                if measure_name:
+                    measure_header = f"📊 Analyzing measure: [{measure_table}].[{measure_name}]\n\n"
+                    formatted_output = measure_header + formatted_output
+
+                result = {
                     'success': True,
                     'validation': validation_result,
                     'formatted_output': formatted_output,
                     'total_steps': len(steps),
                     'mode': 'debug'
                 }
+                if measure_name:
+                    result['measure_info'] = {
+                        'name': measure_name,
+                        'table': measure_table,
+                        'note': f"Auto-fetched measure expression from [{measure_table}].[{measure_name}]"
+                    }
+                return result
             else:
                 # 'steps' format - raw data
                 steps_dict = [
@@ -498,13 +721,20 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                     for step in steps
                 ]
 
-                return {
+                result = {
                     'success': True,
                     'validation': validation_result,
                     'debug_steps': steps_dict,
                     'total_steps': len(steps_dict),
                     'mode': 'debug'
                 }
+                if measure_name:
+                    result['measure_info'] = {
+                        'name': measure_name,
+                        'table': measure_table,
+                        'note': f"Auto-fetched measure expression from [{measure_table}].[{measure_name}]"
+                    }
+                return result
 
         elif analysis_mode == 'report':
             # Comprehensive debug report with all enhancements
@@ -521,16 +751,23 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                 connection_state=connection_state  # Pass connection state for enhanced analysis
             )
 
-            return {
+            response = {
                 'success': True,
                 'validation': validation_result,
                 'report': result,
                 'mode': 'report'
             }
+            if measure_name:
+                response['measure_info'] = {
+                    'name': measure_name,
+                    'table': measure_table,
+                    'note': f"Auto-fetched measure expression from [{measure_table}].[{measure_name}]"
+                }
+            return response
         else:
             return {
                 'success': False,
-                'error': f"Invalid analysis_mode: {analysis_mode}. Use 'analyze', 'debug', or 'report'."
+                'error': f"Invalid analysis_mode: {analysis_mode}. Use 'all' (default), 'analyze', 'debug', or 'report'."
             }
 
     except ImportError as ie:
@@ -558,23 +795,25 @@ def register_dax_handlers(registry):
         ToolDefinition(
             name="dax_intelligence",
             description=(
-                "[03-DAX Intelligence v4.0] Advanced DAX analysis tool with industry-standard features: "
-                "✓ DAX syntax validation "
+                "[03-DAX Intelligence v4.2] DEFAULT MODE: Runs ALL analysis (analyze + debug + report) for comprehensive DAX intelligence. "
+                "✓ SMART MEASURE FINDER: Just provide measure keywords (e.g., 'base scenario') → automatically finds & analyzes the measure with FUZZY MATCHING. NO need to search first! "
+                "✓ AUTO-FETCH: Provide exact or partial measure name → auto-fetches DAX expression + skips validation "
+                "✓ ONLINE RESEARCH: Fetches SQLBI optimization articles with specific recommendations "
+                "✓ 11 anti-pattern detectors with research-backed recommendations "
                 "✓ Context transition analysis with call tree hierarchy "
                 "✓ VertiPaq metrics integration (cardinality, memory footprint, iteration estimates) "
                 "✓ Calculation group analysis (precedence conflicts, performance impact) "
-                "✓ Anti-pattern detection with research-backed recommendations "
                 "✓ Advanced code rewriting (actual DAX transformations, variable extraction) "
                 "✓ Variable optimization scanner (identifies repeated calculations with savings %) "
                 "✓ SUMMARIZE→SUMMARIZECOLUMNS detection (2-10x faster) "
                 "✓ Visual context flow diagrams (ASCII/HTML/Mermaid) "
                 "✓ Specific improvements with REWRITTEN DAX CODE. "
-                "Report mode includes 8 comprehensive analysis sections. Rivals DAX Studio & Tabular Editor analysis depth."
+                "All modes run by default. Report mode includes 8 comprehensive analysis sections. Rivals DAX Studio & Tabular Editor analysis depth."
             ),
             handler=handle_dax_intelligence,
             input_schema=TOOL_SCHEMAS.get('dax_intelligence', {}),
             category="dax",
-            sort_order=12
+            sort_order=21
         ),
     ]
 

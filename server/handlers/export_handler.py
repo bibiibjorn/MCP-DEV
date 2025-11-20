@@ -10,19 +10,6 @@ from core.validation.error_handler import ErrorHandler
 
 logger = logging.getLogger(__name__)
 
-def handle_export_tmdl(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Export TMDL definition"""
-    if not connection_state.is_connected():
-        return ErrorHandler.handle_not_connected()
-
-    model_exporter = connection_state.model_exporter
-    if not model_exporter:
-        return ErrorHandler.handle_manager_unavailable('model_exporter')
-
-    output_dir = args.get('output_dir')
-
-    return model_exporter.export_tmdl(output_dir)
-
 def handle_get_live_model_schema(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get live model schema (inline, without DAX expressions)"""
     if not connection_state.is_connected():
@@ -40,26 +27,14 @@ def register_export_handlers(registry):
     """Register all export handlers"""
     from server.tool_schemas import TOOL_SCHEMAS
 
-    tools = [
-        ToolDefinition(
-            name="get_live_model_schema",
-            description="Get live model schema (inline, lightweight, without DAX expressions)",
-            handler=handle_get_live_model_schema,
-            input_schema=TOOL_SCHEMAS.get('get_live_model_schema', {}),
-            category="export",
-            sort_order=34
-        ),
-        ToolDefinition(
-            name="export_tmdl",
-            description="Export full TMDL definition to file (includes all DAX expressions)",
-            handler=handle_export_tmdl,
-            input_schema=TOOL_SCHEMAS.get('export_tmdl', {}),
-            category="export",
-            sort_order=35
-        ),
-    ]
+    tool = ToolDefinition(
+        name="get_live_model_schema",
+        description="Get live model schema (inline, lightweight, without DAX expressions)",
+        handler=handle_get_live_model_schema,
+        input_schema=TOOL_SCHEMAS.get('get_live_model_schema', {}),
+        category="export",
+        sort_order=60
+    )
 
-    for tool in tools:
-        registry.register(tool)
-
-    logger.info(f"Registered {len(tools)} export handlers")
+    registry.register(tool)
+    logger.info("Registered get_live_model_schema handler")

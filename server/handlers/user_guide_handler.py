@@ -348,7 +348,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ---
 
-## 💾 CATEGORY 07: EXPORT (2 tools)
+## 💾 CATEGORY 07: EXPORT (1 tool)
 
 ### 07_get_live_model_schema
 **Purpose**: Get live model schema (inline, without DAX expressions)
@@ -360,14 +360,6 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
   - Relationships (endpoints, cardinality, direction)
   - No DAX expressions (keeps token usage low)
 **Note**: Returned inline, not saved to file
-
-### 07_export_tmdl
-**Purpose**: Export complete model as TMDL to file (includes all DAX expressions)
-**When to use**: Full backup, version control, complete documentation
-**Parameters**:
-  - output_dir (optional): Output directory path
-**Returns**: Full TMDL export file with all DAX expressions
-**Note**: Creates file in exports/tmdl_exports/ (can be large, 50k-200k+ tokens)
 
 ---
 
@@ -439,9 +431,9 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ---
 
-## 📦 CATEGORY 10: PBIP OFFLINE ANALYSIS (1 tool)
+## 📦 CATEGORY 10: PBIP ANALYSIS - HTML (1 tool)
 
-### 10_analyze_pbip_repository
+### 10_pbip_analysis_html
 **Purpose**: Analyze PBIP format without Power BI Desktop
 **When to use**: CI/CD pipelines, Git repo analysis, no desktop access
 **Parameters**:
@@ -458,45 +450,42 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ---
 
-## 🔧 CATEGORY 11: TMDL AUTOMATION (3 tools)
+## 🔧 CATEGORY 11: TMDL OPERATIONS (1 unified tool)
 
-### 11_tmdl_find_replace
-**Purpose**: Find and replace patterns in TMDL files
-**When to use**: Bulk DAX refactoring, renaming patterns
-**Parameters**:
-  - tmdl_path: Path to TMDL export folder
-  - pattern: Regex pattern to find
-  - replacement: Replacement text
-  - dry_run: Preview without applying (default: true)
-**Returns**: List of matches and changes
+### 11_tmdl_operations
+**Purpose**: Unified handler for ALL TMDL automation tasks
+**When to use**: TMDL export, find/replace, bulk rename, script generation
+**Operations**:
+  - **export**: Export complete model as TMDL to file
+    - Optional: output_dir (output directory path)
+    - Returns: Full TMDL export file with all DAX expressions
+    - Example: {'operation': 'export', 'output_dir': 'C:/exports/tmdl'}
+
+  - **find_replace**: Find and replace patterns in TMDL files
+    - Required: tmdl_path, pattern, replacement
+    - Optional: dry_run (default: true), regex (default: false)
+    - Returns: List of matches and changes
+    - Example: {'operation': 'find_replace', 'tmdl_path': 'C:/exports/tmdl', 'pattern': 'SUM', 'replacement': 'SUMX'}
+
+  - **bulk_rename**: Rename objects with automatic reference updates
+    - Required: tmdl_path, renames (array of {old_name, new_name})
+    - Optional: dry_run (default: true), update_references (default: true)
+    - Returns: Preview of rename operations
+    - Example: {'operation': 'bulk_rename', 'tmdl_path': 'C:/exports/tmdl', 'renames': [{'old_name': 'Rev', 'new_name': 'Revenue'}]}
+
+  - **generate_script**: Generate TMDL code for new objects
+    - Required: definition (object properties dict)
+    - Optional: object_type (table|measure|relationship|calc_group, default: 'table')
+    - Returns: Valid TMDL code ready to use
+    - Example: {'operation': 'generate_script', 'object_type': 'measure', 'definition': {'name': 'Total Sales', 'expression': 'SUM(Sales[Amount])'}}}
+
 **Use cases**:
-  - Rename table references in all measures
-  - Update calculation patterns
-  - Fix common mistakes across measures
-**Safety**: Always run with dry_run=true first!
+  - Export for version control or backup
+  - Bulk DAX refactoring and renaming patterns
+  - Rename tables/measures while maintaining references
+  - Generate templates for new objects
 
-### 11_tmdl_bulk_rename
-**Purpose**: Rename objects with automatic reference updates
-**When to use**: Renaming tables/measures while maintaining references
-**Parameters**:
-  - tmdl_path: Path to TMDL export folder
-  - renames: Array of {old_name, new_name}
-  - dry_run: Preview without applying (default: true)
-**Returns**: Preview of rename operations
-**Intelligence**: Automatically updates all references to renamed objects
-**Safety**: Always run with dry_run=true first!
-
-### 11_tmdl_generate_script
-**Purpose**: Generate TMDL code for new objects
-**When to use**: Creating templates, scripting object creation
-**Parameters**:
-  - object_type: 'table', 'measure', 'relationship', 'calc_group'
-  - definition: Object properties (varies by type)
-**Returns**: Valid TMDL code ready to use
-**Use cases**:
-  - Generate measure templates
-  - Create relationship definitions
-  - Build calculation groups
+**Safety**: Always run find_replace and bulk_rename with dry_run=true first!
 
 ---
 
@@ -510,9 +499,9 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ---
 
-## 🔀 CATEGORY 13: HYBRID ANALYSIS (2 tools)
+## 🔀 CATEGORY 13: FULL MODEL (PBIP + SAMPLE) (2 tools)
 
-### 13_export_hybrid_analysis
+### 13_full_model_pbip_and_sample_export
 **Purpose**: Export combined TMDL + metadata + sample data
 **When to use**: Complete offline analysis package
 **Parameters**:
@@ -537,9 +526,9 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
   - Testing with real data
   - Comprehensive documentation
 
-### 13_analyze_hybrid_model (FULLY AUTOMATED)
+### 13_full_model_pbip_and_sample_analysis (FULLY AUTOMATED)
 **Purpose**: Analyze exported hybrid model (reads all files internally)
-**When to use**: After export_hybrid_analysis
+**When to use**: After 13_full_model_pbip_and_sample_export
 **Parameters**:
   - analysis_path: Path to analysis folder (tool reads all files internally)
   - operation: Type of analysis
@@ -594,7 +583,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 2. 05_comprehensive_analysis (get full analysis)
 3. 08_generate_model_documentation_word
 4. 08_export_model_explorer_html (shareable version)
-5. 07_export_tmdl (full backup for version control)
+5. 11_tmdl_operations with operation='export' (full backup for version control)
 ```
 
 ### Workflow 4: Performance Optimization
@@ -617,10 +606,10 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ### Workflow 6: CI/CD Integration
 ```
-1. 10_analyze_pbip_repository (offline analysis)
+1. 10_pbip_analysis_html (offline analysis)
 2. Review best practices from PBIP
-3. 13_export_hybrid_analysis (if live model available)
-4. 13_analyze_hybrid_model (automated analysis)
+3. 13_full_model_pbip_and_sample_export (if live model available)
+4. 13_full_model_pbip_and_sample_analysis (automated analysis)
 5. Generate reports for pipeline
 ```
 
@@ -716,7 +705,7 @@ def register_user_guide_handlers(registry):
             handler=handle_show_user_guide,
             input_schema=TOOL_SCHEMAS.get('show_user_guide', {}),
             category="help",
-            sort_order=51
+            sort_order=110
         ),
     ]
 

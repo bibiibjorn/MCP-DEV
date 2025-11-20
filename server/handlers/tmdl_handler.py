@@ -1,6 +1,6 @@
 """
-TMDL Handler
-Handles TMDL automation operations
+TMDL Operations Handler
+Unified handler for all TMDL operations
 """
 from typing import Dict, Any
 import logging
@@ -10,7 +10,44 @@ from core.validation.error_handler import ErrorHandler
 
 logger = logging.getLogger(__name__)
 
-def handle_tmdl_find_replace(args: Dict[str, Any]) -> Dict[str, Any]:
+def handle_tmdl_operations(args: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle unified TMDL operations"""
+    operation = args.get('operation')
+
+    if not operation:
+        return {
+            'success': False,
+            'error': 'operation parameter is required'
+        }
+
+    # Route to appropriate handler based on operation
+    if operation == 'export':
+        return _handle_export(args)
+    elif operation == 'find_replace':
+        return _handle_find_replace(args)
+    elif operation == 'bulk_rename':
+        return _handle_bulk_rename(args)
+    elif operation == 'generate_script':
+        return _handle_generate_script(args)
+    else:
+        return {
+            'success': False,
+            'error': f'Unknown operation: {operation}'
+        }
+
+def _handle_export(args: Dict[str, Any]) -> Dict[str, Any]:
+    """Export TMDL definition"""
+    if not connection_state.is_connected():
+        return ErrorHandler.handle_not_connected()
+
+    model_exporter = connection_state.model_exporter
+    if not model_exporter:
+        return ErrorHandler.handle_manager_unavailable('model_exporter')
+
+    output_dir = args.get('output_dir')
+    return model_exporter.export_tmdl(output_dir)
+
+def _handle_find_replace(args: Dict[str, Any]) -> Dict[str, Any]:
     """Find and replace in TMDL with regex support"""
     tmdl_path = args.get('tmdl_path')
     pattern = args.get('pattern')
@@ -23,13 +60,13 @@ def handle_tmdl_find_replace(args: Dict[str, Any]) -> Dict[str, Any]:
     if not tmdl_path:
         return {
             'success': False,
-            'error': 'tmdl_path parameter is required'
+            'error': 'tmdl_path parameter is required for find_replace operation'
         }
 
     if not pattern or replacement is None:
         return {
             'success': False,
-            'error': 'pattern and replacement parameters are required'
+            'error': 'pattern and replacement parameters are required for find_replace operation'
         }
 
     try:
@@ -67,7 +104,7 @@ def handle_tmdl_find_replace(args: Dict[str, Any]) -> Dict[str, Any]:
             'error': f'Error in TMDL find/replace: {str(e)}'
         }
 
-def handle_tmdl_bulk_rename(args: Dict[str, Any]) -> Dict[str, Any]:
+def _handle_bulk_rename(args: Dict[str, Any]) -> Dict[str, Any]:
     """Bulk rename with reference updates"""
     tmdl_path = args.get('tmdl_path')
     renames = args.get('renames', [])
@@ -77,13 +114,13 @@ def handle_tmdl_bulk_rename(args: Dict[str, Any]) -> Dict[str, Any]:
     if not tmdl_path:
         return {
             'success': False,
-            'error': 'tmdl_path parameter is required'
+            'error': 'tmdl_path parameter is required for bulk_rename operation'
         }
 
     if not renames:
         return {
             'success': False,
-            'error': 'renames parameter required (array of rename operations with "object_type", "old_name" and "new_name")'
+            'error': 'renames parameter required for bulk_rename operation (array of rename operations with "object_type", "old_name" and "new_name")'
         }
 
     # Validate and normalize rename operations
@@ -147,7 +184,7 @@ def handle_tmdl_bulk_rename(args: Dict[str, Any]) -> Dict[str, Any]:
             'error': f'Error in TMDL bulk rename: {str(e)}'
         }
 
-def handle_tmdl_generate_script(args: Dict[str, Any]) -> Dict[str, Any]:
+def _handle_generate_script(args: Dict[str, Any]) -> Dict[str, Any]:
     """Generate TMDL script from definition"""
     definition = args.get('definition')
     object_type = args.get('object_type', 'table')  # table, measure, relationship, calc_group
@@ -155,7 +192,7 @@ def handle_tmdl_generate_script(args: Dict[str, Any]) -> Dict[str, Any]:
     if not definition:
         return {
             'success': False,
-            'error': 'definition parameter is required (object definition as dict)'
+            'error': 'definition parameter is required for generate_script operation (object definition as dict)'
         }
 
     try:
@@ -184,38 +221,120 @@ def handle_tmdl_generate_script(args: Dict[str, Any]) -> Dict[str, Any]:
             'error': f'Error generating TMDL script: {str(e)}'
         }
 
-def register_tmdl_handlers(registry):
-    """Register all TMDL handlers"""
-    from server.tool_schemas import TOOL_SCHEMAS
+def register_tmdl_operations_handler(registry):
+    """Register unified TMDL operations handler"""
 
-    tools = [
-        ToolDefinition(
-            name="tmdl_find_replace",
-            description="Find and replace in TMDL with regex support",
-            handler=handle_tmdl_find_replace,
-            input_schema=TOOL_SCHEMAS.get('tmdl_find_replace', {}),
-            category="tmdl",
-            sort_order=44
+    tool = ToolDefinition(
+        name="tmdl_operations",
+        description=(
+            "Unified TMDL operations handler supporting ALL TMDL automation tasks.\n"
+            "\n"
+            "━━━ EXPORT OPERATION ━━━\n"
+            "• export: Export full TMDL definition to file → operation='export'\n"
+            "  Optional: output_dir (path to export directory)\n"
+            "  Returns: Full TMDL definition including all DAX expressions\n"
+            "  Example: {'operation': 'export', 'output_dir': 'C:/exports/tmdl'}\n"
+            "\n"
+            "━━━ FIND & REPLACE OPERATION ━━━\n"
+            "• find_replace: Find and replace in TMDL files with regex support → operation='find_replace'\n"
+            "  Required: tmdl_path, pattern, replacement\n"
+            "  Optional: dry_run (default: true), regex (default: false), case_sensitive (default: true), target (default: 'all')\n"
+            "  Example: {'operation': 'find_replace', 'tmdl_path': 'C:/exports/tmdl', 'pattern': 'SUM', 'replacement': 'SUMX', 'dry_run': true}\n"
+            "\n"
+            "━━━ BULK RENAME OPERATION ━━━\n"
+            "• bulk_rename: Bulk rename objects with automatic reference updates → operation='bulk_rename'\n"
+            "  Required: tmdl_path, renames (array of {object_type, old_name, new_name})\n"
+            "  Optional: dry_run (default: true), update_references (default: true)\n"
+            "  Example: {'operation': 'bulk_rename', 'tmdl_path': 'C:/exports/tmdl', 'renames': [{'object_type': 'measure', 'old_name': 'Rev', 'new_name': 'Revenue'}]}\n"
+            "\n"
+            "━━━ GENERATE SCRIPT OPERATION ━━━\n"
+            "• generate_script: Generate TMDL script from object definition → operation='generate_script'\n"
+            "  Required: definition (object definition dict)\n"
+            "  Optional: object_type (table|measure|relationship|calc_group, default: 'table')\n"
+            "  Example: {'operation': 'generate_script', 'object_type': 'measure', 'definition': {'name': 'Total Sales', 'expression': 'SUM(Sales[Amount])'}}\n"
+            "\n"
+            "USE ALL OPERATIONS AS NEEDED!"
         ),
-        ToolDefinition(
-            name="tmdl_bulk_rename",
-            description="Bulk rename with reference updates",
-            handler=handle_tmdl_bulk_rename,
-            input_schema=TOOL_SCHEMAS.get('tmdl_bulk_rename', {}),
-            category="tmdl",
-            sort_order=45
-        ),
-        ToolDefinition(
-            name="tmdl_generate_script",
-            description="Generate TMDL script from definition",
-            handler=handle_tmdl_generate_script,
-            input_schema=TOOL_SCHEMAS.get('tmdl_generate_script', {}),
-            category="tmdl",
-            sort_order=46
-        ),
-    ]
+        handler=handle_tmdl_operations,
+        input_schema={
+            "type": "object",
+            "properties": {
+                "operation": {
+                    "type": "string",
+                    "enum": ["export", "find_replace", "bulk_rename", "generate_script"],
+                    "description": (
+                        "Operation to perform:\n"
+                        "• 'export' - Export full TMDL definition to file\n"
+                        "• 'find_replace' - Find and replace in TMDL files with regex\n"
+                        "• 'bulk_rename' - Bulk rename objects with reference updates\n"
+                        "• 'generate_script' - Generate TMDL script from definition"
+                    )
+                },
+                "output_dir": {
+                    "type": "string",
+                    "description": "Output directory for export operation (optional)"
+                },
+                "tmdl_path": {
+                    "type": "string",
+                    "description": "Path to TMDL export folder (required for: find_replace, bulk_rename)"
+                },
+                "pattern": {
+                    "type": "string",
+                    "description": "Pattern to find (required for: find_replace)"
+                },
+                "replacement": {
+                    "type": "string",
+                    "description": "Replacement text (required for: find_replace)"
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "Preview changes without applying (optional for: find_replace, bulk_rename, default: true)"
+                },
+                "regex": {
+                    "type": "boolean",
+                    "description": "Use regex pattern matching (optional for: find_replace, default: false)"
+                },
+                "case_sensitive": {
+                    "type": "boolean",
+                    "description": "Case sensitive search (optional for: find_replace, default: true)"
+                },
+                "target": {
+                    "type": "string",
+                    "description": "Target objects for replacement (optional for: find_replace, default: 'all')"
+                },
+                "renames": {
+                    "type": "array",
+                    "description": "Array of rename operations (required for: bulk_rename)",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "object_type": {"type": "string"},
+                            "old_name": {"type": "string"},
+                            "new_name": {"type": "string"},
+                            "table_name": {"type": "string"}
+                        },
+                        "required": ["old_name", "new_name"]
+                    }
+                },
+                "update_references": {
+                    "type": "boolean",
+                    "description": "Update all references when renaming (optional for: bulk_rename, default: true)"
+                },
+                "definition": {
+                    "type": "object",
+                    "description": "Object definition (required for: generate_script)"
+                },
+                "object_type": {
+                    "type": "string",
+                    "enum": ["table", "measure", "relationship", "calc_group"],
+                    "description": "Type of object to generate (optional for: generate_script, default: 'table')"
+                }
+            },
+            "required": ["operation"]
+        },
+        category="tmdl",
+        sort_order=100
+    )
 
-    for tool in tools:
-        registry.register(tool)
-
-    logger.info(f"Registered {len(tools)} TMDL handlers")
+    registry.register(tool)
+    logger.info("Registered tmdl_operations handler")

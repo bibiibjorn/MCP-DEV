@@ -104,14 +104,33 @@ TOOL_DOCS = {
     # DAX Intelligence (Enhanced v4.0)
     'dax_intelligence': {
         'doc_url': 'docs/DAX_INTELLIGENCE_GUIDE.md',
-        'summary': 'Advanced DAX validation, analysis, debugging, and optimization tool with VertiPaq integration',
-        'version': '4.0.0 - Industry-standard analysis features',
+        'summary': 'Advanced DAX validation, analysis, debugging, and optimization tool with VertiPaq integration and smart measure auto-detection',
+        'version': '4.0.0 - Industry-standard analysis features with smart auto-detection',
+        'smart_auto_detection': {
+            'description': 'AUTOMATICALLY detects if you provided a measure name and fetches the DAX expression from the model',
+            'supported_inputs': [
+                'Measure name (e.g., "Total Revenue") - tool auto-fetches the expression',
+                'Full DAX expression (e.g., "SUM(Sales[Amount])") - analyzes directly',
+                'Measure name with spaces (e.g., "PL-AMT-BASE Scenario") - auto-fetched',
+                'Complex DAX formula - analyzed directly'
+            ],
+            'workflow': 'Provide measure name → Tool auto-fetches DAX → Validates → Analyzes',
+            'no_manual_steps': 'NO need to first call measure_operations to get the expression - just provide the measure name!'
+        },
         'modes': {
+            'all': 'DEFAULT MODE - Runs ALL analysis modes (analyze + debug + report) for comprehensive DAX intelligence',
             'analyze': 'Context transition analysis with anti-pattern detection and specific code improvements',
             'debug': 'Step-by-step debugging with friendly output showing context transitions',
             'report': 'Comprehensive enhanced report with 8 analysis modules (VertiPaq, call tree, calc groups, code rewriting, visual flow diagrams, and more)'
         },
+        'usage_examples': {
+            'simple_measure': "{'expression': 'Total Revenue', 'analysis_mode': 'analyze'} - Auto-fetches measure and analyzes",
+            'dax_expression': "{'expression': 'CALCULATE(SUM(Sales[Amount]), Date[Year]=2024)', 'analysis_mode': 'report'}",
+            'debug_measure': "{'expression': 'YTD Sales', 'analysis_mode': 'debug', 'output_format': 'friendly'}",
+            'skip_validation': "{'expression': 'Total Revenue', 'analysis_mode': 'report', 'skip_validation': True}"
+        },
         'new_features_v4': [
+            'Smart Measure Auto-Detection - Automatically fetches measure expressions when measure name is provided',
             'VertiPaq Metrics Integration - Column cardinality analysis, memory footprint, data type optimization suggestions',
             'Call Tree Hierarchy - Hierarchical DAX breakdown with estimated iteration counts from actual model cardinality',
             'Calculation Group Analysis - Precedence conflict detection, performance impact assessment, best practice validation',
@@ -122,12 +141,17 @@ TOOL_DOCS = {
             'Enhanced Iteration Analysis - Estimates actual row counts using VertiPaq cardinality data'
         ],
         'key_points': [
-            'Validates DAX syntax by default (skip with skip_validation=true)',
+            'CRITICAL: Can accept EITHER a measure name OR a DAX expression - auto-detects which one you provided',
+            'DEFAULT MODE is "all" - runs analyze + debug + report for comprehensive intelligence (can specify individual modes if needed)',
+            'When measure name is provided, the tool automatically fetches the expression AND skips validation (already in model)',
+            'Online research ENABLED - fetches optimization articles from SQLBI and other sources with specific recommendations',
+            'Auto-skips validation for auto-fetched measures (they\'re already in the model and must be valid)',
             'Debug mode provides friendly output with emojis or raw steps',
             'Report mode now includes 8 comprehensive analysis sections',
             'VertiPaq integration requires connection to Power BI model',
             'Calculation group analysis only runs when calc groups are detected',
-            'Code rewriter provides actual transformed DAX code, not just suggestions'
+            'Code rewriter provides actual transformed DAX code, not just suggestions',
+            '11 anti-pattern detectors with research-backed recommendations and SQLBI article references'
         ],
         'report_sections': {
             'always_included': [
@@ -174,37 +198,24 @@ TOOL_DOCS = {
         }
     },
 
-    # TMDL Tools
-    'export_tmdl': {
-        'summary': 'Export model to TMDL format',
+    # TMDL Operations
+    'tmdl_operations': {
+        'summary': 'Unified TMDL operations for export, find/replace, bulk rename, and script generation',
         'key_points': [
-            'Exports complete model to Tabular Model Definition Language',
-            'Creates directory structure with definition files',
-            'Compatible with tabular-editor and other TMDL tools'
-        ]
-    },
-
-    'tmdl_find_replace': {
-        'summary': 'Find and replace in TMDL files using regex',
-        'key_points': [
-            'Uses regex patterns for flexible matching',
-            'Dry run mode by default (preview changes)',
-            'Set dry_run=false to apply changes'
+            'Supports ALL TMDL operations: export, find_replace, bulk_rename, generate_script',
+            'Export: Exports complete model to TMDL format',
+            'Find/Replace: Find and replace in TMDL files using regex',
+            'Bulk Rename: Rename objects across all TMDL files with reference updates',
+            'Generate Script: Generate TMDL scripts from object definitions'
         ],
+        'operations': {
+            'export': 'Export full TMDL definition to file',
+            'find_replace': 'Find and replace in TMDL files with regex',
+            'bulk_rename': 'Bulk rename objects with reference updates',
+            'generate_script': 'Generate TMDL script from definition'
+        },
         'defaults': {
-            'dry_run': True
-        }
-    },
-
-    'tmdl_bulk_rename': {
-        'summary': 'Bulk rename objects in TMDL files',
-        'key_points': [
-            'Renames tables, measures, columns across all TMDL files',
-            'Dry run mode by default (preview changes)',
-            'Updates all references automatically'
-        ],
-        'defaults': {
-            'dry_run': True
+            'dry_run': True  # For find_replace and bulk_rename operations
         }
     },
 

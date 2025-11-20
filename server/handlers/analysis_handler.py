@@ -864,7 +864,7 @@ def register_analysis_handlers(registry):
             handler=handle_simple_analysis,
             input_schema=TOOL_SCHEMAS.get('simple_analysis', {}),
             category="analysis",
-            sort_order=26
+            sort_order=40
         ),
         ToolDefinition(
             name="full_analysis",
@@ -872,7 +872,7 @@ def register_analysis_handlers(registry):
             handler=handle_full_analysis,
             input_schema=TOOL_SCHEMAS.get('full_analysis', {}),
             category="analysis",
-            sort_order=27
+            sort_order=41
         ),
     ]
 

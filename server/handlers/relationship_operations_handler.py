@@ -151,7 +151,7 @@ def register_relationship_operations_handler(registry):
             "required": ["operation"]
         },
         category="metadata",
-        sort_order=5
+        sort_order=13
     )
 
     registry.register(tool)
