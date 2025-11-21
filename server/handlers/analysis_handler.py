@@ -868,7 +868,7 @@ def register_analysis_handlers(registry):
         ),
         ToolDefinition(
             name="full_analysis",
-            description="Comprehensive analysis: best practices (BPA), performance, and integrity validation (10-180s)",
+            description="Comprehensive analysis: Best practices (BPA), performance, and integrity validation (10-180s)",
             handler=handle_full_analysis,
             input_schema=TOOL_SCHEMAS.get('full_analysis', {}),
             category="analysis",

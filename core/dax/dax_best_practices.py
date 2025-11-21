@@ -1,0 +1,864 @@
+"""
+Comprehensive DAX Best Practices and Analysis Module
+
+This module consolidates all DAX best practices, standardized checks, optimizations,
+and anti-pattern detection into a single, reusable component.
+
+Integrates with:
+- DAX Intelligence Tool (Tool 03)
+- Context analysis
+- VertiPaq analysis
+- Online research (SQLBI, DAX Patterns, Microsoft Learn)
+
+Features:
+- 15+ anti-pattern checks
+- Performance optimization suggestions
+- Code quality assessments
+- Security best practices
+- Maintainability guidelines
+"""
+
+import re
+import logging
+from typing import Dict, Any, List, Optional, Tuple, Set
+from dataclasses import dataclass
+from enum import Enum
+
+logger = logging.getLogger(__name__)
+
+
+class IssueSeverity(Enum):
+    """Severity levels for DAX issues"""
+    CRITICAL = "critical"  # Major performance or correctness issues
+    HIGH = "high"  # Significant performance impact
+    MEDIUM = "medium"  # Moderate impact
+    LOW = "low"  # Minor improvements
+    INFO = "info"  # Informational/best practice
+
+
+class IssueCategory(Enum):
+    """Categories for DAX issues"""
+    PERFORMANCE = "performance"
+    ANTI_PATTERN = "anti_pattern"
+    MAINTAINABILITY = "maintainability"
+    BEST_PRACTICE = "best_practice"
+    SECURITY = "security"
+    CORRECTNESS = "correctness"
+
+
+@dataclass
+class DaxIssue:
+    """Represents a single DAX issue or recommendation"""
+    title: str
+    description: str
+    severity: IssueSeverity
+    category: IssueCategory
+    code_example_before: Optional[str] = None
+    code_example_after: Optional[str] = None
+    estimated_improvement: Optional[str] = None
+    article_reference: Optional[Dict[str, str]] = None
+    location: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization"""
+        return {
+            'title': self.title,
+            'description': self.description,
+            'severity': self.severity.value,
+            'category': self.category.value,
+            'code_example_before': self.code_example_before,
+            'code_example_after': self.code_example_after,
+            'estimated_improvement': self.estimated_improvement,
+            'article_reference': self.article_reference,
+            'location': self.location
+        }
+
+
+class DaxBestPracticesAnalyzer:
+    """
+    Comprehensive DAX analyzer with all best practices and checks.
+
+    This is the central module called by DAX Intelligence (Tool 03) for complete analysis.
+    """
+
+    def __init__(self):
+        """Initialize the analyzer with all check definitions"""
+        self.checks = self._initialize_checks()
+        self.articles_referenced: Set[str] = set()
+
+    def analyze(
+        self,
+        dax_expression: str,
+        context_analysis: Optional[Dict[str, Any]] = None,
+        vertipaq_analysis: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Run comprehensive DAX analysis with all checks.
+
+        Args:
+            dax_expression: DAX code to analyze
+            context_analysis: Optional context transition analysis results
+            vertipaq_analysis: Optional VertiPaq metrics
+
+        Returns:
+            Complete analysis results with issues, recommendations, and referenced articles
+        """
+        issues: List[DaxIssue] = []
+
+        # Run all pattern-based checks
+        for check_name, check_func in self.checks.items():
+            try:
+                check_issues = check_func(dax_expression)
+                if check_issues:
+                    issues.extend(check_issues)
+            except Exception as e:
+                logger.warning(f"Check {check_name} failed: {e}")
+
+        # Add context-based issues
+        if context_analysis:
+            context_issues = self._analyze_context_results(dax_expression, context_analysis)
+            issues.extend(context_issues)
+
+        # Add VertiPaq-based issues
+        if vertipaq_analysis and vertipaq_analysis.get('success'):
+            vertipaq_issues = self._analyze_vertipaq_results(dax_expression, vertipaq_analysis)
+            issues.extend(vertipaq_issues)
+
+        # Sort by severity (critical first)
+        severity_order = {
+            IssueSeverity.CRITICAL: 0,
+            IssueSeverity.HIGH: 1,
+            IssueSeverity.MEDIUM: 2,
+            IssueSeverity.LOW: 3,
+            IssueSeverity.INFO: 4
+        }
+        issues.sort(key=lambda x: severity_order[x.severity])
+
+        # Calculate metrics
+        critical_count = sum(1 for i in issues if i.severity == IssueSeverity.CRITICAL)
+        high_count = sum(1 for i in issues if i.severity == IssueSeverity.HIGH)
+        medium_count = sum(1 for i in issues if i.severity == IssueSeverity.MEDIUM)
+
+        # Generate summary
+        summary = self._generate_summary(issues, dax_expression)
+
+        # Get referenced articles
+        articles = self._get_referenced_articles()
+
+        return {
+            'success': True,
+            'total_issues': len(issues),
+            'critical_issues': critical_count,
+            'high_issues': high_count,
+            'medium_issues': medium_count,
+            'issues': [issue.to_dict() for issue in issues],
+            'summary': summary,
+            'articles_referenced': articles,
+            'overall_score': self._calculate_score(issues),
+            'complexity_level': self._assess_complexity(dax_expression, context_analysis)
+        }
+
+    def _initialize_checks(self) -> Dict[str, callable]:
+        """Initialize all check functions"""
+        return {
+            'sumx_filter': self._check_sumx_filter,
+            'countrows_filter': self._check_countrows_filter,
+            'filter_all': self._check_filter_all,
+            'nested_calculate': self._check_nested_calculate,
+            'related_in_iterator': self._check_related_in_iterator,
+            'divide_optimization': self._check_divide_optimization,
+            'values_in_calculate': self._check_values_in_calculate,
+            'measure_in_filter': self._check_measure_in_filter,
+            'unnecessary_iterators': self._check_unnecessary_iterators,
+            'multiple_measure_refs': self._check_multiple_measure_refs,
+            'variable_usage': self._check_variable_usage,
+            'error_handling': self._check_error_handling,
+            'naming_conventions': self._check_naming_conventions,
+            'blank_vs_zero': self._check_blank_vs_zero,
+            'calculate_filter_boolean': self._check_calculate_filter_boolean,
+            'iferror_iserror': self._check_iferror_iserror,
+            'addcolumns_in_measure': self._check_addcolumns,
+            'if_iterator': self._check_if_in_iterator
+        }
+
+    # =============================================================================
+    # PERFORMANCE ANTI-PATTERNS
+    # =============================================================================
+
+    def _check_sumx_filter(self, dax: str) -> List[DaxIssue]:
+        """Check for SUMX(FILTER(...)) anti-pattern"""
+        issues = []
+        pattern = r'(SUMX|AVERAGEX|MINX|MAXX)\s*\(\s*FILTER\s*\('
+
+        for match in re.finditer(pattern, dax, re.IGNORECASE):
+            self.articles_referenced.add('sqlbi_sumx_filter')
+            issues.append(DaxIssue(
+                title="SUMX(FILTER()) Anti-Pattern Detected",
+                description=(
+                    "Using SUMX(FILTER(...)) forces row-by-row evaluation in the Formula Engine, "
+                    "preventing query fusion and parallelization. This can be 5-10x slower than "
+                    "using CALCULATE."
+                ),
+                severity=IssueSeverity.CRITICAL,
+                category=IssueCategory.PERFORMANCE,
+                code_example_before=f"{match.group(1)}(FILTER(Table, condition), Table[Column])",
+                code_example_after=f"CALCULATE({match.group(1).replace('X', '')}(Table[Column]), condition)",
+                estimated_improvement="5-10x faster",
+                article_reference={
+                    'title': 'Optimizing SUMX and Iterator Functions',
+                    'url': 'https://www.sqlbi.com/articles/optimizing-sumx/'
+                },
+                location=f"Position {match.start()}"
+            ))
+
+        return issues
+
+    def _check_countrows_filter(self, dax: str) -> List[DaxIssue]:
+        """Check for COUNTROWS(FILTER(...)) anti-pattern"""
+        issues = []
+        pattern = r'COUNTROWS\s*\(\s*FILTER\s*\('
+
+        for match in re.finditer(pattern, dax, re.IGNORECASE):
+            self.articles_referenced.add('sqlbi_countrows_filter')
+            issues.append(DaxIssue(
+                title="COUNTROWS(FILTER()) Anti-Pattern",
+                description=(
+                    "COUNTROWS(FILTER(...)) prevents xVelocity compression and parallelization. "
+                    "Replace with CALCULATE for significant performance gains."
+                ),
+                severity=IssueSeverity.CRITICAL,
+                category=IssueCategory.PERFORMANCE,
+                code_example_before="COUNTROWS(FILTER(Table, Table[Column] > 100))",
+                code_example_after="CALCULATE(COUNTROWS(Table), Table[Column] > 100)",
+                estimated_improvement="5-10x faster",
+                article_reference={
+                    'title': 'Optimizing COUNTROWS and FILTER',
+                    'url': 'https://www.sqlbi.com/articles/optimizing-countrows-filter/'
+                },
+                location=f"Position {match.start()}"
+            ))
+
+        return issues
+
+    def _check_filter_all(self, dax: str) -> List[DaxIssue]:
+        """Check for FILTER(ALL(...)) anti-pattern"""
+        issues = []
+        pattern = r'FILTER\s*\(\s*(ALL|ALLSELECTED)\s*\('
+
+        for match in re.finditer(pattern, dax, re.IGNORECASE):
+            self.articles_referenced.add('sqlbi_filter_all')
+            issues.append(DaxIssue(
+                title="FILTER(ALL()) Forces Formula Engine Evaluation",
+                description=(
+                    "FILTER(ALL(...)) cannot be pushed to the Storage Engine and materializes "
+                    "the entire table in memory. Use CALCULATE with filter arguments instead."
+                ),
+                severity=IssueSeverity.HIGH,
+                category=IssueCategory.PERFORMANCE,
+                code_example_before=f"FILTER({match.group(1)}(Table), condition)",
+                code_example_after="CALCULATE(VALUES(Table), condition)",
+                estimated_improvement="3-5x faster",
+                article_reference={
+                    'title': 'Avoiding FILTER in Nested Iterators',
+                    'url': 'https://www.sqlbi.com/articles/avoiding-filter-in-nested-iterators/'
+                },
+                location=f"Position {match.start()}"
+            ))
+
+        return issues
+
+    def _check_nested_calculate(self, dax: str) -> List[DaxIssue]:
+        """Check for nested CALCULATE functions"""
+        issues = []
+        pattern = r'CALCULATE\s*\([^)]*CALCULATE\s*\('
+
+        for match in re.finditer(pattern, dax, re.IGNORECASE):
+            self.articles_referenced.add('sqlbi_context_transition')
+            issues.append(DaxIssue(
+                title="Nested CALCULATE Detected",
+                description=(
+                    "Nested CALCULATE functions cause multiple context transitions, "
+                    "adding overhead and potentially causing unexpected results. "
+                    "Consolidate filters into a single CALCULATE."
+                ),
+                severity=IssueSeverity.MEDIUM,
+                category=IssueCategory.PERFORMANCE,
+                code_example_before="CALCULATE(CALCULATE([Measure], Filter1), Filter2)",
+                code_example_after="CALCULATE([Measure], Filter1, Filter2)",
+                estimated_improvement="2-3x faster",
+                article_reference={
+                    'title': 'Understanding Context Transition',
+                    'url': 'https://www.sqlbi.com/articles/understanding-context-transition/'
+                },
+                location=f"Position {match.start()}"
+            ))
+
+        return issues
+
+    def _check_related_in_iterator(self, dax: str) -> List[DaxIssue]:
+        """Check for RELATED in iterator functions"""
+        issues = []
+        pattern = r'(SUMX|AVERAGEX|COUNTX|FILTER)\s*\([^)]*RELATED\s*\('
+
+        for match in re.finditer(pattern, dax, re.IGNORECASE):
+            self.articles_referenced.add('sqlbi_related_iterators')
+            issues.append(DaxIssue(
+                title="RELATED in Iterator Function",
+                description=(
+                    "Using RELATED inside iterators causes row-by-row relationship traversal. "
+                    "Consider denormalizing data or using table expansion before iteration."
+                ),
+                severity=IssueSeverity.MEDIUM,
+                category=IssueCategory.PERFORMANCE,
+                code_example_before="SUMX(Sales, Sales[Qty] * RELATED(Product[Price]))",
+                code_example_after="-- Denormalize: Add Price column to Sales table\nSUM(Sales, Sales[Qty] * Sales[Price])",
+                estimated_improvement="2-4x faster for large tables",
+                article_reference={
+                    'title': 'Avoiding RELATED in Iterators',
+                    'url': 'https://www.sqlbi.com/articles/avoiding-related-in-iterators/'
+                },
+                location=f"Position {match.start()}"
+            ))
+
+        return issues
+
+    def _check_divide_optimization(self, dax: str) -> List[DaxIssue]:
+        """Check for manual division with zero checks instead of DIVIDE"""
+        issues = []
+        # Pattern: IF(denominator = 0, alternate, numerator / denominator)
+        pattern = r'IF\s*\([^=]+\s*=\s*0\s*,\s*[^,]+\s*,\s*[^/]+\s*/\s*[^)]+\)'
+
+        for match in re.finditer(pattern, dax, re.IGNORECASE):
+            self.articles_referenced.add('sqlbi_divide')
+            issues.append(DaxIssue(
+                title="Manual Division with Zero Check",
+                description=(
+                    "Manual IF checks for division by zero are less efficient than the DIVIDE function, "
+                    "which is optimized by the Storage Engine."
+                ),
+                severity=IssueSeverity.MEDIUM,
+                category=IssueCategory.PERFORMANCE,
+                code_example_before="IF([Denominator] = 0, 0, [Numerator] / [Denominator])",
+                code_example_after="DIVIDE([Numerator], [Denominator], 0)",
+                estimated_improvement="2-3x faster",
+                article_reference={
+                    'title': 'Understanding DIVIDE Performance',
+                    'url': 'https://www.sqlbi.com/articles/understanding-divide-performance/'
+                },
+                location=f"Position {match.start()}"
+            ))
+
+        return issues
+
+    def _check_values_in_calculate(self, dax: str) -> List[DaxIssue]:
+        """Check for VALUES in CALCULATE filter arguments"""
+        issues = []
+        pattern = r'CALCULATE\s*\([^)]*,\s*VALUES\s*\('
+
+        for match in re.finditer(pattern, dax, re.IGNORECASE):
+            self.articles_referenced.add('sqlbi_values_optimize')
+            issues.append(DaxIssue(
+                title="VALUES in CALCULATE Filter",
+                description=(
+                    "Using VALUES in CALCULATE filter arguments may cause unnecessary context transitions. "
+                    "Consider using direct column references instead."
+                ),
+                severity=IssueSeverity.LOW,
+                category=IssueCategory.PERFORMANCE,
+                code_example_before="CALCULATE([Sales], VALUES(Product[Category]))",
+                code_example_after="CALCULATE([Sales], Product[Category])",
+                estimated_improvement="Minor performance gain",
+                article_reference={
+                    'title': 'Optimizing VALUES Performance',
+                    'url': 'https://www.sqlbi.com/articles/optimizing-values-performance/'
+                },
+                location=f"Position {match.start()}"
+            ))
+
+        return issues
+
+    def _check_measure_in_filter(self, dax: str) -> List[DaxIssue]:
+        """Check for measures in FILTER predicates"""
+        issues = []
+        # Pattern: FILTER with measure reference (using [] notation)
+        pattern = r'FILTER\s*\([^)]*,\s*\[[^\]]+\]\s*[><!=]'
+
+        for match in re.finditer(pattern, dax, re.IGNORECASE):
+            self.articles_referenced.add('sqlbi_measure_filter')
+            issues.append(DaxIssue(
+                title="Measure in FILTER Predicate",
+                description=(
+                    "Using measures in FILTER predicates causes row-by-row context transitions, "
+                    "blocking Storage Engine optimization. Pre-calculate the measure or use column references."
+                ),
+                severity=IssueSeverity.MEDIUM,
+                category=IssueCategory.PERFORMANCE,
+                code_example_before="FILTER(Products, [Total Sales] > 1000)",
+                code_example_after="VAR Threshold = 1000\nRETURN FILTER(Products, Products[Sales] > Threshold)",
+                estimated_improvement="3-5x faster",
+                article_reference={
+                    'title': 'Avoiding Measures in FILTER',
+                    'url': 'https://www.sqlbi.com/articles/avoiding-measures-in-filter/'
+                },
+                location=f"Position {match.start()}"
+            ))
+
+        return issues
+
+    def _check_unnecessary_iterators(self, dax: str) -> List[DaxIssue]:
+        """Check for iterator functions that could be simple aggregations"""
+        issues = []
+        # Pattern: SUMX(Table, Table[Column]) - direct column reference without calculation
+        pattern = r'(SUMX|AVERAGEX)\s*\(([^,]+),\s*\2\[([^\]]+)\]\s*\)'
+
+        for match in re.finditer(pattern, dax, re.IGNORECASE):
+            issues.append(DaxIssue(
+                title="Unnecessary Iterator Function",
+                description=(
+                    "Using an iterator function for simple column aggregation adds overhead. "
+                    "Direct aggregation functions are faster."
+                ),
+                severity=IssueSeverity.LOW,
+                category=IssueCategory.PERFORMANCE,
+                code_example_before=f"{match.group(1)}({match.group(2)}, {match.group(2)}[{match.group(3)}])",
+                code_example_after=f"{match.group(1).replace('X', '')}({match.group(2)}[{match.group(3)}])",
+                estimated_improvement="Minor performance gain",
+                location=f"Position {match.start()}"
+            ))
+
+        return issues
+
+    # =============================================================================
+    # MAINTAINABILITY AND BEST PRACTICES
+    # =============================================================================
+
+    def _check_multiple_measure_refs(self, dax: str) -> List[DaxIssue]:
+        """Check for multiple measure references without variables"""
+        issues = []
+        # Count measure references (words in brackets)
+        measure_refs = re.findall(r'\[[^\]]+\]', dax)
+
+        # Check if same measure is referenced multiple times
+        measure_counts = {}
+        for ref in measure_refs:
+            measure_counts[ref] = measure_counts.get(ref, 0) + 1
+
+        repeated_measures = [m for m, count in measure_counts.items() if count > 2]
+
+        if repeated_measures and 'VAR' not in dax.upper():
+            self.articles_referenced.add('sqlbi_variables')
+            issues.append(DaxIssue(
+                title="Repeated Measure References Without Variables",
+                description=(
+                    f"The following measures are referenced multiple times: {', '.join(repeated_measures)}. "
+                    "Use variables to cache results and avoid repeated calculations."
+                ),
+                severity=IssueSeverity.MEDIUM,
+                category=IssueCategory.MAINTAINABILITY,
+                code_example_before=f"{repeated_measures[0]} + {repeated_measures[0]} + {repeated_measures[0]}",
+                code_example_after=f"VAR Result = {repeated_measures[0]}\nRETURN Result + Result + Result",
+                estimated_improvement="Reduces calculation overhead"
+            ))
+
+        return issues
+
+    def _check_variable_usage(self, dax: str) -> List[DaxIssue]:
+        """Check for proper variable usage"""
+        issues = []
+
+        # Check if VAR is used
+        has_vars = 'VAR' in dax.upper()
+        has_return = 'RETURN' in dax.upper()
+
+        # Complex expression without variables (heuristic: length > 200 and multiple operations)
+        if len(dax) > 200 and not has_vars:
+            operation_count = dax.count('+') + dax.count('-') + dax.count('*') + dax.count('/')
+            if operation_count > 3:
+                self.articles_referenced.add('sqlbi_variables')
+                issues.append(DaxIssue(
+                    title="Complex Expression Without Variables",
+                    description=(
+                        "This is a complex expression without variables. "
+                        "Variables improve readability, maintainability, and can reduce calculation overhead."
+                    ),
+                    severity=IssueSeverity.INFO,
+                    category=IssueCategory.MAINTAINABILITY,
+                    code_example_after="VAR Step1 = [First Calculation]\nVAR Step2 = [Second Calculation]\nRETURN Step1 + Step2",
+                    estimated_improvement="Better maintainability"
+                ))
+
+        # VAR without RETURN
+        if has_vars and not has_return:
+            issues.append(DaxIssue(
+                title="VAR Without RETURN",
+                description="Variables are declared but RETURN is missing. This will cause a syntax error.",
+                severity=IssueSeverity.CRITICAL,
+                category=IssueCategory.CORRECTNESS
+            ))
+
+        return issues
+
+    def _check_error_handling(self, dax: str) -> List[DaxIssue]:
+        """Check for proper error handling"""
+        issues = []
+
+        # Check for IFERROR usage (good practice)
+        has_iferror = 'IFERROR' in dax.upper()
+        has_division = '/' in dax
+        has_divide = 'DIVIDE' in dax.upper()
+
+        # Division without DIVIDE or IFERROR
+        if has_division and not (has_divide or has_iferror):
+            issues.append(DaxIssue(
+                title="Division Without Error Handling",
+                description=(
+                    "Division operator (/) without error handling can cause errors. "
+                    "Use DIVIDE function or wrap in IFERROR."
+                ),
+                severity=IssueSeverity.MEDIUM,
+                category=IssueCategory.BEST_PRACTICE,
+                code_example_after="DIVIDE([Numerator], [Denominator], 0) -- or IFERROR([Numerator]/[Denominator], 0)"
+            ))
+
+        return issues
+
+    def _check_naming_conventions(self, dax: str) -> List[DaxIssue]:
+        """Check for naming convention best practices"""
+        issues = []
+
+        # Check for single-letter variable names (V1, V2, etc.)
+        pattern = r'\bVAR\s+([A-Z]|V\d+)\s*='
+        matches = list(re.finditer(pattern, dax))
+
+        if matches:
+            issues.append(DaxIssue(
+                title="Non-Descriptive Variable Names",
+                description=(
+                    f"Found {len(matches)} variables with non-descriptive names (V1, V2, A, B, etc.). "
+                    "Use descriptive names to improve code readability."
+                ),
+                severity=IssueSeverity.INFO,
+                category=IssueCategory.MAINTAINABILITY,
+                code_example_before="VAR V1 = SUM(Sales[Amount])\nVAR V2 = SUM(Sales[Quantity])",
+                code_example_after="VAR TotalAmount = SUM(Sales[Amount])\nVAR TotalQuantity = SUM(Sales[Quantity])"
+            ))
+
+        return issues
+
+    def _check_blank_vs_zero(self, dax: str) -> List[DaxIssue]:
+        """Check for proper handling of BLANK vs 0"""
+        issues = []
+
+        # Check for = 0 comparisons (should consider using ISBLANK)
+        if '= 0' in dax or '=0' in dax:
+            issues.append(DaxIssue(
+                title="Consider BLANK vs Zero Distinction",
+                description=(
+                    "Comparing to zero without checking for BLANK. "
+                    "In DAX, BLANK and 0 are different. Consider if ISBLANK is more appropriate."
+                ),
+                severity=IssueSeverity.INFO,
+                category=IssueCategory.BEST_PRACTICE,
+                code_example_after="IF(ISBLANK([Value]), ..., IF([Value] = 0, ..., ...))"
+            ))
+
+        return issues
+
+    def _check_calculate_filter_boolean(self, dax: str) -> List[DaxIssue]:
+        """Check for boolean expressions vs FILTER in CALCULATE"""
+        issues = []
+
+        # Check if CALCULATE uses FILTER with simple conditions
+        pattern = r'CALCULATE\s*\([^)]*,\s*FILTER\s*\([^,]+,\s*[^,]+\s*[<>=!]+\s*[^)]+\)'
+
+        for match in re.finditer(pattern, dax, re.IGNORECASE):
+            self.articles_referenced.add('microsoft_dax_optimization')
+            issues.append(DaxIssue(
+                title="FILTER with Simple Boolean in CALCULATE",
+                description=(
+                    "Using FILTER for simple boolean conditions in CALCULATE is less efficient. "
+                    "Use boolean expressions directly as filter arguments."
+                ),
+                severity=IssueSeverity.LOW,
+                category=IssueCategory.PERFORMANCE,
+                code_example_before="CALCULATE([Sales], FILTER(Product, Product[Category] = \"Electronics\"))",
+                code_example_after="CALCULATE([Sales], Product[Category] = \"Electronics\")",
+                estimated_improvement="Minor performance gain",
+                article_reference={
+                    'title': 'DAX: Avoid FILTER as filter argument',
+                    'url': 'https://learn.microsoft.com/en-us/power-bi/guidance/dax-avoid-avoid-filter-as-filter-argument'
+                },
+                location=f"Position {match.start()}"
+            ))
+
+        return issues
+
+    def _check_iferror_iserror(self, dax: str) -> List[DaxIssue]:
+        """Check for IFERROR/ISERROR usage"""
+        issues = []
+        pattern = r'\b(IFERROR|ISERROR)\s*\('
+
+        for match in re.finditer(pattern, dax, re.IGNORECASE):
+            self.articles_referenced.add('iferror_iserror')
+            issues.append(DaxIssue(
+                title="Avoid IFERROR/ISERROR Functions",
+                description=(
+                    f"{match.group(1)} forces Power BI to enter step-by-step execution for each row, "
+                    "significantly impacting performance. Use IF with logical tests or built-in error handling instead."
+                ),
+                severity=IssueSeverity.HIGH,
+                category=IssueCategory.PERFORMANCE,
+                code_example_before=f"{match.group(1)}([Value]/[Divisor], 0)",
+                code_example_after="DIVIDE([Value], [Divisor], 0)  -- or use IF with logical test",
+                estimated_improvement="Avoids step-by-step execution overhead",
+                article_reference={
+                    'title': 'Appropriate use of error functions in DAX',
+                    'url': 'https://learn.microsoft.com/en-us/dax/best-practices/dax-error-functions',
+                    'source': 'Microsoft Learn'
+                },
+                location=f"Position {match.start()}"
+            ))
+
+        return issues
+
+    def _check_addcolumns(self, dax: str) -> List[DaxIssue]:
+        """Check for ADDCOLUMNS in measure expressions"""
+        issues = []
+        pattern = r'\bADDCOLUMNS\s*\('
+
+        matches = list(re.finditer(pattern, dax, re.IGNORECASE))
+        if matches:
+            self.articles_referenced.add('addcolumns_in_measure')
+            issues.append(DaxIssue(
+                title="ADDCOLUMNS in Measure Creates Nested Iterations",
+                description=(
+                    "Using ADDCOLUMNS inside measures creates nested iterations because measures "
+                    "are calculated iteratively by default. This negatively affects report performance."
+                ),
+                severity=IssueSeverity.HIGH,
+                category=IssueCategory.PERFORMANCE,
+                code_example_before="ADDCOLUMNS(Table, \"NewCol\", [Measure])",
+                code_example_after="-- Use variables or separate measures instead\nVAR Result = [Measure]\nRETURN Result",
+                estimated_improvement="Eliminates nested iteration overhead",
+                location=f"Found {len(matches)} occurrence{'s' if len(matches) > 1 else ''}"
+            ))
+
+        return issues
+
+    def _check_if_in_iterator(self, dax: str) -> List[DaxIssue]:
+        """Check for IF conditions inside iterator functions"""
+        issues = []
+        pattern = r'(SUMX|AVERAGEX|COUNTX|MINX|MAXX)\s*\([^,]+,\s*IF\s*\('
+
+        for match in re.finditer(pattern, dax, re.IGNORECASE):
+            issues.append(DaxIssue(
+                title="IF Condition Inside Iterator Function",
+                description=(
+                    "IF conditions in iterators are expensive. When the condition only references "
+                    "columns of the iterated table, move the filter to CALCULATE instead."
+                ),
+                severity=IssueSeverity.MEDIUM,
+                category=IssueCategory.PERFORMANCE,
+                code_example_before=f"{match.group(1)}(Table, IF(condition, calculation, 0))",
+                code_example_after=f"CALCULATE({match.group(1).replace('X', '')}(Table[Column]), KEEPFILTERS(condition))",
+                estimated_improvement="Reduces iteration overhead",
+                article_reference={
+                    'title': 'SUMX with IF predicate optimization',
+                    'url': 'https://kb.daxoptimizer.com/d/101600',
+                    'source': 'DAX Optimizer'
+                },
+                location=f"Position {match.start()}"
+            ))
+
+        return issues
+
+    # =============================================================================
+    # CONTEXT AND VERTIPAQ ANALYSIS
+    # =============================================================================
+
+    def _analyze_context_results(self, dax: str, context_analysis: Dict[str, Any]) -> List[DaxIssue]:
+        """Generate issues based on context transition analysis"""
+        issues = []
+
+        complexity_score = context_analysis.get('complexity_score', 0)
+        max_nesting = context_analysis.get('max_nesting_level', 0)
+
+        if complexity_score > 15:
+            issues.append(DaxIssue(
+                title="High Complexity Score",
+                description=(
+                    f"This measure has a complexity score of {complexity_score}. "
+                    "High complexity can lead to performance issues and maintenance challenges."
+                ),
+                severity=IssueSeverity.HIGH,
+                category=IssueCategory.MAINTAINABILITY
+            ))
+
+        if max_nesting > 3:
+            issues.append(DaxIssue(
+                title="Deep Nesting Level",
+                description=(
+                    f"This measure has {max_nesting} levels of nesting. "
+                    "Deep nesting makes code harder to understand and maintain."
+                ),
+                severity=IssueSeverity.MEDIUM,
+                category=IssueCategory.MAINTAINABILITY
+            ))
+
+        return issues
+
+    def _analyze_vertipaq_results(self, dax: str, vertipaq_analysis: Dict[str, Any]) -> List[DaxIssue]:
+        """Generate issues based on VertiPaq metrics"""
+        issues = []
+
+        high_cardinality_cols = vertipaq_analysis.get('high_cardinality_columns', [])
+        optimizations = vertipaq_analysis.get('optimizations', [])
+
+        if high_cardinality_cols:
+            for col in high_cardinality_cols:
+                issues.append(DaxIssue(
+                    title=f"High Cardinality Column: {col}",
+                    description=(
+                        f"Column {col} has high cardinality and is used in this measure. "
+                        "This can significantly impact performance, especially in iterators."
+                    ),
+                    severity=IssueSeverity.HIGH,
+                    category=IssueCategory.PERFORMANCE
+                ))
+
+        for opt in optimizations:
+            severity = IssueSeverity.HIGH if opt.get('severity') == 'critical' else IssueSeverity.MEDIUM
+            issues.append(DaxIssue(
+                title=opt.get('issue', 'Optimization Opportunity'),
+                description=opt.get('recommendation', ''),
+                severity=severity,
+                category=IssueCategory.PERFORMANCE
+            ))
+
+        return issues
+
+    # =============================================================================
+    # SUMMARY AND SCORING
+    # =============================================================================
+
+    def _generate_summary(self, issues: List[DaxIssue], dax: str) -> str:
+        """Generate a human-readable summary"""
+        if not issues:
+            return "✅ Excellent! No major issues found. The DAX follows best practices."
+
+        critical = sum(1 for i in issues if i.severity == IssueSeverity.CRITICAL)
+        high = sum(1 for i in issues if i.severity == IssueSeverity.HIGH)
+        medium = sum(1 for i in issues if i.severity == IssueSeverity.MEDIUM)
+
+        summary_parts = []
+
+        if critical > 0:
+            summary_parts.append(f"🔴 {critical} CRITICAL issue{'s' if critical > 1 else ''}")
+        if high > 0:
+            summary_parts.append(f"🟠 {high} HIGH priority issue{'s' if high > 1 else ''}")
+        if medium > 0:
+            summary_parts.append(f"🟡 {medium} MEDIUM priority issue{'s' if medium > 1 else ''}")
+
+        return f"Found {len(issues)} total issue{'s' if len(issues) > 1 else ''}: " + ", ".join(summary_parts)
+
+    def _calculate_score(self, issues: List[DaxIssue]) -> int:
+        """Calculate an overall quality score (0-100)"""
+        if not issues:
+            return 100
+
+        # Deduct points based on severity
+        deductions = {
+            IssueSeverity.CRITICAL: 20,
+            IssueSeverity.HIGH: 10,
+            IssueSeverity.MEDIUM: 5,
+            IssueSeverity.LOW: 2,
+            IssueSeverity.INFO: 1
+        }
+
+        total_deduction = sum(deductions[issue.severity] for issue in issues)
+        score = max(0, 100 - total_deduction)
+
+        return score
+
+    def _assess_complexity(self, dax: str, context_analysis: Optional[Dict[str, Any]]) -> str:
+        """Assess overall complexity level"""
+        factors = []
+
+        # Length
+        if len(dax) > 500:
+            factors.append("length")
+
+        # Nesting
+        if context_analysis:
+            nesting = context_analysis.get('max_nesting_level', 0)
+            if nesting > 3:
+                factors.append("deep_nesting")
+
+        # Function count
+        function_count = len(re.findall(r'\b[A-Z]+\s*\(', dax))
+        if function_count > 10:
+            factors.append("many_functions")
+
+        if len(factors) >= 2:
+            return "high"
+        elif len(factors) == 1:
+            return "medium"
+        else:
+            return "low"
+
+    def _get_referenced_articles(self) -> List[Dict[str, str]]:
+        """Get list of all articles referenced during analysis"""
+        article_map = {
+            'sqlbi_sumx_filter': {
+                'title': 'Optimizing SUMX and Iterator Functions',
+                'url': 'https://www.sqlbi.com/articles/optimizing-sumx/',
+                'source': 'SQLBI'
+            },
+            'sqlbi_countrows_filter': {
+                'title': 'Optimizing COUNTROWS and FILTER',
+                'url': 'https://www.sqlbi.com/articles/optimizing-countrows-filter/',
+                'source': 'SQLBI'
+            },
+            'sqlbi_filter_all': {
+                'title': 'Avoiding FILTER in Nested Iterators',
+                'url': 'https://www.sqlbi.com/articles/avoiding-filter-in-nested-iterators/',
+                'source': 'SQLBI'
+            },
+            'sqlbi_context_transition': {
+                'title': 'Understanding Context Transition',
+                'url': 'https://www.sqlbi.com/articles/understanding-context-transition/',
+                'source': 'SQLBI'
+            },
+            'sqlbi_related_iterators': {
+                'title': 'Avoiding RELATED in Iterators',
+                'url': 'https://www.sqlbi.com/articles/avoiding-related-in-iterators/',
+                'source': 'SQLBI'
+            },
+            'sqlbi_divide': {
+                'title': 'Understanding DIVIDE Performance',
+                'url': 'https://www.sqlbi.com/articles/understanding-divide-performance/',
+                'source': 'SQLBI'
+            },
+            'sqlbi_values_optimize': {
+                'title': 'Optimizing VALUES Performance',
+                'url': 'https://www.sqlbi.com/articles/optimizing-values-performance/',
+                'source': 'SQLBI'
+            },
+            'sqlbi_measure_filter': {
+                'title': 'Avoiding Measures in FILTER',
+                'url': 'https://www.sqlbi.com/articles/avoiding-measures-in-filter/',
+                'source': 'SQLBI'
+            },
+            'sqlbi_variables': {
+                'title': 'Best Practices Using Variables',
+                'url': 'https://www.sqlbi.com/articles/best-practices-using-summarize-and-addcolumns/',
+                'source': 'SQLBI'
+            },
+            'microsoft_dax_optimization': {
+                'title': 'DAX: Avoid FILTER as filter argument',
+                'url': 'https://learn.microsoft.com/en-us/power-bi/guidance/dax-avoid-avoid-filter-as-filter-argument',
+                'source': 'Microsoft Learn'
+            }
+        }
+
+        return [article_map[ref] for ref in self.articles_referenced if ref in article_map]

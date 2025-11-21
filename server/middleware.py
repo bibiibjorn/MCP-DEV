@@ -136,7 +136,7 @@ def schema_sample(rows: List[dict], sample_size: int) -> dict:
         'is_sample': total > sample_size
     }
 
-def truncate_if_needed(result: dict, max_tokens: int = 15000) -> dict:
+def truncate_if_needed(result: dict, max_tokens: int = 100000) -> dict:
     """
     Truncate large results to prevent token overflow
 
@@ -171,10 +171,11 @@ def truncate_if_needed(result: dict, max_tokens: int = 15000) -> dict:
                 truncated[key] = truncated[key][:100]
                 truncated[f'_{key}_truncated_from'] = original_len
 
-        # Truncate long strings
+        # Truncate long strings (increased from 5000 to 50000 chars to support formatted_output)
+        # Skip truncating 'formatted_output' field for DAX Intelligence
         for key, value in list(truncated.items()):
-            if isinstance(value, str) and len(value) > 5000:
-                truncated[key] = value[:5000] + "... [truncated]"
+            if isinstance(value, str) and len(value) > 50000 and key != 'formatted_output':
+                truncated[key] = value[:50000] + "... [truncated]"
 
         return truncated
 

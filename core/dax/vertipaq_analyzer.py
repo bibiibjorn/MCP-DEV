@@ -180,14 +180,20 @@ class VertiPaqAnalyzer:
 
         # Normalize column reference
         normalized = self._normalize_column_ref(column_ref)
+
+        # First, try to get from cache (DMV data)
         cached = self._column_cache.get(normalized)
 
-        # If not in cache, try to calculate cardinality directly
+        # If not in cache, try to calculate cardinality directly using DAX
         if not cached:
+            logger.debug(f"Column {normalized} not in cache, attempting fallback calculation")
             cached = self._calculate_column_cardinality(column_ref)
             if cached:
                 # Add to cache for future use
                 self._column_cache[normalized] = cached
+                logger.info(f"Successfully calculated metrics for {normalized} using DAX fallback")
+            else:
+                logger.warning(f"Could not retrieve metrics for {normalized} from either DMV or DAX calculation")
 
         return cached
 
@@ -202,19 +208,42 @@ class VertiPaqAnalyzer:
             Dictionary with column analysis results
         """
         try:
+            # Ensure cache is loaded first
+            if not self._cache_loaded:
+                cache_loaded = self.load_column_metrics()
+                if cache_loaded:
+                    logger.info("VertiPaq metrics loaded from DMV")
+                else:
+                    logger.warning("VertiPaq metrics not available from DMV - will use fallback calculation")
+
             # Extract column references from DAX
             column_refs = self._extract_column_references(dax_expression)
+
+            if not column_refs:
+                return {
+                    "success": True,
+                    "columns_analyzed": 0,
+                    "column_analysis": {},
+                    "total_cardinality": 0,
+                    "total_size_mb": 0.0,
+                    "high_cardinality_columns": [],
+                    "optimizations": [],
+                    "note": "No column references found in DAX expression (might be using only measures)"
+                }
 
             # Get metrics for each column
             column_analysis = {}
             total_cardinality = 0
             total_size_bytes = 0
             high_cardinality_columns = []
+            metrics_available_count = 0
 
             for col_ref in column_refs:
                 metrics = self.get_column_metrics(col_ref)
 
                 if metrics:
+                    metrics_available_count += 1
+
                     # Determine usage context
                     usage_context = self._determine_usage_context(dax_expression, col_ref)
 
@@ -230,7 +259,8 @@ class VertiPaqAnalyzer:
                         "encoding": metrics.encoding,
                         "usage_context": usage_context,
                         "performance_impact": impact.performance_impact,
-                        "recommendation": impact.recommendation
+                        "recommendation": impact.recommendation,
+                        "metrics_source": "dmv" if self._cache_loaded else "calculated"
                     }
 
                     total_cardinality += metrics.cardinality
@@ -239,30 +269,47 @@ class VertiPaqAnalyzer:
                     if metrics.cardinality_level in ["high", "very_high"]:
                         high_cardinality_columns.append(col_ref)
                 else:
-                    # Column not found in cache (might be measure or calculated column)
+                    # Column not found - might be measure, calculated column, or invalid reference
+                    logger.warning(f"No metrics available for {col_ref}")
                     column_analysis[col_ref] = {
-                        "error": "Column metrics not available",
-                        "note": "This might be a measure or calculated column"
+                        "status": "metrics_unavailable",
+                        "message": "No metrics available",
+                        "note": "This might be a measure, calculated column, or the column doesn't exist in the model"
                     }
 
             # Get optimization suggestions
             optimizations = self._get_optimization_suggestions(column_analysis, dax_expression)
 
-            return {
+            # Prepare result with metadata about data quality
+            result = {
                 "success": True,
                 "columns_analyzed": len(column_refs),
+                "columns_with_metrics": metrics_available_count,
                 "column_analysis": column_analysis,
                 "total_cardinality": total_cardinality,
                 "total_size_mb": round(total_size_bytes / (1024 * 1024), 2),
                 "high_cardinality_columns": high_cardinality_columns,
-                "optimizations": optimizations
+                "optimizations": optimizations,
+                "data_source": "dmv" if self._cache_loaded else "calculated"
             }
+
+            # Add warning if no metrics were available
+            if metrics_available_count == 0:
+                result["warning"] = (
+                    "No VertiPaq metrics available for any columns. "
+                    "This could mean: (1) Only measures are referenced, (2) DMV access failed, "
+                    "or (3) Column references couldn't be matched to model columns."
+                )
+                logger.warning(result["warning"])
+
+            return result
 
         except Exception as e:
             logger.error(f"Error analyzing DAX columns: {e}", exc_info=True)
             return {
                 "success": False,
-                "error": str(e)
+                "error": str(e),
+                "columns_analyzed": 0
             }
 
     def _extract_column_references(self, dax: str) -> Set[str]:

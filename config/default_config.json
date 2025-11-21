@@ -32,7 +32,7 @@
     "enable_query_validation": true,
     "default_page_size": 10,
     "max_page_size": 200,
-    "max_result_tokens": 15000,
+    "max_result_tokens": 100000,
     "default_dependency_depth": 2,
     "max_dependency_depth": 5,
     "describe_table_defaults": {

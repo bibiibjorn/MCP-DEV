@@ -325,6 +325,7 @@ RETURN SUMX(Sales, TotalSales * TaxRate)"""
         dax_expression: str,
         context_analysis: ContextFlowExplanation,
         anti_patterns: Optional[Dict[str, Any]] = None,
+        vertipaq_analysis: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Generate specific DAX improvements with before/after code examples
@@ -333,6 +334,7 @@ RETURN SUMX(Sales, TotalSales * TaxRate)"""
             dax_expression: Original DAX expression
             context_analysis: Context analysis result
             anti_patterns: Optional anti-pattern detection results
+            vertipaq_analysis: Optional VertiPaq column analysis results
 
         Returns:
             Dictionary with specific improvements and rewritten code
@@ -340,8 +342,34 @@ RETURN SUMX(Sales, TotalSales * TaxRate)"""
         improvements = []
         improved_code = dax_expression
         has_improvements = False
+        transformation_details = []
 
         try:
+            # STEP 1: Apply automatic code transformations using DaxCodeRewriter
+            from core.dax.code_rewriter import DaxCodeRewriter
+
+            rewriter = DaxCodeRewriter()
+            rewrite_result = rewriter.rewrite_dax(dax_expression)
+
+            if rewrite_result.get('success') and rewrite_result.get('has_changes'):
+                improved_code = rewrite_result['rewritten_code']
+                has_improvements = True
+
+                # Add rewriter transformations to improvements list
+                for trans in rewrite_result.get('transformations', []):
+                    improvements.append({
+                        "issue": f"Code transformation: {trans['type'].replace('_', ' ').title()}",
+                        "severity": "medium",
+                        "original_code": trans['original'][:100] + "..." if len(trans['original']) > 100 else trans['original'],
+                        "improved_code": trans['transformed'][:100] + "..." if len(trans['transformed']) > 100 else trans['transformed'],
+                        "explanation": trans['explanation'],
+                        "specific_suggestion": f"Estimated improvement: {trans['estimated_improvement']}"
+                    })
+                    transformation_details.append(trans['explanation'])
+
+                logger.info(f"Applied {rewrite_result['transformation_count']} automatic transformations")
+
+            # STEP 2: Continue with pattern-based improvements
             # Improvement 1: Replace iterator + measure with iterator + column
             iterator_transitions = [
                 t for t in context_analysis.transitions
@@ -449,7 +477,8 @@ RETURN M1 + M2 + M3""",
                 "improvements": improvements,
                 "original_code": dax_expression.strip(),
                 "suggested_code": improved_code.strip() if has_improvements else None,
-                "summary": self._generate_improvement_summary(improvements)
+                "summary": self._generate_improvement_summary(improvements),
+                "transformation_details": transformation_details
             }
 
         except Exception as e:
@@ -592,41 +621,81 @@ RETURN Result
                 lines.append(f"   💡 {w.suggestion}")
                 lines.append("")
 
-        # Anti-Pattern Detection
+        # Anti-Pattern Detection - ALWAYS INCLUDE THIS SECTION
+        lines.append("ANTI-PATTERN DETECTION & RESEARCH")
+        lines.append("=" * 70)
+
         anti_patterns = self.analyzer.detect_dax_anti_patterns(dax_expression)
-        if anti_patterns.get('success') and anti_patterns.get('patterns_detected', 0) > 0:
-            lines.append("ANTI-PATTERN DETECTION")
-            lines.append("-" * 70)
-            lines.append(f"Detected {anti_patterns['patterns_detected']} anti-pattern(s)")
-            lines.append("")
 
-            # List matched patterns
-            for pattern_id, matches in anti_patterns.get('pattern_matches', {}).items():
-                article = next((a for a in anti_patterns.get('articles', []) if a['id'] == pattern_id), None)
-                if article:
-                    lines.append(f"⚠️  {article['title']}")
-                    lines.append(f"   Pattern: {pattern_id}")
-                    lines.append(f"   Occurrences: {len(matches)}")
-                    if article.get('content'):
-                        # Add first few lines of content
-                        content_lines = article['content'].strip().split('\n')[:3]
-                        for cline in content_lines:
-                            lines.append(f"   {cline.strip()}")
-                    lines.append("")
+        if anti_patterns.get('success'):
+            patterns_detected = anti_patterns.get('patterns_detected', 0)
 
-            # List recommendations
-            if anti_patterns.get('recommendations'):
-                lines.append("Recommendations:")
-                for rec in anti_patterns['recommendations']:
-                    lines.append(f"   • {rec}")
+            if patterns_detected > 0:
+                lines.append(f"✅ Analysis complete: Detected {patterns_detected} anti-pattern(s)")
                 lines.append("")
 
+                # List matched patterns
+                for pattern_id, matches in anti_patterns.get('pattern_matches', {}).items():
+                    article = next((a for a in anti_patterns.get('articles', []) if a['id'] == pattern_id), None)
+                    if article:
+                        lines.append(f"⚠️  {article['title']}")
+                        lines.append(f"   Pattern: {pattern_id}")
+                        lines.append(f"   Occurrences: {len(matches)}")
+
+                        # Show research article content
+                        if article.get('content'):
+                            content_lines = article['content'].strip().split('\n')[:5]
+                            lines.append(f"   Research:")
+                            for cline in content_lines:
+                                if cline.strip():
+                                    lines.append(f"     {cline.strip()}")
+
+                        # Show URL if available
+                        if article.get('url'):
+                            lines.append(f"   📚 Source: {article['url']}")
+
+                        lines.append("")
+
+                # List recommendations
+                if anti_patterns.get('recommendations'):
+                    lines.append("📋 RECOMMENDATIONS:")
+                    for rec in anti_patterns['recommendations']:
+                        lines.append(f"   • {rec}")
+                    lines.append("")
+            else:
+                lines.append("✅ No anti-patterns detected - code follows DAX best practices!")
+                lines.append("")
+
+                # Still show that research was performed
+                if anti_patterns.get('articles'):
+                    lines.append(f"ℹ️  Analyzed against {len(anti_patterns['articles'])} research patterns")
+                    lines.append("")
+        else:
+            # Analysis failed - show error
+            error_msg = anti_patterns.get('error', 'Unknown error')
+            lines.append(f"⚠️  Anti-pattern detection could not be completed: {error_msg}")
+            lines.append("   💡 This is usually due to missing research dependencies.")
+            lines.append("")
+
         # Generate specific improvements with new DAX code
+        improvements = None
+        vertipaq_analysis_result = None
+
+        # Get VertiPaq analysis if connection available
+        if connection_state:
+            try:
+                from core.dax.vertipaq_analyzer import VertiPaqAnalyzer
+                vertipaq = VertiPaqAnalyzer(connection_state)
+                vertipaq_analysis_result = vertipaq.analyze_dax_columns(dax_expression)
+            except:
+                pass
+
         if include_optimization:
             improvements = self.generate_improved_dax(
                 dax_expression=dax_expression,
                 context_analysis=analysis,
-                anti_patterns=anti_patterns
+                anti_patterns=anti_patterns,
+                vertipaq_analysis=vertipaq_analysis_result
             )
 
             if improvements.get('has_improvements'):
@@ -763,7 +832,11 @@ RETURN Result
                     lines.append("")
 
             except Exception as e:
-                logger.debug(f"VertiPaq analysis skipped: {e}")
+                logger.warning(f"VertiPaq analysis failed: {e}", exc_info=True)
+                lines.append("VERTIPAQ COLUMN ANALYSIS")
+                lines.append("=" * 70)
+                lines.append(f"⚠️  VertiPaq analysis could not be completed: {str(e)}")
+                lines.append("")
 
         # Call Tree Visualization
         try:
@@ -805,7 +878,12 @@ RETURN Result
                 lines.append("")
 
         except Exception as e:
-            logger.debug(f"Call tree analysis skipped: {e}")
+            logger.warning(f"Call tree analysis failed: {e}", exc_info=True)
+            lines.append("CALL TREE HIERARCHY")
+            lines.append("=" * 70)
+            lines.append(f"⚠️  Call tree analysis could not be completed: {str(e)}")
+            lines.append("   💡 This usually means measure dependencies couldn't be resolved.")
+            lines.append("")
 
         # Calculation Group Analysis
         if connection_state:
@@ -845,7 +923,11 @@ RETURN Result
                         lines.append("")
 
             except Exception as e:
-                logger.debug(f"Calculation group analysis skipped: {e}")
+                logger.warning(f"Calculation group analysis failed: {e}", exc_info=True)
+                lines.append("CALCULATION GROUP ANALYSIS")
+                lines.append("=" * 70)
+                lines.append(f"⚠️  Calculation group analysis could not be completed: {str(e)}")
+                lines.append("")
 
         # SUMMARIZE Pattern Detection
         summarize_analysis = self.analyzer.detect_summarize_patterns(dax_expression)
@@ -882,7 +964,11 @@ RETURN Result
                     lines.append("")
 
         except Exception as e:
-            logger.debug(f"Variable optimization scan skipped: {e}")
+            logger.warning(f"Variable optimization scan failed: {e}", exc_info=True)
+            lines.append("VARIABLE OPTIMIZATION OPPORTUNITIES")
+            lines.append("=" * 70)
+            lines.append(f"⚠️  Variable optimization scan could not be completed: {str(e)}")
+            lines.append("")
 
         # Code Rewriting Suggestions
         if include_optimization:
@@ -912,7 +998,11 @@ RETURN Result
                         lines.append("")
 
             except Exception as e:
-                logger.debug(f"Code rewriting skipped: {e}")
+                logger.warning(f"Code rewriting failed: {e}", exc_info=True)
+                lines.append("CODE REWRITING SUGGESTIONS")
+                lines.append("=" * 70)
+                lines.append(f"⚠️  Code rewriting could not be completed: {str(e)}")
+                lines.append("")
 
         # Visual Context Flow Diagram
         try:
@@ -928,9 +1018,118 @@ RETURN Result
             lines.append("")
 
         except Exception as e:
-            logger.debug(f"Visual flow diagram skipped: {e}")
+            logger.warning(f"Visual flow diagram failed: {e}", exc_info=True)
+            lines.append("")
+            lines.append("VISUAL CONTEXT FLOW DIAGRAM")
+            lines.append("=" * 70)
+            lines.append(f"⚠️  Visual flow diagram could not be generated: {str(e)}")
+            lines.append("")
 
         # ===== END NEW ENHANCEMENTS =====
+
+        # ===== FINAL OPTIMIZED MEASURE - THE COMPLETE RESULT =====
+        lines.append("")
+        lines.append("=" * 70)
+        lines.append("🎯 FINAL OPTIMIZED MEASURE - READY TO USE")
+        lines.append("=" * 70)
+        lines.append("")
+
+        if improvements and improvements.get('has_improvements') and improvements.get('suggested_code'):
+            lines.append("✅ OPTIMIZED DAX CODE:")
+            lines.append("-" * 70)
+            lines.append("")
+
+            # Show the complete optimized code (not truncated)
+            optimized_code = improvements['suggested_code']
+            for line in optimized_code.split('\n'):
+                lines.append(f"   {line}")
+
+            lines.append("")
+            lines.append("-" * 70)
+            lines.append("")
+
+            # Show what was optimized
+            lines.append("📋 APPLIED OPTIMIZATIONS:")
+            lines.append("")
+
+            transformation_count = improvements.get('improvements_count', 0)
+            lines.append(f"   Total transformations applied: {transformation_count}")
+            lines.append("")
+
+            # List all transformations
+            if improvements.get('transformation_details'):
+                for idx, detail in enumerate(improvements['transformation_details'], 1):
+                    lines.append(f"   {idx}. {detail}")
+                lines.append("")
+
+            # Show key metrics
+            lines.append("📊 OPTIMIZATION SUMMARY:")
+            lines.append("")
+
+            # Calculate estimated improvement
+            high_priority = sum(1 for i in improvements.get('improvements', []) if i.get('severity') == 'high')
+            medium_priority = sum(1 for i in improvements.get('improvements', []) if i.get('severity') == 'medium')
+
+            if high_priority > 0:
+                lines.append(f"   • {high_priority} high-priority optimization(s) applied")
+            if medium_priority > 0:
+                lines.append(f"   • {medium_priority} medium-priority optimization(s) applied")
+
+            # Add performance estimate
+            estimated_gain = min(high_priority * 20 + medium_priority * 10, 80)
+            if estimated_gain > 0:
+                lines.append(f"   • Estimated performance gain: {estimated_gain}%")
+
+            lines.append("")
+
+            # Show comparison
+            lines.append("📈 BEFORE vs AFTER COMPARISON:")
+            lines.append("")
+            lines.append("   ORIGINAL CODE:")
+            lines.append("   " + "-" * 66)
+            for line in dax_expression.strip().split('\n')[:10]:  # Show first 10 lines
+                lines.append(f"   {line}")
+            if len(dax_expression.strip().split('\n')) > 10:
+                lines.append(f"   ... ({len(dax_expression.strip().split('\n')) - 10} more lines)")
+            lines.append("")
+
+            lines.append("   OPTIMIZED CODE:")
+            lines.append("   " + "-" * 66)
+            for line in optimized_code.split('\n')[:10]:  # Show first 10 lines
+                lines.append(f"   {line}")
+            if len(optimized_code.split('\n')) > 10:
+                lines.append(f"   ... ({len(optimized_code.split('\n')) - 10} more lines)")
+            lines.append("")
+
+            lines.append("💡 NEXT STEPS:")
+            lines.append("")
+            lines.append("   1. Copy the optimized code above")
+            lines.append("   2. Test it in your Power BI model")
+            lines.append("   3. Verify the results match the original")
+            lines.append("   4. Use DAX Studio to compare performance")
+            lines.append("   5. Update your measure with the optimized version")
+            lines.append("")
+
+        else:
+            # No improvements - code is already optimal
+            lines.append("✅ YOUR CODE IS ALREADY WELL-OPTIMIZED!")
+            lines.append("-" * 70)
+            lines.append("")
+            lines.append("No significant optimizations were identified.")
+            lines.append("Your DAX code follows best practices.")
+            lines.append("")
+            lines.append("CURRENT CODE:")
+            lines.append("")
+            for line in dax_expression.strip().split('\n'):
+                lines.append(f"   {line}")
+            lines.append("")
+            lines.append("💡 RECOMMENDATIONS:")
+            lines.append("")
+            lines.append("   • Monitor query performance in DAX Studio")
+            lines.append("   • Check VertiPaq Analyzer for column-level optimizations")
+            lines.append("   • Review data model relationships and cardinality")
+            lines.append("   • Consider adding measures to display folders for organization")
+            lines.append("")
 
         lines.append("=" * 70)
         lines.append("END OF ENHANCED ANALYSIS REPORT")

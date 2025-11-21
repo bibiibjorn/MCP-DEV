@@ -244,7 +244,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                         result['_limits_info'] = {}
                     result['_limits_info']['suggestion'] = suggestion
 
-                # Apply global truncation (only if likely needed)
+                # Apply global truncation
                 max_tokens = limits_manager.token.max_result_tokens
                 from server.middleware import truncate_if_needed
                 result = truncate_if_needed(result, max_tokens)

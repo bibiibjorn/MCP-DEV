@@ -52,15 +52,15 @@ class QueryLimits:
 @dataclass
 class TokenLimits:
     """Limits for token usage and response sizes."""
-    # Maximum tokens per tool response
-    max_result_tokens: int = 15000
+    # Maximum tokens per tool response (increased from 15000 to 100000 to support DAX Intelligence full output)
+    max_result_tokens: int = 100000
 
     # Estimated tokens per character (rough approximation)
     chars_per_token: int = 4
 
     # Warning thresholds
-    warning_threshold_tokens: int = 12000  # 80% of max
-    critical_threshold_tokens: int = 14000  # 93% of max
+    warning_threshold_tokens: int = 80000  # 80% of max
+    critical_threshold_tokens: int = 90000  # 90% of max
 
     # Description table page sizes (token-optimized)
     describe_table_columns_page_size: int = 20
@@ -233,10 +233,10 @@ class LimitsManager:
         """Initialize token limits from config."""
         defaults = self._get_config("query.describe_table_defaults", {})
         return TokenLimits(
-            max_result_tokens=self._get_config("query.max_result_tokens", 15000),
+            max_result_tokens=self._get_config("query.max_result_tokens", 100000),
             chars_per_token=4,
-            warning_threshold_tokens=12000,
-            critical_threshold_tokens=14000,
+            warning_threshold_tokens=80000,
+            critical_threshold_tokens=90000,
             describe_table_columns_page_size=defaults.get("columns_page_size", 20),
             describe_table_measures_page_size=defaults.get("measures_page_size", 20),
             describe_table_relationships_page_size=defaults.get("relationships_page_size", 50),

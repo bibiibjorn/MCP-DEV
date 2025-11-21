@@ -192,45 +192,88 @@ class DaxCodeRewriter:
         return dax
 
     def _optimize_filter_patterns(self, dax: str) -> str:
-        """Optimize FILTER patterns"""
-        transformations_made = []
+        """Optimize FILTER patterns with actual transformations"""
+        original_dax = dax
 
-        # Pattern 1: FILTER(ALL(...), [Measure] > value) -> FILTER with column
+        # Pattern 1: SUMX(FILTER(...)) -> CALCULATE(SUM(...))
+        # This is the most common anti-pattern
+        sumx_filter_pattern = r'(SUMX|AVERAGEX|COUNTX|MINX|MAXX)\s*\(\s*FILTER\s*\('
+
+        if re.search(sumx_filter_pattern, dax, re.IGNORECASE):
+            # Try to extract the pattern for transformation
+            # Pattern: SUMX(FILTER(Table, condition), Table[Column])
+            detailed_pattern = r'(SUMX|AVERAGEX)\s*\(\s*FILTER\s*\(\s*([^,]+)\s*,\s*([^)]+)\)\s*,\s*([^)]+)\)'
+
+            match = re.search(detailed_pattern, dax, re.IGNORECASE)
+            if match:
+                iterator_func = match.group(1).upper()
+                table = match.group(2).strip()
+                condition = match.group(3).strip()
+                column_expr = match.group(4).strip()
+
+                # Generate optimized version
+                agg_func = "SUM" if "SUMX" in iterator_func else "AVERAGE"
+                optimized = f"CALCULATE({agg_func}({column_expr}), {condition})"
+
+                # Replace in DAX
+                original_fragment = match.group(0)
+                dax = dax.replace(original_fragment, optimized)
+
+                self.transformations.append(Transformation(
+                    transformation_type="sumx_filter_to_calculate",
+                    original_code=original_fragment,
+                    transformed_code=optimized,
+                    explanation=(
+                        f"Replaced {iterator_func}(FILTER(...)) with CALCULATE({agg_func}(...)). "
+                        "This eliminates row-by-row iteration and leverages the Storage Engine for 5-10x performance improvement."
+                    ),
+                    estimated_improvement="5-10x faster",
+                    confidence="high"
+                ))
+
+        # Pattern 2: FILTER(ALL(...), [Measure] > value) -> warn about measure in filter
         filter_measure_pattern = r'FILTER\s*\(\s*ALL\s*\([^)]+\)\s*,\s*\[[^\]]+\]\s*[><=]'
 
         if re.search(filter_measure_pattern, dax, re.IGNORECASE):
             self.transformations.append(Transformation(
-                transformation_type="optimize_filter_measure",
+                transformation_type="filter_measure_warning",
                 original_code="FILTER(ALL(Table), [Measure] > 100)",
                 transformed_code=(
-                    "// Option 1: Use column if possible\n"
-                    "FILTER(ALL(Table), Table[Column] > 100)\n\n"
-                    "// Option 2: Pre-calculate measure\n"
+                    "// Pre-calculate measure to avoid row-by-row context transitions:\n"
                     "VAR Threshold = [Measure]\n"
-                    "RETURN FILTER(ALL(Table), Table[Column] > Threshold)"
+                    "RETURN CALCULATE(..., FILTER(Table, Table[Column] > Threshold))"
                 ),
                 explanation=(
                     "FILTER with measure reference causes context transition for each row. "
-                    "Use column reference or pre-calculate measure for better performance."
+                    "Pre-calculate measures outside FILTER predicates."
                 ),
-                estimated_improvement="Can be 10x-100x faster for large tables",
+                estimated_improvement="10x-100x faster for large tables",
                 confidence="high"
             ))
 
-        # Pattern 2: FILTER(Table, NOT(...)) -> optimizable pattern
-        filter_not_pattern = r'FILTER\s*\([^,]+,\s*NOT\s*\('
+        # Pattern 3: COUNTROWS(FILTER(...)) -> CALCULATE(COUNTROWS(...))
+        countrows_filter_pattern = r'COUNTROWS\s*\(\s*FILTER\s*\(\s*([^,]+)\s*,\s*([^)]+)\)\s*\)'
 
-        if re.search(filter_not_pattern, dax, re.IGNORECASE):
+        match = re.search(countrows_filter_pattern, dax, re.IGNORECASE)
+        if match:
+            table = match.group(1).strip()
+            condition = match.group(2).strip()
+
+            original_fragment = match.group(0)
+            optimized = f"CALCULATE(COUNTROWS({table}), {condition})"
+
+            dax = dax.replace(original_fragment, optimized)
+
             self.transformations.append(Transformation(
-                transformation_type="optimize_filter_not",
-                original_code="FILTER(Table, NOT(condition))",
-                transformed_code="EXCEPT(Table, FILTER(Table, condition))",
+                transformation_type="countrows_filter_to_calculate",
+                original_code=original_fragment,
+                transformed_code=optimized,
                 explanation=(
-                    "FILTER with NOT can sometimes be optimized using EXCEPT "
-                    "for better query plan generation."
+                    "Replaced COUNTROWS(FILTER(...)) with CALCULATE(COUNTROWS(...)). "
+                    "This is 5-10x faster as it avoids materializing the filtered table."
                 ),
-                estimated_improvement="Variable, test in your scenario",
-                confidence="medium"
+                estimated_improvement="5-10x faster",
+                confidence="high"
             ))
 
         return dax

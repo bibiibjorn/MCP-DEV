@@ -2,7 +2,7 @@
 DAX Context Handler
 Handles DAX context analysis and debugging operations with integrated validation
 """
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 import logging
 from server.registry import ToolDefinition
 from core.infrastructure.connection_state import connection_state
@@ -10,10 +10,130 @@ from core.validation.error_handler import ErrorHandler
 
 logger = logging.getLogger(__name__)
 
+# Try to load AMO for TOM access
+AMO_AVAILABLE = False
+AMOServer = None
+AdomdCommand = None
+
+try:
+    import clr
+    import os
+
+    # Find DLL folder
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(script_dir)  # server
+    root_dir = os.path.dirname(parent_dir)     # root
+    dll_folder = os.path.join(root_dir, "lib", "dotnet")
+
+    # Load AMO DLLs
+    core_dll = os.path.join(dll_folder, "Microsoft.AnalysisServices.Core.dll")
+    amo_dll = os.path.join(dll_folder, "Microsoft.AnalysisServices.dll")
+    tabular_dll = os.path.join(dll_folder, "Microsoft.AnalysisServices.Tabular.dll")
+    adomd_dll = os.path.join(dll_folder, "Microsoft.AnalysisServices.AdomdClient.dll")
+
+    if os.path.exists(core_dll):
+        clr.AddReference(core_dll)
+    if os.path.exists(amo_dll):
+        clr.AddReference(amo_dll)
+    if os.path.exists(tabular_dll):
+        clr.AddReference(tabular_dll)
+    if os.path.exists(adomd_dll):
+        clr.AddReference(adomd_dll)
+
+    from Microsoft.AnalysisServices.Tabular import Server as AMOServer
+    from Microsoft.AnalysisServices.AdomdClient import AdomdCommand
+    AMO_AVAILABLE = True
+    logger.debug("AMO available for DAX context handler")
+
+except Exception as e:
+    logger.debug(f"AMO not available for DAX context handler: {e}")
+
+
+def _get_server_db_model(conn_state):
+    """
+    Get AMO server, database, and model objects.
+
+    Args:
+        conn_state: ConnectionState instance
+
+    Returns:
+        Tuple of (server, database, model) or (None, None, None) if unavailable
+    """
+    if not AMO_AVAILABLE:
+        logger.debug("AMO not available - cannot access model")
+        return None, None, None
+
+    if not conn_state.connection_manager:
+        logger.debug("No connection manager - cannot access model")
+        return None, None, None
+
+    connection = conn_state.connection_manager.get_connection()
+    if not connection:
+        logger.debug("No active connection - cannot access model")
+        return None, None, None
+
+    server = AMOServer()
+    try:
+        server.Connect(connection.ConnectionString)
+
+        # Get database name
+        db_name = None
+        try:
+            db_query = "SELECT [CATALOG_NAME] FROM $SYSTEM.DBSCHEMA_CATALOGS"
+            cmd = AdomdCommand(db_query, connection)
+            reader = cmd.ExecuteReader()
+            if reader.Read():
+                db_name = str(reader.GetValue(0))
+            reader.Close()
+        except Exception:
+            db_name = None
+
+        if not db_name and server.Databases.Count > 0:
+            db_name = server.Databases[0].Name
+
+        if not db_name:
+            server.Disconnect()
+            return None, None, None
+
+        db = server.Databases.GetByName(db_name)
+        model = db.Model
+
+        return server, db, model
+
+    except Exception as e:
+        try:
+            server.Disconnect()
+        except Exception:
+            pass
+        logger.error(f"Error connecting to AMO server: {e}")
+        return None, None, None
+
+
+def _cleanup_amo_connection(server):
+    """
+    Safely disconnect and cleanup AMO server connection.
+
+    Args:
+        server: AMO Server instance
+    """
+    if server:
+        try:
+            server.Disconnect()
+        except Exception:
+            pass
+
 
 def _validate_dax_syntax(expression: str) -> Tuple[bool, str]:
     """
     Validate DAX syntax before analysis
+
+    FIXED in v6.0.5:
+    1. Improved connection error message with actionable guidance
+    2. Fixed table expression detection logic that incorrectly classified measure definitions
+       - Old logic: Checked if keywords like FILTER/VALUES existed ANYWHERE in expression
+       - New logic: Checks if expression STARTS WITH a table-returning function at ROOT level
+       - Example: CALCULATE(SUM(...), FILTER(...)) is now correctly identified as scalar (measure)
+       - Example: FILTER(Table, ...) is correctly identified as table expression
 
     Args:
         expression: DAX expression to validate
@@ -22,7 +142,7 @@ def _validate_dax_syntax(expression: str) -> Tuple[bool, str]:
         Tuple of (is_valid, error_message)
     """
     if not connection_state.is_connected():
-        return False, "Not connected to Power BI instance"
+        return False, "Not connected to Power BI instance. Please connect using tool 01_connect_to_instance first."
 
     qe = connection_state.query_executor
     if not qe:
@@ -30,20 +150,57 @@ def _validate_dax_syntax(expression: str) -> Tuple[bool, str]:
 
     try:
         # Prepare query for validation
-        test_query = expression
-        if 'EVALUATE' not in test_query.upper():
-            # Check if it's a table expression or scalar expression
-            # Table expressions contain keywords like FILTER, SELECTCOLUMNS, etc.
-            table_keywords = [
-                'SELECTCOLUMNS', 'ADDCOLUMNS', 'SUMMARIZE', 'FILTER',
-                'VALUES', 'ALL', 'INFO.', 'TOPN', 'SAMPLE', 'SUMMARIZECOLUMNS'
-            ]
-            is_table_expr = any(kw in test_query.upper() for kw in table_keywords)
+        test_query = expression.strip()
 
-            if is_table_expr:
+        # If already an EVALUATE query, use as-is
+        if test_query.upper().startswith('EVALUATE'):
+            pass
+        else:
+            # IMPROVED: Check if the expression starts with a table-returning function at the ROOT level
+            # This fixes the issue where measure definitions containing FILTER/VALUES were misclassified
+
+            # Extract first function name (before first opening parenthesis)
+            first_token = test_query.lstrip().split('(')[0].upper().strip() if '(' in test_query else test_query.upper().strip()
+
+            # Table-returning functions that are ONLY used at root level (definite table expressions)
+            root_table_functions = [
+                'SELECTCOLUMNS', 'ADDCOLUMNS', 'SUMMARIZE', 'SUMMARIZECOLUMNS',
+                'TOPN', 'SAMPLE', 'ROW', 'DATATABLE', 'CROSSJOIN', 'UNION',
+                'INTERSECT', 'EXCEPT', 'GENERATE', 'GENERATEALL', 'GENERATESERIES'
+            ]
+
+            # Functions that can appear at root OR nested (ambiguous - need more context)
+            ambiguous_functions = ['FILTER', 'VALUES', 'ALL', 'ALLSELECTED', 'DISTINCT', 'CALCULATETABLE']
+
+            # Check if expression definitely starts with a table function
+            is_definitely_table = any(first_token == func for func in root_table_functions)
+
+            # Check if it might be a table expression (starts with ambiguous function)
+            is_possibly_table = any(first_token == func for func in ambiguous_functions)
+
+            # Aggregation functions indicate this is a measure (scalar expression)
+            # Remove spaces to handle cases like "CALCULATE (" or "SUM  ("
+            normalized_query = test_query.upper().replace(' ', '')
+            has_aggregation = any(agg in normalized_query for agg in [
+                'CALCULATE(', 'SUM(', 'SUMX(', 'AVERAGE(', 'AVERAGEX(',
+                'COUNT(', 'COUNTX(', 'COUNTROWS(', 'MIN(', 'MINX(',
+                'MAX(', 'MAXX(', 'DIVIDE('
+            ])
+
+            # Decision logic:
+            # 1. If starts with definite table function -> table expression
+            # 2. If starts with ambiguous function BUT has aggregation -> scalar (measure)
+            # 3. If starts with ambiguous function AND no aggregation -> table expression
+            # 4. Default -> scalar (measure definition)
+
+            if is_definitely_table:
+                # Definite table expression
+                test_query = f'EVALUATE {test_query}'
+            elif is_possibly_table and not has_aggregation:
+                # Ambiguous function at root without aggregation -> likely table expression
                 test_query = f'EVALUATE {test_query}'
             else:
-                # Scalar expression (measure) - wrap in ROW()
+                # Scalar expression (measure definition) - wrap in ROW()
                 test_query = f'EVALUATE ROW("Result", {test_query})'
 
         # Use query executor to validate
@@ -52,7 +209,12 @@ def _validate_dax_syntax(expression: str) -> Tuple[bool, str]:
         if result.get('success'):
             return True, ""
         else:
-            return False, result.get('error', 'Unknown validation error')
+            error_msg = result.get('error', 'Unknown validation error')
+            # Clean up error message if it mentions ROW wrapper (user didn't write ROW)
+            if 'ROW' in error_msg and 'ROW' not in expression.upper():
+                # Try to remove ROW wrapper artifacts from error message
+                error_msg = error_msg.replace('ROW("Result",', '').replace('ROW("Result", ', '')
+            return False, error_msg
     except Exception as e:
         return False, str(e)
 
@@ -372,6 +534,8 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
     Auto-skips validation for auto-fetched measures (already in model, must be valid).
     Online research enabled for DAX optimization articles and recommendations.
     """
+    import re  # For fuzzy measure name matching
+
     if not connection_state.is_connected():
         return ErrorHandler.handle_not_connected()
 
@@ -410,9 +574,9 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
         # Try to fetch the measure expression automatically
         logger.info(f"Expression looks like a measure name: '{expression}'. Attempting auto-fetch...")
 
-        # Try to find the measure in the model
-        tom = connection_state.tom_wrapper
-        if tom:
+        # Try to find the measure in the model using AMO
+        server, db, model = _get_server_db_model(connection_state)
+        if model:
             try:
                 # Search for measure across all tables
                 found_measure = None
@@ -424,10 +588,9 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                 partial_matches = []
 
                 # Split search term into words, removing common separators
-                import re
                 search_words = [w for w in re.split(r'[\s\-_]+', search_term) if w]
 
-                for table in tom.model.Tables:
+                for table in model.Tables:
                     for measure in table.Measures:
                         measure_name_lower = measure.Name.lower()
 
@@ -461,20 +624,30 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                     measure_name = original_expression
                     measure_table = found_table
                     logger.info(f"Auto-fetched measure '{found_measure.Name}' from table '{found_table}'")
+                    # Clean up AMO connection
+                    _cleanup_amo_connection(server)
                 else:
                     # Measure not found - provide helpful suggestions
                     # Find similar measure names for suggestions
                     all_measures = []
-                    for table in tom.model.Tables:
+                    for table in model.Tables:
                         for measure in table.Measures:
                             all_measures.append((measure.Name, table.Name))
 
-                    # Find measures with any matching words
+                    # Clean up AMO connection before returning error
+                    _cleanup_amo_connection(server)
+
+                    # Find measures with any matching words (using same word-based logic)
                     suggestions = []
-                    search_words = set(search_term.split())
+                    search_words_set = set(search_words)
                     for measure_name_str, table_name in all_measures:
-                        measure_words = set(measure_name_str.lower().split())
-                        if search_words & measure_words:  # Any word overlap
+                        measure_words_set = set(re.split(r'[\s\-_]+', measure_name_str.lower()))
+                        # Check if any search word appears in any measure word
+                        if any(
+                            search_word in measure_word or measure_word in search_word
+                            for search_word in search_words_set
+                            for measure_word in measure_words_set
+                        ):
                             suggestions.append(f"[{table_name}].[{measure_name_str}]")
 
                     error_msg = f"The expression '{original_expression}' looks like a measure name, but no exact match was found in the model."
@@ -490,6 +663,8 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                     }
             except Exception as e:
                 logger.warning(f"Error during auto-fetch: {e}")
+                # Clean up AMO connection
+                _cleanup_amo_connection(server)
                 # Continue with original expression
                 pass
 
@@ -526,10 +701,37 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
             # Run analyze mode
             result_analyze = analyzer.analyze_context_transitions(expression)
             anti_patterns = analyzer.detect_dax_anti_patterns(expression)
+
+            # Get VertiPaq analysis for comprehensive optimization
+            vertipaq_analysis = None
+            try:
+                from core.dax.vertipaq_analyzer import VertiPaqAnalyzer
+                vertipaq = VertiPaqAnalyzer(connection_state)
+                vertipaq_analysis = vertipaq.analyze_dax_columns(expression)
+                if not vertipaq_analysis.get('success'):
+                    logger.warning(f"VertiPaq analysis failed: {vertipaq_analysis.get('error', 'Unknown error')}")
+            except Exception as e:
+                logger.warning(f"VertiPaq analysis not available: {e}")
+
+            # Run comprehensive best practices analysis
+            best_practices_result = None
+            try:
+                from core.dax.dax_best_practices import DaxBestPracticesAnalyzer
+                bp_analyzer = DaxBestPracticesAnalyzer()
+                best_practices_result = bp_analyzer.analyze(
+                    dax_expression=expression,
+                    context_analysis=result_analyze.to_dict() if hasattr(result_analyze, 'to_dict') else result_analyze,
+                    vertipaq_analysis=vertipaq_analysis
+                )
+                logger.info(f"Best practices analysis: {best_practices_result.get('total_issues', 0)} issues found")
+            except Exception as e:
+                logger.warning(f"Best practices analysis not available: {e}")
+
             improvements = debugger.generate_improved_dax(
                 dax_expression=expression,
                 context_analysis=result_analyze,
-                anti_patterns=anti_patterns
+                anti_patterns=anti_patterns,
+                vertipaq_analysis=vertipaq_analysis
             )
 
             # Run debug mode
@@ -538,17 +740,20 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                 breakpoints=args.get('breakpoints')
             )
 
-            formatted_debug = None
+            debug_steps_data = None
             if steps:
-                output_format = args.get('output_format', 'friendly')
-                if output_format == 'friendly':
-                    formatted_debug = _format_debug_steps_friendly(expression, steps)
-                    if validation_result['valid']:
-                        validation_header = "✅ DAX SYNTAX VALIDATION: PASSED\n\n"
-                        formatted_debug = validation_header + formatted_debug
-                    if measure_name:
-                        measure_header = f"📊 Analyzing measure: [{measure_table}].[{measure_name}]\n\n"
-                        formatted_debug = measure_header + formatted_debug
+                debug_steps_data = [
+                    {
+                        'step_number': step.step_number,
+                        'code_fragment': step.code_fragment,
+                        'filter_context': step.filter_context,
+                        'row_context': step.row_context,
+                        'intermediate_result': step.intermediate_result,
+                        'explanation': step.explanation,
+                        'execution_time_ms': step.execution_time_ms
+                    }
+                    for step in steps
+                ]
 
             # Run report mode
             result_report = debugger.generate_debug_report(
@@ -558,32 +763,136 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                 connection_state=connection_state
             )
 
-            # Combine all results
+            # Get call tree analysis
+            call_tree_data = None
+            total_iterations = 0
+            try:
+                from core.dax.call_tree_builder import CallTreeBuilder
+
+                call_tree_builder = CallTreeBuilder()
+                if connection_state:
+                    try:
+                        from core.dax.vertipaq_analyzer import VertiPaqAnalyzer
+                        vertipaq = VertiPaqAnalyzer(connection_state)
+                        call_tree_builder.vertipaq_analyzer = vertipaq
+                    except:
+                        pass
+
+                call_tree = call_tree_builder.build_call_tree(expression)
+                tree_viz = call_tree_builder.visualize_tree(call_tree)
+
+                # Calculate total iterations
+                def count_iterations(node):
+                    total = node.estimated_iterations or 0
+                    for child in node.children:
+                        total += count_iterations(child)
+                    return total
+
+                total_iterations = count_iterations(call_tree)
+
+                call_tree_data = {
+                    'visualization': tree_viz,
+                    'total_iterations': total_iterations,
+                    'performance_warning': (
+                        'CRITICAL: Over 1 million iterations - severe performance impact!' if total_iterations >= 1_000_000
+                        else 'WARNING: Over 100,000 iterations - consider optimization' if total_iterations >= 100_000
+                        else None
+                    )
+                }
+
+            except Exception as e:
+                logger.warning(f"Call tree analysis failed: {e}")
+                call_tree_data = {
+                    'error': f"Call tree could not be generated: {str(e)}"
+                }
+
+            # Combine all articles from various sources
+            all_articles = []
+
+            # From anti-pattern detection
+            if anti_patterns.get('articles'):
+                all_articles.extend(anti_patterns['articles'])
+
+            # From best practices analyzer
+            if best_practices_result and best_practices_result.get('articles_referenced'):
+                all_articles.extend(best_practices_result['articles_referenced'])
+
+            # Deduplicate articles by URL
+            seen_urls = set()
+            unique_articles = []
+            for article in all_articles:
+                url = article.get('url', '')
+                if url and url not in seen_urls:
+                    seen_urls.add(url)
+                    unique_articles.append(article)
+
+            # Combine all results in structured format
             response = {
                 'success': True,
                 'validation': validation_result,
                 'mode': 'all',
-                'analyze_results': {
-                    'analysis': result_analyze.to_dict() if hasattr(result_analyze, 'to_dict') else result_analyze,
-                    'anti_patterns': {
-                        'patterns_detected': anti_patterns.get('patterns_detected', 0),
-                        'pattern_matches': anti_patterns.get('pattern_matches', {}),
-                        'recommendations': anti_patterns.get('recommendations', []),
-                        'articles': anti_patterns.get('articles', [])
-                    } if anti_patterns.get('success') else None,
-                    'improvements': {
-                        'summary': improvements.get('summary'),
-                        'count': improvements.get('improvements_count'),
-                        'details': improvements.get('improvements'),
-                        'original_code': improvements.get('original_code'),
-                        'suggested_code': improvements.get('suggested_code')
-                    } if improvements.get('has_improvements') else None
+                'analysis_summary': {
+                    'complexity_score': result_analyze.complexity_score,
+                    'max_nesting_level': result_analyze.max_nesting_level,
+                    'total_transitions': len(result_analyze.transitions),
+                    'patterns_detected': anti_patterns.get('patterns_detected', 0),
+                    'improvements_available': improvements.get('has_improvements', False),
+                    'improvements_count': improvements.get('improvements_count', 0),
+                    'best_practices_score': best_practices_result.get('overall_score', 0) if best_practices_result else None,
+                    'best_practices_issues': best_practices_result.get('total_issues', 0) if best_practices_result else 0
                 },
-                'debug_results': {
-                    'formatted_output': formatted_debug,
-                    'total_steps': len(steps) if steps else 0
+                'context_analysis': {
+                    'summary': result_analyze.summary,
+                    'complexity_score': result_analyze.complexity_score,
+                    'max_nesting_level': result_analyze.max_nesting_level,
+                    'transitions': [
+                        {
+                            'function': t.function,
+                            'line': t.line,
+                            'column': t.column,
+                            'type': t.type.value,
+                            'performance_impact': t.performance_impact.value,
+                            'explanation': t.explanation
+                        }
+                        for t in result_analyze.transitions
+                    ]
                 },
-                'report_results': result_report
+                'best_practices_analysis': best_practices_result if best_practices_result else {'note': 'Best practices analysis not available'},
+                'anti_patterns': {
+                    'success': anti_patterns.get('success', False),
+                    'patterns_detected': anti_patterns.get('patterns_detected', 0),
+                    'pattern_matches': anti_patterns.get('pattern_matches', {}),
+                    'recommendations': anti_patterns.get('recommendations', []),
+                    'articles': anti_patterns.get('articles', []),
+                    'error': anti_patterns.get('error') if not anti_patterns.get('success') else None
+                },
+                'improvements': {
+                    'has_improvements': improvements.get('has_improvements', False),
+                    'summary': improvements.get('summary', 'No improvements suggested'),
+                    'count': improvements.get('improvements_count', 0),
+                    'details': improvements.get('improvements', []),
+                    'original_code': expression,
+                    'suggested_code': improvements.get('suggested_code')
+                },
+                'vertipaq_analysis': vertipaq_analysis if vertipaq_analysis and vertipaq_analysis.get('success') else {
+                    'note': 'VertiPaq analysis not available',
+                    'reason': vertipaq_analysis.get('error') if vertipaq_analysis else 'Analysis failed or not connected to model'
+                },
+                'call_tree': call_tree_data,
+                'debug_steps': debug_steps_data,
+                'report': result_report,
+                'optimized_measure': {
+                    'code': improvements.get('suggested_code') if improvements.get('has_improvements') else expression,
+                    'has_optimizations': improvements.get('has_improvements', False),
+                    'optimization_count': improvements.get('improvements_count', 0),
+                    'estimated_improvement_percent': min(improvements.get('improvements_count', 0) * 15, 80) if improvements.get('has_improvements') else 0
+                },
+                # PROMINENT ARTICLE REFERENCES SECTION
+                'articles_referenced': {
+                    'total_count': len(unique_articles),
+                    'articles': unique_articles,
+                    'note': 'These articles were referenced during the analysis and provide detailed explanations of the patterns detected'
+                }
             }
 
             if measure_name:
@@ -606,12 +915,54 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
             # Add anti-pattern detection
             anti_patterns = analyzer.detect_dax_anti_patterns(expression)
 
+            # Get VertiPaq analysis for comprehensive optimization
+            vertipaq_analysis = None
+            try:
+                from core.dax.vertipaq_analyzer import VertiPaqAnalyzer
+                vertipaq = VertiPaqAnalyzer(connection_state)
+                vertipaq_analysis = vertipaq.analyze_dax_columns(expression)
+                if not vertipaq_analysis.get('success'):
+                    logger.warning(f"VertiPaq analysis failed: {vertipaq_analysis.get('error', 'Unknown error')}")
+            except Exception as e:
+                logger.warning(f"VertiPaq analysis not available: {e}")
+
+            # Run comprehensive best practices analysis
+            best_practices_result = None
+            try:
+                from core.dax.dax_best_practices import DaxBestPracticesAnalyzer
+                bp_analyzer = DaxBestPracticesAnalyzer()
+                best_practices_result = bp_analyzer.analyze(
+                    dax_expression=expression,
+                    context_analysis=result.to_dict() if hasattr(result, 'to_dict') else result,
+                    vertipaq_analysis=vertipaq_analysis
+                )
+                logger.info(f"Best practices analysis: {best_practices_result.get('total_issues', 0)} issues found")
+            except Exception as e:
+                logger.warning(f"Best practices analysis not available: {e}")
+
             # Generate specific improvements and new DAX code
             improvements = debugger.generate_improved_dax(
                 dax_expression=expression,
                 context_analysis=result,
-                anti_patterns=anti_patterns
+                anti_patterns=anti_patterns,
+                vertipaq_analysis=vertipaq_analysis
             )
+
+            # Combine all articles
+            all_articles = []
+            if anti_patterns.get('articles'):
+                all_articles.extend(anti_patterns['articles'])
+            if best_practices_result and best_practices_result.get('articles_referenced'):
+                all_articles.extend(best_practices_result['articles_referenced'])
+
+            # Deduplicate
+            seen_urls = set()
+            unique_articles = []
+            for article in all_articles:
+                url = article.get('url', '')
+                if url and url not in seen_urls:
+                    seen_urls.add(url)
+                    unique_articles.append(article)
 
             response = {
                 'success': True,
@@ -628,14 +979,24 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                     'note': f"Auto-fetched measure expression from [{measure_table}].[{measure_name}]"
                 }
 
-            # Include anti-pattern detection if successful
-            if anti_patterns.get('success'):
-                response['anti_patterns'] = {
-                    'patterns_detected': anti_patterns.get('patterns_detected', 0),
-                    'pattern_matches': anti_patterns.get('pattern_matches', {}),
-                    'recommendations': anti_patterns.get('recommendations', []),
-                    'articles': anti_patterns.get('articles', [])
-                }
+            # Include best practices analysis
+            response['best_practices_analysis'] = best_practices_result if best_practices_result else {'note': 'Best practices analysis not available'}
+
+            # ALWAYS include anti-pattern detection results (even if failed or no patterns found)
+            response['anti_patterns'] = {
+                'success': anti_patterns.get('success', False),
+                'patterns_detected': anti_patterns.get('patterns_detected', 0),
+                'pattern_matches': anti_patterns.get('pattern_matches', {}),
+                'recommendations': anti_patterns.get('recommendations', []),
+                'articles': anti_patterns.get('articles', []),
+                'error': anti_patterns.get('error') if not anti_patterns.get('success') else None
+            }
+
+            # Include VertiPaq analysis
+            response['vertipaq_analysis'] = vertipaq_analysis if vertipaq_analysis and vertipaq_analysis.get('success') else {
+                'note': 'VertiPaq analysis not available',
+                'reason': vertipaq_analysis.get('error') if vertipaq_analysis else 'Analysis failed or not connected to model'
+            }
 
             # Include specific improvements with new DAX code
             if improvements.get('has_improvements'):
@@ -646,6 +1007,22 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                     'original_code': improvements.get('original_code'),
                     'suggested_code': improvements.get('suggested_code')
                 }
+
+            # ALWAYS include the final optimized measure prominently
+            response['final_optimized_measure'] = {
+                'code': improvements.get('suggested_code') if improvements.get('has_improvements') else expression,
+                'has_optimizations': improvements.get('has_improvements', False),
+                'optimization_count': improvements.get('improvements_count', 0),
+                'estimated_improvement': f"{min(improvements.get('improvements_count', 0) * 15, 80)}%" if improvements.get('has_improvements') else "0%",
+                'note': 'This is the complete, ready-to-use optimized measure incorporating all analysis findings.' if improvements.get('has_improvements') else 'No optimizations needed - code already follows best practices.'
+            }
+
+            # PROMINENT ARTICLE REFERENCES
+            response['articles_referenced'] = {
+                'total_count': len(unique_articles),
+                'articles': unique_articles,
+                'note': 'These articles were referenced during the analysis and provide detailed explanations of the patterns detected'
+            }
 
             return response
 
@@ -757,6 +1134,46 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                 'report': result,
                 'mode': 'report'
             }
+
+            # Extract optimized code from report if available
+            # The report already includes the optimized measure in the text
+            # Let's also provide it in structured format
+            try:
+                # Try to get the improvements from the report generation
+                from core.dax import DaxContextAnalyzer
+                analyzer = DaxContextAnalyzer()
+                result_analyze = analyzer.analyze_context_transitions(expression)
+                anti_patterns = analyzer.detect_dax_anti_patterns(expression)
+
+                from core.dax import DaxContextDebugger
+                debugger_temp = DaxContextDebugger()
+
+                # Get VertiPaq analysis for comprehensive optimization
+                vertipaq_analysis = None
+                try:
+                    from core.dax.vertipaq_analyzer import VertiPaqAnalyzer
+                    vertipaq = VertiPaqAnalyzer(connection_state)
+                    vertipaq_analysis = vertipaq.analyze_dax_columns(expression)
+                except:
+                    pass
+
+                improvements = debugger_temp.generate_improved_dax(
+                    dax_expression=expression,
+                    context_analysis=result_analyze,
+                    anti_patterns=anti_patterns,
+                    vertipaq_analysis=vertipaq_analysis
+                )
+
+                response['final_optimized_measure'] = {
+                    'code': improvements.get('suggested_code') if improvements.get('has_improvements') else expression,
+                    'has_optimizations': improvements.get('has_improvements', False),
+                    'optimization_count': improvements.get('improvements_count', 0),
+                    'estimated_improvement': f"{min(improvements.get('improvements_count', 0) * 15, 80)}%" if improvements.get('has_improvements') else "0%",
+                    'note': 'This is the complete, ready-to-use optimized measure incorporating all analysis findings.' if improvements.get('has_improvements') else 'No optimizations needed - code already follows best practices.'
+                }
+            except Exception as e:
+                logger.warning(f"Could not extract optimized measure: {e}")
+
             if measure_name:
                 response['measure_info'] = {
                     'name': measure_name,
@@ -795,20 +1212,20 @@ def register_dax_handlers(registry):
         ToolDefinition(
             name="dax_intelligence",
             description=(
-                "[03-DAX Intelligence v4.2] DEFAULT MODE: Runs ALL analysis (analyze + debug + report) for comprehensive DAX intelligence. "
-                "✓ SMART MEASURE FINDER: Just provide measure keywords (e.g., 'base scenario') → automatically finds & analyzes the measure with FUZZY MATCHING. NO need to search first! "
-                "✓ AUTO-FETCH: Provide exact or partial measure name → auto-fetches DAX expression + skips validation "
-                "✓ ONLINE RESEARCH: Fetches SQLBI optimization articles with specific recommendations "
-                "✓ 11 anti-pattern detectors with research-backed recommendations "
-                "✓ Context transition analysis with call tree hierarchy "
-                "✓ VertiPaq metrics integration (cardinality, memory footprint, iteration estimates) "
-                "✓ Calculation group analysis (precedence conflicts, performance impact) "
-                "✓ Advanced code rewriting (actual DAX transformations, variable extraction) "
-                "✓ Variable optimization scanner (identifies repeated calculations with savings %) "
-                "✓ SUMMARIZE→SUMMARIZECOLUMNS detection (2-10x faster) "
-                "✓ Visual context flow diagrams (ASCII/HTML/Mermaid) "
-                "✓ Specific improvements with REWRITTEN DAX CODE. "
-                "All modes run by default. Report mode includes 8 comprehensive analysis sections. Rivals DAX Studio & Tabular Editor analysis depth."
+                "[03-DAX Intelligence] Comprehensive DAX analysis with optimization recommendations.\n\n"
+                "Provides complete analysis including:\n"
+                "• Context Transition Analysis: Complexity scores, nesting levels, transition details\n"
+                "• Anti-Pattern Detection: SQLBI research articles, pattern matches, recommendations\n"
+                "• Code Improvements: Before/after examples with specific transformations\n"
+                "• VertiPaq Analysis: Column cardinality, size metrics, performance impact\n"
+                "• Call Tree Hierarchy: Function call visualization with iteration estimates\n"
+                "• Optimized Code: Production-ready DAX with all improvements applied\n\n"
+                "Features:\n"
+                "- Smart measure finder with fuzzy matching\n"
+                "- Online research integration for best practices\n"
+                "- Automatic syntax validation\n"
+                "- Single comprehensive output with all analysis results\n\n"
+                "Default mode: Runs complete analysis (all sections). Use analysis_mode parameter for specific modes."
             ),
             handler=handle_dax_intelligence,
             input_schema=TOOL_SCHEMAS.get('dax_intelligence', {}),

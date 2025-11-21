@@ -129,7 +129,7 @@ class DaxResearchProvider:
 
     def _fetch_article_content(self, url: str, article_id: str) -> Optional[str]:
         """
-        Fetch article content from URL
+        Fetch article content from URL with proper HTML parsing
 
         Args:
             url: Article URL
@@ -148,27 +148,69 @@ class DaxResearchProvider:
             try:
                 import requests
             except ImportError:
-                logger.info("requests library not available - online research disabled")
+                logger.warning("⚠️ requests library not available - online research disabled. Install: pip install requests")
                 return None
 
+            # Try importing HTML parser
+            try:
+                from bs4 import BeautifulSoup
+                has_bs4 = True
+            except ImportError:
+                logger.info("BeautifulSoup not available - using basic text extraction")
+                has_bs4 = False
+
             # Fetch with timeout
-            logger.info(f"Fetching online content from {url}")
-            response = requests.get(url, timeout=10, headers={
-                'User-Agent': 'Mozilla/5.0 (compatible; PBIXRay/1.0; +https://github.com/your-repo)'
+            logger.info(f"🌐 Fetching online content from {url}")
+            response = requests.get(url, timeout=15, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
             })
 
             if response.status_code == 200:
-                # Extract text content (simplified - would need proper HTML parsing)
-                content = response.text[:2000]  # Limit to first 2000 chars
+                # Extract text content with proper HTML parsing
+                if has_bs4:
+                    soup = BeautifulSoup(response.content, 'html.parser')
+
+                    # Remove script and style elements
+                    for script in soup(["script", "style", "nav", "footer", "header"]):
+                        script.decompose()
+
+                    # Get text from main content areas
+                    main_content = None
+                    for selector in ['article', '.article-content', '.post-content', '.entry-content', 'main']:
+                        main_content = soup.select_one(selector)
+                        if main_content:
+                            break
+
+                    text = main_content.get_text(separator=' ', strip=True) if main_content else soup.get_text(separator=' ', strip=True)
+                    text = ' '.join(text.split())
+                    content = text[:10000] if len(text) > 10000 else text
+                else:
+                    # Basic text extraction
+                    import re
+                    text = response.text
+                    text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.DOTALL | re.IGNORECASE)
+                    text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL | re.IGNORECASE)
+                    text = re.sub(r'<[^>]+>', ' ', text)
+                    text = ' '.join(text.split())
+                    content = text[:5000]
+
                 self._article_cache[article_id] = content
-                logger.info(f"Successfully fetched content for {article_id}")
+                logger.info(f"✅ Successfully fetched {len(content)} chars for {article_id}")
                 return content
             else:
-                logger.warning(f"Failed to fetch {url}: HTTP {response.status_code}")
+                logger.warning(f"❌ Failed to fetch {url}: HTTP {response.status_code}")
                 return None
 
+        except requests.Timeout:
+            logger.warning(f"⏱️ Timeout fetching {article_id} from {url}")
+            return None
+        except requests.RequestException as e:
+            logger.warning(f"🌐 Network error fetching {article_id}: {e}")
+            return None
         except Exception as e:
-            logger.warning(f"Error fetching article {article_id}: {e}")
+            logger.error(f"💥 Unexpected error fetching {article_id}: {e}", exc_info=True)
             return None
 
     def _generate_recommendations(

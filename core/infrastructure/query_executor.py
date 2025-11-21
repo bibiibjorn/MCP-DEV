@@ -1917,6 +1917,101 @@ class OptimizedQueryExecutor:
                 pass
             return result
 
+    def execute_dmv_query(self, dmv_query: str) -> Dict[str, Any]:
+        """
+        Execute DMV (Dynamic Management Views) query against $SYSTEM schema.
+
+        DMV queries are used to retrieve metadata and statistics from the Analysis Services engine,
+        such as VertiPaq column statistics, table information, and performance metrics.
+
+        Args:
+            dmv_query: DMV query (e.g., SELECT * FROM $SYSTEM.DISCOVER_STORAGE_TABLE_COLUMNS)
+
+        Returns:
+            Query result dictionary with:
+            - success: bool - Whether query executed successfully
+            - data: List[Dict] - Query results as list of dictionaries
+            - row_count: int - Number of rows returned
+            - error: str - Error message if failed
+        """
+        try:
+            # DMV queries use SELECT syntax, not EVALUATE
+            # Ensure the query doesn't have EVALUATE prefix
+            query = dmv_query.strip()
+            if query.upper().startswith('EVALUATE'):
+                query = query[8:].strip()
+
+            # Execute as standard DAX query (DMV queries are handled by ADOMD)
+            # Use validate_and_execute_dax but return simplified format for DMV results
+            logger.debug(f"Executing DMV query: {query[:100]}...")
+
+            if not ADOMD_AVAILABLE:
+                return {
+                    'success': False,
+                    'error': 'ADOMD.NET not available; cannot execute DMV queries',
+                    'data': []
+                }
+
+            # Execute query directly through ADOMD
+            import time
+            start_time = time.time()
+
+            cmd = AdomdCommand(query, self.connection)
+            reader = cmd.ExecuteReader()
+
+            # Get column names
+            columns = []
+            for i in range(reader.FieldCount):
+                columns.append(reader.GetName(i))
+
+            # Read all rows
+            rows = []
+            while reader.Read():
+                row_dict = {}
+                for i, col_name in enumerate(columns):
+                    value = reader.GetValue(i)
+                    # Convert to Python types
+                    if value is None:
+                        row_dict[col_name] = None
+                    else:
+                        # Handle different .NET types
+                        value_str = str(value)
+                        try:
+                            # Try to convert numeric values
+                            if value_str.isdigit():
+                                row_dict[col_name] = int(value_str)
+                            elif '.' in value_str and value_str.replace('.', '').replace('-', '').isdigit():
+                                row_dict[col_name] = float(value_str)
+                            else:
+                                row_dict[col_name] = value_str
+                        except:
+                            row_dict[col_name] = value_str
+
+                rows.append(row_dict)
+
+            reader.Close()
+            execution_time = (time.time() - start_time) * 1000  # Convert to ms
+
+            logger.info(f"DMV query executed: {len(rows)} rows in {execution_time:.2f}ms")
+
+            return {
+                'success': True,
+                'data': rows,
+                'row_count': len(rows),
+                'columns': columns,
+                'execution_time_ms': execution_time
+            }
+
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"DMV query failed: {error_msg}")
+            return {
+                'success': False,
+                'error': error_msg,
+                'data': [],
+                'row_count': 0
+            }
+
     def execute_with_table_reference_fallback(self, table_name: str, max_rows: int = 10) -> Dict[str, Any]:
         """
         Execute table query with automatic reference format fallback.
