@@ -338,10 +338,15 @@ RETURN SUMX(Sales, TotalSales * TaxRate)"""
 
         Returns:
             Dictionary with specific improvements and rewritten code
+
+        Note:
+            This method provides analysis and recommendations. When automatic transformations
+            are not possible (requires DAX parser), suggested_code will be None and the AI
+            should use the improvements list to generate optimized code.
         """
         improvements = []
-        improved_code = dax_expression
-        has_improvements = False
+        improved_code = None  # Only set if we actually transform the code
+        code_actually_transformed = False  # Track if we made real code changes
         transformation_details = []
 
         try:
@@ -353,7 +358,7 @@ RETURN SUMX(Sales, TotalSales * TaxRate)"""
 
             if rewrite_result.get('success') and rewrite_result.get('has_changes'):
                 improved_code = rewrite_result['rewritten_code']
-                has_improvements = True
+                code_actually_transformed = True
 
                 # Add rewriter transformations to improvements list
                 for trans in rewrite_result.get('transformations', []):
@@ -369,8 +374,11 @@ RETURN SUMX(Sales, TotalSales * TaxRate)"""
 
                 logger.info(f"Applied {rewrite_result['transformation_count']} automatic transformations")
 
-            # STEP 2: Continue with pattern-based improvements
-            # Improvement 1: Replace iterator + measure with iterator + column
+            # STEP 2: Detect pattern-based improvement opportunities
+            # These are detected but not automatically transformed (requires DAX parser)
+            # The AI tool will use these recommendations to generate optimized code
+
+            # Detection 1: Iterator with measure references
             iterator_transitions = [
                 t for t in context_analysis.transitions
                 if t.type.value == "iterator" and t.function in ["SUMX", "AVERAGEX", "COUNTX"]
@@ -383,12 +391,12 @@ RETURN SUMX(Sales, TotalSales * TaxRate)"""
                     "original_pattern": "SUMX(Table, [Measure])",
                     "improved_pattern": "SUMX(Table, Table[Column])",
                     "explanation": "Replace measure references inside iterators with direct column references to avoid context transitions in each iteration.",
-                    "specific_suggestion": f"Found {len(iterator_transitions)} iterator(s) with potential measure references. Review each iterator to see if measure can be replaced with column reference."
+                    "specific_suggestion": f"Found {len(iterator_transitions)} iterator(s) with potential measure references. Review each iterator to see if measure can be replaced with column reference.",
+                    "auto_transform_available": False
                 }
                 improvements.append(improvement)
-                has_improvements = True
 
-            # Improvement 2: Reduce CALCULATE nesting with variables
+            # Detection 2: Excessive CALCULATE nesting
             if context_analysis.max_nesting_level > 2:
                 nested_calcs = [
                     t for t in context_analysis.transitions
@@ -396,22 +404,18 @@ RETURN SUMX(Sales, TotalSales * TaxRate)"""
                 ]
 
                 if nested_calcs:
-                    # Generate improved version with variables
-                    improved_with_vars = self._generate_var_based_code(dax_expression, nested_calcs)
-
                     improvement = {
                         "issue": f"Excessive CALCULATE nesting (depth: {context_analysis.max_nesting_level})",
                         "severity": "high",
-                        "original_code": dax_expression.strip(),
-                        "improved_code": improved_with_vars,
+                        "original_pattern": "CALCULATE(CALCULATE([Measure], Filter1), Filter2)",
+                        "improved_pattern": "CALCULATE([Measure], Filter1, Filter2)\n-- Or use variables:\nVAR Step1 = CALCULATE([Measure], Filter1)\nRETURN CALCULATE(Step1, Filter2)",
                         "explanation": "Use variables (VAR) to flatten nested CALCULATE statements, making code more readable and potentially more efficient.",
-                        "specific_suggestion": "Refactor nested CALCULATE statements into sequential variables with a RETURN statement."
+                        "specific_suggestion": "Refactor nested CALCULATE statements into sequential variables with a RETURN statement.",
+                        "auto_transform_available": False
                     }
                     improvements.append(improvement)
-                    improved_code = improved_with_vars
-                    has_improvements = True
 
-            # Improvement 3: Apply anti-pattern fixes
+            # Detection 3: Anti-pattern fixes
             if anti_patterns and anti_patterns.get('success') and anti_patterns.get('patterns_detected', 0) > 0:
                 for pattern_id, matches in anti_patterns.get('pattern_matches', {}).items():
                     # Find corresponding article
@@ -424,7 +428,8 @@ RETURN SUMX(Sales, TotalSales * TaxRate)"""
                             "pattern_occurrences": len(matches),
                             "pattern_details": article.get('content', '')[:200] + "...",
                             "explanation": f"This pattern is known to cause performance or correctness issues. Review the article for specific guidance.",
-                            "specific_suggestion": f"Found {len(matches)} occurrence(s) of '{pattern_id}'. Apply recommended pattern from DAX documentation."
+                            "specific_suggestion": f"Found {len(matches)} occurrence(s) of '{pattern_id}'. Apply recommended pattern from DAX documentation.",
+                            "auto_transform_available": False
                         }
 
                         # Add specific code examples for known patterns
@@ -448,9 +453,8 @@ VAR Threshold = [Measure]
 RETURN FILTER(Table, Table[Column] > Threshold)"""
 
                         improvements.append(improvement)
-                        has_improvements = True
 
-            # Improvement 4: Optimize implicit measure references
+            # Detection 4: Multiple implicit measure references
             implicit_refs = [
                 t for t in context_analysis.transitions
                 if t.type.value == "implicit_measure"
@@ -466,25 +470,31 @@ RETURN FILTER(Table, Table[Column] > Threshold)"""
 VAR M2 = [Measure2]
 VAR M3 = [Measure3]
 RETURN M1 + M2 + M3""",
-                    "specific_suggestion": "Store measure results in variables when the same measure is referenced multiple times or when measures are used in complex expressions."
+                    "specific_suggestion": "Store measure results in variables when the same measure is referenced multiple times or when measures are used in complex expressions.",
+                    "auto_transform_available": False
                 }
                 improvements.append(improvement)
-                has_improvements = True
+
+            # Determine if we have improvements (either actual transformations or recommendations)
+            has_improvements = code_actually_transformed or len(improvements) > 0
 
             return {
                 "has_improvements": has_improvements,
+                "code_actually_transformed": code_actually_transformed,
                 "improvements_count": len(improvements),
                 "improvements": improvements,
                 "original_code": dax_expression.strip(),
-                "suggested_code": improved_code.strip() if has_improvements else None,
-                "summary": self._generate_improvement_summary(improvements),
-                "transformation_details": transformation_details
+                "suggested_code": improved_code.strip() if code_actually_transformed else None,
+                "summary": self._generate_improvement_summary(improvements, code_actually_transformed),
+                "transformation_details": transformation_details,
+                "note": "Automatic code transformation requires DAX parser. Use the improvements list to guide manual optimization or let the AI generate optimized code." if not code_actually_transformed and has_improvements else None
             }
 
         except Exception as e:
             logger.error(f"Error generating improved DAX: {e}", exc_info=True)
             return {
                 "has_improvements": False,
+                "code_actually_transformed": False,
                 "improvements_count": 0,
                 "improvements": [],
                 "error": str(e)
@@ -519,7 +529,7 @@ RETURN Result
 
         return suggestion
 
-    def _generate_improvement_summary(self, improvements: List[Dict[str, Any]]) -> str:
+    def _generate_improvement_summary(self, improvements: List[Dict[str, Any]], code_actually_transformed: bool = False) -> str:
         """Generate human-readable summary of improvements"""
         if not improvements:
             return "No significant improvements identified. Your DAX code follows best practices."
@@ -528,7 +538,10 @@ RETURN Result
         medium_severity = sum(1 for i in improvements if i.get('severity') == 'medium')
         low_severity = sum(1 for i in improvements if i.get('severity') == 'low')
 
-        summary_parts = [f"Found {len(improvements)} potential improvement(s):"]
+        if code_actually_transformed:
+            summary_parts = [f"Applied {len(improvements)} automatic transformation(s):"]
+        else:
+            summary_parts = [f"Detected {len(improvements)} improvement opportunity(ies):"]
 
         if high_severity > 0:
             summary_parts.append(f"  • {high_severity} high-priority issue(s) - should be addressed")
@@ -536,6 +549,9 @@ RETURN Result
             summary_parts.append(f"  • {medium_severity} medium-priority improvement(s) - recommended")
         if low_severity > 0:
             summary_parts.append(f"  • {low_severity} low-priority enhancement(s) - optional")
+
+        if not code_actually_transformed and improvements:
+            summary_parts.append("\nNote: Automatic transformation not available. Use the AI to generate optimized code based on these recommendations.")
 
         return "\n".join(summary_parts)
 
@@ -602,13 +618,34 @@ RETURN Result
         # Transitions
         if analysis.transitions:
             lines.append("CONTEXT TRANSITIONS")
-            lines.append("-" * 70)
+            lines.append("=" * 70)
+            lines.append("")
 
             for i, t in enumerate(analysis.transitions, 1):
-                lines.append(f"{i}. {t.function} (Line {t.line}, Col {t.column})")
-                lines.append(f"   Type: {t.type.value}")
-                lines.append(f"   Impact: {t.performance_impact.value}")
-                lines.append(f"   {t.explanation}")
+                # Impact icon
+                impact_icon = {
+                    'low': '🟢',
+                    'medium': '🟡',
+                    'high': '🔴',
+                    'critical': '⛔'
+                }.get(t.performance_impact.value, '⚪')
+
+                # Type icon
+                type_icon = {
+                    'iterator': '🔄',
+                    'implicit_measure': '📊',
+                    'filter_context': '🔍',
+                    'row_context': '📍'
+                }.get(t.type.value, '•')
+
+                lines.append(f"┌─ Transition #{i} ─────────────────────────────────────────────")
+                lines.append(f"│ {type_icon} {t.function} (Line {t.line}, Col {t.column})")
+                lines.append(f"│")
+                lines.append(f"│ Type: {t.type.value}")
+                lines.append(f"│ Impact: {impact_icon} {t.performance_impact.value.upper()}")
+                lines.append(f"│")
+                lines.append(f"│ {t.explanation}")
+                lines.append(f"└{'─' * 65}")
                 lines.append("")
 
         # Warnings
@@ -642,13 +679,22 @@ RETURN Result
                         lines.append(f"   Pattern: {pattern_id}")
                         lines.append(f"   Occurrences: {len(matches)}")
 
-                        # Show research article content
+                        # Show research article content (first few lines as summary)
                         if article.get('content'):
-                            content_lines = article['content'].strip().split('\n')[:5]
+                            import textwrap
                             lines.append(f"   Research:")
-                            for cline in content_lines:
-                                if cline.strip():
-                                    lines.append(f"     {cline.strip()}")
+                            lines.append("")
+                            # Dedent and clean up content
+                            content = textwrap.dedent(article['content']).strip()
+                            content_lines = [line for line in content.split('\n') if line.strip()]
+
+                            # Show first 5 lines as summary
+                            for cline in content_lines[:5]:
+                                lines.append(f"      {cline.strip()}")
+
+                            if len(content_lines) > 5:
+                                lines.append(f"      ...")
+                            lines.append("")
 
                         # Show URL if available
                         if article.get('url'):
@@ -716,24 +762,31 @@ RETURN Result
                         lines.append(f"💡 Specific Action: {improvement['specific_suggestion']}")
                         lines.append("")
 
-                    # Show original pattern
+                    # Show original pattern with DAX formatting
                     if improvement.get('original_pattern'):
-                        lines.append("❌ Original Pattern:")
-                        lines.append(f"   {improvement['original_pattern']}")
+                        lines.append("❌ ORIGINAL PATTERN:")
+                        lines.append("")
+                        lines.append("```dax")
+                        lines.append(improvement['original_pattern'])
+                        lines.append("```")
                         lines.append("")
 
-                    # Show improved pattern
+                    # Show improved pattern with DAX formatting
                     if improvement.get('improved_pattern'):
-                        lines.append("✅ Improved Pattern:")
-                        for line in improvement['improved_pattern'].split('\n'):
-                            lines.append(f"   {line}")
+                        lines.append("✅ IMPROVED PATTERN:")
+                        lines.append("")
+                        lines.append("```dax")
+                        lines.append(improvement['improved_pattern'])
+                        lines.append("```")
                         lines.append("")
 
-                    # Show full improved code if available
+                    # Show full improved code if available with DAX formatting
                     if improvement.get('improved_code'):
-                        lines.append("✅ Suggested Refactored Code:")
-                        for line in improvement['improved_code'].split('\n'):
-                            lines.append(f"   {line}")
+                        lines.append("✅ SUGGESTED REFACTORED CODE:")
+                        lines.append("")
+                        lines.append("```dax")
+                        lines.append(improvement['improved_code'])
+                        lines.append("```")
                         lines.append("")
 
                     lines.append("")
@@ -855,8 +908,11 @@ RETURN Result
 
             lines.append("CALL TREE HIERARCHY")
             lines.append("=" * 70)
+            lines.append("")
+            lines.append("```")
             tree_viz = call_tree_builder.visualize_tree(call_tree)
             lines.append(tree_viz)
+            lines.append("```")
             lines.append("")
 
             # Show iteration estimates
@@ -1009,12 +1065,12 @@ RETURN Result
             from core.dax.visual_flow import VisualFlowDiagramGenerator
 
             flow_gen = VisualFlowDiagramGenerator()
-            ascii_diagram = flow_gen.generate_ascii_diagram(analysis)
+            ascii_diagram = flow_gen.generate_ascii_diagram(analysis, dax_expression)
 
             lines.append("")
-            lines.append("VISUAL CONTEXT FLOW DIAGRAM")
-            lines.append("=" * 70)
+            lines.append("```")
             lines.append(ascii_diagram)
+            lines.append("```")
             lines.append("")
 
         except Exception as e:
@@ -1034,81 +1090,120 @@ RETURN Result
         lines.append("=" * 70)
         lines.append("")
 
-        if improvements and improvements.get('has_improvements') and improvements.get('suggested_code'):
-            lines.append("✅ OPTIMIZED DAX CODE:")
-            lines.append("-" * 70)
-            lines.append("")
-
-            # Show the complete optimized code (not truncated)
-            optimized_code = improvements['suggested_code']
-            for line in optimized_code.split('\n'):
-                lines.append(f"   {line}")
-
-            lines.append("")
-            lines.append("-" * 70)
-            lines.append("")
-
-            # Show what was optimized
-            lines.append("📋 APPLIED OPTIMIZATIONS:")
-            lines.append("")
-
-            transformation_count = improvements.get('improvements_count', 0)
-            lines.append(f"   Total transformations applied: {transformation_count}")
-            lines.append("")
-
-            # List all transformations
-            if improvements.get('transformation_details'):
-                for idx, detail in enumerate(improvements['transformation_details'], 1):
-                    lines.append(f"   {idx}. {detail}")
-                lines.append("")
-
-            # Show key metrics
-            lines.append("📊 OPTIMIZATION SUMMARY:")
-            lines.append("")
-
+        # Check if we have any improvements at all
+        if improvements and improvements.get('has_improvements'):
             # Calculate estimated improvement
             high_priority = sum(1 for i in improvements.get('improvements', []) if i.get('severity') == 'high')
             medium_priority = sum(1 for i in improvements.get('improvements', []) if i.get('severity') == 'medium')
+            transformation_count = improvements.get('improvements_count', 0)
 
-            if high_priority > 0:
-                lines.append(f"   • {high_priority} high-priority optimization(s) applied")
-            if medium_priority > 0:
-                lines.append(f"   • {medium_priority} medium-priority optimization(s) applied")
+            # Case 1: We have automatically transformed code
+            if improvements.get('suggested_code'):
+                lines.append("✅ OPTIMIZED DAX CODE (AUTOMATIC TRANSFORMATION):")
+                lines.append("")
 
-            # Add performance estimate
-            estimated_gain = min(high_priority * 20 + medium_priority * 10, 80)
-            if estimated_gain > 0:
-                lines.append(f"   • Estimated performance gain: {estimated_gain}%")
+                # Show the complete optimized code with syntax highlighting
+                optimized_code = improvements['suggested_code']
+                lines.append("```dax")
+                lines.append(optimized_code)
+                lines.append("```")
+                lines.append("")
 
-            lines.append("")
+                # Show what was optimized
+                lines.append("📋 APPLIED OPTIMIZATIONS:")
+                lines.append("")
+                lines.append(f"   Total transformations applied: {transformation_count}")
+                lines.append("")
 
-            # Show comparison
-            lines.append("📈 BEFORE vs AFTER COMPARISON:")
-            lines.append("")
-            lines.append("   ORIGINAL CODE:")
-            lines.append("   " + "-" * 66)
-            for line in dax_expression.strip().split('\n')[:10]:  # Show first 10 lines
-                lines.append(f"   {line}")
-            if len(dax_expression.strip().split('\n')) > 10:
-                lines.append(f"   ... ({len(dax_expression.strip().split('\n')) - 10} more lines)")
-            lines.append("")
+                # List all transformations
+                if improvements.get('transformation_details'):
+                    for idx, detail in enumerate(improvements['transformation_details'], 1):
+                        lines.append(f"   {idx}. {detail}")
+                    lines.append("")
 
-            lines.append("   OPTIMIZED CODE:")
-            lines.append("   " + "-" * 66)
-            for line in optimized_code.split('\n')[:10]:  # Show first 10 lines
-                lines.append(f"   {line}")
-            if len(optimized_code.split('\n')) > 10:
-                lines.append(f"   ... ({len(optimized_code.split('\n')) - 10} more lines)")
-            lines.append("")
+                # Show key metrics
+                lines.append("📊 OPTIMIZATION SUMMARY:")
+                lines.append("")
 
-            lines.append("💡 NEXT STEPS:")
-            lines.append("")
-            lines.append("   1. Copy the optimized code above")
-            lines.append("   2. Test it in your Power BI model")
-            lines.append("   3. Verify the results match the original")
-            lines.append("   4. Use DAX Studio to compare performance")
-            lines.append("   5. Update your measure with the optimized version")
-            lines.append("")
+                if high_priority > 0:
+                    lines.append(f"   • {high_priority} high-priority optimization(s) applied")
+                if medium_priority > 0:
+                    lines.append(f"   • {medium_priority} medium-priority optimization(s) applied")
+
+                # Add performance estimate
+                estimated_gain = min(high_priority * 20 + medium_priority * 10, 80)
+                if estimated_gain > 0:
+                    lines.append(f"   • Estimated performance gain: {estimated_gain}%")
+
+                lines.append("")
+
+                # Show comparison with proper DAX formatting
+                lines.append("📈 BEFORE vs AFTER COMPARISON:")
+                lines.append("")
+                lines.append("ORIGINAL CODE:")
+                lines.append("")
+                lines.append("```dax")
+                lines.append(dax_expression.strip())
+                lines.append("```")
+                lines.append("")
+
+                lines.append("OPTIMIZED CODE:")
+                lines.append("")
+                lines.append("```dax")
+                lines.append(optimized_code.strip())
+                lines.append("```")
+                lines.append("")
+
+                lines.append("💡 NEXT STEPS:")
+                lines.append("")
+                lines.append("   1. Copy the optimized code above")
+                lines.append("   2. Test it in your Power BI model")
+                lines.append("   3. Verify the results match the original")
+                lines.append("   4. Use DAX Studio to compare performance")
+                lines.append("   5. Update your measure with the optimized version")
+                lines.append("")
+
+            # Case 2: We have improvements but no automatic transformation
+            else:
+                lines.append("⚠️  OPTIMIZATION OPPORTUNITIES DETECTED")
+                lines.append("-" * 70)
+                lines.append("")
+                lines.append(f"Found {transformation_count} improvement(s) that require manual optimization:")
+                lines.append("")
+
+                # Show key metrics
+                lines.append("📊 IMPROVEMENT BREAKDOWN:")
+                lines.append("")
+                if high_priority > 0:
+                    lines.append(f"   🔴 {high_priority} high-priority issue(s) - SHOULD BE ADDRESSED")
+                if medium_priority > 0:
+                    lines.append(f"   🟡 {medium_priority} medium-priority improvement(s) - RECOMMENDED")
+
+                # Add performance estimate
+                estimated_gain = min(high_priority * 20 + medium_priority * 10, 80)
+                if estimated_gain > 0:
+                    lines.append(f"   📈 Estimated performance gain: up to {estimated_gain}%")
+
+                lines.append("")
+                lines.append("⚠️  IMPORTANT: Review the 'SPECIFIC IMPROVEMENTS & NEW DAX CODE' section above")
+                lines.append("    for detailed recommendations and code patterns to apply.")
+                lines.append("")
+
+                lines.append("CURRENT CODE:")
+                lines.append("")
+                lines.append("```dax")
+                lines.append(dax_expression.strip())
+                lines.append("```")
+                lines.append("")
+
+                lines.append("💡 NEXT STEPS:")
+                lines.append("")
+                lines.append("   1. Review the improvement recommendations above")
+                lines.append("   2. Apply the suggested patterns to your DAX code")
+                lines.append("   3. Test each change incrementally")
+                lines.append("   4. Use DAX Studio to measure performance improvements")
+                lines.append("   5. Consider using AI assistance to generate optimized code")
+                lines.append("")
 
         else:
             # No improvements - code is already optimal
@@ -1120,8 +1215,9 @@ RETURN Result
             lines.append("")
             lines.append("CURRENT CODE:")
             lines.append("")
-            for line in dax_expression.strip().split('\n'):
-                lines.append(f"   {line}")
+            lines.append("```dax")
+            lines.append(dax_expression.strip())
+            lines.append("```")
             lines.append("")
             lines.append("💡 RECOMMENDATIONS:")
             lines.append("")

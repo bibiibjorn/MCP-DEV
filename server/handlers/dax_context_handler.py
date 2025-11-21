@@ -702,6 +702,9 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
             result_analyze = analyzer.analyze_context_transitions(expression)
             anti_patterns = analyzer.detect_dax_anti_patterns(expression)
 
+            # Generate annotated DAX code for visual display
+            annotated_dax = analyzer.format_dax_with_annotations(expression, result_analyze.transitions)
+
             # Get VertiPaq analysis for comprehensive optimization
             vertipaq_analysis = None
             try:
@@ -755,13 +758,11 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                     for step in steps
                 ]
 
-            # Run report mode
-            result_report = debugger.generate_debug_report(
-                expression,
-                include_profiling=args.get('include_profiling', True),
-                include_optimization=args.get('include_optimization', True),
-                connection_state=connection_state
-            )
+            # NOTE: We DO NOT generate the full report in 'all' mode to avoid duplication
+            # The report duplicates all structured data (context_analysis, anti_patterns, improvements, vertipaq, call_tree)
+            # and also re-runs some expensive analyses (context analysis, anti-patterns)
+            # If user wants a formatted text report, they should use analysis_mode='report'
+            # result_report = debugger.generate_debug_report(...)  # REMOVED to eliminate duplication
 
             # Get call tree analysis
             call_tree_data = None
@@ -831,6 +832,43 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                 'success': True,
                 'validation': validation_result,
                 'mode': 'all',
+
+                # ============================================
+                # 🚨 CRITICAL AI INSTRUCTIONS - READ FIRST 🚨
+                # ============================================
+                'AI_INSTRUCTIONS': {
+                    'READ_THIS_FIRST': '🚨 This response contains ONLY structured data fields. There is NO text report field. You must read and present the structured fields below.',
+
+                    'PRIORITY_1_SHOW_ANNOTATED_CODE_FIRST': '🚨 MANDATORY: Display the annotated_dax_code.code field FIRST at the very beginning of your response. Show the complete annotated code with the legend. This gives users immediate visual understanding of WHERE context transitions occur (🔄 = Iterator, 📊 = Measure Ref, ⚡ = CALCULATE, 🔴🟡🟢 = Impact).',
+
+                    'PRIORITY_2_PRESENT_ANALYSIS_SUMMARY': 'After annotated code, show the analysis_summary field as a quick overview of findings (complexity score, total transitions, patterns detected, improvements available).',
+
+                    'PRIORITY_3_PRESENT_DETAILED_SECTIONS': 'Then present these sections in order: (1) best_practices_analysis - violations found, (2) anti_patterns - pattern matches with articles, (3) context_analysis.transitions - detailed transition info, (4) improvements.details - specific improvement opportunities, (5) vertipaq_analysis - column metrics if available, (6) call_tree - iteration estimates if available.',
+
+                    'PRIORITY_4_WRITE_OPTIMIZED_CODE': '🚨 CRITICAL: After presenting all analysis, YOU (the AI) MUST write the complete optimized DAX measure. Check optimized_measure.code field - if NULL, YOU must manually write the complete optimized code by applying ALL improvements from improvements.details list. This is NOT optional. Write the FULL measure code, not snippets. The user needs production-ready code to copy-paste into Power BI.',
+
+                    'PRIORITY_5_EXPLAIN_CHANGES': 'After writing optimized code, explain what specific optimizations you applied and WHY they improve performance. Reference specific items from improvements.details and cite articles_referenced when relevant.',
+
+                    'DATA_STRUCTURE_GUIDE': 'Key fields: annotated_dax_code.code (visual code), analysis_summary (quick stats), best_practices_analysis.issues (violations), anti_patterns.pattern_matches (patterns found), context_analysis.transitions (detailed transitions), improvements.details (improvement list), improvements.suggested_code (auto-generated if available), vertipaq_analysis.column_analysis (column metrics), call_tree.visualization (call tree), articles_referenced.articles (research articles)',
+
+                    'WORKFLOW_SUMMARY': 'STEP 1: Show annotated_dax_code → STEP 2: Show analysis_summary → STEP 3: Present detailed sections → STEP 4: Write complete optimized DAX code → STEP 5: Explain changes with article references'
+                },
+
+                # ============================================
+                # ANNOTATED DAX CODE - SHOW THIS FIRST!
+                # ============================================
+                'annotated_dax_code': {
+                    'code': annotated_dax,
+                    'legend': {
+                        '🔄': 'Iterator function (creates row context)',
+                        '📊': 'Measure reference (implicit CALCULATE)',
+                        '⚡': 'Explicit CALCULATE/CALCULATETABLE',
+                        '🔴': 'HIGH performance impact',
+                        '🟡': 'MEDIUM performance impact',
+                        '🟢': 'LOW performance impact'
+                    },
+                    'note': '🚨 AI: Display this annotated code at the VERY BEGINNING of your response, before any other analysis. The annotations show WHERE each context transition occurs inline in the code. Users need to see this FIRST to understand the problem areas before reading the detailed analysis.'
+                },
                 'analysis_summary': {
                     'complexity_score': result_analyze.complexity_score,
                     'max_nesting_level': result_analyze.max_nesting_level,
@@ -880,12 +918,24 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                 },
                 'call_tree': call_tree_data,
                 'debug_steps': debug_steps_data,
-                'report': result_report,
+
+                # NOTE: 'report' field removed from 'all' mode to eliminate massive duplication
+                # All data is already available in structured fields above
+                # If user wants formatted text report, use analysis_mode='report'
+
+                # ============================================
+                # 🚨 FINAL OPTIMIZED MEASURE - AI MUST WRITE THIS! 🚨
+                # ============================================
                 'optimized_measure': {
-                    'code': improvements.get('suggested_code') if improvements.get('has_improvements') else expression,
-                    'has_optimizations': improvements.get('has_improvements', False),
-                    'optimization_count': improvements.get('improvements_count', 0),
-                    'estimated_improvement_percent': min(improvements.get('improvements_count', 0) * 15, 80) if improvements.get('has_improvements') else 0
+                    'code': improvements.get('suggested_code'),
+                    'code_actually_transformed': improvements.get('code_actually_transformed', False),
+                    'has_optimization_opportunities': improvements.get('has_improvements', False),
+                    'opportunities_count': improvements.get('improvements_count', 0),
+                    'AI_INSTRUCTION': '🚨 CRITICAL: If the code field above is NULL/None, YOU (the AI) MUST write the complete optimized DAX measure by applying ALL improvements from the improvements.details list. Do NOT just describe the improvements - write the ACTUAL working DAX code that implements all optimizations. The user expects to copy-paste this optimized measure directly into Power BI.',
+                    'note': improvements.get('note') or (
+                        '✅ Automatic transformation applied - this code is ready to use!' if improvements.get('code_actually_transformed')
+                        else '⚠️ ATTENTION AI: The code field is NULL because automatic transformation is not available. YOU MUST manually write the complete optimized DAX code by applying ALL improvements listed in the "improvements" section. Write the COMPLETE measure, not just snippets. The user needs the full, production-ready optimized measure.'
+                    )
                 },
                 # PROMINENT ARTICLE REFERENCES SECTION
                 'articles_referenced': {
@@ -911,6 +961,9 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
             debugger = DaxContextDebugger()
 
             result = analyzer.analyze_context_transitions(expression)
+
+            # Generate annotated DAX code for visual display
+            annotated_dax = analyzer.format_dax_with_annotations(expression, result.transitions)
 
             # Add anti-pattern detection
             anti_patterns = analyzer.detect_dax_anti_patterns(expression)
@@ -967,8 +1020,43 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
             response = {
                 'success': True,
                 'validation': validation_result,
-                'analysis': result.to_dict() if hasattr(result, 'to_dict') else result,
-                'mode': 'analyze'
+                'mode': 'analyze',
+
+                # ============================================
+                # 🚨 CRITICAL AI INSTRUCTIONS - READ FIRST 🚨
+                # ============================================
+                'AI_INSTRUCTIONS': {
+                    'READ_THIS_FIRST': '🚨 This response contains ONLY structured data fields. You must read and present the structured fields below.',
+
+                    'PRIORITY_1_SHOW_ANNOTATED_CODE_FIRST': '🚨 MANDATORY: Display the annotated_dax_code.code field FIRST at the very beginning of your response. Show the complete annotated code with the legend. This gives users immediate visual understanding of WHERE context transitions occur (🔄 = Iterator, 📊 = Measure Ref, ⚡ = CALCULATE, 🔴🟡🟢 = Impact).',
+
+                    'PRIORITY_2_PRESENT_DETAILED_SECTIONS': 'After annotated code, present: (1) best_practices_analysis - violations found, (2) anti_patterns - pattern matches with articles, (3) analysis.transitions - detailed transition info, (4) improvements.details - specific improvement opportunities, (5) vertipaq_analysis - column metrics if available.',
+
+                    'PRIORITY_3_WRITE_OPTIMIZED_CODE': '🚨 CRITICAL: After presenting all analysis, YOU (the AI) MUST write the complete optimized DAX measure. Check final_optimized_measure.code field - if NULL, YOU must manually write the complete optimized code by applying ALL improvements from improvements.details list. This is NOT optional. Write the FULL measure code, not snippets. The user needs production-ready code to copy-paste into Power BI.',
+
+                    'PRIORITY_4_EXPLAIN_CHANGES': 'After writing optimized code, explain what specific optimizations you applied and WHY they improve performance. Reference specific items from improvements.details and cite articles_referenced when relevant.',
+
+                    'DATA_STRUCTURE_GUIDE': 'Key fields: annotated_dax_code.code (visual code), best_practices_analysis.issues (violations), anti_patterns.pattern_matches (patterns found), analysis.transitions (detailed transitions), improvements.details (improvement list), improvements.suggested_code (auto-generated if available), vertipaq_analysis.column_analysis (column metrics), articles_referenced.articles (research articles)',
+
+                    'WORKFLOW_SUMMARY': 'STEP 1: Show annotated_dax_code → STEP 2: Present detailed sections → STEP 3: Write complete optimized DAX code → STEP 4: Explain changes with article references'
+                },
+
+                # ============================================
+                # ANNOTATED DAX CODE - SHOW THIS FIRST!
+                # ============================================
+                'annotated_dax_code': {
+                    'code': annotated_dax,
+                    'legend': {
+                        '🔄': 'Iterator function (creates row context)',
+                        '📊': 'Measure reference (implicit CALCULATE)',
+                        '⚡': 'Explicit CALCULATE/CALCULATETABLE',
+                        '🔴': 'HIGH performance impact',
+                        '🟡': 'MEDIUM performance impact',
+                        '🟢': 'LOW performance impact'
+                    },
+                    'note': '🚨 AI: Display this annotated code at the VERY BEGINNING of your response, before any other analysis. The annotations show WHERE each context transition occurs inline in the code. Users need to see this FIRST to understand the problem areas before reading the detailed analysis.'
+                },
+                'analysis': result.to_dict() if hasattr(result, 'to_dict') else result
             }
 
             # Include measure info if auto-fetched
@@ -1008,13 +1096,19 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                     'suggested_code': improvements.get('suggested_code')
                 }
 
-            # ALWAYS include the final optimized measure prominently
+            # ============================================
+            # 🚨 FINAL OPTIMIZED MEASURE - AI MUST WRITE THIS! 🚨
+            # ============================================
             response['final_optimized_measure'] = {
-                'code': improvements.get('suggested_code') if improvements.get('has_improvements') else expression,
-                'has_optimizations': improvements.get('has_improvements', False),
-                'optimization_count': improvements.get('improvements_count', 0),
-                'estimated_improvement': f"{min(improvements.get('improvements_count', 0) * 15, 80)}%" if improvements.get('has_improvements') else "0%",
-                'note': 'This is the complete, ready-to-use optimized measure incorporating all analysis findings.' if improvements.get('has_improvements') else 'No optimizations needed - code already follows best practices.'
+                'code': improvements.get('suggested_code'),
+                'code_actually_transformed': improvements.get('code_actually_transformed', False),
+                'has_optimization_opportunities': improvements.get('has_improvements', False),
+                'opportunities_count': improvements.get('improvements_count', 0),
+                'AI_INSTRUCTION': '🚨 CRITICAL: If the code field above is NULL/None, YOU (the AI) MUST write the complete optimized DAX measure by applying ALL improvements from the improvements.details list. Do NOT just describe the improvements - write the ACTUAL working DAX code that implements all optimizations. The user expects to copy-paste this optimized measure directly into Power BI.',
+                'note': improvements.get('note') or (
+                    '✅ Automatic transformation applied - this code is ready to use!' if improvements.get('code_actually_transformed')
+                    else '⚠️ ATTENTION AI: The code field is NULL because automatic transformation is not available. YOU MUST manually write the complete optimized DAX code by applying ALL improvements listed in the "improvements" section. Write the COMPLETE measure, not just snippets. The user needs the full, production-ready optimized measure.'
+                )
             }
 
             # PROMINENT ARTICLE REFERENCES
@@ -1165,11 +1259,15 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                 )
 
                 response['final_optimized_measure'] = {
-                    'code': improvements.get('suggested_code') if improvements.get('has_improvements') else expression,
-                    'has_optimizations': improvements.get('has_improvements', False),
-                    'optimization_count': improvements.get('improvements_count', 0),
-                    'estimated_improvement': f"{min(improvements.get('improvements_count', 0) * 15, 80)}%" if improvements.get('has_improvements') else "0%",
-                    'note': 'This is the complete, ready-to-use optimized measure incorporating all analysis findings.' if improvements.get('has_improvements') else 'No optimizations needed - code already follows best practices.'
+                    'code': improvements.get('suggested_code'),
+                    'code_actually_transformed': improvements.get('code_actually_transformed', False),
+                    'has_optimization_opportunities': improvements.get('has_improvements', False),
+                    'opportunities_count': improvements.get('improvements_count', 0),
+                    'AI_INSTRUCTION': '🚨 CRITICAL: If the code field above is NULL/None, YOU (the AI) MUST write the complete optimized DAX measure by applying ALL improvements from the report. Do NOT just describe the improvements - write the ACTUAL working DAX code that implements all optimizations. The user expects to copy-paste this optimized measure directly into Power BI.',
+                    'note': improvements.get('note') or (
+                        '✅ Automatic transformation applied - this code is ready to use!' if improvements.get('code_actually_transformed')
+                        else '⚠️ ATTENTION AI: The code field is NULL because automatic transformation is not available. YOU MUST manually write the complete optimized DAX code by applying ALL improvements listed in the report. Write the COMPLETE measure, not just snippets. The user needs the full, production-ready optimized measure.'
+                    )
                 }
             except Exception as e:
                 logger.warning(f"Could not extract optimized measure: {e}")

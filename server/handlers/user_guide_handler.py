@@ -168,19 +168,26 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ### 03_standard_dax_analysis (UNIFIED TOOL)
 **Purpose**: Complete DAX analysis: syntax validation + context analysis + debugging
-**When to use**: Understanding complex DAX, debugging issues
+**When to use**: Understanding complex DAX, debugging issues, getting optimization recommendations
 **Parameters**:
-  - expression: DAX expression
-  - analysis_mode: 'analyze' (context), 'debug' (step-by-step), 'report' (full)
+  - expression: DAX expression or measure name
+  - analysis_mode: 'all' (default - complete analysis), 'analyze', 'debug', or 'report'
   - skip_validation: Skip syntax check (default: false)
   - output_format: 'friendly' or 'steps' (debug mode)
   - include_optimization: Include suggestions (report mode)
   - include_profiling: Include performance (report mode)
-**Returns**: Comprehensive DAX analysis with insights
+**Returns**: Comprehensive DAX analysis with optimization recommendations
 **Modes**:
-  - analyze: Context transition analysis
+  - all (DEFAULT): Complete analysis - analyze + debug + report + best practices
+  - analyze: Context transition analysis with anti-patterns
   - debug: Step-by-step execution breakdown
   - report: Full analysis with optimization + profiling
+**IMPORTANT WORKFLOW**:
+  1. Tool provides analysis with detailed improvement recommendations
+  2. The AI writes the optimized DAX code based on those recommendations
+  3. The tool does NOT auto-generate optimized code - that's the AI's job
+**Example**:
+  Input: "Total Sales" (measure name) → Tool fetches expression → Analyzes → AI writes optimized version
 
 ### 03_validate_dax_query
 **Purpose**: Validate DAX syntax without execution
@@ -433,7 +440,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ## 📦 CATEGORY 10: PBIP ANALYSIS - HTML (1 tool)
 
-### 10_pbip_analysis_html
+### 10_Pbip_Analysis_Html
 **Purpose**: Analyze PBIP format without Power BI Desktop
 **When to use**: CI/CD pipelines, Git repo analysis, no desktop access
 **Parameters**:
@@ -452,7 +459,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ## 🔧 CATEGORY 11: TMDL OPERATIONS (1 unified tool)
 
-### 11_tmdl_operations
+### 11_Tmdl_Operations
 **Purpose**: Unified handler for ALL TMDL automation tasks
 **When to use**: TMDL export, find/replace, bulk rename, script generation
 **Operations**:
@@ -491,7 +498,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ## ❓ CATEGORY 12: HELP (1 tool)
 
-### 12_show_user_guide
+### 12_Show_User_Guide
 **Purpose**: Display this comprehensive user guide
 **When to use**: Anytime you need tool reference
 **Parameters**: None
@@ -501,7 +508,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ## 🔀 CATEGORY 13: FULL MODEL (PBIP + SAMPLE) (2 tools)
 
-### 13_full_model_pbip_and_sample_export
+### 13_Full_Model_Pbip_And_Sample_Export
 **Purpose**: Export combined TMDL + metadata + sample data
 **When to use**: Complete offline analysis package
 **Parameters**:
@@ -526,9 +533,9 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
   - Testing with real data
   - Comprehensive documentation
 
-### 13_full_model_pbip_and_sample_analysis (FULLY AUTOMATED)
+### 13_Full_Model_Pbip_And_Sample_Analysis (FULLY AUTOMATED)
 **Purpose**: Analyze exported hybrid model (reads all files internally)
-**When to use**: After 13_full_model_pbip_and_sample_export
+**When to use**: After 13_Full_Model_Pbip_And_Sample_Export
 **Parameters**:
   - analysis_path: Path to analysis folder (tool reads all files internally)
   - operation: Type of analysis
@@ -583,7 +590,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 2. 05_comprehensive_analysis (get full analysis)
 3. 08_generate_model_documentation_word
 4. 08_export_model_explorer_html (shareable version)
-5. 11_tmdl_operations with operation='export' (full backup for version control)
+5. 11_Tmdl_Operations with operation='export' (full backup for version control)
 ```
 
 ### Workflow 4: Performance Optimization
@@ -606,20 +613,23 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ### Workflow 6: CI/CD Integration
 ```
-1. 10_pbip_analysis_html (offline analysis)
+1. 10_Pbip_Analysis_Html (offline analysis)
 2. Review best practices from PBIP
-3. 13_full_model_pbip_and_sample_export (if live model available)
-4. 13_full_model_pbip_and_sample_analysis (automated analysis)
+3. 13_Full_Model_Pbip_And_Sample_Export (if live model available)
+4. 13_Full_Model_Pbip_And_Sample_Analysis (automated analysis)
 5. Generate reports for pipeline
 ```
 
-### Workflow 7: DAX Debugging
+### Workflow 7: DAX Debugging & Optimization
 ```
 1. 02_get_measure_details (get measure formula)
 2. 06_analyze_measure_dependencies (understand dependencies)
-3. 03_standard_dax_analysis (mode='debug') (step-by-step)
-4. 03_run_dax (test with modifications)
-5. 04_upsert_measure (save fixed version)
+3. 03_standard_dax_analysis (mode='all' or 'analyze') (get complete analysis)
+4. AI writes optimized DAX based on recommendations from step 3
+5. 03_run_dax (test the optimized DAX with real data)
+6. 04_upsert_measure (save optimized version)
+
+IMPORTANT: The tool provides analysis and recommendations. The AI must write the optimized code.
 ```
 
 ---
@@ -637,10 +647,11 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 - Use depth='balanced' for most cases, 'deep' for problem areas
 
 ### DAX Development Tips
-- Always use 03_standard_dax_analysis before creating measures
-- Test with 03_run_dax before committing
-- Check dependencies with analyze_measure_dependencies
-- Use mode='debug' for step-by-step understanding
+- Always use 03_standard_dax_analysis (mode='all') to get complete analysis with optimization recommendations
+- The AI writes optimized code based on the tool's recommendations - the tool does NOT auto-generate code
+- Test optimized DAX with 03_run_dax before committing
+- Check dependencies with analyze_measure_dependencies before making changes
+- Use mode='debug' for step-by-step context transition understanding
 
 ### Performance Tips
 - Check cardinality with comprehensive_analysis

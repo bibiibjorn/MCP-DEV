@@ -223,12 +223,18 @@ class CallTreeBuilder:
                 else:
                     var_end = len(expr)
 
+                # Extract variable value (first 50 chars for display)
+                var_value_start = match.end()
+                var_value = expr[var_value_start:var_end].strip()
+                if len(var_value) > 50:
+                    var_value = var_value[:50] + "..."
+
                 # Create variable node
                 var_node = CallTreeNode(
                     node_id=self._next_id(),
                     node_type=NodeType.VARIABLE,
-                    expression=f"VAR {var_name}",
-                    function_name="VAR",
+                    expression=f"VAR {var_name} = {var_value}",
+                    function_name=f"VAR {var_name}",  # Show actual variable name
                     start_pos=start + var_start,
                     end_pos=start + var_end
                 )
@@ -303,7 +309,7 @@ class CallTreeBuilder:
                     node_id=self._next_id(),
                     node_type=NodeType.MEASURE_REF,
                     expression=f"[{measure_name}]",
-                    function_name="MEASURE_REF",
+                    function_name=f"[{measure_name}]",  # Show actual measure name
                     start_pos=start + match.start(),
                     end_pos=start + match.end(),
                     has_context_transition=True  # Implicit CALCULATE
@@ -519,11 +525,27 @@ class CallTreeBuilder:
         """Format node for visualization"""
         parts = []
 
-        # Add node type/function
-        if node.function_name:
-            parts.append(node.function_name)
+        # Add icon based on node type
+        if node.node_type == NodeType.VARIABLE:
+            icon = "📦"
+        elif node.node_type == NodeType.MEASURE_REF:
+            icon = "📊"
+        elif node.node_type == NodeType.CALCULATE:
+            icon = "⚡"
+        elif node.node_type == NodeType.ITERATOR:
+            icon = "🔄"
+        elif node.node_type == NodeType.FILTER:
+            icon = "🔍"
+        elif node.node_type == NodeType.FUNCTION:
+            icon = "⚙️"
         else:
-            parts.append(node.node_type.value)
+            icon = ""
+
+        # Add node type/function with icon
+        if node.function_name:
+            parts.append(f"{icon} {node.function_name}")
+        else:
+            parts.append(f"{icon} {node.node_type.value}")
 
         # Add context transition indicator
         if node.has_context_transition:

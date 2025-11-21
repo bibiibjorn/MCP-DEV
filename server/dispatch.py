@@ -81,20 +81,20 @@ class ToolDispatcher:
         '09_Compare_Open_Live_Models': 'compare_pbi_models',
 
         # 10 - PBIP Analysis - HTML (1 tool)
-        '10_pbip_analysis_html': 'analyze_pbip_repository',
+        '10_Pbip_Analysis_Html': 'analyze_pbip_repository',
 
         # 11 - TMDL Operations (1 unified tool)
-        '11_tmdl_operations': 'tmdl_operations',
+        '11_Tmdl_Operations': 'tmdl_operations',
 
         # 12 - Help (1 tool)
-        '12_show_user_guide': 'show_user_guide',
+        '12_Show_User_Guide': 'show_user_guide',
 
         # 13 - Full Model (PBIP + Sample) (2 tools)
-        '13_full_model_pbip_and_sample_export': 'export_hybrid_analysis',
-        '13_full_model_pbip_and_sample_analysis': 'analyze_hybrid_model',
+        '13_Full_Model_Pbip_And_Sample_Export': 'export_hybrid_analysis',
+        '13_Full_Model_Pbip_And_Sample_Analysis': 'analyze_hybrid_model',
 
         # 14 - Monitoring & Token Usage (1 tool)
-        '14_get_token_usage': 'get_token_usage'
+        '14_Get_Token_Usage': 'get_token_usage'
     }
 
     def __init__(self):

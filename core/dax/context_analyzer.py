@@ -41,12 +41,15 @@ class ContextTransition:
     type: TransitionType
     function: str  # Function causing transition (CALCULATE, SUMX, etc.)
     measure_name: Optional[str] = None
+    table_name: Optional[str] = None  # Table being iterated or referenced
+    column_names: List[str] = field(default_factory=list)  # Columns involved
     row_context_vars: List[str] = field(default_factory=list)
     filter_context_before: List[str] = field(default_factory=list)
     filter_context_after: List[str] = field(default_factory=list)
     performance_impact: PerformanceImpact = PerformanceImpact.LOW
     explanation: str = ""
     nested_level: int = 0
+    variables_in_scope: List[str] = field(default_factory=list)  # VAR variables available
 
 
 @dataclass
@@ -78,9 +81,12 @@ class ContextFlowExplanation:
                     "type": t.type.value,
                     "function": t.function,
                     "measure_name": t.measure_name,
+                    "table_name": t.table_name,
+                    "column_names": t.column_names,
                     "performance_impact": t.performance_impact.value,
                     "explanation": t.explanation,
                     "nested_level": t.nested_level,
+                    "variables_in_scope": t.variables_in_scope,
                 }
                 for t in self.transitions
             ],
@@ -130,6 +136,7 @@ class DaxContextAnalyzer:
         self.config = config or {}
         self.max_expression_length = self.config.get("max_expression_length", 50000)
         self.nested_calculate_limit = self.config.get("nested_calculate_limit", 10)
+        self.variables = {}  # Track VAR variables: {name: definition}
 
     def analyze_context_transitions(
         self,
@@ -159,6 +166,9 @@ class DaxContextAnalyzer:
 
             # Normalize expression (remove comments)
             normalized = self._normalize_dax(dax_expression)
+
+            # Extract variables
+            self.variables = self._extract_variables(normalized)
 
             # Detect explicit CALCULATE transitions
             calc_transitions = self._detect_calculate_transitions(normalized)
@@ -233,6 +243,46 @@ class DaxContextAnalyzer:
 
         return dax
 
+    def _extract_variables(self, dax: str) -> Dict[str, str]:
+        """
+        Extract VAR variables from DAX expression
+
+        Returns:
+            Dict mapping variable names to their definitions (truncated)
+        """
+        variables = {}
+
+        # Pattern to match VAR declarations: VAR VariableName = expression
+        var_pattern = r'\bVAR\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*'
+
+        for match in re.finditer(var_pattern, dax, re.IGNORECASE):
+            var_name = match.group(1)
+            start_pos = match.end()
+
+            # Extract the variable definition (until next VAR or RETURN)
+            # Look for next VAR or RETURN keyword
+            remaining = dax[start_pos:]
+            next_var = re.search(r'\bVAR\s+', remaining, re.IGNORECASE)
+            next_return = re.search(r'\bRETURN\b', remaining, re.IGNORECASE)
+
+            end_pos = len(remaining)
+            if next_var and next_return:
+                end_pos = min(next_var.start(), next_return.start())
+            elif next_var:
+                end_pos = next_var.start()
+            elif next_return:
+                end_pos = next_return.start()
+
+            definition = remaining[:end_pos].strip()
+
+            # Truncate long definitions
+            if len(definition) > 100:
+                definition = definition[:100] + "..."
+
+            variables[var_name] = definition
+
+        return variables
+
     def _detect_calculate_transitions(self, dax: str) -> List[ContextTransition]:
         """Detect explicit CALCULATE/CALCULATETABLE transitions"""
         transitions = []
@@ -245,19 +295,57 @@ class DaxContextAnalyzer:
                 location = match.start()
                 line, column = self._get_line_column(dax, location)
 
+                # Extract filter arguments from CALCULATE
+                start = match.end()
+                body = self._extract_function_body(dax, start)
+                filter_args = self._extract_filter_arguments(body)
+
                 transition = ContextTransition(
                     location=location,
                     line=line,
                     column=column,
                     type=TransitionType.EXPLICIT_CALCULATE if func_name == "CALCULATE" else TransitionType.CALCULATETABLE,
                     function=func_name,
+                    filter_context_after=filter_args,
                     explanation=f"{func_name} creates a new filter context by transitioning from row context (if any) to filter context. Any existing filter context is modified by the filter arguments.",
                     performance_impact=PerformanceImpact.LOW,
+                    variables_in_scope=list(self.variables.keys()),
                 )
 
                 transitions.append(transition)
 
         return transitions
+
+    def _extract_filter_arguments(self, body: str) -> List[str]:
+        """Extract filter arguments from CALCULATE body"""
+        # Split by comma at the top level (not inside parentheses)
+        filters = []
+        depth = 0
+        current_arg = ""
+
+        for char in body:
+            if char == '(':
+                depth += 1
+                current_arg += char
+            elif char == ')':
+                depth -= 1
+                current_arg += char
+            elif char == ',' and depth == 0:
+                # Found a top-level comma - this separates arguments
+                arg = current_arg.strip()
+                if arg and not arg.startswith('['):  # Skip the first argument (expression)
+                    # Extract just the filter description (first 50 chars)
+                    filters.append(arg[:50] + "..." if len(arg) > 50 else arg)
+                current_arg = ""
+            else:
+                current_arg += char
+
+        # Add the last argument
+        arg = current_arg.strip()
+        if arg and filters:  # Only add if we already have filters (skip first arg)
+            filters.append(arg[:50] + "..." if len(arg) > 50 else arg)
+
+        return filters
 
     def _detect_implicit_measure_transitions(
         self,
@@ -289,6 +377,7 @@ class DaxContextAnalyzer:
                     measure_name=measure_name,
                     explanation=f"Implicit CALCULATE wrapper around measure [{measure_name}]. If in row context, this causes context transition to filter context.",
                     performance_impact=PerformanceImpact.LOW,
+                    variables_in_scope=list(self.variables.keys()),
                 )
 
                 transitions.append(transition)
@@ -317,6 +406,10 @@ class DaxContextAnalyzer:
 
                 has_measure_refs = bool(re.search(r"\[[^\]]+\]", body))
 
+                # Extract table name and columns from the first argument
+                table_name, columns = self._extract_table_and_columns(body)
+                row_context_vars = [table_name] if table_name else []
+
                 if has_measure_refs:
                     transition = ContextTransition(
                         location=location,
@@ -324,13 +417,75 @@ class DaxContextAnalyzer:
                         column=column,
                         type=TransitionType.ITERATOR,
                         function=func_name,
-                        explanation=f"{func_name} creates row context. Measure references inside the iterator cause context transition in EACH iteration, potentially impacting performance.",
+                        table_name=table_name,
+                        column_names=columns,
+                        row_context_vars=row_context_vars,
+                        explanation=f"{func_name} creates row context{' over ' + table_name if table_name else ''}. Measure references inside the iterator cause context transition in EACH iteration, potentially impacting performance.",
                         performance_impact=PerformanceImpact.MEDIUM,
+                        variables_in_scope=list(self.variables.keys()),
                     )
 
                     transitions.append(transition)
 
         return transitions
+
+    def _extract_table_name(self, body: str) -> Optional[str]:
+        """Extract table name from function body (first argument typically)"""
+        # Try to extract table name - look for patterns like:
+        # - Table[Column] -> Table
+        # - 'Table Name'[Column] -> Table Name
+        # - TableName -> TableName
+
+        # First, try to match table with column: Table[Column] or 'Table'[Column]
+        match = re.search(r"^\s*'?([A-Za-z0-9_\s]+)'?\s*\[", body)
+        if match:
+            return match.group(1).strip()
+
+        # Second, try to match just a table name at the start
+        match = re.search(r"^\s*([A-Za-z][A-Za-z0-9_]*)\s*[,)]", body)
+        if match:
+            table_name = match.group(1).strip()
+            # Exclude DAX functions (they're usually uppercase)
+            if not table_name.isupper():
+                return table_name
+
+        return None
+
+    def _extract_table_and_columns(self, body: str) -> Tuple[Optional[str], List[str]]:
+        """
+        Extract table name and column names from function body
+
+        Returns:
+            Tuple of (table_name, list of column names)
+        """
+        table_name = None
+        columns = []
+
+        # Pattern to match table and column references:
+        # - Table[Column]
+        # - 'Table Name'[Column]
+        # - [Column] (standalone column in same table)
+
+        # Extract table with column: Table[Column] or 'Table'[Column]
+        table_col_pattern = r"'?([A-Za-z0-9_\s]+)'?\[([A-Za-z0-9_\s]+)\]"
+
+        for match in re.finditer(table_col_pattern, body):
+            potential_table = match.group(1).strip()
+            column = match.group(2).strip()
+
+            # If we haven't found a table yet, this is likely it
+            if table_name is None and not potential_table.isupper():
+                table_name = potential_table
+
+            # Add column to list (avoid duplicates)
+            if column not in columns and not column.isupper():
+                columns.append(column)
+
+        # If still no table name, try to extract from first argument
+        if table_name is None:
+            table_name = self._extract_table_name(body)
+
+        return table_name, columns
 
     def _extract_function_body(self, dax: str, start: int) -> str:
         """Extract function body (simplified parenthesis matching)"""
@@ -466,8 +621,8 @@ class DaxContextAnalyzer:
         try:
             from core.research.dax_research import DaxResearchProvider
 
-            # Enable online research for enhanced recommendations
-            research_provider = DaxResearchProvider(enable_online_research=True)
+            # Use curated embedded content (disable online research to avoid formatting issues)
+            research_provider = DaxResearchProvider(enable_online_research=False)
             results = research_provider.get_optimization_guidance(
                 query=dax_expression,
                 performance_data=None  # No performance data needed for pattern detection
@@ -541,6 +696,71 @@ SUMMARIZECOLUMNS(
 )
 """
         }
+
+    def format_dax_with_annotations(self, dax_expression: str, transitions: List[ContextTransition]) -> str:
+        """
+        Format DAX code with inline visual annotations showing where context transitions occur
+
+        Args:
+            dax_expression: Original DAX expression
+            transitions: List of detected context transitions
+
+        Returns:
+            Formatted DAX code with inline annotations
+        """
+        if not transitions:
+            return dax_expression
+
+        # Split DAX into lines
+        lines = dax_expression.split('\n')
+
+        # Group transitions by line number
+        transitions_by_line = {}
+        for i, transition in enumerate(transitions, 1):
+            line_num = transition.line
+            if line_num not in transitions_by_line:
+                transitions_by_line[line_num] = []
+
+            # Create annotation emoji based on type
+            if transition.type == TransitionType.ITERATOR:
+                emoji = "🔄"
+                type_label = "Iterator"
+            elif transition.type == TransitionType.IMPLICIT_MEASURE:
+                emoji = "📊"
+                type_label = "Measure Ref"
+            else:
+                emoji = "⚡"
+                type_label = "CALCULATE"
+
+            # Create impact indicator
+            if transition.performance_impact == PerformanceImpact.HIGH:
+                impact = "🔴"
+            elif transition.performance_impact == PerformanceImpact.MEDIUM:
+                impact = "🟡"
+            else:
+                impact = "🟢"
+
+            transitions_by_line[line_num].append({
+                'number': i,
+                'emoji': emoji,
+                'type': type_label,
+                'impact': impact,
+                'function': transition.function,
+                'explanation': transition.explanation[:80] + "..." if len(transition.explanation) > 80 else transition.explanation
+            })
+
+        # Build annotated code
+        annotated_lines = []
+        for line_num, line_text in enumerate(lines, 1):
+            annotated_lines.append(line_text)
+
+            # Add annotations for this line
+            if line_num in transitions_by_line:
+                for trans_info in transitions_by_line[line_num]:
+                    annotation = f"    {trans_info['emoji']} {trans_info['impact']} Transition #{trans_info['number']} ({trans_info['type']}): {trans_info['function']}"
+                    annotated_lines.append(annotation)
+
+        return '\n'.join(annotated_lines)
 
     def explain_context_flow(self, dax_expression: str) -> str:
         """

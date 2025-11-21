@@ -117,6 +117,7 @@ class VertiPaqAnalyzer:
                 return False
 
             # Query DMVs for column statistics
+            # Remove WHERE clause to capture all column types
             dmv_query = """
             SELECT
                 [DIMENSION_NAME] as TableName,
@@ -126,39 +127,58 @@ class VertiPaqAnalyzer:
                 [DATATYPE] as DataType,
                 [DICTIONARY_SIZE] as DictionarySizeBytes,
                 [HIERARCHY_SIZE] as HierarchySizeBytes,
-                [ATTRIBUTE_ENCODING] as Encoding
+                [ATTRIBUTE_ENCODING] as Encoding,
+                [COLUMN_TYPE] as ColumnType
             FROM $SYSTEM.DISCOVER_STORAGE_TABLE_COLUMNS
-            WHERE [COLUMN_TYPE] = 'BASIC_DATA'
             """
 
             result = qe.execute_dmv_query(dmv_query)
 
-            if result.get('success') and result.get('data'):
-                self._column_cache.clear()
-
-                for row in result['data']:
-                    table_name = row.get('TableName', '')
-                    column_name = row.get('ColumnName', '')
-
-                    metrics = ColumnMetrics(
-                        table_name=table_name,
-                        column_name=column_name,
-                        cardinality=int(row.get('Cardinality', 0)),
-                        size_bytes=int(row.get('SizeBytes', 0)),
-                        data_type=row.get('DataType', 'unknown'),
-                        encoding=row.get('Encoding', 'unknown'),
-                        dictionary_size_bytes=int(row.get('DictionarySizeBytes', 0)),
-                        hierarchy_size_bytes=int(row.get('HierarchySizeBytes', 0))
-                    )
-
-                    self._column_cache[metrics.full_name] = metrics
-
-                self._cache_loaded = True
-                logger.info(f"Loaded metrics for {len(self._column_cache)} columns")
-                return True
-            else:
-                logger.warning(f"Failed to load VertiPaq metrics: {result.get('error', 'Unknown error')}")
+            if not result.get('success'):
+                logger.error(f"DMV query failed: {result.get('error', 'Unknown error')}")
                 return False
+
+            if not result.get('data'):
+                logger.warning("DMV query returned no data")
+                return False
+
+            # Process DMV results
+            self._column_cache.clear()
+            skipped_columns = 0
+
+            for row in result['data']:
+                table_name = row.get('TableName', '')
+                column_name = row.get('ColumnName', '')
+                column_type = row.get('ColumnType', 'BASIC_DATA')
+
+                # Skip internal/system columns (RowNumber columns)
+                if column_type == 'ROWNUM' or column_name.startswith('RowNumber-'):
+                    skipped_columns += 1
+                    continue
+
+                # Add column type info to encoding for better visibility
+                encoding = row.get('Encoding', 'unknown')
+                if column_type == 'CALCULATED':
+                    encoding = f"{encoding} (Calculated Column)"
+                elif column_type == 'UNKNOWN':
+                    encoding = f"{encoding} (Type Unknown)"
+
+                metrics = ColumnMetrics(
+                    table_name=table_name,
+                    column_name=column_name,
+                    cardinality=int(row.get('Cardinality', 0)),
+                    size_bytes=int(row.get('SizeBytes', 0)),
+                    data_type=row.get('DataType', 'unknown'),
+                    encoding=encoding,
+                    dictionary_size_bytes=int(row.get('DictionarySizeBytes', 0)),
+                    hierarchy_size_bytes=int(row.get('HierarchySizeBytes', 0))
+                )
+
+                self._column_cache[metrics.full_name] = metrics
+
+            self._cache_loaded = True
+            logger.info(f"Loaded metrics for {len(self._column_cache)} columns (skipped {skipped_columns} internal columns)")
+            return True
 
         except Exception as e:
             logger.error(f"Error loading VertiPaq metrics: {e}", exc_info=True)
@@ -176,24 +196,39 @@ class VertiPaqAnalyzer:
         """
         # Ensure cache is loaded
         if not self._cache_loaded:
-            self.load_column_metrics()
+            cache_success = self.load_column_metrics()
+            if not cache_success:
+                logger.warning(f"Failed to load DMV cache, will attempt direct calculation for {column_ref}")
 
         # Normalize column reference
         normalized = self._normalize_column_ref(column_ref)
+        logger.debug(f"Looking up column: original='{column_ref}', normalized='{normalized}'")
 
         # First, try to get from cache (DMV data)
         cached = self._column_cache.get(normalized)
 
-        # If not in cache, try to calculate cardinality directly using DAX
-        if not cached:
-            logger.debug(f"Column {normalized} not in cache, attempting fallback calculation")
-            cached = self._calculate_column_cardinality(column_ref)
-            if cached:
-                # Add to cache for future use
-                self._column_cache[normalized] = cached
-                logger.info(f"Successfully calculated metrics for {normalized} using DAX fallback")
+        if cached:
+            logger.debug(f"Found {normalized} in cache with cardinality {cached.cardinality:,}")
+            return cached
+
+        # If not in cache, log available columns for debugging
+        if self._cache_loaded and len(self._column_cache) > 0:
+            # Log a few similar column names to help diagnose
+            similar_cols = [k for k in self._column_cache.keys() if normalized.split('[')[0] in k]
+            if similar_cols:
+                logger.debug(f"Column {normalized} not found. Similar columns in cache: {similar_cols[:5]}")
             else:
-                logger.warning(f"Could not retrieve metrics for {normalized} from either DMV or DAX calculation")
+                logger.debug(f"Column {normalized} not found. Cache has {len(self._column_cache)} columns")
+
+        # Try to calculate cardinality directly using DAX
+        logger.debug(f"Column {normalized} not in cache, attempting fallback calculation")
+        cached = self._calculate_column_cardinality(column_ref)
+        if cached:
+            # Add to cache for future use
+            self._column_cache[normalized] = cached
+            logger.info(f"Successfully calculated metrics for {normalized} using DAX fallback: cardinality={cached.cardinality:,}")
+        else:
+            logger.warning(f"Could not retrieve metrics for {normalized} from either DMV or DAX calculation")
 
         return cached
 
@@ -347,13 +382,15 @@ class VertiPaqAnalyzer:
         """
         try:
             if not self.connection_state or not self.connection_state.is_connected():
+                logger.debug("Cannot calculate cardinality: not connected")
                 return None
 
             qe = self.connection_state.query_executor
             if not qe:
+                logger.debug("Cannot calculate cardinality: no query executor")
                 return None
 
-            # Parse table and column name
+            # Parse table and column name - support spaces in names
             match = re.match(r"(?:'([^']+)'|(\w+))\[([^\]]+)\]", column_ref)
             if not match:
                 logger.debug(f"Could not parse column reference: {column_ref}")
@@ -363,14 +400,18 @@ class VertiPaqAnalyzer:
             column_name = match.group(3)
 
             # Build DAX query to calculate cardinality
+            # Use quotes around table name if it contains spaces or special characters
+            table_ref = f"'{table_name}'" if ' ' in table_name or not table_name.isalnum() else table_name
+
             dax_query = f"""
             EVALUATE
             ROW(
                 "Cardinality", COUNTROWS(DISTINCT({column_ref})),
-                "TotalRows", COUNTROWS({table_name})
+                "TotalRows", COUNTROWS({table_ref})
             )
             """
 
+            logger.debug(f"Executing fallback DAX query for {column_ref}")
             result = qe.validate_and_execute_dax(dax_query, top_n=1)
 
             if result.get('success') and result.get('data'):
@@ -379,7 +420,7 @@ class VertiPaqAnalyzer:
                     cardinality = int(data[0].get('Cardinality', 0))
                     total_rows = int(data[0].get('TotalRows', 0))
 
-                    logger.info(f"Calculated cardinality for {column_ref}: {cardinality:,}")
+                    logger.info(f"Calculated cardinality for {column_ref}: {cardinality:,} (table has {total_rows:,} rows)")
 
                     # Create metrics object with calculated cardinality
                     # Note: Size estimation is approximate without DMV data
@@ -395,12 +436,16 @@ class VertiPaqAnalyzer:
                         dictionary_size_bytes=0,
                         hierarchy_size_bytes=0
                     )
+                else:
+                    logger.debug(f"DAX query returned no data for {column_ref}")
+            else:
+                error_msg = result.get('error', 'Unknown error')
+                logger.debug(f"Failed to calculate cardinality for {column_ref}: {error_msg}")
 
-            logger.debug(f"Failed to calculate cardinality for {column_ref}: {result.get('error', 'Unknown error')}")
             return None
 
         except Exception as e:
-            logger.debug(f"Error calculating cardinality for {column_ref}: {e}")
+            logger.warning(f"Error calculating cardinality for {column_ref}: {e}", exc_info=True)
             return None
 
     def _estimate_column_size(self, cardinality: int, total_rows: int) -> int:

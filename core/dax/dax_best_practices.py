@@ -205,8 +205,9 @@ class DaxBestPracticesAnalyzer:
                 code_example_after=f"CALCULATE({match.group(1).replace('X', '')}(Table[Column]), condition)",
                 estimated_improvement="5-10x faster",
                 article_reference={
-                    'title': 'Optimizing SUMX and Iterator Functions',
-                    'url': 'https://www.sqlbi.com/articles/optimizing-sumx/'
+                    'title': 'Avoid FILTER as filter argument (Microsoft Learn)',
+                    'url': 'https://learn.microsoft.com/en-us/power-bi/guidance/dax-avoid-avoid-filter-as-filter-argument',
+                    'source': 'Microsoft Learn'
                 },
                 location=f"Position {match.start()}"
             ))
@@ -232,8 +233,9 @@ class DaxBestPracticesAnalyzer:
                 code_example_after="CALCULATE(COUNTROWS(Table), Table[Column] > 100)",
                 estimated_improvement="5-10x faster",
                 article_reference={
-                    'title': 'Optimizing COUNTROWS and FILTER',
-                    'url': 'https://www.sqlbi.com/articles/optimizing-countrows-filter/'
+                    'title': 'COUNTROWS Best Practices (Microsoft Learn)',
+                    'url': 'https://learn.microsoft.com/en-us/dax/best-practices/dax-countrows',
+                    'source': 'Microsoft Learn'
                 },
                 location=f"Position {match.start()}"
             ))
@@ -259,8 +261,9 @@ class DaxBestPracticesAnalyzer:
                 code_example_after="CALCULATE(VALUES(Table), condition)",
                 estimated_improvement="3-5x faster",
                 article_reference={
-                    'title': 'Avoiding FILTER in Nested Iterators',
-                    'url': 'https://www.sqlbi.com/articles/avoiding-filter-in-nested-iterators/'
+                    'title': 'Dynamic Segmentation Pattern (DAX Patterns)',
+                    'url': 'https://www.daxpatterns.com/dynamic-segmentation/',
+                    'source': 'DAX Patterns'
                 },
                 location=f"Position {match.start()}"
             ))
@@ -342,8 +345,9 @@ class DaxBestPracticesAnalyzer:
                 code_example_after="DIVIDE([Numerator], [Denominator], 0)",
                 estimated_improvement="2-3x faster",
                 article_reference={
-                    'title': 'Understanding DIVIDE Performance',
-                    'url': 'https://www.sqlbi.com/articles/understanding-divide-performance/'
+                    'title': 'DIVIDE Function Reference (DAX.Guide)',
+                    'url': 'https://dax.guide/divide/',
+                    'source': 'DAX.Guide'
                 },
                 location=f"Position {match.start()}"
             ))
@@ -397,8 +401,9 @@ class DaxBestPracticesAnalyzer:
                 code_example_after="VAR Threshold = 1000\nRETURN FILTER(Products, Products[Sales] > Threshold)",
                 estimated_improvement="3-5x faster",
                 article_reference={
-                    'title': 'Avoiding Measures in FILTER',
-                    'url': 'https://www.sqlbi.com/articles/avoiding-measures-in-filter/'
+                    'title': 'Static Segmentation Pattern (DAX Patterns)',
+                    'url': 'https://www.daxpatterns.com/static-segmentation/',
+                    'source': 'DAX Patterns'
                 },
                 location=f"Position {match.start()}"
             ))
@@ -810,19 +815,19 @@ class DaxBestPracticesAnalyzer:
         """Get list of all articles referenced during analysis"""
         article_map = {
             'sqlbi_sumx_filter': {
-                'title': 'Optimizing SUMX and Iterator Functions',
-                'url': 'https://www.sqlbi.com/articles/optimizing-sumx/',
-                'source': 'SQLBI'
+                'title': 'Avoid FILTER as filter argument',
+                'url': 'https://learn.microsoft.com/en-us/power-bi/guidance/dax-avoid-avoid-filter-as-filter-argument',
+                'source': 'Microsoft Learn'
             },
             'sqlbi_countrows_filter': {
-                'title': 'Optimizing COUNTROWS and FILTER',
-                'url': 'https://www.sqlbi.com/articles/optimizing-countrows-filter/',
-                'source': 'SQLBI'
+                'title': 'COUNTROWS Best Practices',
+                'url': 'https://learn.microsoft.com/en-us/dax/best-practices/dax-countrows',
+                'source': 'Microsoft Learn'
             },
             'sqlbi_filter_all': {
-                'title': 'Avoiding FILTER in Nested Iterators',
-                'url': 'https://www.sqlbi.com/articles/avoiding-filter-in-nested-iterators/',
-                'source': 'SQLBI'
+                'title': 'Dynamic Segmentation Pattern',
+                'url': 'https://www.daxpatterns.com/dynamic-segmentation/',
+                'source': 'DAX Patterns'
             },
             'sqlbi_context_transition': {
                 'title': 'Understanding Context Transition',
@@ -830,34 +835,44 @@ class DaxBestPracticesAnalyzer:
                 'source': 'SQLBI'
             },
             'sqlbi_related_iterators': {
-                'title': 'Avoiding RELATED in Iterators',
-                'url': 'https://www.sqlbi.com/articles/avoiding-related-in-iterators/',
-                'source': 'SQLBI'
+                'title': 'RELATED Function Reference',
+                'url': 'https://dax.guide/related/',
+                'source': 'DAX.Guide'
             },
             'sqlbi_divide': {
-                'title': 'Understanding DIVIDE Performance',
-                'url': 'https://www.sqlbi.com/articles/understanding-divide-performance/',
-                'source': 'SQLBI'
+                'title': 'DIVIDE Function Reference',
+                'url': 'https://dax.guide/divide/',
+                'source': 'DAX.Guide'
             },
             'sqlbi_values_optimize': {
-                'title': 'Optimizing VALUES Performance',
-                'url': 'https://www.sqlbi.com/articles/optimizing-values-performance/',
-                'source': 'SQLBI'
+                'title': 'VALUES Function Reference',
+                'url': 'https://dax.guide/values/',
+                'source': 'DAX.Guide'
             },
             'sqlbi_measure_filter': {
-                'title': 'Avoiding Measures in FILTER',
-                'url': 'https://www.sqlbi.com/articles/avoiding-measures-in-filter/',
-                'source': 'SQLBI'
+                'title': 'Static Segmentation Pattern',
+                'url': 'https://www.daxpatterns.com/static-segmentation/',
+                'source': 'DAX Patterns'
             },
             'sqlbi_variables': {
-                'title': 'Best Practices Using Variables',
-                'url': 'https://www.sqlbi.com/articles/best-practices-using-summarize-and-addcolumns/',
-                'source': 'SQLBI'
+                'title': 'Use variables to improve your DAX formulas',
+                'url': 'https://learn.microsoft.com/en-us/dax/best-practices/dax-variables',
+                'source': 'Microsoft Learn'
             },
             'microsoft_dax_optimization': {
-                'title': 'DAX: Avoid FILTER as filter argument',
-                'url': 'https://learn.microsoft.com/en-us/power-bi/guidance/dax-avoid-avoid-filter-as-filter-argument',
+                'title': 'Power BI Performance Best Practices',
+                'url': 'https://learn.microsoft.com/en-us/power-bi/guidance/power-bi-optimization',
                 'source': 'Microsoft Learn'
+            },
+            'dax_guide_sumx': {
+                'title': 'SUMX Function - When to use',
+                'url': 'https://dax.guide/sumx/#when-to-use-sumx',
+                'source': 'DAX.Guide'
+            },
+            'dax_patterns_time_intel': {
+                'title': 'Standard Time-Related Calculations',
+                'url': 'https://www.daxpatterns.com/standard-time-related-calculations/',
+                'source': 'DAX Patterns'
             }
         }
 

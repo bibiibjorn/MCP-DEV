@@ -19,7 +19,7 @@ ARTICLE_PATTERNS = {
 
     "sumx_filter": {
         "title": "SUMX and FILTER Optimization",
-        "url": "https://www.sqlbi.com/articles/optimizing-sumx/",
+        "url": "https://learn.microsoft.com/en-us/power-bi/guidance/dax-avoid-avoid-filter-as-filter-argument",
         "patterns": [
             r"SUMX\s*\(\s*FILTER\s*\(",
             r"AVERAGEX\s*\(\s*FILTER\s*\(",
@@ -34,12 +34,13 @@ ARTICLE_PATTERNS = {
         After:  CALCULATE(SUM(Table[Amount]), Table[Column] = Value)
 
         Expected improvement: 5-10x performance gain
+        Source: Microsoft Learn Official Guidance
         """
     },
 
     "filter_all": {
         "title": "FILTER(ALL()) Anti-Pattern",
-        "url": "https://www.sqlbi.com/articles/avoiding-filter-in-nested-iterators/",
+        "url": "https://www.daxpatterns.com/dynamic-segmentation/",
         "patterns": [
             r"FILTER\s*\(\s*ALL\s*\(",
             r"FILTER\s*\(\s*ALLSELECTED\s*\(",
@@ -53,6 +54,8 @@ ARTICLE_PATTERNS = {
         Optimization: Use CALCULATE with filter arguments
         Before: FILTER(ALL(Table), [Column] > 100)
         After:  CALCULATE(VALUES(Table), Table[Column] > 100)
+
+        Source: DAX Patterns - Dynamic Segmentation
         """
     },
 
@@ -94,7 +97,7 @@ ARTICLE_PATTERNS = {
 
     "divide_zero_check": {
         "title": "DIVIDE vs Manual Division with Error Handling",
-        "url": "https://www.sqlbi.com/articles/understanding-divide-performance/",
+        "url": "https://dax.guide/divide/",
         "patterns": [
             r"IF\s*\([^=]+\s*=\s*0\s*,\s*[^,]+\s*,\s*[^/]+\s*/\s*[^)]+\)",
         ],
@@ -108,6 +111,7 @@ ARTICLE_PATTERNS = {
         After:  DIVIDE([Numerator], [Denominator], 0)
 
         Expected improvement: 2-3x performance gain
+        Source: DAX.Guide - DIVIDE function reference
         """
     },
 
@@ -130,7 +134,7 @@ ARTICLE_PATTERNS = {
 
     "countrows_filter": {
         "title": "COUNTROWS(FILTER()) Optimization",
-        "url": "https://www.sqlbi.com/articles/optimizing-countrows-filter/",
+        "url": "https://learn.microsoft.com/en-us/dax/best-practices/dax-countrows",
         "patterns": [
             r"COUNTROWS\s*\(\s*FILTER\s*\(",
         ],
@@ -144,12 +148,13 @@ ARTICLE_PATTERNS = {
         After:  CALCULATE(COUNTROWS(Table), Table[Column] > 100)
 
         Expected improvement: 5-10x performance gain
+        Source: Microsoft Learn DAX Best Practices
         """
     },
 
     "measure_in_filter": {
         "title": "Measures in FILTER Predicates",
-        "url": "https://www.sqlbi.com/articles/avoiding-measures-in-filter/",
+        "url": "https://www.daxpatterns.com/static-segmentation/",
         "patterns": [
             r"FILTER\s*\([^)]*,\s*\[[^\]]+\]\s*[><!=]",
         ],
@@ -162,12 +167,14 @@ ARTICLE_PATTERNS = {
         Before: FILTER(Products, [Total Sales] > 1000)
         After:  VAR Threshold = 1000
                 RETURN FILTER(Products, Products[Sales] > Threshold)
+
+        Source: DAX Patterns - Static Segmentation
         """
     },
 
     "unnecessary_iterators": {
         "title": "Unnecessary Iterator Functions",
-        "url": "https://www.sqlbi.com/articles/when-to-use-iterators/",
+        "url": "https://dax.guide/sumx/#when-to-use-sumx",
         "patterns": [
             r"SUMX\s*\([^,]+,\s*[^\[]*\[[^\]]+\]\s*\)",  # SUMX without actual iteration expression
         ],
@@ -182,6 +189,8 @@ ARTICLE_PATTERNS = {
 
         Before: AVERAGEX(Table, Table[Value])
         After:  AVERAGE(Table[Value])
+
+        Source: DAX.Guide - When to use SUMX
         """
     },
 
@@ -238,7 +247,7 @@ ARTICLE_PATTERNS = {
 
     "variable_best_practices": {
         "title": "DAX Variables Best Practices",
-        "url": "https://www.sqlbi.com/articles/best-practices-using-summarize-and-addcolumns/",
+        "url": "https://learn.microsoft.com/en-us/dax/best-practices/dax-variables",
         "patterns": [
             r"\bVAR\b.*\bVAR\b.*\bVAR\b",  # Multiple VARs
         ],
@@ -249,6 +258,8 @@ ARTICLE_PATTERNS = {
         - Variables improve readability and maintainability
         - Use descriptive variable names (not V1, V2, etc.)
         - Variables reduce query complexity and improve performance
+
+        Source: Microsoft Learn - Use variables to improve DAX formulas
         """
     },
 
