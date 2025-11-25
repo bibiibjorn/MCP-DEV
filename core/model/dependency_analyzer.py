@@ -184,7 +184,8 @@ class DependencyAnalyzer:
                 if (ref_table == table or ref_table == '') and ref_name == measure:
                     usage_list.append({
                         'table': m_table,
-                        'measure': m_name
+                        'measure': m_name,
+                        'display_folder': m.get('DisplayFolder', '') or ''
                     })
                     break
 
@@ -1011,6 +1012,7 @@ class DependencyAnalyzer:
             # Combine into single diagram
             measure_key = f"{table}[{measure}]"
             all_nodes = set()
+            column_nodes = set()  # Track column nodes for different styling
             upstream_edges = []
             downstream_edges = []
             visited_upstream = set()
@@ -1040,7 +1042,7 @@ class DependencyAnalyzer:
             def sanitize_label(name: str) -> str:
                 return name.replace('"', '\\"')
 
-            # Collect upstream
+            # Collect upstream (measures AND columns)
             def collect_upstream(tbl: str, msr: str, depth: int):
                 if depth > 3:
                     return
@@ -1052,12 +1054,21 @@ class DependencyAnalyzer:
 
                 deps = self.analyze_measure_dependencies(tbl, msr)
                 if deps.get('success'):
+                    # Add referenced measures
                     for dep_tbl, dep_name in deps.get('referenced_measures', []):
                         if dep_tbl:
                             dep_key = f"{dep_tbl}[{dep_name}]"
                             all_nodes.add(dep_key)
                             upstream_edges.append((dep_key, key))
                             collect_upstream(dep_tbl, dep_name, depth + 1)
+                    # Add referenced columns (only at depth 0 to avoid clutter)
+                    if depth == 0:
+                        for col_tbl, col_name in deps.get('referenced_columns', []):
+                            if col_tbl:
+                                col_key = f"{col_tbl}[{col_name}]"
+                                all_nodes.add(col_key)
+                                column_nodes.add(col_key)
+                                upstream_edges.append((col_key, key))
 
             # Collect downstream
             def collect_downstream(tbl: str, msr: str, depth: int):
@@ -1092,13 +1103,20 @@ class DependencyAnalyzer:
             # Subgraphs for organization
             upstream_nodes = set(e[0] for e in upstream_edges) - {measure_key}
             downstream_nodes = set(e[1] for e in downstream_edges) - {measure_key}
+            upstream_measures = upstream_nodes - column_nodes
+            upstream_columns = upstream_nodes & column_nodes
 
             if upstream_nodes:
                 lines.append("    subgraph Dependencies")
                 lines.append("    direction TB")
-                for node in sorted(upstream_nodes):
+                # Add measure nodes
+                for node in sorted(upstream_measures):
                     node_id = sanitize_node_id(node)
                     lines.append(f'    {node_id}["{sanitize_label(node)}"]:::upstream')
+                # Add column nodes with different style
+                for node in sorted(upstream_columns):
+                    node_id = sanitize_node_id(node)
+                    lines.append(f'    {node_id}["{sanitize_label(node)}"]:::column')
                 lines.append("    end")
                 lines.append("")
 
@@ -1131,6 +1149,7 @@ class DependencyAnalyzer:
             lines.append("    classDef root fill:#2196F3,stroke:#1565C0,color:#fff,stroke-width:3px")
             lines.append("    classDef upstream fill:#4CAF50,stroke:#388E3C,color:#fff")
             lines.append("    classDef downstream fill:#FF9800,stroke:#F57C00,color:#fff")
+            lines.append("    classDef column fill:#9C27B0,stroke:#7B1FA2,color:#fff")
 
             mermaid_code = "\n".join(lines)
 

@@ -51,11 +51,50 @@ def generate_dependency_html(
     referenced_columns = referenced_columns or []
     used_by_measures = used_by_measures or []
 
+    # Helper to create Mermaid-compatible node IDs (must match dependency_analyzer.py)
+    import re
+    def sanitize_node_id(name: str) -> str:
+        result = name.replace("[", "_").replace("]", "").replace(" ", "_")
+        result = result.replace("-", "_").replace("/", "_").replace("\\", "_")
+        result = result.replace("(", "_").replace(")", "_").replace("%", "pct")
+        result = result.replace("&", "and").replace("'", "").replace('"', "")
+        result = result.replace(".", "_").replace(",", "_").replace(":", "_")
+        result = result.replace("+", "plus").replace("*", "x").replace("=", "eq")
+        result = result.replace("<", "lt").replace(">", "gt").replace("!", "not")
+        result = result.replace("#", "num").replace("@", "at").replace("$", "dollar")
+        result = re.sub(r'[^a-zA-Z0-9_]', '', result)
+        result = re.sub(r'_+', '_', result)
+        if result and not result[0].isalpha():
+            result = 'n_' + result
+        return result.strip('_') or 'node'
+
+    # Generate node IDs for filtering (matching what Mermaid generates)
+    upstream_node_ids = []
+    for tbl, name in referenced_measures:
+        node_key = f"{tbl}[{name}]"
+        upstream_node_ids.append(sanitize_node_id(node_key))
+    for tbl, name in referenced_columns:
+        node_key = f"{tbl}[{name}]"
+        upstream_node_ids.append(sanitize_node_id(node_key))
+
+    downstream_node_ids = []
+    for item in used_by_measures:
+        tbl = item.get('table', '')
+        name = item.get('measure', '')
+        if tbl and name:
+            node_key = f"{tbl}[{name}]"
+            downstream_node_ids.append(sanitize_node_id(node_key))
+
+    root_node_id = sanitize_node_id(f"{measure_table}[{measure_name}]")
+
     # Generate JSON data for JavaScript
     import json
     ref_measures_json = json.dumps([{'table': t, 'name': m} for t, m in referenced_measures])
     ref_columns_json = json.dumps([{'table': t, 'name': c} for t, c in referenced_columns])
     used_by_json = json.dumps(used_by_measures)
+    upstream_ids_json = json.dumps(upstream_node_ids)
+    downstream_ids_json = json.dumps(downstream_node_ids)
+    root_id_json = json.dumps(root_node_id)
 
     timestamp = datetime.now().strftime("%B %d, %Y at %H:%M")
 
@@ -408,6 +447,43 @@ def generate_dependency_html(
             background: var(--accent-light);
             transform: translateY(-1px);
             box-shadow: 0 6px 20px var(--accent-glow);
+        }}
+
+        .filter-group {{
+            display: flex;
+            gap: 0.25rem;
+            background: var(--bg-dark);
+            padding: 0.25rem;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+        }}
+
+        .btn-filter {{
+            background: transparent;
+            color: var(--text-muted);
+            border: none;
+            padding: 0.5rem 0.875rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }}
+
+        .btn-filter:hover {{
+            color: var(--text);
+            background: var(--bg-elevated);
+        }}
+
+        .btn-filter.active {{
+            background: var(--accent);
+            color: white;
+            box-shadow: 0 2px 8px var(--accent-glow);
+        }}
+
+        .toolbar-divider {{
+            width: 1px;
+            background: var(--border);
+            margin: 0 0.5rem;
         }}
 
         .diagram-content {{
@@ -833,6 +909,12 @@ def generate_dependency_html(
                     <span>Dependency Flow</span>
                 </div>
                 <div class="toolbar">
+                    <div class="filter-group">
+                        <button class="btn btn-filter active" id="filter-all" onclick="setFilter('all')">All</button>
+                        <button class="btn btn-filter" id="filter-upstream" onclick="setFilter('upstream')">⬆ Upstream</button>
+                        <button class="btn btn-filter" id="filter-downstream" onclick="setFilter('downstream')">⬇ Downstream</button>
+                    </div>
+                    <div class="toolbar-divider"></div>
                     <button class="btn btn-ghost" onclick="zoomIn()">🔍+ Zoom In</button>
                     <button class="btn btn-ghost" onclick="zoomOut()">🔍- Zoom Out</button>
                     <button class="btn btn-ghost" onclick="resetZoom()">↺ Reset</button>
@@ -953,6 +1035,219 @@ def generate_dependency_html(
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
+            }}
+        }}
+
+        // Node ID lists for filtering (pre-computed to match Mermaid IDs)
+        const upstreamNodeIds = {upstream_ids_json};
+        const downstreamNodeIds = {downstream_ids_json};
+        const rootNodeId = {root_id_json};
+
+        // Filter functionality for upstream/downstream view
+        let currentFilter = 'all';
+
+        function setFilter(filter) {{
+            currentFilter = filter;
+
+            // Update button states
+            document.querySelectorAll('.btn-filter').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`filter-${{filter}}`).classList.add('active');
+
+            // Get SVG elements
+            const svg = document.querySelector('.mermaid svg');
+            if (!svg) return;
+
+            const allNodes = svg.querySelectorAll('g.node');
+            const allEdges = svg.querySelectorAll('g.edgePath');
+            const allClusters = svg.querySelectorAll('g.cluster');
+
+            // Helper to check if node ID matches any in a list
+            function nodeMatchesList(nodeId, idList) {{
+                // Mermaid prefixes node IDs with 'flowchart-' and adds suffixes
+                // Check if any of our IDs are contained in the node ID
+                return idList.some(id => nodeId.includes(id));
+            }}
+
+            // Apply visibility to nodes
+            allNodes.forEach(node => {{
+                const nodeId = node.id || '';
+                const isUpstream = nodeMatchesList(nodeId, upstreamNodeIds);
+                const isDownstream = nodeMatchesList(nodeId, downstreamNodeIds);
+                const isRoot = nodeId.includes(rootNodeId);
+
+                if (filter === 'all') {{
+                    node.style.display = '';
+                    node.style.opacity = '1';
+                }} else if (filter === 'upstream') {{
+                    node.style.display = (isUpstream || isRoot) ? '' : 'none';
+                    node.style.opacity = (isUpstream || isRoot) ? '1' : '0';
+                }} else if (filter === 'downstream') {{
+                    node.style.display = (isDownstream || isRoot) ? '' : 'none';
+                    node.style.opacity = (isDownstream || isRoot) ? '1' : '0';
+                }}
+            }});
+
+            // Apply visibility to clusters (subgraph boxes)
+            allClusters.forEach(cluster => {{
+                const texts = cluster.querySelectorAll('text, .nodeLabel, span');
+                let clusterLabel = '';
+                texts.forEach(t => {{ clusterLabel += ' ' + (t.textContent || ''); }});
+                clusterLabel = clusterLabel.toLowerCase();
+
+                const isUpstreamCluster = clusterLabel.includes('dependencies') && !clusterLabel.includes('dependents');
+                const isDownstreamCluster = clusterLabel.includes('dependents');
+
+                if (filter === 'all') {{
+                    cluster.style.display = '';
+                    cluster.style.opacity = '1';
+                }} else if (filter === 'upstream') {{
+                    cluster.style.display = isDownstreamCluster ? 'none' : '';
+                    cluster.style.opacity = isDownstreamCluster ? '0' : '1';
+                }} else if (filter === 'downstream') {{
+                    cluster.style.display = isUpstreamCluster ? 'none' : '';
+                    cluster.style.opacity = isUpstreamCluster ? '0' : '1';
+                }}
+            }});
+
+            // Build a map of visible node IDs for edge filtering
+            const visibleNodeIds = new Set();
+            allNodes.forEach(node => {{
+                if (node.style.display !== 'none') {{
+                    visibleNodeIds.add(node.id);
+                }}
+            }});
+
+            // Apply visibility to edges - hide if either endpoint is hidden
+            allEdges.forEach(edge => {{
+                let shouldShow = filter === 'all';
+
+                if (filter !== 'all') {{
+                    // Check the edge's marker-end and marker-start to find connected nodes
+                    // Mermaid edges have class like 'LS-nodeId' and 'LE-nodeId' for start/end
+                    const classList = Array.from(edge.classList || []);
+                    let startNodeId = '';
+                    let endNodeId = '';
+
+                    classList.forEach(cls => {{
+                        if (cls.startsWith('LS-')) startNodeId = cls.substring(3);
+                        if (cls.startsWith('LE-')) endNodeId = cls.substring(3);
+                    }});
+
+                    // Also check data attributes
+                    const edgeStart = edge.getAttribute('data-start') || startNodeId;
+                    const edgeEnd = edge.getAttribute('data-end') || endNodeId;
+
+                    // Find actual connected nodes by checking which nodes have matching IDs
+                    let startsFromVisible = false;
+                    let endsAtVisible = false;
+
+                    allNodes.forEach(node => {{
+                        const nodeId = node.id || '';
+                        const isVisible = node.style.display !== 'none';
+
+                        // Check if this node matches the edge endpoints
+                        if (edgeStart && nodeId.includes(edgeStart)) {{
+                            startsFromVisible = isVisible;
+                        }}
+                        if (edgeEnd && nodeId.includes(edgeEnd)) {{
+                            endsAtVisible = isVisible;
+                        }}
+                    }});
+
+                    // Show edge only if both connected nodes are visible
+                    // If we couldn't determine endpoints, use ID-based matching as fallback
+                    if (edgeStart || edgeEnd) {{
+                        shouldShow = startsFromVisible && endsAtVisible;
+                    }} else {{
+                        // Fallback: check edge ID against node IDs
+                        const edgeId = edge.id || '';
+                        if (filter === 'upstream') {{
+                            const connectsToDownstream = downstreamNodeIds.some(id => edgeId.includes(id));
+                            shouldShow = !connectsToDownstream;
+                        }} else if (filter === 'downstream') {{
+                            const connectsToUpstream = upstreamNodeIds.some(id => edgeId.includes(id));
+                            shouldShow = !connectsToUpstream;
+                        }}
+                    }}
+                }}
+
+                edge.style.display = shouldShow ? '' : 'none';
+                edge.style.opacity = shouldShow ? '1' : '0';
+
+                // Also hide the edge path itself
+                const path = edge.querySelector('path');
+                if (path) {{
+                    path.style.display = shouldShow ? '' : 'none';
+                    path.style.opacity = shouldShow ? '1' : '0';
+                }}
+            }});
+
+            // Hide all edge-related elements based on the full element markup
+            const hiddenNodeIds = filter === 'upstream' ? downstreamNodeIds :
+                                  filter === 'downstream' ? upstreamNodeIds : [];
+
+            // Helper to check if an element references any hidden node
+            function referencesHiddenNode(element) {{
+                if (hiddenNodeIds.length === 0) return false;
+                const html = element.outerHTML || '';
+                return hiddenNodeIds.some(id => html.includes(id));
+            }}
+
+            // Hide standalone paths
+            svg.querySelectorAll('path').forEach(path => {{
+                if (path.closest('g.edgePath')) return; // Already handled above
+
+                if (filter === 'all') {{
+                    path.style.display = '';
+                    path.style.opacity = '1';
+                }} else {{
+                    const shouldHide = referencesHiddenNode(path);
+                    path.style.display = shouldHide ? 'none' : '';
+                    path.style.opacity = shouldHide ? '0' : '1';
+                }}
+            }});
+
+            // Hide edge labels
+            svg.querySelectorAll('g.edgeLabel').forEach(label => {{
+                if (filter === 'all') {{
+                    label.style.display = '';
+                    label.style.opacity = '1';
+                }} else {{
+                    const shouldHide = referencesHiddenNode(label);
+                    label.style.display = shouldHide ? 'none' : '';
+                    label.style.opacity = shouldHide ? '0' : '1';
+                }}
+            }});
+
+            // Alternative: hide edges by checking marker references
+            svg.querySelectorAll('[marker-end], [marker-start]').forEach(el => {{
+                if (el.closest('g.edgePath')) return; // Already handled
+
+                if (filter === 'all') {{
+                    el.style.display = '';
+                    el.style.opacity = '1';
+                }} else {{
+                    const shouldHide = referencesHiddenNode(el);
+                    el.style.display = shouldHide ? 'none' : '';
+                    el.style.opacity = shouldHide ? '0' : '1';
+                }}
+            }});
+
+            // Update panel visibility
+            const depsPanel = document.getElementById('dependencies-panel');
+            const usedByPanel = document.getElementById('used-by-panel');
+
+            if (depsPanel && usedByPanel) {{
+                if (filter === 'upstream') {{
+                    depsPanel.style.display = '';
+                    usedByPanel.style.display = 'none';
+                }} else if (filter === 'downstream') {{
+                    depsPanel.style.display = 'none';
+                    usedByPanel.style.display = '';
+                }} else {{
+                    depsPanel.style.display = '';
+                    usedByPanel.style.display = '';
+                }}
             }}
         }}
 
@@ -1151,12 +1446,10 @@ def generate_dependency_html(
                 }}
             }}
 
-            // Render used-by panel
-            const usedByGroups = groupByTable(usedByMeasures, 'measure');
+            // Render used-by panel with display folder support
             const usedByContainer = document.getElementById('used-by-content');
             if (usedByContainer) {{
-                const tables = Object.keys(usedByGroups).sort();
-                if (tables.length === 0) {{
+                if (usedByMeasures.length === 0) {{
                     usedByContainer.innerHTML = `
                         <div class="empty-state">
                             <div class="empty-state-icon">📭</div>
@@ -1165,9 +1458,20 @@ def generate_dependency_html(
                         </div>
                     `;
                 }} else {{
+                    // Group by table
+                    const usedByByTable = {{}};
+                    usedByMeasures.forEach(item => {{
+                        const table = item.table || 'Unknown';
+                        if (!usedByByTable[table]) usedByByTable[table] = [];
+                        usedByByTable[table].push({{
+                            name: item.measure,
+                            displayFolder: item.display_folder || ''
+                        }});
+                    }});
+
                     let html = '';
-                    tables.forEach(table => {{
-                        const items = usedByGroups[table].sort();
+                    Object.keys(usedByByTable).sort().forEach(table => {{
+                        const items = usedByByTable[table].sort((a, b) => a.name.localeCompare(b.name));
                         html += `
                             <div class="table-group" data-table="${{table.toLowerCase()}}">
                                 <div class="table-group-header" onclick="toggleGroup(this)">
@@ -1178,10 +1482,13 @@ def generate_dependency_html(
                                     </div>
                                 </div>
                                 <div class="table-group-items">
-                                    ${{items.map(name => `
-                                        <div class="item measure" data-name="${{name.toLowerCase()}}" data-table="${{table.toLowerCase()}}">
+                                    ${{items.map(item => `
+                                        <div class="item measure" data-name="${{item.name.toLowerCase()}}" data-table="${{table.toLowerCase()}}">
                                             <span class="item-icon">●</span>
-                                            <span class="item-name">${{name}}</span>
+                                            <div style="display: flex; flex-direction: column; gap: 0.125rem; flex: 1;">
+                                                <span class="item-name">${{item.name}}</span>
+                                                ${{item.displayFolder ? `<span style="color: var(--text-muted); font-size: 0.625rem;">📁 ${{item.displayFolder}}</span>` : ''}}
+                                            </div>
                                         </div>
                                     `).join('')}}
                                 </div>
