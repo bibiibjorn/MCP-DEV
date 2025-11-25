@@ -1,15 +1,28 @@
 """
 Unified column operations handler
 Consolidates: list_columns, list_calculated_columns, get_column_value_distribution, get_column_summary
+
+Refactored to use validation utilities for reduced code duplication.
 """
 from typing import Dict, Any
 import logging
 from .base_operations import BaseOperationsHandler
-from core.infrastructure.connection_state import connection_state
-from core.validation.error_handler import ErrorHandler
 from core.infrastructure.query_executor import COLUMN_TYPE_CALCULATED
 
+# Import validation utilities
+from core.validation import (
+    get_manager_or_error,
+    get_table_name,
+    get_column_name,
+    get_new_name,
+    get_optional_int,
+    apply_pagination_with_defaults,
+    validate_table_and_item,
+    validate_rename_params,
+)
+
 logger = logging.getLogger(__name__)
+
 
 class ColumnOperationsHandler(BaseOperationsHandler):
     """Handles all column-related operations"""
@@ -29,22 +42,14 @@ class ColumnOperationsHandler(BaseOperationsHandler):
 
     def _list_columns(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """List columns, optionally filtered by table and type"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        qe = get_manager_or_error('query_executor')
+        if isinstance(qe, dict):  # Error response
+            return qe
 
-        qe = connection_state.query_executor
-        if not qe:
-            return ErrorHandler.handle_manager_unavailable('query_executor')
-
-        # Support both 'table_name' and 'table' for backward compatibility
-        table_name = args.get('table_name') or args.get('table')
+        # Extract parameters with backward compatibility
+        table_name = get_table_name(args)
         column_type = args.get('column_type', 'all')  # 'all', 'data', 'calculated'
-
-        # Apply default page_size (backward compatibility)
-        from core.infrastructure.limits_manager import get_limits
-        if 'page_size' not in args or args['page_size'] is None:
-            limits = get_limits()
-            args['page_size'] = limits.query.default_page_size
 
         # Build filter expression based on column_type
         filter_expr = None
@@ -56,33 +61,23 @@ class ColumnOperationsHandler(BaseOperationsHandler):
 
         result = qe.execute_info_query("COLUMNS", table_name=table_name, filter_expr=filter_expr)
 
-        # Apply pagination
-        page_size = args.get('page_size')
-        next_token = args.get('next_token')
-        if page_size or next_token:
-            from server.middleware import paginate
-            result = paginate(result, page_size, next_token, ['rows'])
-
-        return result
+        # Apply pagination with defaults
+        return apply_pagination_with_defaults(result, args)
 
     def _get_column_statistics(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Get column summary statistics"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        agent_policy = get_manager_or_error('agent_policy')
+        if isinstance(agent_policy, dict):  # Error response
+            return agent_policy
 
-        agent_policy = connection_state.agent_policy
-        if not agent_policy:
-            return ErrorHandler.handle_manager_unavailable('agent_policy')
+        # Extract parameters with backward compatibility
+        table_name = get_table_name(args)
+        column_name = get_column_name(args)
 
-        # Support both old and new parameter names
-        table_name = args.get('table_name') or args.get('table')
-        column_name = args.get('column_name') or args.get('column')
-
-        if not table_name or not column_name:
-            return {
-                'success': False,
-                'error': 'table_name (or table) and column_name (or column) are required for operation: statistics'
-            }
+        # Validate required parameters
+        if error := validate_table_and_item(table_name, column_name, 'column_name', 'statistics'):
+            return error
 
         # Create DAX query to get column statistics
         query = f'''
@@ -94,6 +89,7 @@ class ColumnOperationsHandler(BaseOperationsHandler):
         )
         '''
 
+        from core.infrastructure.connection_state import connection_state
         return agent_policy.safe_run_dax(
             connection_state=connection_state,
             query=query,
@@ -102,24 +98,20 @@ class ColumnOperationsHandler(BaseOperationsHandler):
 
     def _get_column_distribution(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Get column value distribution"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        agent_policy = get_manager_or_error('agent_policy')
+        if isinstance(agent_policy, dict):  # Error response
+            return agent_policy
 
-        agent_policy = connection_state.agent_policy
-        if not agent_policy:
-            return ErrorHandler.handle_manager_unavailable('agent_policy')
+        # Extract parameters with backward compatibility
+        table_name = get_table_name(args)
+        column_name = get_column_name(args)
 
-        # Support both old and new parameter names
-        table_name = args.get('table_name') or args.get('table')
-        column_name = args.get('column_name') or args.get('column')
+        # Validate required parameters
+        if error := validate_table_and_item(table_name, column_name, 'column_name', 'distribution'):
+            return error
 
-        if not table_name or not column_name:
-            return {
-                'success': False,
-                'error': 'table_name (or table) and column_name (or column) are required for operation: distribution'
-            }
-
-        top_n = args.get('top_n', 10)
+        top_n = get_optional_int(args, 'top_n', 10)
 
         # Create DAX query to get value distribution
         query = f'''
@@ -135,6 +127,7 @@ class ColumnOperationsHandler(BaseOperationsHandler):
         )
         '''
 
+        from core.infrastructure.connection_state import connection_state
         return agent_policy.safe_run_dax(
             connection_state=connection_state,
             query=query,
@@ -142,35 +135,28 @@ class ColumnOperationsHandler(BaseOperationsHandler):
             max_rows=top_n
         )
 
-
     def _get_column(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Get detailed column information"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
-
-        column_crud = connection_state.column_crud_manager
-        if not column_crud:
-            return ErrorHandler.handle_manager_unavailable('column_crud_manager')
+        # Get manager with connection check
+        column_crud = get_manager_or_error('column_crud_manager')
+        if isinstance(column_crud, dict):  # Error response
+            return column_crud
 
         table_name = args.get('table_name')
         column_name = args.get('column_name')
 
-        if not table_name or not column_name:
-            return {
-                'success': False,
-                'error': 'table_name and column_name are required for operation: get'
-            }
+        # Validate required parameters
+        if error := validate_table_and_item(table_name, column_name, 'column_name', 'get'):
+            return error
 
         return column_crud.get_column(table_name, column_name)
 
     def _create_column(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new column"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
-
-        column_crud = connection_state.column_crud_manager
-        if not column_crud:
-            return ErrorHandler.handle_manager_unavailable('column_crud_manager')
+        # Get manager with connection check
+        column_crud = get_manager_or_error('column_crud_manager')
+        if isinstance(column_crud, dict):  # Error response
+            return column_crud
 
         return column_crud.create_column(
             table_name=args.get('table_name'),
@@ -186,12 +172,10 @@ class ColumnOperationsHandler(BaseOperationsHandler):
 
     def _update_column(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Update an existing column"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
-
-        column_crud = connection_state.column_crud_manager
-        if not column_crud:
-            return ErrorHandler.handle_manager_unavailable('column_crud_manager')
+        # Get manager with connection check
+        column_crud = get_manager_or_error('column_crud_manager')
+        if isinstance(column_crud, dict):  # Error response
+            return column_crud
 
         return column_crud.update_column(
             table_name=args.get('table_name'),
@@ -206,42 +190,33 @@ class ColumnOperationsHandler(BaseOperationsHandler):
 
     def _delete_column(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Delete a column"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
-
-        column_crud = connection_state.column_crud_manager
-        if not column_crud:
-            return ErrorHandler.handle_manager_unavailable('column_crud_manager')
+        # Get manager with connection check
+        column_crud = get_manager_or_error('column_crud_manager')
+        if isinstance(column_crud, dict):  # Error response
+            return column_crud
 
         table_name = args.get('table_name')
         column_name = args.get('column_name')
 
-        if not table_name or not column_name:
-            return {
-                'success': False,
-                'error': 'table_name and column_name are required for operation: delete'
-            }
+        # Validate required parameters
+        if error := validate_table_and_item(table_name, column_name, 'column_name', 'delete'):
+            return error
 
         return column_crud.delete_column(table_name, column_name)
 
     def _rename_column(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Rename a column"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
-
-        column_crud = connection_state.column_crud_manager
-        if not column_crud:
-            return ErrorHandler.handle_manager_unavailable('column_crud_manager')
+        # Get manager with connection check
+        column_crud = get_manager_or_error('column_crud_manager')
+        if isinstance(column_crud, dict):  # Error response
+            return column_crud
 
         table_name = args.get('table_name')
         column_name = args.get('column_name')
-        new_name = args.get('new_name')
+        new_name = get_new_name(args)
 
-        if not table_name or not column_name or not new_name:
-            return {
-                'success': False,
-                'error': 'table_name, column_name, and new_name are required for operation: rename'
-            }
+        # Validate required parameters
+        if error := validate_rename_params(table_name, column_name, new_name, 'column_name'):
+            return error
 
         return column_crud.rename_column(table_name, column_name, new_name)
-

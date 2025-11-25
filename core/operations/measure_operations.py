@@ -1,14 +1,31 @@
 """
 Unified measure operations handler
 Consolidates: list_measures, get_measure_details, upsert_measure, delete_measure
+
+Refactored to use validation utilities for reduced code duplication.
 """
 from typing import Dict, Any
 import logging
 from .base_operations import BaseOperationsHandler
-from core.infrastructure.connection_state import connection_state
-from core.validation.error_handler import ErrorHandler
+
+# Import validation utilities
+from core.validation import (
+    get_manager_or_error,
+    get_table_name,
+    get_measure_name,
+    get_format_string,
+    get_source_table,
+    get_target_table,
+    get_new_name,
+    apply_pagination_with_defaults,
+    validate_table_and_item,
+    validate_create_params,
+    validate_rename_params,
+    validate_move_params,
+)
 
 logger = logging.getLogger(__name__)
+
 
 class MeasureOperationsHandler(BaseOperationsHandler):
     """Handles all measure-related operations"""
@@ -27,76 +44,53 @@ class MeasureOperationsHandler(BaseOperationsHandler):
 
     def _list_measures(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """List measures, optionally filtered by table"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        qe = get_manager_or_error('query_executor')
+        if isinstance(qe, dict):  # Error response
+            return qe
 
-        qe = connection_state.query_executor
-        if not qe:
-            return ErrorHandler.handle_manager_unavailable('query_executor')
-
-        # Support both 'table_name' and 'table' for backward compatibility
-        table_name = args.get('table_name') or args.get('table')
-
-        # Apply default page_size (backward compatibility)
-        from core.infrastructure.limits_manager import get_limits
-        if 'page_size' not in args or args['page_size'] is None:
-            limits = get_limits()
-            args['page_size'] = limits.query.default_page_size
+        # Extract parameters with backward compatibility
+        table_name = get_table_name(args)
 
         result = qe.execute_info_query("MEASURES", table_name=table_name, exclude_columns=['Expression'])
 
-        # Apply pagination
-        page_size = args.get('page_size')
-        next_token = args.get('next_token')
-        if page_size or next_token:
-            from server.middleware import paginate
-            result = paginate(result, page_size, next_token, ['rows'])
-
-        return result
+        # Apply pagination with defaults
+        return apply_pagination_with_defaults(result, args)
 
     def _get_measure(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Get detailed measure information including DAX formula"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        qe = get_manager_or_error('query_executor')
+        if isinstance(qe, dict):  # Error response
+            return qe
 
-        qe = connection_state.query_executor
-        if not qe:
-            return ErrorHandler.handle_manager_unavailable('query_executor')
+        # Extract parameters with backward compatibility
+        table_name = get_table_name(args)
+        measure_name = get_measure_name(args)
 
-        # Support both old and new parameter names
-        table_name = args.get('table_name') or args.get('table')
-        measure_name = args.get('measure_name') or args.get('measure')
-
-        if not table_name or not measure_name:
-            return {
-                'success': False,
-                'error': 'table_name (or table) and measure_name (or measure) are required for operation: get'
-            }
+        # Validate required parameters
+        if error := validate_table_and_item(table_name, measure_name, 'measure_name', 'get'):
+            return error
 
         result = qe.get_measure_details_with_fallback(table_name, measure_name)
         return result
 
     def _create_measure(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new measure"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        dax_injector = get_manager_or_error('dax_injector')
+        if isinstance(dax_injector, dict):  # Error response
+            return dax_injector
 
-        dax_injector = connection_state.dax_injector
-        if not dax_injector:
-            return ErrorHandler.handle_manager_unavailable('dax_injector')
-
-        # Support both old and new parameter names
-        table_name = args.get('table_name') or args.get('table')
-        measure_name = args.get('measure_name') or args.get('measure')
+        # Extract parameters with backward compatibility
+        table_name = get_table_name(args)
+        measure_name = get_measure_name(args)
         expression = args.get('expression')
-        # Support both 'format' and 'format_string'
-        format_string = args.get('format_string') or args.get('format')
+        format_string = get_format_string(args)
 
-        if not table_name or not measure_name or not expression:
-            return {
-                'success': False,
-                'error': 'table_name, measure_name, and expression are required for operation: create'
-            }
+        # Validate required parameters
+        if error := validate_create_params(table_name, measure_name, expression, 'measure_name'):
+            return error
 
         return dax_injector.upsert_measure(
             table_name=table_name,
@@ -114,22 +108,18 @@ class MeasureOperationsHandler(BaseOperationsHandler):
 
     def _delete_measure(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Delete a measure"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        dax_injector = get_manager_or_error('dax_injector')
+        if isinstance(dax_injector, dict):  # Error response
+            return dax_injector
 
-        dax_injector = connection_state.dax_injector
-        if not dax_injector:
-            return ErrorHandler.handle_manager_unavailable('dax_injector')
+        # Extract parameters with backward compatibility
+        table_name = get_table_name(args)
+        measure_name = get_measure_name(args)
 
-        # Support both old and new parameter names
-        table_name = args.get('table_name') or args.get('table')
-        measure_name = args.get('measure_name') or args.get('measure')
-
-        if not table_name or not measure_name:
-            return {
-                'success': False,
-                'error': 'table_name (or table) and measure_name (or measure) are required for operation: delete'
-            }
+        # Validate required parameters
+        if error := validate_table_and_item(table_name, measure_name, 'measure_name', 'delete'):
+            return error
 
         return dax_injector.delete_measure(
             table_name=table_name,
@@ -138,44 +128,36 @@ class MeasureOperationsHandler(BaseOperationsHandler):
 
     def _rename_measure(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Rename a measure"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        measure_crud = get_manager_or_error('measure_crud_manager')
+        if isinstance(measure_crud, dict):  # Error response
+            return measure_crud
 
-        measure_crud = connection_state.measure_crud_manager
-        if not measure_crud:
-            return ErrorHandler.handle_manager_unavailable('measure_crud_manager')
+        # Extract parameters with backward compatibility
+        table_name = get_table_name(args)
+        measure_name = get_measure_name(args)
+        new_name = get_new_name(args)
 
-        # Support both old and new parameter names
-        table_name = args.get('table_name') or args.get('table')
-        measure_name = args.get('measure_name') or args.get('measure')
-        new_name = args.get('new_name')
-
-        if not table_name or not measure_name or not new_name:
-            return {
-                'success': False,
-                'error': 'table_name, measure_name, and new_name are required for operation: rename'
-            }
+        # Validate required parameters
+        if error := validate_rename_params(table_name, measure_name, new_name, 'measure_name'):
+            return error
 
         return measure_crud.rename_measure(table_name, measure_name, new_name)
 
     def _move_measure(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Move measure to a different table"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        measure_crud = get_manager_or_error('measure_crud_manager')
+        if isinstance(measure_crud, dict):  # Error response
+            return measure_crud
 
-        measure_crud = connection_state.measure_crud_manager
-        if not measure_crud:
-            return ErrorHandler.handle_manager_unavailable('measure_crud_manager')
+        # Extract parameters with backward compatibility
+        source_table = get_source_table(args)
+        target_table = get_target_table(args)
+        measure_name = get_measure_name(args)
 
-        # Support both old and new parameter names
-        source_table = args.get('source_table') or args.get('table_name') or args.get('table')
-        target_table = args.get('target_table') or args.get('new_table')
-        measure_name = args.get('measure_name') or args.get('measure')
-
-        if not source_table or not target_table or not measure_name:
-            return {
-                'success': False,
-                'error': 'source_table, target_table, and measure_name are required for operation: move'
-            }
+        # Validate required parameters
+        if error := validate_move_params(source_table, measure_name, target_table, 'measure_name'):
+            return error
 
         return measure_crud.move_measure(source_table, measure_name, target_table)

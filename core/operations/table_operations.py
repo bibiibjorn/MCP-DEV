@@ -1,14 +1,30 @@
 """
 Unified table operations handler
 Consolidates: list_tables, describe_table + new CRUD operations
+
+Refactored to use validation utilities for reduced code duplication.
 """
 from typing import Dict, Any
 import logging
 from .base_operations import BaseOperationsHandler
 from core.infrastructure.connection_state import connection_state
-from core.validation.error_handler import ErrorHandler
+
+# Import validation utilities
+from core.validation import (
+    get_manager_or_error,
+    get_table_name,
+    get_new_name,
+    get_optional_int,
+    apply_pagination,
+    apply_describe_table_defaults,
+    validate_required,
+    validate_required_params,
+    handle_operation_errors,
+    ErrorHandler,
+)
 
 logger = logging.getLogger(__name__)
+
 
 class TableOperationsHandler(BaseOperationsHandler):
     """Handles all table-related operations"""
@@ -20,7 +36,7 @@ class TableOperationsHandler(BaseOperationsHandler):
         self.register_operation('list', self._list_tables)
         self.register_operation('describe', self._describe_table)
         self.register_operation('preview', self._preview_table)
-        self.register_operation('sample_data', self._sample_data)  # Enhanced sample data retrieval
+        self.register_operation('sample_data', self._sample_data)
         self.register_operation('create', self._create_table)
         self.register_operation('update', self._update_table)
         self.register_operation('delete', self._delete_table)
@@ -29,51 +45,32 @@ class TableOperationsHandler(BaseOperationsHandler):
 
     def _list_tables(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """List all tables in the model"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
-
-        qe = connection_state.query_executor
-        if not qe:
-            return ErrorHandler.handle_manager_unavailable('query_executor')
+        # Get manager with connection check
+        qe = get_manager_or_error('query_executor')
+        if isinstance(qe, dict):  # Error response
+            return qe
 
         result = qe.execute_info_query("TABLES")
 
         # Apply pagination if requested
-        page_size = args.get('page_size')
-        next_token = args.get('next_token')
-        if page_size or next_token:
-            from server.middleware import paginate
-            result = paginate(result, page_size, next_token, ['rows'])
-
-        return result
+        return apply_pagination(result, args)
 
     def _describe_table(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Get comprehensive table description"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        qe = get_manager_or_error('query_executor')
+        if isinstance(qe, dict):  # Error response
+            return qe
 
-        qe = connection_state.query_executor
-        if not qe:
-            return ErrorHandler.handle_manager_unavailable('query_executor')
+        # Extract parameters with backward compatibility
+        table_name = get_table_name(args)
 
-        # Support both 'table_name' and 'table' for backward compatibility
-        table_name = args.get('table_name') or args.get('table')
-        if not table_name:
-            return {
-                'success': False,
-                'error': 'table_name (or table) parameter is required for operation: describe'
-            }
+        # Validate required parameter
+        if error := validate_required(table_name, 'table_name', 'describe'):
+            return error
 
-        # Apply default pagination limits (backward compatibility)
-        from core.infrastructure.limits_manager import get_limits
-        from server.middleware import apply_default_limits
-        limits = get_limits()
-        defaults = {
-            'columns_page_size': limits.token.describe_table_columns_page_size,
-            'measures_page_size': limits.token.describe_table_measures_page_size,
-            'relationships_page_size': limits.token.describe_table_relationships_page_size
-        }
-        args = apply_default_limits(args, defaults)
+        # Apply default pagination limits for describe_table
+        args = apply_describe_table_defaults(args)
 
         # Check if method exists
         if not hasattr(qe, 'describe_table'):
@@ -91,22 +88,19 @@ class TableOperationsHandler(BaseOperationsHandler):
 
     def _preview_table(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Preview table data"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        agent_policy = get_manager_or_error('agent_policy')
+        if isinstance(agent_policy, dict):  # Error response
+            return agent_policy
 
-        agent_policy = connection_state.agent_policy
-        if not agent_policy:
-            return ErrorHandler.handle_manager_unavailable('agent_policy')
+        # Extract parameters with backward compatibility
+        table_name = get_table_name(args)
 
-        # Support both 'table_name' and 'table' for backward compatibility
-        table_name = args.get('table_name') or args.get('table')
-        if not table_name:
-            return {
-                'success': False,
-                'error': 'table_name (or table) parameter is required for operation: preview'
-            }
+        # Validate required parameter
+        if error := validate_required(table_name, 'table_name', 'preview'):
+            return error
 
-        max_rows = args.get('max_rows', 10)
+        max_rows = get_optional_int(args, 'max_rows', 10)
 
         # Create EVALUATE query for table preview
         query = f'EVALUATE TOPN({max_rows}, \'{table_name}\')'
@@ -128,30 +122,20 @@ class TableOperationsHandler(BaseOperationsHandler):
         - Column selection (return only specific columns)
         - Ordering by a specific column
         - Ascending/descending order
-
-        Args (via args dict):
-            table_name: Name of the table to sample (required)
-            max_rows: Maximum number of rows to return (default: 10, max: 1000)
-            columns: List of column names to include (optional, default: all columns)
-            order_by: Column name to order by (optional)
-            order_direction: 'asc' or 'desc' (default: 'asc', only used if order_by is specified)
         """
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        agent_policy = get_manager_or_error('agent_policy')
+        if isinstance(agent_policy, dict):  # Error response
+            return agent_policy
 
-        agent_policy = connection_state.agent_policy
-        if not agent_policy:
-            return ErrorHandler.handle_manager_unavailable('agent_policy')
+        # Extract parameters with backward compatibility
+        table_name = get_table_name(args)
 
-        # Support both 'table_name' and 'table' for backward compatibility
-        table_name = args.get('table_name') or args.get('table')
-        if not table_name:
-            return {
-                'success': False,
-                'error': 'table_name (or table) parameter is required for operation: sample_data'
-            }
+        # Validate required parameter
+        if error := validate_required(table_name, 'table_name', 'sample_data'):
+            return error
 
-        max_rows = min(args.get('max_rows', 10), 1000)  # Cap at 1000 rows
+        max_rows = min(get_optional_int(args, 'max_rows', 10), 1000)  # Cap at 1000 rows
         columns = args.get('columns')  # Optional list of column names
         order_by = args.get('order_by')  # Optional column to order by
         order_direction = args.get('order_direction', 'asc').upper()  # ASC or DESC
@@ -159,7 +143,6 @@ class TableOperationsHandler(BaseOperationsHandler):
         # Build DAX query
         if columns:
             # Select specific columns using SELECTCOLUMNS
-            # Format: SELECTCOLUMNS('Table', "Col1", 'Table'[Col1], "Col2", 'Table'[Col2], ...)
             col_parts = []
             for col in columns:
                 col_parts.append(f'"{col}", \'{table_name}\'[{col}]')
@@ -199,12 +182,10 @@ class TableOperationsHandler(BaseOperationsHandler):
 
     def _create_table(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new table"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
-
-        table_crud = connection_state.table_crud_manager
-        if not table_crud:
-            return ErrorHandler.handle_manager_unavailable('table_crud_manager')
+        # Get manager with connection check
+        table_crud = get_manager_or_error('table_crud_manager')
+        if isinstance(table_crud, dict):  # Error response
+            return table_crud
 
         return table_crud.create_table(
             table_name=args.get('table_name'),
@@ -215,12 +196,10 @@ class TableOperationsHandler(BaseOperationsHandler):
 
     def _update_table(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Update an existing table"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
-
-        table_crud = connection_state.table_crud_manager
-        if not table_crud:
-            return ErrorHandler.handle_manager_unavailable('table_crud_manager')
+        # Get manager with connection check
+        table_crud = get_manager_or_error('table_crud_manager')
+        if isinstance(table_crud, dict):  # Error response
+            return table_crud
 
         return table_crud.update_table(
             table_name=args.get('table_name'),
@@ -232,56 +211,50 @@ class TableOperationsHandler(BaseOperationsHandler):
 
     def _delete_table(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Delete a table"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
-
-        table_crud = connection_state.table_crud_manager
-        if not table_crud:
-            return ErrorHandler.handle_manager_unavailable('table_crud_manager')
+        # Get manager with connection check
+        table_crud = get_manager_or_error('table_crud_manager')
+        if isinstance(table_crud, dict):  # Error response
+            return table_crud
 
         table_name = args.get('table_name')
-        if not table_name:
-            return {
-                'success': False,
-                'error': 'table_name parameter is required for operation: delete'
-            }
+
+        # Validate required parameter
+        if error := validate_required(table_name, 'table_name', 'delete'):
+            return error
 
         return table_crud.delete_table(table_name)
 
     def _rename_table(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Rename a table"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
-
-        table_crud = connection_state.table_crud_manager
-        if not table_crud:
-            return ErrorHandler.handle_manager_unavailable('table_crud_manager')
+        # Get manager with connection check
+        table_crud = get_manager_or_error('table_crud_manager')
+        if isinstance(table_crud, dict):  # Error response
+            return table_crud
 
         table_name = args.get('table_name')
-        new_name = args.get('new_name')
+        new_name = get_new_name(args)
 
-        if not table_name or not new_name:
-            return {
-                'success': False,
-                'error': 'table_name and new_name parameters are required for operation: rename'
-            }
+        # Validate required parameters
+        if error := validate_required_params(
+            (table_name, 'table_name'),
+            (new_name, 'new_name'),
+            operation='rename'
+        ):
+            return error
 
         return table_crud.rename_table(table_name, new_name)
 
     def _refresh_table(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Refresh a table"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
-
-        table_crud = connection_state.table_crud_manager
-        if not table_crud:
-            return ErrorHandler.handle_manager_unavailable('table_crud_manager')
+        # Get manager with connection check
+        table_crud = get_manager_or_error('table_crud_manager')
+        if isinstance(table_crud, dict):  # Error response
+            return table_crud
 
         table_name = args.get('table_name')
-        if not table_name:
-            return {
-                'success': False,
-                'error': 'table_name parameter is required for operation: refresh'
-            }
+
+        # Validate required parameter
+        if error := validate_required(table_name, 'table_name', 'refresh'):
+            return error
 
         return table_crud.refresh_table(table_name)

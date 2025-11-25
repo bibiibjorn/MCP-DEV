@@ -1,14 +1,22 @@
 """
 Unified calculation group operations handler
 Consolidates: list_calculation_groups, create_calculation_group, delete_calculation_group + new operations
+
+Refactored to use validation utilities for reduced code duplication.
 """
 from typing import Dict, Any
 import logging
 from .base_operations import BaseOperationsHandler
-from core.infrastructure.connection_state import connection_state
-from core.validation.error_handler import ErrorHandler
+
+# Import validation utilities
+from core.validation import (
+    get_manager_or_error,
+    get_group_name,
+    validate_required,
+)
 
 logger = logging.getLogger(__name__)
+
 
 class CalculationGroupOperationsHandler(BaseOperationsHandler):
     """Handles all calculation group-related operations"""
@@ -25,30 +33,25 @@ class CalculationGroupOperationsHandler(BaseOperationsHandler):
 
     def _list_calculation_groups(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """List calculation groups"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
-
-        calc_group_mgr = connection_state.calc_group_manager
-        if not calc_group_mgr:
-            return ErrorHandler.handle_manager_unavailable('calc_group_manager')
+        # Get manager with connection check
+        calc_group_mgr = get_manager_or_error('calc_group_manager')
+        if isinstance(calc_group_mgr, dict):  # Error response
+            return calc_group_mgr
 
         return calc_group_mgr.list_calculation_groups()
 
     def _create_calculation_group(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Create a calculation group"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        calc_group_mgr = get_manager_or_error('calc_group_manager')
+        if isinstance(calc_group_mgr, dict):  # Error response
+            return calc_group_mgr
 
-        calc_group_mgr = connection_state.calc_group_manager
-        if not calc_group_mgr:
-            return ErrorHandler.handle_manager_unavailable('calc_group_manager')
+        group_name = get_group_name(args)
 
-        group_name = args.get('group_name') or args.get('name')
-        if not group_name:
-            return {
-                'success': False,
-                'error': 'group_name parameter is required for operation: create'
-            }
+        # Validate required parameter
+        if error := validate_required(group_name, 'group_name', 'create'):
+            return error
 
         items = args.get('items', [])
         description = args.get('description')
@@ -95,37 +98,31 @@ class CalculationGroupOperationsHandler(BaseOperationsHandler):
 
     def _delete_calculation_group(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Delete a calculation group"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        calc_group_mgr = get_manager_or_error('calc_group_manager')
+        if isinstance(calc_group_mgr, dict):  # Error response
+            return calc_group_mgr
 
-        calc_group_mgr = connection_state.calc_group_manager
-        if not calc_group_mgr:
-            return ErrorHandler.handle_manager_unavailable('calc_group_manager')
+        group_name = get_group_name(args)
 
-        group_name = args.get('group_name') or args.get('name')
-        if not group_name:
-            return {
-                'success': False,
-                'error': 'group_name parameter is required for operation: delete'
-            }
+        # Validate required parameter
+        if error := validate_required(group_name, 'group_name', 'delete'):
+            return error
 
         return calc_group_mgr.delete_calculation_group(group_name)
 
     def _list_items(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """List calculation items for a specific group"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        calc_group_mgr = get_manager_or_error('calc_group_manager')
+        if isinstance(calc_group_mgr, dict):  # Error response
+            return calc_group_mgr
 
-        calc_group_mgr = connection_state.calc_group_manager
-        if not calc_group_mgr:
-            return ErrorHandler.handle_manager_unavailable('calc_group_manager')
+        group_name = get_group_name(args)
 
-        group_name = args.get('group_name') or args.get('name')
-        if not group_name:
-            return {
-                'success': False,
-                'error': 'group_name parameter is required for operation: list_items'
-            }
+        # Validate required parameter
+        if error := validate_required(group_name, 'group_name', 'list_items'):
+            return error
 
         # Get all calculation groups and filter for the specific one
         result = calc_group_mgr.list_calculation_groups()

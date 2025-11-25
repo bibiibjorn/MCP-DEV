@@ -1,14 +1,26 @@
 """
 Unified relationship operations handler
 Extends: list_relationships + new CRUD operations
+
+Refactored to use validation utilities for reduced code duplication.
 """
 from typing import Dict, Any
 import logging
 from .base_operations import BaseOperationsHandler
-from core.infrastructure.connection_state import connection_state
-from core.validation.error_handler import ErrorHandler
+
+# Import validation utilities
+from core.validation import (
+    get_manager_or_error,
+    get_table_name,
+    get_relationship_name,
+    get_optional_bool,
+    apply_pagination,
+    validate_required,
+    validate_relationship_create_params,
+)
 
 logger = logging.getLogger(__name__)
+
 
 class RelationshipOperationsHandler(BaseOperationsHandler):
     """Handles all relationship-related operations"""
@@ -28,14 +40,12 @@ class RelationshipOperationsHandler(BaseOperationsHandler):
 
     def _list_relationships(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """List relationships with optional active_only filter"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        qe = get_manager_or_error('query_executor')
+        if isinstance(qe, dict):  # Error response
+            return qe
 
-        qe = connection_state.query_executor
-        if not qe:
-            return ErrorHandler.handle_manager_unavailable('query_executor')
-
-        active_only = args.get('active_only', False)
+        active_only = get_optional_bool(args, 'active_only', False)
 
         # Use INFO query to get relationships
         result = qe.execute_info_query("RELATIONSHIPS")
@@ -47,29 +57,20 @@ class RelationshipOperationsHandler(BaseOperationsHandler):
             result['rows'] = active_rows
 
         # Apply pagination
-        page_size = args.get('page_size')
-        next_token = args.get('next_token')
-        if page_size or next_token:
-            from server.middleware import paginate
-            result = paginate(result, page_size, next_token, ['rows'])
-
-        return result
+        return apply_pagination(result, args)
 
     def _get_relationship(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Get single relationship details"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        qe = get_manager_or_error('query_executor')
+        if isinstance(qe, dict):  # Error response
+            return qe
 
-        qe = connection_state.query_executor
-        if not qe:
-            return ErrorHandler.handle_manager_unavailable('query_executor')
+        relationship_name = get_relationship_name(args)
 
-        relationship_name = args.get('relationship_name')
-        if not relationship_name:
-            return {
-                'success': False,
-                'error': 'relationship_name parameter is required for operation: get'
-            }
+        # Validate required parameter
+        if error := validate_required(relationship_name, 'relationship_name', 'get'):
+            return error
 
         # Get all relationships and filter
         result = qe.execute_info_query("RELATIONSHIPS")
@@ -93,19 +94,16 @@ class RelationshipOperationsHandler(BaseOperationsHandler):
 
     def _find_relationships(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Find relationships for a specific table"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        qe = get_manager_or_error('query_executor')
+        if isinstance(qe, dict):  # Error response
+            return qe
 
-        qe = connection_state.query_executor
-        if not qe:
-            return ErrorHandler.handle_manager_unavailable('query_executor')
+        table_name = get_table_name(args)
 
-        table_name = args.get('table_name')
-        if not table_name:
-            return {
-                'success': False,
-                'error': 'table_name parameter is required for operation: find'
-            }
+        # Validate required parameter
+        if error := validate_required(table_name, 'table_name', 'find'):
+            return error
 
         # Get all relationships
         result = qe.execute_info_query("RELATIONSHIPS")
@@ -126,26 +124,21 @@ class RelationshipOperationsHandler(BaseOperationsHandler):
 
         return result
 
-
     def _create_relationship(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new relationship"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
-
-        rel_crud = connection_state.relationship_crud_manager
-        if not rel_crud:
-            return ErrorHandler.handle_manager_unavailable('relationship_crud_manager')
+        # Get manager with connection check
+        rel_crud = get_manager_or_error('relationship_crud_manager')
+        if isinstance(rel_crud, dict):  # Error response
+            return rel_crud
 
         from_table = args.get('from_table')
         from_column = args.get('from_column')
         to_table = args.get('to_table')
         to_column = args.get('to_column')
 
-        if not all([from_table, from_column, to_table, to_column]):
-            return {
-                'success': False,
-                'error': 'from_table, from_column, to_table, and to_column are required for operation: create'
-            }
+        # Validate required parameters
+        if error := validate_relationship_create_params(from_table, from_column, to_table, to_column):
+            return error
 
         return rel_crud.create_relationship(
             from_table=from_table,
@@ -161,19 +154,16 @@ class RelationshipOperationsHandler(BaseOperationsHandler):
 
     def _update_relationship(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Update an existing relationship"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        rel_crud = get_manager_or_error('relationship_crud_manager')
+        if isinstance(rel_crud, dict):  # Error response
+            return rel_crud
 
-        rel_crud = connection_state.relationship_crud_manager
-        if not rel_crud:
-            return ErrorHandler.handle_manager_unavailable('relationship_crud_manager')
+        relationship_name = get_relationship_name(args)
 
-        relationship_name = args.get('relationship_name')
-        if not relationship_name:
-            return {
-                'success': False,
-                'error': 'relationship_name is required for operation: update'
-            }
+        # Validate required parameter
+        if error := validate_required(relationship_name, 'relationship_name', 'update'):
+            return error
 
         return rel_crud.update_relationship(
             relationship_name=relationship_name,
@@ -184,55 +174,45 @@ class RelationshipOperationsHandler(BaseOperationsHandler):
 
     def _delete_relationship(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Delete a relationship"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        rel_crud = get_manager_or_error('relationship_crud_manager')
+        if isinstance(rel_crud, dict):  # Error response
+            return rel_crud
 
-        rel_crud = connection_state.relationship_crud_manager
-        if not rel_crud:
-            return ErrorHandler.handle_manager_unavailable('relationship_crud_manager')
+        relationship_name = get_relationship_name(args)
 
-        relationship_name = args.get('relationship_name')
-        if not relationship_name:
-            return {
-                'success': False,
-                'error': 'relationship_name is required for operation: delete'
-            }
+        # Validate required parameter
+        if error := validate_required(relationship_name, 'relationship_name', 'delete'):
+            return error
 
         return rel_crud.delete_relationship(relationship_name)
 
     def _activate_relationship(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Activate a relationship"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        rel_crud = get_manager_or_error('relationship_crud_manager')
+        if isinstance(rel_crud, dict):  # Error response
+            return rel_crud
 
-        rel_crud = connection_state.relationship_crud_manager
-        if not rel_crud:
-            return ErrorHandler.handle_manager_unavailable('relationship_crud_manager')
+        relationship_name = get_relationship_name(args)
 
-        relationship_name = args.get('relationship_name')
-        if not relationship_name:
-            return {
-                'success': False,
-                'error': 'relationship_name is required for operation: activate'
-            }
+        # Validate required parameter
+        if error := validate_required(relationship_name, 'relationship_name', 'activate'):
+            return error
 
         return rel_crud.activate_relationship(relationship_name)
 
     def _deactivate_relationship(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Deactivate a relationship"""
-        if not connection_state.is_connected():
-            return ErrorHandler.handle_not_connected()
+        # Get manager with connection check
+        rel_crud = get_manager_or_error('relationship_crud_manager')
+        if isinstance(rel_crud, dict):  # Error response
+            return rel_crud
 
-        rel_crud = connection_state.relationship_crud_manager
-        if not rel_crud:
-            return ErrorHandler.handle_manager_unavailable('relationship_crud_manager')
+        relationship_name = get_relationship_name(args)
 
-        relationship_name = args.get('relationship_name')
-        if not relationship_name:
-            return {
-                'success': False,
-                'error': 'relationship_name is required for operation: deactivate'
-            }
+        # Validate required parameter
+        if error := validate_required(relationship_name, 'relationship_name', 'deactivate'):
+            return error
 
         return rel_crud.deactivate_relationship(relationship_name)
-

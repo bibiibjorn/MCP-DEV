@@ -1,97 +1,82 @@
 """
 Metadata Handler
 Handles listing and searching tables, columns, measures
+
+Refactored to use validation utilities for reduced code duplication.
 """
 from typing import Dict, Any
 import logging
 from server.registry import ToolDefinition, get_registry
-from server.middleware import paginate, apply_default_limits
-from core.infrastructure.connection_state import connection_state
-from core.validation.error_handler import ErrorHandler
-from core.infrastructure.limits_manager import get_limits
-from core.validation.constants import QueryLimits
 from core.infrastructure.query_executor import COLUMN_TYPE_CALCULATED
+
+# Import validation utilities
+from core.validation import (
+    get_manager_or_error,
+    get_table_name,
+    apply_pagination,
+    apply_pagination_with_defaults,
+    apply_describe_table_defaults,
+    validate_required,
+    validate_required_params,
+    get_optional_bool,
+    ErrorHandler,
+)
 
 logger = logging.getLogger(__name__)
 
+
 def handle_list_tables(args: Dict[str, Any]) -> Dict[str, Any]:
     """List all tables in the model"""
-    if not connection_state.is_connected():
-        return ErrorHandler.handle_not_connected()
-
-    qe = connection_state.query_executor
-    if not qe:
-        return ErrorHandler.handle_manager_unavailable('query_executor')
+    # Get manager with connection check
+    qe = get_manager_or_error('query_executor')
+    if isinstance(qe, dict):  # Error response
+        return qe
 
     result = qe.execute_info_query("TABLES")
-    result = paginate(result, args.get('page_size'), args.get('next_token'), ['rows'])
+    return apply_pagination(result, args)
 
-    return result
 
 def handle_list_columns(args: Dict[str, Any]) -> Dict[str, Any]:
     """List columns, optionally filtered by table"""
-    if not connection_state.is_connected():
-        return ErrorHandler.handle_not_connected()
-
-    qe = connection_state.query_executor
-    if not qe:
-        return ErrorHandler.handle_manager_unavailable('query_executor')
+    # Get manager with connection check
+    qe = get_manager_or_error('query_executor')
+    if isinstance(qe, dict):  # Error response
+        return qe
 
     table = args.get("table")
-    limits = get_limits()
-
-    # Apply default page size
-    if 'page_size' not in args or args['page_size'] is None:
-        args['page_size'] = limits.query.default_page_size
 
     result = qe.execute_info_query("COLUMNS", table_name=table)
-    result = paginate(result, args.get('page_size'), args.get('next_token'), ['rows'])
+    return apply_pagination_with_defaults(result, args)
 
-    return result
 
 def handle_list_measures(args: Dict[str, Any]) -> Dict[str, Any]:
     """List measures, optionally filtered by table"""
-    if not connection_state.is_connected():
-        return ErrorHandler.handle_not_connected()
-
-    qe = connection_state.query_executor
-    if not qe:
-        return ErrorHandler.handle_manager_unavailable('query_executor')
+    # Get manager with connection check
+    qe = get_manager_or_error('query_executor')
+    if isinstance(qe, dict):  # Error response
+        return qe
 
     table = args.get("table")
-    limits = get_limits()
-
-    # Apply default page size
-    if 'page_size' not in args or args['page_size'] is None:
-        args['page_size'] = limits.query.default_page_size
 
     result = qe.execute_info_query("MEASURES", table_name=table, exclude_columns=['Expression'])
-    result = paginate(result, args.get('page_size'), args.get('next_token'), ['rows'])
+    return apply_pagination_with_defaults(result, args)
 
-    return result
 
 def handle_describe_table(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get comprehensive table description with columns, measures, relationships"""
-    if not connection_state.is_connected():
-        return ErrorHandler.handle_not_connected()
+    # Get manager with connection check
+    qe = get_manager_or_error('query_executor')
+    if isinstance(qe, dict):  # Error response
+        return qe
 
-    qe = connection_state.query_executor
-    if not qe:
-        return ErrorHandler.handle_manager_unavailable('query_executor')
-
-    limits = get_limits()
-
-    # Apply default pagination limits
-    defaults = {
-        'columns_page_size': limits.token.describe_table_columns_page_size,
-        'measures_page_size': limits.token.describe_table_measures_page_size,
-        'relationships_page_size': limits.token.describe_table_relationships_page_size
-    }
-    args = apply_default_limits(args, defaults)
+    # Apply default pagination limits for describe_table
+    args = apply_describe_table_defaults(args)
 
     table = args.get("table")
-    if not table:
-        return {'success': False, 'error': 'table parameter required'}
+
+    # Validate required parameter
+    if error := validate_required(table, 'table', 'describe_table'):
+        return error
 
     # Check if method exists
     if not hasattr(qe, 'describe_table'):
@@ -117,84 +102,71 @@ def handle_describe_table(args: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(f"Error in describe_table: {e}", exc_info=True)
         return ErrorHandler.handle_unexpected_error('describe_table', e)
 
+
 def handle_get_measure_details(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get detailed measure information including DAX formula"""
-    if not connection_state.is_connected():
-        return ErrorHandler.handle_not_connected()
-
-    qe = connection_state.query_executor
-    if not qe:
-        return ErrorHandler.handle_manager_unavailable('query_executor')
+    # Get manager with connection check
+    qe = get_manager_or_error('query_executor')
+    if isinstance(qe, dict):  # Error response
+        return qe
 
     table = args.get("table")
     measure = args.get("measure")
 
-    if not table or not measure:
-        return {'success': False, 'error': 'table and measure parameters required'}
+    # Validate required parameters
+    if error := validate_required_params(
+        (table, 'table'),
+        (measure, 'measure'),
+        operation='get_measure_details'
+    ):
+        return error
 
     result = qe.get_measure_details_with_fallback(table, measure)
     return result
 
+
 def handle_search_string(args: Dict[str, Any]) -> Dict[str, Any]:
     """Search in measure names and/or expressions"""
-    if not connection_state.is_connected():
-        return ErrorHandler.handle_not_connected()
-
-    qe = connection_state.query_executor
-    if not qe:
-        return ErrorHandler.handle_manager_unavailable('query_executor')
-
-    limits = get_limits()
-
-    # Apply default page size
-    if 'page_size' not in args or args['page_size'] is None:
-        args['page_size'] = limits.query.default_page_size
+    # Get manager with connection check
+    qe = get_manager_or_error('query_executor')
+    if isinstance(qe, dict):  # Error response
+        return qe
 
     search_text = args.get('search_text', '')
-    search_in_expression = args.get('search_in_expression', True)
-    search_in_name = args.get('search_in_name', True)
+    search_in_expression = get_optional_bool(args, 'search_in_expression', True)
+    search_in_name = get_optional_bool(args, 'search_in_name', True)
 
     result = qe.search_measures_dax(search_text, search_in_expression, search_in_name)
-    result = paginate(result, args.get('page_size'), args.get('next_token'), ['rows'])
+    return apply_pagination_with_defaults(result, args)
 
-    return result
 
 def handle_list_calculated_columns(args: Dict[str, Any]) -> Dict[str, Any]:
     """List calculated columns"""
-    if not connection_state.is_connected():
-        return ErrorHandler.handle_not_connected()
+    # Get manager with connection check
+    qe = get_manager_or_error('query_executor')
+    if isinstance(qe, dict):  # Error response
+        return qe
 
-    qe = connection_state.query_executor
-    if not qe:
-        return ErrorHandler.handle_manager_unavailable('query_executor')
-
-    limits = get_limits()
     table = args.get("table")
-
-    # Apply default page size
-    if 'page_size' not in args or args['page_size'] is None:
-        args['page_size'] = limits.query.default_page_size
 
     filter_expr = f'[Type] = {COLUMN_TYPE_CALCULATED}'
     result = qe.execute_info_query("COLUMNS", filter_expr=filter_expr, table_name=table)
-    return paginate(result, args.get('page_size'), args.get('next_token'), ['rows'])
+    return apply_pagination_with_defaults(result, args)
+
 
 def handle_search_objects(args: Dict[str, Any]) -> Dict[str, Any]:
     """Search across tables, columns, and measures"""
-    if not connection_state.is_connected():
-        return ErrorHandler.handle_not_connected()
-
-    qe = connection_state.query_executor
-    if not qe:
-        return ErrorHandler.handle_manager_unavailable('query_executor')
+    # Get manager with connection check
+    qe = get_manager_or_error('query_executor')
+    if isinstance(qe, dict):  # Error response
+        return qe
 
     pattern = args.get("pattern", "*")
     types = args.get("types", ["tables", "columns", "measures"])
 
     result = qe.search_objects_dax(pattern, types)
-    result = paginate(result, args.get('page_size'), args.get('next_token'), ['rows', 'items'])
+    return apply_pagination(result, args, rows_key='rows')
 
-    return result
 
 def register_metadata_handlers(registry):
     """Register all metadata-related handlers"""
