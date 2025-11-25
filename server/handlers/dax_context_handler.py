@@ -518,42 +518,27 @@ def _wrap_text(text: str, width: int = 80, indent: int = 0) -> list:
 
     return wrapper.wrap(text)
 
-def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
+def _find_measure_in_model(expression: str, connection_state) -> Dict[str, Any]:
     """
-    Unified DAX Intelligence Tool
+    Find and verify a measure in the model before analysis.
 
-    Combines validation, analysis, and debugging into a single intelligent tool.
+    ALWAYS runs first when expression looks like a measure name.
+    Returns measure info if found, or error with suggestions.
 
-    Modes:
-    - 'all' (DEFAULT): Runs ALL analysis modes - analyze + debug + report
-    - 'analyze': Context transition analysis with anti-patterns
-    - 'debug': Step-by-step debugging with friendly/steps output
-    - 'report': Comprehensive report with optimization + profiling
+    Args:
+        expression: The measure name or DAX expression
+        connection_state: The connection state
 
-    Smart measure detection: Automatically fetches measure expressions if a measure name is provided.
-    Auto-skips validation for auto-fetched measures (already in model, must be valid).
-    Online research enabled for DAX optimization articles and recommendations.
+    Returns:
+        Dictionary with:
+        - found: True if measure was found
+        - expression: The DAX expression (either original or fetched)
+        - measure_name: The original measure name (if it was a name lookup)
+        - measure_table: The table containing the measure
+        - error: Error message if not found
+        - suggestions: List of similar measures if not found
     """
-    import re  # For fuzzy measure name matching
-
-    if not connection_state.is_connected():
-        return ErrorHandler.handle_not_connected()
-
-    expression = args.get('expression')
-    analysis_mode = args.get('analysis_mode', 'all')  # Default to 'all' mode (analyze + debug + report)
-    skip_validation = args.get('skip_validation', False)
-
-    if not expression:
-        return {
-            'success': False,
-            'error': 'expression parameter is required'
-        }
-
-    # Smart measure detection: Check if expression looks like a measure name rather than DAX code
-    # Measure names are typically short and don't contain DAX keywords/operators
-    original_expression = expression
-    measure_name = None
-    measure_table = None
+    import re
 
     dax_keywords = [
         'CALCULATE', 'FILTER', 'SUM', 'SUMX', 'AVERAGE', 'COUNT', 'COUNTROWS',
@@ -570,103 +555,165 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
         expression.count('(') == 0  # No function calls
     )
 
-    if is_likely_measure_name:
-        # Try to fetch the measure expression automatically
-        logger.info(f"Expression looks like a measure name: '{expression}'. Attempting auto-fetch...")
+    if not is_likely_measure_name:
+        # This is a DAX expression, not a measure name
+        return {
+            'found': True,
+            'expression': expression,
+            'measure_name': None,
+            'measure_table': None,
+            'is_dax_expression': True
+        }
 
-        # Try to find the measure in the model using AMO
-        server, db, model = _get_server_db_model(connection_state)
-        if model:
-            try:
-                # Search for measure across all tables
-                found_measure = None
-                found_table = None
+    # This looks like a measure name - must find it first
+    logger.info(f"Expression looks like a measure name: '{expression}'. Finding measure FIRST...")
 
-                # Normalize search term for fuzzy matching
-                search_term = expression.lower().strip()
-                exact_matches = []
-                partial_matches = []
+    server, db, model = _get_server_db_model(connection_state)
+    if not model:
+        return {
+            'found': False,
+            'error': f"Cannot verify measure '{expression}' - not connected to model via AMO",
+            'expression': expression,
+            'measure_name': None,
+            'measure_table': None
+        }
 
-                # Split search term into words, removing common separators
-                search_words = [w for w in re.split(r'[\s\-_]+', search_term) if w]
+    try:
+        # Search for measure across all tables
+        found_measure = None
+        found_table = None
 
-                for table in model.Tables:
-                    for measure in table.Measures:
-                        measure_name_lower = measure.Name.lower()
+        # Normalize search term for fuzzy matching
+        search_term = expression.lower().strip()
+        exact_matches = []
+        partial_matches = []
+        all_measures = []
 
-                        # Try exact match first (case-insensitive)
-                        if measure_name_lower == search_term:
-                            exact_matches.append((measure, table.Name))
-                        # Try partial/fuzzy match - check if all words in search term appear in measure name
-                        # Use word boundary matching to avoid false positives (e.g., "base" shouldn't match "database")
-                        else:
-                            # Split measure name into words
-                            measure_words = set(re.split(r'[\s\-_]+', measure_name_lower))
-                            # Check if all search words appear as complete words in measure name
-                            if all(
-                                any(search_word in measure_word or measure_word in search_word
-                                    for measure_word in measure_words)
-                                for search_word in search_words
-                            ):
-                                partial_matches.append((measure, table.Name))
+        # Split search term into words, removing common separators
+        search_words = [w for w in re.split(r'[\s\-_]+', search_term) if w]
 
-                # Prioritize exact matches, then partial matches
-                if exact_matches:
-                    found_measure, found_table = exact_matches[0]
-                elif partial_matches:
-                    # If multiple partial matches, use the shortest one (most specific)
-                    partial_matches.sort(key=lambda x: len(x[0].Name))
-                    found_measure, found_table = partial_matches[0]
-                    logger.info(f"Using fuzzy match: '{found_measure.Name}' for search term '{expression}'")
+        for table in model.Tables:
+            for measure in table.Measures:
+                measure_name_lower = measure.Name.lower()
+                all_measures.append((measure.Name, table.Name, measure.Expression))
 
-                if found_measure:
-                    expression = found_measure.Expression
-                    measure_name = original_expression
-                    measure_table = found_table
-                    logger.info(f"Auto-fetched measure '{found_measure.Name}' from table '{found_table}'")
-                    # Clean up AMO connection
-                    _cleanup_amo_connection(server)
+                # Try exact match first (case-insensitive)
+                if measure_name_lower == search_term:
+                    exact_matches.append((measure, table.Name))
+                # Try partial/fuzzy match
                 else:
-                    # Measure not found - provide helpful suggestions
-                    # Find similar measure names for suggestions
-                    all_measures = []
-                    for table in model.Tables:
-                        for measure in table.Measures:
-                            all_measures.append((measure.Name, table.Name))
+                    measure_words = set(re.split(r'[\s\-_]+', measure_name_lower))
+                    if all(
+                        any(search_word in measure_word or measure_word in search_word
+                            for measure_word in measure_words)
+                        for search_word in search_words
+                    ):
+                        partial_matches.append((measure, table.Name))
 
-                    # Clean up AMO connection before returning error
-                    _cleanup_amo_connection(server)
+        # Prioritize exact matches, then partial matches
+        if exact_matches:
+            found_measure, found_table = exact_matches[0]
+        elif partial_matches:
+            partial_matches.sort(key=lambda x: len(x[0].Name))
+            found_measure, found_table = partial_matches[0]
+            logger.info(f"Using fuzzy match: '{found_measure.Name}' for search term '{expression}'")
 
-                    # Find measures with any matching words (using same word-based logic)
-                    suggestions = []
-                    search_words_set = set(search_words)
-                    for measure_name_str, table_name in all_measures:
-                        measure_words_set = set(re.split(r'[\s\-_]+', measure_name_str.lower()))
-                        # Check if any search word appears in any measure word
-                        if any(
-                            search_word in measure_word or measure_word in search_word
-                            for search_word in search_words_set
-                            for measure_word in measure_words_set
-                        ):
-                            suggestions.append(f"[{table_name}].[{measure_name_str}]")
+        _cleanup_amo_connection(server)
 
-                    error_msg = f"The expression '{original_expression}' looks like a measure name, but no exact match was found in the model."
-                    if suggestions:
-                        error_msg += f"\n\nDid you mean one of these measures?\n" + "\n".join(f"  • {s}" for s in suggestions[:5])
-                    error_msg += f"\n\nPlease provide either:\n1. The full DAX expression to analyze, or\n2. A valid measure name"
+        if found_measure:
+            return {
+                'found': True,
+                'expression': found_measure.Expression,
+                'measure_name': found_measure.Name,
+                'measure_table': found_table,
+                'is_dax_expression': False,
+                'actual_name': found_measure.Name  # The real name (may differ from search)
+            }
+        else:
+            # Find suggestions
+            suggestions = []
+            search_words_set = set(search_words)
+            for measure_name_str, table_name, _ in all_measures:
+                measure_words_set = set(re.split(r'[\s\-_]+', measure_name_str.lower()))
+                if any(
+                    search_word in measure_word or measure_word in search_word
+                    for search_word in search_words_set
+                    for measure_word in measure_words_set
+                ):
+                    suggestions.append(f"[{table_name}].[{measure_name_str}]")
 
-                    return {
-                        'success': False,
-                        'error': error_msg,
-                        'suggestions': suggestions[:10] if suggestions else None,
-                        'hint': 'Try using more specific keywords from the measure name'
-                    }
-            except Exception as e:
-                logger.warning(f"Error during auto-fetch: {e}")
-                # Clean up AMO connection
-                _cleanup_amo_connection(server)
-                # Continue with original expression
-                pass
+            return {
+                'found': False,
+                'error': f"Measure '{expression}' not found in model",
+                'expression': expression,
+                'measure_name': None,
+                'measure_table': None,
+                'suggestions': suggestions[:10] if suggestions else None
+            }
+
+    except Exception as e:
+        _cleanup_amo_connection(server)
+        logger.warning(f"Error during measure lookup: {e}")
+        return {
+            'found': False,
+            'error': f"Error finding measure: {str(e)}",
+            'expression': expression,
+            'measure_name': None,
+            'measure_table': None
+        }
+
+
+def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Unified DAX Intelligence Tool - Complete DAX analysis with optimization.
+
+    WORKFLOW:
+    1. MEASURE VERIFICATION: Always finds and verifies the measure FIRST
+    2. ANALYSIS: Runs comprehensive context transition and pattern analysis
+    3. OUTPUT: Returns structured data for AI to present naturally
+
+    The AI should present results as normal text/markdown with only
+    DAX code, tree hierarchies, and technical output in code blocks.
+    """
+    import re
+
+    if not connection_state.is_connected():
+        return ErrorHandler.handle_not_connected()
+
+    expression = args.get('expression')
+    analysis_mode = args.get('analysis_mode', 'all')
+    skip_validation = args.get('skip_validation', False)
+
+    if not expression:
+        return {
+            'success': False,
+            'error': 'expression parameter is required'
+        }
+
+    # ============================================
+    # STEP 1: FIND AND VERIFY MEASURE FIRST
+    # ============================================
+    # This MUST happen before any analysis to ensure we have the right measure
+    measure_lookup = _find_measure_in_model(expression, connection_state)
+
+    if not measure_lookup['found']:
+        # Measure not found - return helpful error with suggestions
+        error_response = {
+            'success': False,
+            'error': measure_lookup['error'],
+            'hint': 'Use search_objects or search_string tool to find the correct measure name first'
+        }
+        if measure_lookup.get('suggestions'):
+            error_response['similar_measures'] = measure_lookup['suggestions']
+            error_response['suggestion'] = f"Did you mean one of these? Try with the exact name."
+        return error_response
+
+    # Update expression with the actual DAX (if measure was looked up)
+    original_expression = expression
+    expression = measure_lookup['expression']
+    measure_name = measure_lookup.get('measure_name')
+    measure_table = measure_lookup.get('measure_table')
+    actual_measure_name = measure_lookup.get('actual_name', measure_name)
 
     # Step 1: Validate DAX syntax (unless explicitly skipped)
     # IMPORTANT: Auto-skip validation for auto-fetched measures (they're already in the model and must be valid)
@@ -827,130 +874,98 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                     seen_urls.add(url)
                     unique_articles.append(article)
 
-            # Combine all results in structured format
+            # ============================================
+            # BUILD CLEAN RESPONSE - STRUCTURED DATA ONLY
+            # ============================================
+            # The AI will present this as normal markdown text with code blocks
+            # for DAX code, tree hierarchies, and technical elements only.
+
             response = {
                 'success': True,
                 'validation': validation_result,
                 'mode': 'all',
 
-                # ============================================
-                # 🚨 CRITICAL AI INSTRUCTIONS - READ FIRST 🚨
-                # ============================================
-                'AI_INSTRUCTIONS': {
-                    'READ_THIS_FIRST': '🚨 This response contains ONLY structured data fields. There is NO text report field. You must read and present the structured fields below.',
-
-                    'PRIORITY_1_SHOW_ANNOTATED_CODE_FIRST': '🚨 MANDATORY: Display the annotated_dax_code.code field FIRST at the very beginning of your response. Show the complete annotated code with the legend. This gives users immediate visual understanding of WHERE context transitions occur (🔄 = Iterator, 📊 = Measure Ref, ⚡ = CALCULATE, 🔴🟡🟢 = Impact).',
-
-                    'PRIORITY_2_PRESENT_ANALYSIS_SUMMARY': 'After annotated code, show the analysis_summary field as a quick overview of findings (complexity score, total transitions, patterns detected, improvements available).',
-
-                    'PRIORITY_3_PRESENT_DETAILED_SECTIONS': 'Then present these sections in order: (1) best_practices_analysis - violations found, (2) anti_patterns - pattern matches with articles, (3) context_analysis.transitions - detailed transition info, (4) improvements.details - specific improvement opportunities, (5) vertipaq_analysis - column metrics if available, (6) call_tree - iteration estimates if available.',
-
-                    'PRIORITY_4_WRITE_OPTIMIZED_CODE': '🚨 CRITICAL: After presenting all analysis, YOU (the AI) MUST write the complete optimized DAX measure. Check optimized_measure.code field - if NULL, YOU must manually write the complete optimized code by applying ALL improvements from improvements.details list. This is NOT optional. Write the FULL measure code, not snippets. The user needs production-ready code to copy-paste into Power BI.',
-
-                    'PRIORITY_5_EXPLAIN_CHANGES': 'After writing optimized code, explain what specific optimizations you applied and WHY they improve performance. Reference specific items from improvements.details and cite articles_referenced when relevant.',
-
-                    'DATA_STRUCTURE_GUIDE': 'Key fields: annotated_dax_code.code (visual code), analysis_summary (quick stats), best_practices_analysis.issues (violations), anti_patterns.pattern_matches (patterns found), context_analysis.transitions (detailed transitions), improvements.details (improvement list), improvements.suggested_code (auto-generated if available), vertipaq_analysis.column_analysis (column metrics), call_tree.visualization (call tree), articles_referenced.articles (research articles)',
-
-                    'WORKFLOW_SUMMARY': 'STEP 1: Show annotated_dax_code → STEP 2: Show analysis_summary → STEP 3: Present detailed sections → STEP 4: Write complete optimized DAX code → STEP 5: Explain changes with article references'
-                },
-
-                # ============================================
-                # ANNOTATED DAX CODE - SHOW THIS FIRST!
-                # ============================================
-                'annotated_dax_code': {
-                    'code': annotated_dax,
-                    'legend': {
-                        '🔄': 'Iterator function (creates row context)',
-                        '📊': 'Measure reference (implicit CALCULATE)',
-                        '⚡': 'Explicit CALCULATE/CALCULATETABLE',
-                        '🔴': 'HIGH performance impact',
-                        '🟡': 'MEDIUM performance impact',
-                        '🟢': 'LOW performance impact'
-                    },
-                    'note': '🚨 AI: Display this annotated code at the VERY BEGINNING of your response, before any other analysis. The annotations show WHERE each context transition occurs inline in the code. Users need to see this FIRST to understand the problem areas before reading the detailed analysis.'
-                },
-                'analysis_summary': {
-                    'complexity_score': result_analyze.complexity_score,
-                    'max_nesting_level': result_analyze.max_nesting_level,
-                    'total_transitions': len(result_analyze.transitions),
-                    'patterns_detected': anti_patterns.get('patterns_detected', 0),
-                    'improvements_available': improvements.get('has_improvements', False),
-                    'improvements_count': improvements.get('improvements_count', 0),
-                    'best_practices_score': best_practices_result.get('overall_score', 0) if best_practices_result else None,
-                    'best_practices_issues': best_practices_result.get('total_issues', 0) if best_practices_result else 0
-                },
-                'context_analysis': {
-                    'summary': result_analyze.summary,
-                    'complexity_score': result_analyze.complexity_score,
-                    'max_nesting_level': result_analyze.max_nesting_level,
-                    'transitions': [
-                        {
-                            'function': t.function,
-                            'line': t.line,
-                            'column': t.column,
-                            'type': t.type.value,
-                            'performance_impact': t.performance_impact.value,
-                            'explanation': t.explanation
-                        }
-                        for t in result_analyze.transitions
-                    ]
-                },
-                'best_practices_analysis': best_practices_result if best_practices_result else {'note': 'Best practices analysis not available'},
-                'anti_patterns': {
-                    'success': anti_patterns.get('success', False),
-                    'patterns_detected': anti_patterns.get('patterns_detected', 0),
-                    'pattern_matches': anti_patterns.get('pattern_matches', {}),
-                    'recommendations': anti_patterns.get('recommendations', []),
-                    'articles': anti_patterns.get('articles', []),
-                    'error': anti_patterns.get('error') if not anti_patterns.get('success') else None
-                },
-                'improvements': {
-                    'has_improvements': improvements.get('has_improvements', False),
-                    'summary': improvements.get('summary', 'No improvements suggested'),
-                    'count': improvements.get('improvements_count', 0),
-                    'details': improvements.get('improvements', []),
-                    'original_code': expression,
-                    'suggested_code': improvements.get('suggested_code')
-                },
-                'vertipaq_analysis': vertipaq_analysis if vertipaq_analysis and vertipaq_analysis.get('success') else {
-                    'note': 'VertiPaq analysis not available',
-                    'reason': vertipaq_analysis.get('error') if vertipaq_analysis else 'Analysis failed or not connected to model'
-                },
-                'call_tree': call_tree_data,
-                'debug_steps': debug_steps_data,
-
-                # NOTE: 'report' field removed from 'all' mode to eliminate massive duplication
-                # All data is already available in structured fields above
-                # If user wants formatted text report, use analysis_mode='report'
-
-                # ============================================
-                # 🚨 FINAL OPTIMIZED MEASURE - AI MUST WRITE THIS! 🚨
-                # ============================================
-                'optimized_measure': {
-                    'code': improvements.get('suggested_code'),
-                    'code_actually_transformed': improvements.get('code_actually_transformed', False),
-                    'has_optimization_opportunities': improvements.get('has_improvements', False),
-                    'opportunities_count': improvements.get('improvements_count', 0),
-                    'AI_INSTRUCTION': '🚨 CRITICAL: If the code field above is NULL/None, YOU (the AI) MUST write the complete optimized DAX measure by applying ALL improvements from the improvements.details list. Do NOT just describe the improvements - write the ACTUAL working DAX code that implements all optimizations. The user expects to copy-paste this optimized measure directly into Power BI.',
-                    'note': improvements.get('note') or (
-                        '✅ Automatic transformation applied - this code is ready to use!' if improvements.get('code_actually_transformed')
-                        else '⚠️ ATTENTION AI: The code field is NULL because automatic transformation is not available. YOU MUST manually write the complete optimized DAX code by applying ALL improvements listed in the "improvements" section. Write the COMPLETE measure, not just snippets. The user needs the full, production-ready optimized measure.'
-                    )
-                },
-                # PROMINENT ARTICLE REFERENCES SECTION
-                'articles_referenced': {
-                    'total_count': len(unique_articles),
-                    'articles': unique_articles,
-                    'note': 'These articles were referenced during the analysis and provide detailed explanations of the patterns detected'
-                }
-            }
-
-            if measure_name:
-                response['measure_info'] = {
-                    'name': measure_name,
+                # Measure info (if looked up by name)
+                'measure': {
+                    'name': actual_measure_name or 'Custom DAX Expression',
                     'table': measure_table,
-                    'note': f"Auto-fetched measure expression from [{measure_table}].[{measure_name}]"
-                }
+                    'searched_as': original_expression if measure_name else None
+                } if measure_name else None,
+
+                # SECTION 1: Original DAX Code (for code block display)
+                'original_dax': expression.strip(),
+
+                # SECTION 2: Annotated Code with Context Transitions (for code block)
+                'annotated_code': annotated_dax,
+
+                # SECTION 3: Key Metrics (present as bullet points, NOT code block)
+                'metrics': {
+                    'complexity_score': result_analyze.complexity_score,
+                    'complexity_level': 'Low' if result_analyze.complexity_score < 20 else 'Moderate' if result_analyze.complexity_score < 50 else 'High' if result_analyze.complexity_score < 80 else 'Very High',
+                    'max_nesting_level': result_analyze.max_nesting_level,
+                    'context_transitions': len(result_analyze.transitions),
+                    'patterns_detected': anti_patterns.get('patterns_detected', 0),
+                    'best_practices_score': best_practices_result.get('overall_score', 0) if best_practices_result else None,
+                    'issues_found': best_practices_result.get('total_issues', 0) if best_practices_result else 0,
+                    'improvements_available': improvements.get('improvements_count', 0)
+                },
+
+                # SECTION 4: Quick Assessment (present as checkmarks/warnings, NOT code block)
+                'quick_assessment': result_analyze.summary,
+
+                # SECTION 5: Context Transitions Detail (present as numbered list)
+                'transitions': [
+                    {
+                        'function': t.function,
+                        'line': t.line,
+                        'type': t.type.value,
+                        'impact': t.performance_impact.value,
+                        'explanation': t.explanation
+                    }
+                    for t in result_analyze.transitions
+                ],
+
+                # SECTION 6: Best Practices Issues (present as prioritized list)
+                'best_practices': {
+                    'score': best_practices_result.get('overall_score', 0) if best_practices_result else None,
+                    'issues': best_practices_result.get('issues', []) if best_practices_result else [],
+                    'critical_count': len([i for i in (best_practices_result.get('issues', []) if best_practices_result else []) if i.get('severity') == 'critical']),
+                    'high_count': len([i for i in (best_practices_result.get('issues', []) if best_practices_result else []) if i.get('severity') == 'high']),
+                    'medium_count': len([i for i in (best_practices_result.get('issues', []) if best_practices_result else []) if i.get('severity') == 'medium'])
+                },
+
+                # SECTION 7: Anti-Patterns (present with article references)
+                'anti_patterns': {
+                    'count': anti_patterns.get('patterns_detected', 0),
+                    'patterns': anti_patterns.get('pattern_matches', {}),
+                    'recommendations': anti_patterns.get('recommendations', [])
+                },
+
+                # SECTION 8: Call Tree (for code block display - technical)
+                'call_tree': call_tree_data.get('visualization') if call_tree_data and not call_tree_data.get('error') else None,
+                'iterations': {
+                    'total': total_iterations,
+                    'warning': call_tree_data.get('performance_warning') if call_tree_data else None
+                },
+
+                # SECTION 9: Improvements (present as actionable list)
+                'improvements': {
+                    'count': improvements.get('improvements_count', 0),
+                    'summary': improvements.get('summary', 'No improvements needed'),
+                    'details': improvements.get('improvements', [])
+                },
+
+                # SECTION 10: Optimized Code (for code block display)
+                # If auto-generated, show it. Otherwise AI writes it based on improvements.
+                'optimized_code': improvements.get('suggested_code'),
+                'optimization_applied': improvements.get('code_actually_transformed', False),
+
+                # SECTION 11: Research References (present as linked list)
+                'articles': unique_articles,
+
+                # Debug steps (if needed for detailed debugging view)
+                'debug_steps': debug_steps_data
+            }
 
             return response
 
@@ -1017,105 +1032,54 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                     seen_urls.add(url)
                     unique_articles.append(article)
 
+            # Clean response structure for 'analyze' mode
             response = {
                 'success': True,
                 'validation': validation_result,
                 'mode': 'analyze',
 
-                # ============================================
-                # 🚨 CRITICAL AI INSTRUCTIONS - READ FIRST 🚨
-                # ============================================
-                'AI_INSTRUCTIONS': {
-                    'READ_THIS_FIRST': '🚨 This response contains ONLY structured data fields. You must read and present the structured fields below.',
-
-                    'PRIORITY_1_SHOW_ANNOTATED_CODE_FIRST': '🚨 MANDATORY: Display the annotated_dax_code.code field FIRST at the very beginning of your response. Show the complete annotated code with the legend. This gives users immediate visual understanding of WHERE context transitions occur (🔄 = Iterator, 📊 = Measure Ref, ⚡ = CALCULATE, 🔴🟡🟢 = Impact).',
-
-                    'PRIORITY_2_PRESENT_DETAILED_SECTIONS': 'After annotated code, present: (1) best_practices_analysis - violations found, (2) anti_patterns - pattern matches with articles, (3) analysis.transitions - detailed transition info, (4) improvements.details - specific improvement opportunities, (5) vertipaq_analysis - column metrics if available.',
-
-                    'PRIORITY_3_WRITE_OPTIMIZED_CODE': '🚨 CRITICAL: After presenting all analysis, YOU (the AI) MUST write the complete optimized DAX measure. Check final_optimized_measure.code field - if NULL, YOU must manually write the complete optimized code by applying ALL improvements from improvements.details list. This is NOT optional. Write the FULL measure code, not snippets. The user needs production-ready code to copy-paste into Power BI.',
-
-                    'PRIORITY_4_EXPLAIN_CHANGES': 'After writing optimized code, explain what specific optimizations you applied and WHY they improve performance. Reference specific items from improvements.details and cite articles_referenced when relevant.',
-
-                    'DATA_STRUCTURE_GUIDE': 'Key fields: annotated_dax_code.code (visual code), best_practices_analysis.issues (violations), anti_patterns.pattern_matches (patterns found), analysis.transitions (detailed transitions), improvements.details (improvement list), improvements.suggested_code (auto-generated if available), vertipaq_analysis.column_analysis (column metrics), articles_referenced.articles (research articles)',
-
-                    'WORKFLOW_SUMMARY': 'STEP 1: Show annotated_dax_code → STEP 2: Present detailed sections → STEP 3: Write complete optimized DAX code → STEP 4: Explain changes with article references'
-                },
-
-                # ============================================
-                # ANNOTATED DAX CODE - SHOW THIS FIRST!
-                # ============================================
-                'annotated_dax_code': {
-                    'code': annotated_dax,
-                    'legend': {
-                        '🔄': 'Iterator function (creates row context)',
-                        '📊': 'Measure reference (implicit CALCULATE)',
-                        '⚡': 'Explicit CALCULATE/CALCULATETABLE',
-                        '🔴': 'HIGH performance impact',
-                        '🟡': 'MEDIUM performance impact',
-                        '🟢': 'LOW performance impact'
-                    },
-                    'note': '🚨 AI: Display this annotated code at the VERY BEGINNING of your response, before any other analysis. The annotations show WHERE each context transition occurs inline in the code. Users need to see this FIRST to understand the problem areas before reading the detailed analysis.'
-                },
-                'analysis': result.to_dict() if hasattr(result, 'to_dict') else result
-            }
-
-            # Include measure info if auto-fetched
-            if measure_name:
-                response['measure_info'] = {
-                    'name': measure_name,
+                # Measure info (if looked up by name)
+                'measure': {
+                    'name': actual_measure_name or 'Custom DAX Expression',
                     'table': measure_table,
-                    'note': f"Auto-fetched measure expression from [{measure_table}].[{measure_name}]"
-                }
+                    'searched_as': original_expression if measure_name else None
+                } if measure_name else None,
 
-            # Include best practices analysis
-            response['best_practices_analysis'] = best_practices_result if best_practices_result else {'note': 'Best practices analysis not available'}
+                # Original DAX Code (for code block display)
+                'original_dax': expression.strip(),
 
-            # ALWAYS include anti-pattern detection results (even if failed or no patterns found)
-            response['anti_patterns'] = {
-                'success': anti_patterns.get('success', False),
-                'patterns_detected': anti_patterns.get('patterns_detected', 0),
-                'pattern_matches': anti_patterns.get('pattern_matches', {}),
-                'recommendations': anti_patterns.get('recommendations', []),
-                'articles': anti_patterns.get('articles', []),
-                'error': anti_patterns.get('error') if not anti_patterns.get('success') else None
-            }
+                # Annotated Code with Context Transitions (for code block)
+                'annotated_code': annotated_dax,
 
-            # Include VertiPaq analysis
-            response['vertipaq_analysis'] = vertipaq_analysis if vertipaq_analysis and vertipaq_analysis.get('success') else {
-                'note': 'VertiPaq analysis not available',
-                'reason': vertipaq_analysis.get('error') if vertipaq_analysis else 'Analysis failed or not connected to model'
-            }
+                # Analysis results
+                'analysis': result.to_dict() if hasattr(result, 'to_dict') else result,
 
-            # Include specific improvements with new DAX code
-            if improvements.get('has_improvements'):
-                response['improvements'] = {
-                    'summary': improvements.get('summary'),
-                    'count': improvements.get('improvements_count'),
-                    'details': improvements.get('improvements'),
-                    'original_code': improvements.get('original_code'),
-                    'suggested_code': improvements.get('suggested_code')
-                }
+                # Best practices
+                'best_practices': {
+                    'score': best_practices_result.get('overall_score', 0) if best_practices_result else None,
+                    'issues': best_practices_result.get('issues', []) if best_practices_result else []
+                },
 
-            # ============================================
-            # 🚨 FINAL OPTIMIZED MEASURE - AI MUST WRITE THIS! 🚨
-            # ============================================
-            response['final_optimized_measure'] = {
-                'code': improvements.get('suggested_code'),
-                'code_actually_transformed': improvements.get('code_actually_transformed', False),
-                'has_optimization_opportunities': improvements.get('has_improvements', False),
-                'opportunities_count': improvements.get('improvements_count', 0),
-                'AI_INSTRUCTION': '🚨 CRITICAL: If the code field above is NULL/None, YOU (the AI) MUST write the complete optimized DAX measure by applying ALL improvements from the improvements.details list. Do NOT just describe the improvements - write the ACTUAL working DAX code that implements all optimizations. The user expects to copy-paste this optimized measure directly into Power BI.',
-                'note': improvements.get('note') or (
-                    '✅ Automatic transformation applied - this code is ready to use!' if improvements.get('code_actually_transformed')
-                    else '⚠️ ATTENTION AI: The code field is NULL because automatic transformation is not available. YOU MUST manually write the complete optimized DAX code by applying ALL improvements listed in the "improvements" section. Write the COMPLETE measure, not just snippets. The user needs the full, production-ready optimized measure.'
-                )
-            }
+                # Anti-patterns
+                'anti_patterns': {
+                    'count': anti_patterns.get('patterns_detected', 0),
+                    'patterns': anti_patterns.get('pattern_matches', {}),
+                    'recommendations': anti_patterns.get('recommendations', [])
+                },
 
-            # PROMINENT ARTICLE REFERENCES
-            response['articles_referenced'] = {
-                'total_count': len(unique_articles),
-                'articles': unique_articles,
-                'note': 'These articles were referenced during the analysis and provide detailed explanations of the patterns detected'
+                # Improvements
+                'improvements': {
+                    'count': improvements.get('improvements_count', 0),
+                    'summary': improvements.get('summary', 'No improvements needed'),
+                    'details': improvements.get('improvements', [])
+                },
+
+                # Optimized Code (for code block display)
+                'optimized_code': improvements.get('suggested_code'),
+                'optimization_applied': improvements.get('code_actually_transformed', False),
+
+                # Research References
+                'articles': unique_articles
             }
 
             return response
@@ -1258,17 +1222,9 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                     vertipaq_analysis=vertipaq_analysis
                 )
 
-                response['final_optimized_measure'] = {
-                    'code': improvements.get('suggested_code'),
-                    'code_actually_transformed': improvements.get('code_actually_transformed', False),
-                    'has_optimization_opportunities': improvements.get('has_improvements', False),
-                    'opportunities_count': improvements.get('improvements_count', 0),
-                    'AI_INSTRUCTION': '🚨 CRITICAL: If the code field above is NULL/None, YOU (the AI) MUST write the complete optimized DAX measure by applying ALL improvements from the report. Do NOT just describe the improvements - write the ACTUAL working DAX code that implements all optimizations. The user expects to copy-paste this optimized measure directly into Power BI.',
-                    'note': improvements.get('note') or (
-                        '✅ Automatic transformation applied - this code is ready to use!' if improvements.get('code_actually_transformed')
-                        else '⚠️ ATTENTION AI: The code field is NULL because automatic transformation is not available. YOU MUST manually write the complete optimized DAX code by applying ALL improvements listed in the report. Write the COMPLETE measure, not just snippets. The user needs the full, production-ready optimized measure.'
-                    )
-                }
+                response['optimized_code'] = improvements.get('suggested_code')
+                response['optimization_applied'] = improvements.get('code_actually_transformed', False)
+                response['improvements_count'] = improvements.get('improvements_count', 0)
             except Exception as e:
                 logger.warning(f"Could not extract optimized measure: {e}")
 
@@ -1310,14 +1266,24 @@ def register_dax_handlers(registry):
         ToolDefinition(
             name="dax_intelligence",
             description=(
-                "[03-DAX Intelligence] Comprehensive DAX analysis with optimization recommendations.\n\n"
-                "Provides complete analysis including:\n"
-                "• Context Transition Analysis: Complexity scores, nesting levels, transition details\n"
-                "• Anti-Pattern Detection: SQLBI research articles, pattern matches, recommendations\n"
-                "• Code Improvements: Before/after examples with specific transformations\n"
-                "• VertiPaq Analysis: Column cardinality, size metrics, performance impact\n"
-                "• Call Tree Hierarchy: Function call visualization with iteration estimates\n"
-                "• Optimized Code: Production-ready DAX with all improvements applied\n\n"
+                "[03-DAX Intelligence] Comprehensive DAX analysis with optimization.\n\n"
+                "WORKFLOW:\n"
+                "1. MEASURE LOOKUP: Automatically finds and verifies measure before analysis\n"
+                "2. ANALYSIS: Runs context, pattern, and best practices analysis\n"
+                "3. OPTIMIZATION: Generates or guides creation of optimized DAX\n\n"
+                "RESPONSE FORMAT:\n"
+                "• 'original_dax' and 'annotated_code': Show in code blocks\n"
+                "• 'metrics', 'quick_assessment': Present as bullet points (NOT code blocks)\n"
+                "• 'transitions', 'best_practices', 'improvements': Present as lists\n"
+                "• 'call_tree': Show in code block (technical hierarchy)\n"
+                "• 'optimized_code': Show in code block - if null, AI writes optimized version\n"
+                "• 'articles': Present as references with links\n\n"
+                "Analysis includes:\n"
+                "• Context Transition Analysis: Complexity scores, nesting levels\n"
+                "• Anti-Pattern Detection: SQLBI research, pattern matches\n"
+                "• Best Practices: Issues with severity levels\n"
+                "• Call Tree: Iteration estimates\n"
+                "• Optimized Code: Production-ready DAX\n\n"
                 "Features:\n"
                 "- Smart measure finder with fuzzy matching\n"
                 "- Online research integration for best practices\n"

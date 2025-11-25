@@ -722,7 +722,7 @@ TOOL_SCHEMAS = {
         "properties": {
             "expression": {
                 "type": "string",
-                "description": "DAX expression OR measure name to analyze. SMART AUTO-DETECTION: (1) If you provide a MEASURE NAME (e.g., 'Total Revenue'), the tool will AUTOMATICALLY fetch the DAX expression from the model. (2) If you provide a full DAX EXPRESSION, it will analyze it directly. Examples: 'Total Revenue' (measure name - auto-fetched), 'SUM(Sales[Amount])' (DAX expression)"
+                "description": "DAX expression OR measure name. MEASURE LOOKUP FIRST: When a measure name is provided, the tool FIRST finds and verifies the correct measure before running analysis. This ensures the right measure is always analyzed. Examples: 'amount in selected currency' (finds exact match or suggests similar), 'CALCULATE(SUM(...))' (direct DAX expression)"
             },
             "analysis_mode": {
                 "type": "string",
