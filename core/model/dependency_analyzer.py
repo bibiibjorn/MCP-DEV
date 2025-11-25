@@ -1153,6 +1153,10 @@ class DependencyAnalyzer:
 
             mermaid_code = "\n".join(lines)
 
+            # Calculate total counts
+            total_edges = len(upstream_edges) + len(downstream_edges)
+            total_nodes = len(all_nodes)
+
             # Return raw Mermaid code (no markdown fence) for API rendering
             return {
                 'success': True,
@@ -1160,6 +1164,8 @@ class DependencyAnalyzer:
                 'mermaid': mermaid_code,
                 'upstream_count': len(upstream_nodes),
                 'downstream_count': len(downstream_nodes),
+                'node_count': total_nodes,
+                'edge_count': total_edges,
                 'format': 'mermaid_flowchart_bidirectional'
             }
 
