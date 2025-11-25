@@ -897,6 +897,8 @@ class DependencyAnalyzer:
 
             mermaid_code = "\n".join(lines)
 
+            # Return raw Mermaid code (no markdown fence) for API rendering
+            # Markdown wrapping can be done at presentation layer if needed
             return {
                 'success': True,
                 'measure': {'table': table, 'name': measure},
@@ -1058,7 +1060,7 @@ class DependencyAnalyzer:
             collect_downstream(table, measure, 0)
 
             # Generate combined diagram
-            lines = ["```mermaid", "flowchart LR"]
+            lines = ["flowchart LR"]
             lines.append("    %% Impact Analysis Diagram")
             lines.append("    %% Left = Dependencies (upstream), Right = Dependents (downstream)")
             lines.append("")
@@ -1105,12 +1107,14 @@ class DependencyAnalyzer:
             lines.append("    classDef root fill:#2196F3,stroke:#1565C0,color:#fff,stroke-width:3px")
             lines.append("    classDef upstream fill:#4CAF50,stroke:#388E3C,color:#fff")
             lines.append("    classDef downstream fill:#FF9800,stroke:#F57C00,color:#fff")
-            lines.append("```")
 
+            mermaid_code = "\n".join(lines)
+
+            # Return raw Mermaid code (no markdown fence) for API rendering
             return {
                 'success': True,
                 'measure': {'table': table, 'name': measure},
-                'mermaid': "\n".join(lines),
+                'mermaid': mermaid_code,
                 'upstream_count': len(upstream_nodes),
                 'downstream_count': len(downstream_nodes),
                 'format': 'mermaid_flowchart_bidirectional'

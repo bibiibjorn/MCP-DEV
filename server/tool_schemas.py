@@ -535,30 +535,37 @@ TOOL_SCHEMAS = {
     # Dependencies (2 tools)
     'analyze_measure_dependencies': {
         "type": "object",
+        "description": """Analyze measure dependencies with professional formatted output.
+
+Returns TWO separate outputs:
+1. formatted_output: Professional text analysis with summary, expression, and dependency breakdown
+2. mermaid_diagram_output: Renderable Mermaid diagram showing dependency graph
+
+Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_output.""",
         "properties": {
             "table": {
                 "type": "string",
-                "description": "Table name"
+                "description": "Table name containing the measure"
             },
             "measure": {
                 "type": "string",
-                "description": "Measure name"
+                "description": "Measure name to analyze"
             },
             "include_diagram": {
                 "type": "boolean",
-                "description": "Include a Mermaid diagram of dependencies (default: true)",
+                "description": "Include a Mermaid diagram visualization (default: true)",
                 "default": True
             }
         },
         "required": ["table", "measure"],
         "examples": [
             {
-                "_description": "Analyze what a measure depends on with diagram",
+                "_description": "Analyze measure dependencies with visual diagram",
                 "table": "Sales",
                 "measure": "Profit Margin"
             },
             {
-                "_description": "Check dependencies of a KPI measure without diagram",
+                "_description": "Get dependency analysis without diagram",
                 "table": "_Measures",
                 "measure": "YTD Revenue",
                 "include_diagram": False

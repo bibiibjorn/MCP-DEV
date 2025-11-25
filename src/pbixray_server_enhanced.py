@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, List
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent, Resource
+from mcp.types import Tool, TextContent, ImageContent, Resource
 from datetime import datetime
 
 # Add parent directory to path
@@ -131,7 +131,7 @@ async def read_resource(uri: str) -> str:
 
 
 @app.call_tool()
-async def call_tool(name: str, arguments: Any) -> List[TextContent]:
+async def call_tool(name: str, arguments: Any) -> List[TextContent | ImageContent]:
     """Execute tool via dispatcher"""
     try:
         _t0 = time.time()
@@ -252,6 +252,28 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
         # Special handling for get_recent_logs
         if name == "get_recent_logs" and isinstance(result, dict) and 'logs' in result:
             return [TextContent(type="text", text=result['logs'])]
+
+        # Handle responses with image content (e.g., rendered Mermaid diagrams)
+        # Return both: text analysis first, then image as separate content block
+        if isinstance(result, dict) and '_image_content' in result:
+            image_data = result.pop('_image_content')
+            content_list = []
+
+            # First: the text analysis (JSON data)
+            content_list.append(TextContent(
+                type="text",
+                text=json.dumps(result, separators=(',', ':'))
+            ))
+
+            # Second: the image as a separate output block
+            if image_data.get('data') and image_data.get('mimeType'):
+                content_list.append(ImageContent(
+                    type="image",
+                    data=image_data['data'],
+                    mimeType=image_data['mimeType']
+                ))
+
+            return content_list
 
         return [TextContent(type="text", text=json.dumps(result, separators=(',', ':')))]
 
