@@ -543,19 +543,25 @@ TOOL_SCHEMAS = {
             "measure": {
                 "type": "string",
                 "description": "Measure name"
+            },
+            "include_diagram": {
+                "type": "boolean",
+                "description": "Include a Mermaid diagram of dependencies (default: true)",
+                "default": True
             }
         },
         "required": ["table", "measure"],
         "examples": [
             {
-                "_description": "Analyze what a measure depends on",
+                "_description": "Analyze what a measure depends on with diagram",
                 "table": "Sales",
                 "measure": "Profit Margin"
             },
             {
-                "_description": "Check dependencies of a KPI measure",
+                "_description": "Check dependencies of a KPI measure without diagram",
                 "table": "_Measures",
-                "measure": "YTD Revenue"
+                "measure": "YTD Revenue",
+                "include_diagram": False
             }
         ]
     },

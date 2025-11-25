@@ -11,7 +11,7 @@ from core.validation.error_handler import ErrorHandler
 logger = logging.getLogger(__name__)
 
 def handle_analyze_measure_dependencies(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Analyze measure dependencies tree"""
+    """Analyze measure dependencies tree with optional Mermaid diagram"""
     if not connection_state.is_connected():
         return ErrorHandler.handle_not_connected()
 
@@ -21,6 +21,7 @@ def handle_analyze_measure_dependencies(args: Dict[str, Any]) -> Dict[str, Any]:
 
     table = args.get('table')
     measure = args.get('measure')
+    include_diagram = args.get('include_diagram', True)  # Default to True
 
     if not table or not measure:
         return {
@@ -28,7 +29,7 @@ def handle_analyze_measure_dependencies(args: Dict[str, Any]) -> Dict[str, Any]:
             'error': 'table and measure parameters are required'
         }
 
-    return dependency_analyzer.analyze_dependencies(table, measure)
+    return dependency_analyzer.analyze_dependencies(table, measure, include_diagram=include_diagram)
 
 def handle_get_measure_impact(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get measure usage impact"""

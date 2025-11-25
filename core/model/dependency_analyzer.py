@@ -114,8 +114,17 @@ class DependencyAnalyzer:
             'message': f'Cleared {cache_size} cached parse results'
         }
     
-    def analyze_measure_dependencies(self, table: str, measure: str) -> Dict:
-        """Analyze dependencies for a specific measure"""
+    def analyze_measure_dependencies(self, table: str, measure: str, include_diagram: bool = False) -> Dict:
+        """Analyze dependencies for a specific measure
+
+        Args:
+            table: Table name containing the measure
+            measure: Measure name
+            include_diagram: If True, include a Mermaid diagram in the response
+
+        Returns:
+            Dictionary with dependency information and optionally a Mermaid diagram
+        """
         # Use get_measure_details_with_fallback for proper table+measure filtering
         result = self.query_executor.get_measure_details_with_fallback(table, measure)
         if not result.get('success'):
@@ -132,7 +141,7 @@ class DependencyAnalyzer:
         measure_key = f"{table}[{measure}]"
         refs = self._parse_dax_cached(measure_key, expression)
 
-        return {
+        response = {
             'success': True,
             'measure': {'table': table, 'name': measure},
             'expression': expression,
@@ -141,6 +150,14 @@ class DependencyAnalyzer:
             'referenced_columns': refs.get('columns', []),
             'referenced_tables': refs.get('tables', [])
         }
+
+        # Include Mermaid diagram if requested
+        if include_diagram:
+            diagram_result = self.generate_dependency_mermaid(table, measure, direction="upstream", depth=3)
+            if diagram_result.get('success'):
+                response['mermaid_diagram'] = diagram_result.get('mermaid', '')
+
+        return response
     
     def find_measure_usage(self, table: str, measure: str) -> Dict:
         """Find where a measure is used by other measures"""
@@ -211,12 +228,18 @@ class DependencyAnalyzer:
         tree = recurse(table, measure, 0, set())
         return {'success': True, 'tree': tree}
 
-    def analyze_dependencies(self, table: str, measure: str, depth: int = 3) -> Dict:
+    def analyze_dependencies(self, table: str, measure: str, depth: int = 3, include_diagram: bool = True) -> Dict:
         """
         Alias for analyze_measure_dependencies with optional depth parameter.
         Used by tool handlers for backward compatibility.
+
+        Args:
+            table: Table name containing the measure
+            measure: Measure name
+            depth: Maximum depth for tree traversal (default: 3)
+            include_diagram: If True, include a Mermaid diagram in the response (default: True)
         """
-        result = self.analyze_measure_dependencies(table, measure)
+        result = self.analyze_measure_dependencies(table, measure, include_diagram=include_diagram)
         if not result.get('success'):
             return result
 
@@ -662,38 +685,82 @@ class DependencyAnalyzer:
         self,
         table: str,
         measure: str,
-        direction: str = "downstream",
+        direction: str = "upstream",
         depth: int = 5,
-        include_columns: bool = False
+        include_columns: bool = True
     ) -> Dict[str, Any]:
         """
-        Generate a Mermaid flowchart diagram of measure dependencies.
+        Generate a Mermaid flowchart diagram of measure dependencies with subgraphs by table.
 
         Args:
             table: Table name containing the measure
             measure: Measure name
             direction: "downstream" (what depends on this) or "upstream" (what this depends on)
             depth: Maximum depth to traverse (default: 5)
-            include_columns: Include column references in the diagram (default: False)
+            include_columns: Include column references in the diagram (default: True)
 
         Returns:
             Dictionary with Mermaid diagram code and metadata
+
+        Example output:
+            graph TB
+                M_m_Amount_in_selected_currency["<b>Amount in selected currency</b><br/>(m)"]
+
+                subgraph T1_s_Reporting_Currency["s Reporting Currency<br/>(Selection Table)"]
+                    C1_0_Reporting_Currency["Reporting Currency"]
+                end
+
+                subgraph T2_f_Valtrans["f Valtrans<br/>(Fact Table)"]
+                    C2_0_Amount_Base_Curr["Amount (Base Curr.)"]
+                    C2_1_Amount_EUR["Amount (EUR)"]
+                end
+
+                M_m_Amount_in_selected_currency -->|"SELECTEDVALUE"| T1_s_Reporting_Currency
+                M_m_Amount_in_selected_currency -->|"SUMX Iterator"| T2_f_Valtrans
+
+                %% Styling
+                classDef measureClass fill:#e1f5fe,stroke:#01579b,stroke-width:3px,color:#000
+                classDef tableClass fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#000
         """
         try:
             measure_key = f"{table}[{measure}]"
-            nodes = set()
-            edges = []
+            nodes_by_table: Dict[str, List[Tuple[str, str, str]]] = {}  # table -> [(node_key, node_name, node_type)]
+            edges = []  # (source, target, label)
             visited = set()
-            node_styles = {}  # Track node styling
+            column_nodes = set()  # Track which nodes are columns
 
-            def sanitize_node_id(name: str) -> str:
-                """Convert measure name to valid Mermaid node ID"""
-                # Replace special characters with underscores
-                return name.replace("[", "_").replace("]", "").replace("'", "").replace(" ", "_").replace("-", "_")
+            def sanitize_node_id(name: str, prefix: str = "M") -> str:
+                """Convert name to valid Mermaid node ID"""
+                clean = name.replace("[", "_").replace("]", "").replace("'", "")
+                clean = clean.replace(" ", "_").replace("-", "_").replace("(", "_").replace(")", "_")
+                clean = clean.replace(".", "_").replace("/", "_").replace("\\", "_")
+                # Remove double underscores
+                while "__" in clean:
+                    clean = clean.replace("__", "_")
+                # Remove leading/trailing underscores
+                clean = clean.strip("_")
+                return f"{prefix}_{clean}"
 
-            def sanitize_label(name: str) -> str:
-                """Escape special characters in labels"""
-                return name.replace('"', '\\"')
+            def get_table_type(tbl_name: str) -> str:
+                """Determine table type hint based on naming convention"""
+                tbl_lower = tbl_name.lower()
+                if "_s_" in tbl_lower or tbl_lower.startswith("s_") or "selection" in tbl_lower:
+                    return "(Selection Table)"
+                elif "_f_" in tbl_lower or tbl_lower.startswith("f_") or "fact" in tbl_lower:
+                    return "(Fact Table)"
+                elif "_d_" in tbl_lower or tbl_lower.startswith("d_") or "dim" in tbl_lower:
+                    return "(Dimension Table)"
+                return ""
+
+            def add_node_to_table(tbl: str, node_key: str, node_name: str, node_type: str):
+                """Add a node to its table's subgraph"""
+                if tbl not in nodes_by_table:
+                    nodes_by_table[tbl] = []
+                # Check if node already exists
+                for existing_key, _, _ in nodes_by_table[tbl]:
+                    if existing_key == node_key:
+                        return
+                nodes_by_table[tbl].append((node_key, node_name, node_type))
 
             if direction == "upstream":
                 # Get what this measure depends on
@@ -704,7 +771,9 @@ class DependencyAnalyzer:
                     if key in visited:
                         return
                     visited.add(key)
-                    nodes.add(key)
+
+                    # Add this measure to its table
+                    add_node_to_table(tbl, key, msr, "measure")
 
                     deps_result = self.analyze_measure_dependencies(tbl, msr)
                     if deps_result.get('success'):
@@ -712,17 +781,17 @@ class DependencyAnalyzer:
                         for dep_table, dep_name in deps_result.get('referenced_measures', []):
                             if dep_table:
                                 dep_key = f"{dep_table}[{dep_name}]"
-                                nodes.add(dep_key)
-                                edges.append((dep_key, key))  # dependency -> measure
+                                add_node_to_table(dep_table, dep_key, dep_name, "measure")
+                                edges.append((dep_key, key, ""))  # dependency -> measure
                                 traverse_upstream(dep_table, dep_name, current_depth + 1)
 
-                        # Add column dependencies (optional)
+                        # Add column dependencies
                         if include_columns:
                             for col_table, col_name in deps_result.get('referenced_columns', []):
                                 col_key = f"{col_table}[{col_name}]"
-                                nodes.add(col_key)
-                                node_styles[col_key] = "column"
-                                edges.append((col_key, key))
+                                add_node_to_table(col_table, col_key, col_name, "column")
+                                column_nodes.add(col_key)
+                                edges.append((col_key, key, ""))
 
                 traverse_upstream(table, measure, 0)
 
@@ -735,7 +804,9 @@ class DependencyAnalyzer:
                     if key in visited:
                         return
                     visited.add(key)
-                    nodes.add(key)
+
+                    # Add this measure to its table
+                    add_node_to_table(tbl, key, msr, "measure")
 
                     usage_result = self.find_measure_usage(tbl, msr)
                     if usage_result.get('success'):
@@ -744,45 +815,85 @@ class DependencyAnalyzer:
                             dep_name = dep.get('measure', '')
                             if dep_table and dep_name:
                                 dep_key = f"{dep_table}[{dep_name}]"
-                                nodes.add(dep_key)
-                                edges.append((key, dep_key))  # measure -> dependent
+                                add_node_to_table(dep_table, dep_key, dep_name, "measure")
+                                edges.append((key, dep_key, ""))  # measure -> dependent
                                 traverse_downstream(dep_table, dep_name, current_depth + 1)
 
                 traverse_downstream(table, measure, 0)
 
-            # Generate Mermaid code
-            lines = ["```mermaid", "flowchart TD"]
+            # Generate Mermaid code with subgraphs
+            lines = ["graph TB"]
 
-            # Define node styles
-            lines.append("    %% Node definitions")
-            for node in sorted(nodes):
-                node_id = sanitize_node_id(node)
-                node_label = sanitize_label(node)
-
-                if node == measure_key:
-                    # Root measure - highlight
-                    lines.append(f'    {node_id}["{node_label}"]:::root')
-                elif node_styles.get(node) == "column":
-                    # Column reference
-                    lines.append(f'    {node_id}(["{node_label}"]):::column')
-                else:
-                    # Regular measure
-                    lines.append(f'    {node_id}["{node_label}"]')
-
-            # Define edges
+            # Add root measure node first (outside subgraphs for emphasis)
+            root_id = sanitize_node_id(measure, "M_m")
+            lines.append(f'    {root_id}["<b>{measure}</b><br/>(m)"]')
             lines.append("")
-            lines.append("    %% Dependencies")
-            for source, target in edges:
-                source_id = sanitize_node_id(source)
-                target_id = sanitize_node_id(target)
-                lines.append(f"    {source_id} --> {target_id}")
+
+            # Track node IDs for styling
+            column_node_ids = []
+            measure_node_ids = [root_id]
+
+            # Add subgraphs for each table
+            table_counter = 1
+            node_id_map = {}  # Map original keys to Mermaid node IDs
+
+            for tbl_name, nodes in sorted(nodes_by_table.items()):
+                if tbl_name == table and len(nodes) == 1:
+                    # Skip the root measure's table if it only contains the root
+                    node_id_map[f"{tbl_name}[{nodes[0][1]}]"] = root_id
+                    continue
+
+                table_id = sanitize_node_id(tbl_name, f"T{table_counter}")
+                table_type = get_table_type(tbl_name)
+
+                lines.append(f'    subgraph {table_id}["{tbl_name}<br/>{table_type}"]')
+
+                node_counter = 0
+                for node_key, node_name, node_type in nodes:
+                    # Skip root measure - already added above
+                    if node_key == measure_key:
+                        node_id_map[node_key] = root_id
+                        continue
+
+                    node_id = sanitize_node_id(node_name, f"C{table_counter}_{node_counter}")
+                    node_id_map[node_key] = node_id
+
+                    if node_type == "column":
+                        lines.append(f'        {node_id}["{node_name}"]')
+                        column_node_ids.append(node_id)
+                    else:
+                        lines.append(f'        {node_id}["{node_name}"]')
+                        measure_node_ids.append(node_id)
+
+                    node_counter += 1
+
+                lines.append("    end")
+                lines.append("")
+                table_counter += 1
+
+            # Add edges
+            for source, target, label in edges:
+                source_id = node_id_map.get(source, sanitize_node_id(source.split("[")[1].rstrip("]"), "M"))
+                target_id = node_id_map.get(target, sanitize_node_id(target.split("[")[1].rstrip("]"), "M"))
+
+                if label:
+                    lines.append(f'    {source_id} -->|"{label}"| {target_id}')
+                else:
+                    lines.append(f"    {source_id} --> {target_id}")
 
             # Add styling
             lines.append("")
-            lines.append("    %% Styles")
-            lines.append("    classDef root fill:#2196F3,stroke:#1565C0,color:#fff,stroke-width:3px")
-            lines.append("    classDef column fill:#FF9800,stroke:#F57C00,color:#fff")
-            lines.append("```")
+            lines.append("    %% Styling")
+            lines.append("    classDef measureClass fill:#e1f5fe,stroke:#01579b,stroke-width:3px,color:#000")
+            lines.append("    classDef tableClass fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#000")
+            lines.append("    classDef columnClass fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#000")
+
+            # Apply measure class to root
+            lines.append(f"    class {root_id} measureClass")
+
+            # Apply column class
+            if column_node_ids:
+                lines.append(f"    class {','.join(column_node_ids)} columnClass")
 
             mermaid_code = "\n".join(lines)
 
@@ -792,7 +903,7 @@ class DependencyAnalyzer:
                 'direction': direction,
                 'depth': depth,
                 'mermaid': mermaid_code,
-                'node_count': len(nodes),
+                'node_count': sum(len(nodes) for nodes in nodes_by_table.values()),
                 'edge_count': len(edges),
                 'format': 'mermaid_flowchart'
             }
