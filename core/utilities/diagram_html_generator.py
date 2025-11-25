@@ -17,19 +17,45 @@ def generate_dependency_html(
     measure_table: str,
     measure_name: str,
     metadata: Dict[str, Any] = None,
-    auto_open: bool = True
+    auto_open: bool = True,
+    referenced_measures: list = None,
+    referenced_columns: list = None,
+    used_by_measures: list = None
 ) -> Optional[str]:
     """
     Generate a professional HTML page with interactive Mermaid diagram.
+
+    Args:
+        mermaid_code: The Mermaid diagram code
+        measure_table: Table containing the measure
+        measure_name: Name of the measure
+        metadata: Additional metadata (direction, depth, node_count, edge_count)
+        auto_open: Whether to open the HTML in browser
+        referenced_measures: List of (table, measure) tuples this measure depends on
+        referenced_columns: List of (table, column) tuples this measure uses
+        used_by_measures: List of {'table': ..., 'measure': ...} dicts of measures using this one
     """
     if not mermaid_code:
         return None
 
     metadata = metadata or {}
-    direction = metadata.get('direction', 'upstream')
+    direction = metadata.get('direction', 'bidirectional')
     depth = metadata.get('depth', 3)
     node_count = metadata.get('node_count', 0)
     edge_count = metadata.get('edge_count', 0)
+    upstream_count = metadata.get('upstream_count', 0)
+    downstream_count = metadata.get('downstream_count', 0)
+
+    # Normalize data structures
+    referenced_measures = referenced_measures or []
+    referenced_columns = referenced_columns or []
+    used_by_measures = used_by_measures or []
+
+    # Generate JSON data for JavaScript
+    import json
+    ref_measures_json = json.dumps([{'table': t, 'name': m} for t, m in referenced_measures])
+    ref_columns_json = json.dumps([{'table': t, 'name': c} for t, c in referenced_columns])
+    used_by_json = json.dumps(used_by_measures)
 
     timestamp = datetime.now().strftime("%B %d, %Y at %H:%M")
 
@@ -437,6 +463,252 @@ def generate_dependency_html(
         .legend-measure {{ background: linear-gradient(135deg, #e1f5fe, #b3e5fc); border: 2px solid #01579b; }}
         .legend-column {{ background: linear-gradient(135deg, #f3e5f5, #e1bee7); border: 2px solid #7b1fa2; }}
         .legend-table {{ background: linear-gradient(135deg, #fff3e0, #ffe0b2); border: 2px solid #e65100; }}
+        .legend-upstream {{ background: linear-gradient(135deg, #4CAF50, #81C784); border: 2px solid #388E3C; }}
+        .legend-downstream {{ background: linear-gradient(135deg, #FF9800, #FFB74D); border: 2px solid #F57C00; }}
+        .legend-root {{ background: linear-gradient(135deg, #2196F3, #64B5F6); border: 2px solid #1565C0; }}
+
+        /* Dependency Panels */
+        .panels-container {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }}
+
+        .panel {{
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+        }}
+
+        .panel-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.25rem;
+            background: var(--bg-elevated);
+            border-bottom: 1px solid var(--border);
+        }}
+
+        .panel-title {{
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 600;
+            font-size: 0.9375rem;
+        }}
+
+        .panel-icon {{
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.875rem;
+        }}
+
+        .panel-icon.upstream {{
+            background: linear-gradient(135deg, #10b981, #34d399);
+        }}
+
+        .panel-icon.downstream {{
+            background: linear-gradient(135deg, #f59e0b, #fbbf24);
+        }}
+
+        .panel-count {{
+            background: var(--accent);
+            color: white;
+            font-size: 0.75rem;
+            padding: 0.25rem 0.625rem;
+            border-radius: 999px;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }}
+
+        .panel-search {{
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }}
+
+        .search-input {{
+            width: 100%;
+            padding: 0.625rem 1rem;
+            padding-left: 2.5rem;
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            font-size: 0.8125rem;
+            font-family: inherit;
+            transition: all 0.2s;
+        }}
+
+        .search-input:focus {{
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }}
+
+        .search-input::placeholder {{
+            color: var(--text-muted);
+        }}
+
+        .search-wrapper {{
+            position: relative;
+        }}
+
+        .search-wrapper::before {{
+            content: '🔍';
+            position: absolute;
+            left: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.875rem;
+            pointer-events: none;
+        }}
+
+        .panel-content {{
+            max-height: 400px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
+        }}
+
+        .panel-content::-webkit-scrollbar {{
+            width: 6px;
+        }}
+
+        .panel-content::-webkit-scrollbar-track {{
+            background: transparent;
+        }}
+
+        .panel-content::-webkit-scrollbar-thumb {{
+            background: var(--border);
+            border-radius: 3px;
+        }}
+
+        .panel-content::-webkit-scrollbar-thumb:hover {{
+            background: var(--text-muted);
+        }}
+
+        .table-group {{
+            border-bottom: 1px solid var(--border);
+        }}
+
+        .table-group:last-child {{
+            border-bottom: none;
+        }}
+
+        .table-group-header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 1rem;
+            background: rgba(99, 102, 241, 0.05);
+            cursor: pointer;
+            transition: background 0.2s;
+        }}
+
+        .table-group-header:hover {{
+            background: rgba(99, 102, 241, 0.1);
+        }}
+
+        .table-group-name {{
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 500;
+            font-size: 0.875rem;
+            color: var(--accent-light);
+        }}
+
+        .table-group-name::before {{
+            content: '📁';
+            font-size: 0.75rem;
+        }}
+
+        .table-group-count {{
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            background: var(--bg-elevated);
+            padding: 0.125rem 0.5rem;
+            border-radius: 999px;
+        }}
+
+        .table-group-items {{
+            padding: 0.25rem 0;
+        }}
+
+        .table-group.collapsed .table-group-items {{
+            display: none;
+        }}
+
+        .table-group-header .chevron {{
+            transition: transform 0.2s;
+            font-size: 0.75rem;
+        }}
+
+        .table-group.collapsed .chevron {{
+            transform: rotate(-90deg);
+        }}
+
+        .item {{
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem 0.5rem 2rem;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+        }}
+
+        .item:hover {{
+            background: var(--bg-elevated);
+            color: var(--text);
+        }}
+
+        .item-icon {{
+            font-size: 0.625rem;
+            color: var(--accent);
+        }}
+
+        .item-name {{
+            font-family: 'JetBrains Mono', monospace;
+        }}
+
+        .item.measure .item-icon {{ color: #01579b; }}
+        .item.column .item-icon {{ color: #7b1fa2; }}
+
+        .empty-state {{
+            padding: 2rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }}
+
+        .empty-state-icon {{
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            opacity: 0.5;
+        }}
+
+        .no-results {{
+            padding: 1.5rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.8125rem;
+            display: none;
+        }}
+
+        /* Responsive panels */
+        @media (max-width: 1100px) {{
+            .panels-container {{
+                grid-template-columns: 1fr;
+            }}
+        }}
 
         /* Footer */
         .footer {{
@@ -493,6 +765,14 @@ def generate_dependency_html(
         <!-- Stats -->
         <div class="stats-row">
             <div class="stat-card">
+                <div class="stat-value">{len(referenced_measures) + len(referenced_columns)}</div>
+                <div class="stat-label">Dependencies (Upstream)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{len(used_by_measures)}</div>
+                <div class="stat-label">Used By (Downstream)</div>
+            </div>
+            <div class="stat-card">
                 <div class="stat-value">{node_count}</div>
                 <div class="stat-label">Total Nodes</div>
             </div>
@@ -500,13 +780,48 @@ def generate_dependency_html(
                 <div class="stat-value">{edge_count}</div>
                 <div class="stat-label">Connections</div>
             </div>
-            <div class="stat-card">
-                <div class="stat-value">{depth}</div>
-                <div class="stat-label">Depth Analyzed</div>
+        </div>
+
+        <!-- Dependency Panels -->
+        <div class="panels-container">
+            <!-- Dependencies Panel (Upstream - what this measure uses) -->
+            <div class="panel" id="dependencies-panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <div class="panel-icon upstream">⬆️</div>
+                        <span>Dependencies (Upstream)</span>
+                    </div>
+                    <div class="panel-count" id="deps-count">{len(referenced_measures) + len(referenced_columns)}</div>
+                </div>
+                <div class="panel-search">
+                    <div class="search-wrapper">
+                        <input type="text" class="search-input" id="deps-search" placeholder="Filter dependencies..." oninput="filterPanel('deps')">
+                    </div>
+                </div>
+                <div class="panel-content" id="deps-content">
+                    <!-- Content populated by JavaScript -->
+                </div>
+                <div class="no-results" id="deps-no-results">No matching items found</div>
             </div>
-            <div class="stat-card">
-                <div class="stat-value">{direction.title()}</div>
-                <div class="stat-label">Direction</div>
+
+            <!-- Used By Panel (Downstream - what uses this measure) -->
+            <div class="panel" id="used-by-panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <div class="panel-icon downstream">⬇️</div>
+                        <span>Used By (Downstream)</span>
+                    </div>
+                    <div class="panel-count" id="used-by-count">{len(used_by_measures)}</div>
+                </div>
+                <div class="panel-search">
+                    <div class="search-wrapper">
+                        <input type="text" class="search-input" id="used-by-search" placeholder="Filter measures..." oninput="filterPanel('used-by')">
+                    </div>
+                </div>
+                <div class="panel-content" id="used-by-content">
+                    <!-- Content populated by JavaScript -->
+                </div>
+                <div class="no-results" id="used-by-no-results">No matching items found</div>
             </div>
         </div>
 
@@ -531,16 +846,20 @@ def generate_dependency_html(
             </div>
             <div class="legend">
                 <div class="legend-item">
-                    <div class="legend-dot legend-measure"></div>
-                    <span>Measures</span>
+                    <div class="legend-dot legend-root"></div>
+                    <span>Target Measure</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot legend-upstream"></div>
+                    <span>Dependencies (Upstream)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot legend-downstream"></div>
+                    <span>Used By (Downstream)</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-dot legend-column"></div>
                     <span>Columns</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-dot legend-table"></div>
-                    <span>Table Groups</span>
                 </div>
             </div>
         </div>
@@ -636,6 +955,243 @@ def generate_dependency_html(
                 URL.revokeObjectURL(url);
             }}
         }}
+
+        // Panel data
+        const referencedMeasures = {ref_measures_json};
+        const referencedColumns = {ref_columns_json};
+        const usedByMeasures = {used_by_json};
+
+        // Group items by table
+        function groupByTable(items, nameKey = 'name') {{
+            const groups = {{}};
+            items.forEach(item => {{
+                const table = item.table || 'Unknown';
+                if (!groups[table]) {{
+                    groups[table] = [];
+                }}
+                groups[table].push(item[nameKey] || item.measure || item.name);
+            }});
+            return groups;
+        }}
+
+        // Render panel content
+        function renderPanelContent(containerId, groups, itemType = 'measure') {{
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            const tables = Object.keys(groups).sort();
+            if (tables.length === 0) {{
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">${{itemType === 'measure' ? '📊' : '📁'}}</div>
+                        <div>No ${{itemType === 'measure' ? 'measures' : 'columns'}} found</div>
+                    </div>
+                `;
+                return;
+            }}
+
+            let html = '';
+            tables.forEach(table => {{
+                const items = groups[table].sort();
+                html += `
+                    <div class="table-group" data-table="${{table.toLowerCase()}}">
+                        <div class="table-group-header" onclick="toggleGroup(this)">
+                            <span class="table-group-name">${{table}}</span>
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <span class="table-group-count">${{items.length}}</span>
+                                <span class="chevron">▼</span>
+                            </div>
+                        </div>
+                        <div class="table-group-items">
+                            ${{items.map(name => `
+                                <div class="item ${{itemType}}" data-name="${{name.toLowerCase()}}" data-table="${{table.toLowerCase()}}">
+                                    <span class="item-icon">●</span>
+                                    <span class="item-name">${{name}}</span>
+                                </div>
+                            `).join('')}}
+                        </div>
+                    </div>
+                `;
+            }});
+
+            container.innerHTML = html;
+        }}
+
+        // Toggle table group collapse
+        function toggleGroup(header) {{
+            const group = header.closest('.table-group');
+            if (group) {{
+                group.classList.toggle('collapsed');
+            }}
+        }}
+
+        // Filter panel content
+        function filterPanel(panelType) {{
+            const searchInput = document.getElementById(`${{panelType}}-search`);
+            const container = document.getElementById(`${{panelType}}-content`);
+            const noResults = document.getElementById(`${{panelType}}-no-results`);
+
+            if (!searchInput || !container) return;
+
+            const filter = searchInput.value.toLowerCase().trim();
+            const groups = container.querySelectorAll('.table-group');
+            let hasVisibleItems = false;
+
+            groups.forEach(group => {{
+                const items = group.querySelectorAll('.item');
+                let groupHasVisible = false;
+
+                items.forEach(item => {{
+                    const name = item.dataset.name || '';
+                    const table = item.dataset.table || '';
+                    const matches = !filter || name.includes(filter) || table.includes(filter);
+                    item.style.display = matches ? 'flex' : 'none';
+                    if (matches) {{
+                        groupHasVisible = true;
+                        hasVisibleItems = true;
+                    }}
+                }});
+
+                // Show/hide group based on matching items
+                group.style.display = groupHasVisible ? 'block' : 'none';
+
+                // Auto-expand groups when filtering
+                if (filter && groupHasVisible) {{
+                    group.classList.remove('collapsed');
+                }}
+            }});
+
+            // Show no results message
+            if (noResults) {{
+                noResults.style.display = hasVisibleItems ? 'none' : 'block';
+            }}
+
+            // Update visible count
+            updateVisibleCount(panelType, hasVisibleItems ? countVisibleItems(container) : 0);
+        }}
+
+        // Count visible items
+        function countVisibleItems(container) {{
+            return container.querySelectorAll('.item[style*="display: flex"], .item:not([style*="display"])').length;
+        }}
+
+        // Update count badge
+        function updateVisibleCount(panelType, count) {{
+            const countEl = document.getElementById(`${{panelType}}-count`);
+            if (countEl) {{
+                const original = panelType === 'deps'
+                    ? referencedMeasures.length + referencedColumns.length
+                    : usedByMeasures.length;
+                countEl.textContent = count < original ? `${{count}}/${{original}}` : original;
+            }}
+        }}
+
+        // Initialize panels on load
+        document.addEventListener('DOMContentLoaded', function() {{
+            // Combine measures and columns for dependencies panel
+            const depsGroups = {{}};
+
+            // Add measures
+            referencedMeasures.forEach(item => {{
+                const table = item.table || 'Unknown';
+                if (!depsGroups[table]) depsGroups[table] = {{ measures: [], columns: [] }};
+                depsGroups[table].measures.push(item.name);
+            }});
+
+            // Add columns
+            referencedColumns.forEach(item => {{
+                const table = item.table || 'Unknown';
+                if (!depsGroups[table]) depsGroups[table] = {{ measures: [], columns: [] }};
+                depsGroups[table].columns.push(item.name);
+            }});
+
+            // Render dependencies panel with both measures and columns
+            const depsContainer = document.getElementById('deps-content');
+            if (depsContainer) {{
+                const tables = Object.keys(depsGroups).sort();
+                if (tables.length === 0) {{
+                    depsContainer.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📊</div>
+                            <div>No dependencies found</div>
+                            <div style="font-size: 0.75rem; margin-top: 0.25rem;">This measure doesn't reference any other measures or columns</div>
+                        </div>
+                    `;
+                }} else {{
+                    let html = '';
+                    tables.forEach(table => {{
+                        const data = depsGroups[table];
+                        const items = [
+                            ...data.measures.map(m => ({{ name: m, type: 'measure' }})),
+                            ...data.columns.map(c => ({{ name: c, type: 'column' }}))
+                        ].sort((a, b) => a.name.localeCompare(b.name));
+
+                        html += `
+                            <div class="table-group" data-table="${{table.toLowerCase()}}">
+                                <div class="table-group-header" onclick="toggleGroup(this)">
+                                    <span class="table-group-name">${{table}}</span>
+                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <span class="table-group-count">${{items.length}}</span>
+                                        <span class="chevron">▼</span>
+                                    </div>
+                                </div>
+                                <div class="table-group-items">
+                                    ${{items.map(item => `
+                                        <div class="item ${{item.type}}" data-name="${{item.name.toLowerCase()}}" data-table="${{table.toLowerCase()}}">
+                                            <span class="item-icon">${{item.type === 'measure' ? '●' : '◇'}}</span>
+                                            <span class="item-name">${{item.name}}</span>
+                                            <span style="color: var(--text-muted); font-size: 0.6875rem; margin-left: auto;">${{item.type}}</span>
+                                        </div>
+                                    `).join('')}}
+                                </div>
+                            </div>
+                        `;
+                    }});
+                    depsContainer.innerHTML = html;
+                }}
+            }}
+
+            // Render used-by panel
+            const usedByGroups = groupByTable(usedByMeasures, 'measure');
+            const usedByContainer = document.getElementById('used-by-content');
+            if (usedByContainer) {{
+                const tables = Object.keys(usedByGroups).sort();
+                if (tables.length === 0) {{
+                    usedByContainer.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📭</div>
+                            <div>No measures use this measure</div>
+                            <div style="font-size: 0.75rem; margin-top: 0.25rem;">This measure is not referenced by any other measures</div>
+                        </div>
+                    `;
+                }} else {{
+                    let html = '';
+                    tables.forEach(table => {{
+                        const items = usedByGroups[table].sort();
+                        html += `
+                            <div class="table-group" data-table="${{table.toLowerCase()}}">
+                                <div class="table-group-header" onclick="toggleGroup(this)">
+                                    <span class="table-group-name">${{table}}</span>
+                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <span class="table-group-count">${{items.length}}</span>
+                                        <span class="chevron">▼</span>
+                                    </div>
+                                </div>
+                                <div class="table-group-items">
+                                    ${{items.map(name => `
+                                        <div class="item measure" data-name="${{name.toLowerCase()}}" data-table="${{table.toLowerCase()}}">
+                                            <span class="item-icon">●</span>
+                                            <span class="item-name">${{name}}</span>
+                                        </div>
+                                    `).join('')}}
+                                </div>
+                            </div>
+                        `;
+                    }});
+                    usedByContainer.innerHTML = html;
+                }}
+            }}
+        }});
     </script>
 </body>
 </html>'''

@@ -45,16 +45,20 @@ def _format_dependency_analysis_output(
     ref_measures = deps_result.get('referenced_measures', [])
     ref_columns = deps_result.get('referenced_columns', [])
     ref_tables = deps_result.get('referenced_tables', [])
+    used_by_measures = deps_result.get('used_by_measures', [])
 
     lines.append("─" * 80)
     lines.append("  SUMMARY")
     lines.append("─" * 80)
     lines.append("")
     lines.append(f"  ┌─────────────────────────────────────────────────────────────────┐")
-    lines.append(f"  │  Referenced Measures:  {len(ref_measures):>4}                                      │")
-    lines.append(f"  │  Referenced Columns:   {len(ref_columns):>4}                                      │")
-    lines.append(f"  │  Referenced Tables:    {len(ref_tables):>4}                                      │")
-    lines.append(f"  │  Total Dependencies:   {len(ref_measures) + len(ref_columns):>4}                                      │")
+    lines.append(f"  │  DEPENDS ON (upstream):                                         │")
+    lines.append(f"  │    Measures:           {len(ref_measures):>4}                                      │")
+    lines.append(f"  │    Columns:            {len(ref_columns):>4}                                      │")
+    lines.append(f"  │    Tables:             {len(ref_tables):>4}                                      │")
+    lines.append(f"  ├─────────────────────────────────────────────────────────────────┤")
+    lines.append(f"  │  USED BY (downstream):                                          │")
+    lines.append(f"  │    Measures:           {len(used_by_measures):>4}                                      │")
     lines.append(f"  └─────────────────────────────────────────────────────────────────┘")
     lines.append("")
 
@@ -126,6 +130,37 @@ def _format_dependency_analysis_output(
         lines.append("")
         for tbl in sorted(ref_tables):
             lines.append(f"    • {tbl}")
+        lines.append("")
+
+    # ───────────────────────────────────────────────────────────────────────────
+    # USED BY MEASURES (Reverse Dependencies)
+    # ───────────────────────────────────────────────────────────────────────────
+    if used_by_measures:
+        lines.append("─" * 80)
+        lines.append(f"  USED BY MEASURES ({len(used_by_measures)}) - What depends on this measure")
+        lines.append("─" * 80)
+        lines.append("")
+
+        # Group by table
+        used_by_by_table: Dict[str, List[str]] = {}
+        for item in used_by_measures:
+            tbl = item.get('table', '')
+            msr = item.get('measure', '')
+            if tbl not in used_by_by_table:
+                used_by_by_table[tbl] = []
+            used_by_by_table[tbl].append(msr)
+
+        for tbl, measures in sorted(used_by_by_table.items()):
+            lines.append(f"    {tbl}")
+            for msr in sorted(measures):
+                lines.append(f"      ├── [{msr}]")
+        lines.append("")
+    else:
+        lines.append("─" * 80)
+        lines.append("  USED BY MEASURES (0) - What depends on this measure")
+        lines.append("─" * 80)
+        lines.append("")
+        lines.append("    (No other measures reference this measure)")
         lines.append("")
 
     # ───────────────────────────────────────────────────────────────────────────
@@ -207,9 +242,9 @@ def _generate_mermaid_markdown(diagram_result: Dict[str, Any], table: str, measu
     lines.append("")
     lines.append("─" * 80)
     lines.append("  Legend:")
-    lines.append("    • Blue boxes = Measures")
-    lines.append("    • Purple boxes = Columns")
-    lines.append("    • Orange boxes = Table subgraphs")
+    lines.append("    • Blue box = Target measure (center)")
+    lines.append("    • Green boxes = Dependencies (upstream - what this measure uses)")
+    lines.append("    • Orange boxes = Dependents (downstream - what uses this measure)")
     lines.append("    • Arrows show dependency flow (dependency → consumer)")
     lines.append("─" * 80)
 
@@ -224,6 +259,7 @@ def handle_analyze_measure_dependencies(args: Dict[str, Any]) -> Dict[str, Any]:
     - formatted_output: Professional text-based analysis summary
     - mermaid_diagram_output: Separate markdown block with Mermaid diagram
     - Raw data fields for programmatic access
+    - used_by_measures: List of measures that USE this measure (reverse dependencies)
     """
     if not connection_state.is_connected():
         return ErrorHandler.handle_not_connected()
@@ -242,17 +278,26 @@ def handle_analyze_measure_dependencies(args: Dict[str, Any]) -> Dict[str, Any]:
             'error': 'table and measure parameters are required'
         }
 
-    # Get the base dependency analysis
+    # Get the base dependency analysis (what this measure depends on)
     deps_result = dependency_analyzer.analyze_dependencies(table, measure, include_diagram=False)
 
     if not deps_result.get('success'):
         return deps_result
 
-    # Get the Mermaid diagram separately if requested
+    # Get "used by" analysis (what measures depend on THIS measure)
+    usage_result = dependency_analyzer.find_measure_usage(table, measure)
+    used_by_measures = []
+    if usage_result.get('success'):
+        used_by_measures = usage_result.get('used_by', [])
+
+    # Add used_by to deps_result for formatting
+    deps_result['used_by_measures'] = used_by_measures
+
+    # Get the Mermaid diagram separately if requested - use BIDIRECTIONAL to show both directions
     diagram_result = None
     if include_diagram:
-        diagram_result = dependency_analyzer.generate_dependency_mermaid(
-            table, measure, direction="upstream", depth=3, include_columns=True
+        diagram_result = dependency_analyzer.generate_impact_mermaid(
+            table, measure
         )
 
     # Generate formatted outputs
@@ -280,12 +325,16 @@ def handle_analyze_measure_dependencies(args: Dict[str, Any]) -> Dict[str, Any]:
         'referenced_tables': deps_result.get('referenced_tables', []),
         'dependency_tree': deps_result.get('dependency_tree'),
 
+        # USED BY - Reverse dependencies (what measures use this measure)
+        'used_by_measures': used_by_measures,
+
         # Summary stats
         'summary': {
             'measure_count': len(deps_result.get('referenced_measures', [])),
             'column_count': len(deps_result.get('referenced_columns', [])),
             'table_count': len(deps_result.get('referenced_tables', [])),
-            'total_dependencies': len(deps_result.get('referenced_measures', [])) + len(deps_result.get('referenced_columns', []))
+            'total_dependencies': len(deps_result.get('referenced_measures', [])) + len(deps_result.get('referenced_columns', [])),
+            'used_by_count': len(used_by_measures)
         }
     }
 
@@ -294,10 +343,12 @@ def handle_analyze_measure_dependencies(args: Dict[str, Any]) -> Dict[str, Any]:
         mermaid_code = diagram_result.get('mermaid', '')
         response['mermaid_raw'] = mermaid_code
         response['diagram_metadata'] = {
-            'direction': diagram_result.get('direction', 'upstream'),
+            'direction': 'bidirectional',
             'depth': diagram_result.get('depth', 3),
             'node_count': diagram_result.get('node_count', 0),
-            'edge_count': diagram_result.get('edge_count', 0)
+            'edge_count': diagram_result.get('edge_count', 0),
+            'upstream_count': diagram_result.get('upstream_count', len(deps_result.get('referenced_measures', []))),
+            'downstream_count': diagram_result.get('downstream_count', len(used_by_measures))
         }
 
         # Render Mermaid diagram to PNG image for visual display

@@ -277,7 +277,10 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent | ImageConten
                         measure_table=measure_info.get('table', ''),
                         measure_name=measure_info.get('name', ''),
                         metadata=diagram_meta,
-                        auto_open=True
+                        auto_open=True,
+                        referenced_measures=result.get('referenced_measures', []),
+                        referenced_columns=result.get('referenced_columns', []),
+                        used_by_measures=result.get('used_by_measures', [])
                     )
                     if html_path:
                         text_output += f"\n\n{'═' * 80}\n"
