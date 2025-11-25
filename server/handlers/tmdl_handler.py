@@ -330,7 +330,97 @@ def register_tmdl_operations_handler(registry):
                     "description": "Type of object to generate (optional for: generate_script, default: 'table')"
                 }
             },
-            "required": ["operation"]
+            "required": ["operation"],
+            "examples": [
+                {
+                    "_description": "Export TMDL to default location",
+                    "operation": "export"
+                },
+                {
+                    "_description": "Export TMDL to specific directory",
+                    "operation": "export",
+                    "output_dir": "C:/exports/model_tmdl"
+                },
+                {
+                    "_description": "Find and replace with dry-run (preview only)",
+                    "operation": "find_replace",
+                    "tmdl_path": "C:/exports/model_tmdl",
+                    "pattern": "SUM",
+                    "replacement": "SUMX",
+                    "dry_run": True
+                },
+                {
+                    "_description": "Find and replace using regex pattern",
+                    "operation": "find_replace",
+                    "tmdl_path": "C:/exports/model_tmdl",
+                    "pattern": "SUMX\\s*\\(\\s*FILTER",
+                    "replacement": "CALCULATE(SUM",
+                    "regex": True,
+                    "dry_run": True
+                },
+                {
+                    "_description": "Apply find and replace (execute changes)",
+                    "operation": "find_replace",
+                    "tmdl_path": "C:/exports/model_tmdl",
+                    "pattern": "OldTableName",
+                    "replacement": "NewTableName",
+                    "dry_run": False
+                },
+                {
+                    "_description": "Bulk rename measures with reference updates (preview)",
+                    "operation": "bulk_rename",
+                    "tmdl_path": "C:/exports/model_tmdl",
+                    "renames": [
+                        {"object_type": "measure", "old_name": "Rev", "new_name": "Revenue"},
+                        {"object_type": "measure", "old_name": "GM", "new_name": "Gross Margin", "table_name": "Financials"}
+                    ],
+                    "update_references": True,
+                    "dry_run": True
+                },
+                {
+                    "_description": "Bulk rename tables",
+                    "operation": "bulk_rename",
+                    "tmdl_path": "C:/exports/model_tmdl",
+                    "renames": [
+                        {"object_type": "table", "old_name": "Sales", "new_name": "FactSales"},
+                        {"object_type": "table", "old_name": "Customer", "new_name": "DimCustomer"}
+                    ],
+                    "dry_run": True
+                },
+                {
+                    "_description": "Generate TMDL script for a measure",
+                    "operation": "generate_script",
+                    "object_type": "measure",
+                    "definition": {
+                        "name": "Total Sales",
+                        "expression": "SUM(Sales[Amount])",
+                        "format_string": "$#,0",
+                        "description": "Sum of all sales amounts",
+                        "display_folder": "Revenue"
+                    }
+                },
+                {
+                    "_description": "Generate TMDL script for a calculated table",
+                    "operation": "generate_script",
+                    "object_type": "table",
+                    "definition": {
+                        "name": "TopCustomers",
+                        "expression": "TOPN(100, Customer, [Total Revenue], DESC)"
+                    }
+                },
+                {
+                    "_description": "Generate TMDL script for calculation group",
+                    "operation": "generate_script",
+                    "object_type": "calc_group",
+                    "definition": {
+                        "name": "Time Intelligence",
+                        "items": [
+                            {"name": "Current", "expression": "SELECTEDMEASURE()"},
+                            {"name": "YTD", "expression": "CALCULATE(SELECTEDMEASURE(), DATESYTD('Date'[Date]))"}
+                        ]
+                    }
+                }
+            ]
         },
         category="tmdl",
         sort_order=100

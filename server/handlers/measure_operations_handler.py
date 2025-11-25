@@ -111,9 +111,86 @@ def register_measure_operations_handler(registry):
                 "next_token": {
                     "type": "string",
                     "description": "Pagination token for list operation"
+                },
+                "new_name": {
+                    "type": "string",
+                    "description": "New measure name (required for: rename)"
+                },
+                "new_table": {
+                    "type": "string",
+                    "description": "Target table for move operation (required for: move)"
                 }
             },
-            "required": ["operation"]
+            "required": ["operation"],
+            "examples": [
+                {
+                    "_description": "List all measures in the model",
+                    "operation": "list"
+                },
+                {
+                    "_description": "List measures in a specific table",
+                    "operation": "list",
+                    "table_name": "Sales"
+                },
+                {
+                    "_description": "Get measure details with DAX expression",
+                    "operation": "get",
+                    "table_name": "Sales",
+                    "measure_name": "Total Revenue"
+                },
+                {
+                    "_description": "Create a new measure with formatting",
+                    "operation": "create",
+                    "table_name": "Sales",
+                    "measure_name": "Profit Margin",
+                    "expression": "DIVIDE([Gross Profit], [Total Revenue])",
+                    "format_string": "0.0%",
+                    "display_folder": "Profitability"
+                },
+                {
+                    "_description": "Create simple sum measure",
+                    "operation": "create",
+                    "table_name": "Sales",
+                    "measure_name": "Total Sales",
+                    "expression": "SUM(Sales[Amount])",
+                    "format_string": "$#,0"
+                },
+                {
+                    "_description": "Update measure expression",
+                    "operation": "update",
+                    "table_name": "Sales",
+                    "measure_name": "Total Revenue",
+                    "expression": "SUMX(Sales, Sales[Quantity] * Sales[UnitPrice])"
+                },
+                {
+                    "_description": "Update measure format and folder",
+                    "operation": "update",
+                    "table_name": "Sales",
+                    "measure_name": "Total Revenue",
+                    "format_string": "$#,0.00",
+                    "display_folder": "Revenue Metrics"
+                },
+                {
+                    "_description": "Delete obsolete measure",
+                    "operation": "delete",
+                    "table_name": "Sales",
+                    "measure_name": "Old Metric"
+                },
+                {
+                    "_description": "Rename measure",
+                    "operation": "rename",
+                    "table_name": "Sales",
+                    "measure_name": "Rev",
+                    "new_name": "Total Revenue"
+                },
+                {
+                    "_description": "Move measure to dedicated measures table",
+                    "operation": "move",
+                    "table_name": "Sales",
+                    "measure_name": "Total Revenue",
+                    "new_table": "_Measures"
+                }
+            ]
         },
         category="metadata",
         sort_order=12

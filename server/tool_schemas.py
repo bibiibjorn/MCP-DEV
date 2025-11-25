@@ -1,6 +1,12 @@
 """
 Tool Input Schemas for Bridged Tools
-Defines proper input schemas with required parameters
+Defines proper input schemas with required parameters and examples.
+
+Examples follow JSON Schema draft-06+ format and help Claude understand:
+- Correct parameter formats and conventions
+- When to use optional parameters
+- Domain-specific patterns (DAX syntax, Power BI naming)
+- Operation-specific parameter requirements
 """
 
 TOOL_SCHEMAS = {
@@ -24,7 +30,37 @@ TOOL_SCHEMAS = {
                 "default": "auto"
             }
         },
-        "required": ["query"]
+        "required": ["query"],
+        "examples": [
+            {
+                "_description": "Simple table preview - get first 10 rows",
+                "query": "EVALUATE TOPN(10, 'Sales')",
+                "top_n": 10
+            },
+            {
+                "_description": "Aggregation with grouping by category",
+                "query": "EVALUATE SUMMARIZECOLUMNS('Product'[Category], \"TotalSales\", SUM('Sales'[Amount]))",
+                "top_n": 100
+            },
+            {
+                "_description": "Evaluate a measure with performance profiling",
+                "query": "EVALUATE ROW(\"Result\", [Total Sales])",
+                "mode": "profile"
+            },
+            {
+                "_description": "Filter table with condition",
+                "query": "EVALUATE FILTER('Customer', 'Customer'[Country] = \"USA\")",
+                "top_n": 50
+            },
+            {
+                "_description": "Time intelligence query",
+                "query": "EVALUATE ADDCOLUMNS(VALUES('Date'[Year]), \"YTD Sales\", CALCULATE([Total Sales], DATESYTD('Date'[Date])))"
+            },
+            {
+                "_description": "Cross-join for matrix analysis",
+                "query": "EVALUATE SUMMARIZECOLUMNS('Product'[Category], 'Date'[Year], \"Sales\", [Total Sales])"
+            }
+        ]
     },
 
     'get_column_value_distribution': {
@@ -44,7 +80,20 @@ TOOL_SCHEMAS = {
                 "default": 10
             }
         },
-        "required": ["table", "column"]
+        "required": ["table", "column"],
+        "examples": [
+            {
+                "_description": "Top 10 countries by frequency",
+                "table": "Customer",
+                "column": "Country",
+                "top_n": 10
+            },
+            {
+                "_description": "Product category distribution",
+                "table": "Product",
+                "column": "Category"
+            }
+        ]
     },
 
     'get_column_summary': {
@@ -59,7 +108,19 @@ TOOL_SCHEMAS = {
                 "description": "Column name"
             }
         },
-        "required": ["table", "column"]
+        "required": ["table", "column"],
+        "examples": [
+            {
+                "_description": "Get statistics for CustomerID column",
+                "table": "Customer",
+                "column": "CustomerID"
+            },
+            {
+                "_description": "Analyze Amount column for blanks",
+                "table": "Sales",
+                "column": "Amount"
+            }
+        ]
     },
 
     'validate_dax_query': {
@@ -70,14 +131,29 @@ TOOL_SCHEMAS = {
                 "description": "DAX query to validate"
             }
         },
-        "required": ["query"]
+        "required": ["query"],
+        "examples": [
+            {
+                "_description": "Validate EVALUATE query",
+                "query": "EVALUATE SUMMARIZE('Sales', 'Product'[Category])"
+            },
+            {
+                "_description": "Validate measure expression",
+                "query": "CALCULATE(SUM(Sales[Amount]), FILTER(ALL(Date), Date[Year] = 2024))"
+            }
+        ]
     },
 
     # Data Sources (2 tools)
     'get_data_sources': {
         "type": "object",
         "properties": {},
-        "required": []
+        "required": [],
+        "examples": [
+            {
+                "_description": "List all data sources in the model"
+            }
+        ]
     },
 
     'get_m_expressions': {
@@ -88,7 +164,16 @@ TOOL_SCHEMAS = {
                 "description": "Max expressions to return"
             }
         },
-        "required": []
+        "required": [],
+        "examples": [
+            {
+                "_description": "Get all M expressions"
+            },
+            {
+                "_description": "Get first 5 M expressions",
+                "limit": 5
+            }
+        ]
     },
 
     # Relationships (1 tool)
@@ -101,7 +186,16 @@ TOOL_SCHEMAS = {
                 "default": False
             }
         },
-        "required": []
+        "required": [],
+        "examples": [
+            {
+                "_description": "List all relationships"
+            },
+            {
+                "_description": "List only active relationships",
+                "active_only": True
+            }
+        ]
     },
 
     # Measures (2 tools - Microsoft MCP operations)
@@ -122,7 +216,20 @@ TOOL_SCHEMAS = {
                 "description": "Pagination token for next page"
             }
         },
-        "required": []
+        "required": [],
+        "examples": [
+            {
+                "_description": "List all measures in the model"
+            },
+            {
+                "_description": "List measures in Sales table only",
+                "table": "Sales"
+            },
+            {
+                "_description": "Paginated list with 50 per page",
+                "page_size": 50
+            }
+        ]
     },
 
     'get_measure_details': {
@@ -137,7 +244,19 @@ TOOL_SCHEMAS = {
                 "description": "Measure name to retrieve"
             }
         },
-        "required": ["table", "measure"]
+        "required": ["table", "measure"],
+        "examples": [
+            {
+                "_description": "Get Total Revenue measure details with DAX",
+                "table": "Sales",
+                "measure": "Total Revenue"
+            },
+            {
+                "_description": "Get Profit Margin measure",
+                "table": "_Measures",
+                "measure": "Profit Margin"
+            }
+        ]
     },
 
     # Model Management (7 tools - upsert_measure and delete_measure moved to model_operations_handler.py)
@@ -158,7 +277,17 @@ TOOL_SCHEMAS = {
                 }
             }
         },
-        "required": ["measures"]
+        "required": ["measures"],
+        "examples": [
+            {
+                "_description": "Create multiple sales measures at once",
+                "measures": [
+                    {"table": "Sales", "measure": "Total Sales", "expression": "SUM(Sales[Amount])"},
+                    {"table": "Sales", "measure": "Avg Sales", "expression": "AVERAGE(Sales[Amount])"},
+                    {"table": "Sales", "measure": "Sales Count", "expression": "COUNTROWS(Sales)"}
+                ]
+            }
+        ]
     },
 
     'bulk_delete_measures': {
@@ -172,13 +301,28 @@ TOOL_SCHEMAS = {
                 }
             }
         },
-        "required": ["measures"]
+        "required": ["measures"],
+        "examples": [
+            {
+                "_description": "Delete multiple obsolete measures",
+                "measures": [
+                    {"table": "Sales", "measure": "Old Metric 1"},
+                    {"table": "Sales", "measure": "Old Metric 2"},
+                    {"table": "_Measures", "measure": "Deprecated KPI"}
+                ]
+            }
+        ]
     },
 
     'list_calculation_groups': {
         "type": "object",
         "properties": {},
-        "required": []
+        "required": [],
+        "examples": [
+            {
+                "_description": "List all calculation groups in the model"
+            }
+        ]
     },
 
     'create_calculation_group': {
@@ -208,7 +352,30 @@ TOOL_SCHEMAS = {
                 "description": "Optional precedence level (auto-assigned if not specified). Must be unique across calculation groups."
             }
         },
-        "required": ["name"]
+        "required": ["name"],
+        "examples": [
+            {
+                "_description": "Create Time Intelligence calculation group",
+                "name": "Time Intelligence",
+                "items": [
+                    {"name": "Current", "expression": "SELECTEDMEASURE()"},
+                    {"name": "YTD", "expression": "CALCULATE(SELECTEDMEASURE(), DATESYTD('Date'[Date]))"},
+                    {"name": "PY", "expression": "CALCULATE(SELECTEDMEASURE(), SAMEPERIODLASTYEAR('Date'[Date]))"},
+                    {"name": "YoY %", "expression": "VAR _Current = SELECTEDMEASURE() VAR _PY = CALCULATE(SELECTEDMEASURE(), SAMEPERIODLASTYEAR('Date'[Date])) RETURN DIVIDE(_Current - _PY, _PY)"}
+                ],
+                "description": "Standard time intelligence calculations",
+                "precedence": 10
+            },
+            {
+                "_description": "Create Currency conversion calculation group",
+                "name": "Currency",
+                "items": [
+                    {"name": "Local", "expression": "SELECTEDMEASURE()"},
+                    {"name": "USD", "expression": "SELECTEDMEASURE() * MAX('Exchange Rates'[ToUSD])"},
+                    {"name": "EUR", "expression": "SELECTEDMEASURE() * MAX('Exchange Rates'[ToEUR])"}
+                ]
+            }
+        ]
     },
 
     'delete_calculation_group': {
@@ -219,13 +386,24 @@ TOOL_SCHEMAS = {
                 "description": "Calculation group name"
             }
         },
-        "required": ["name"]
+        "required": ["name"],
+        "examples": [
+            {
+                "_description": "Delete obsolete calculation group",
+                "name": "Old Time Intelligence"
+            }
+        ]
     },
 
     'list_roles': {
         "type": "object",
         "properties": {},
-        "required": []
+        "required": [],
+        "examples": [
+            {
+                "_description": "List all RLS/OLS security roles"
+            }
+        ]
     },
 
     # Analysis (2 tools)
@@ -256,7 +434,34 @@ TOOL_SCHEMAS = {
                 "default": False
             }
         },
-        "required": []
+        "required": [],
+        "examples": [
+            {
+                "_description": "Complete model analysis (recommended)",
+                "mode": "all"
+            },
+            {
+                "_description": "Quick table list",
+                "mode": "tables"
+            },
+            {
+                "_description": "Get specific measure details",
+                "mode": "measure",
+                "table": "Sales",
+                "measure_name": "Total Revenue"
+            },
+            {
+                "_description": "List columns in a specific table",
+                "mode": "columns",
+                "table": "Customer",
+                "max_results": 50
+            },
+            {
+                "_description": "List only active relationships",
+                "mode": "relationships",
+                "active_only": True
+            }
+        ]
     },
 
     'full_analysis': {
@@ -296,7 +501,35 @@ TOOL_SCHEMAS = {
                 "maximum": 300
             }
         },
-        "required": []
+        "required": [],
+        "examples": [
+            {
+                "_description": "Complete analysis with all checks (recommended)",
+                "scope": "all",
+                "depth": "balanced"
+            },
+            {
+                "_description": "Quick best practices scan only",
+                "scope": "best_practices",
+                "depth": "fast"
+            },
+            {
+                "_description": "Deep performance analysis",
+                "scope": "performance",
+                "depth": "deep"
+            },
+            {
+                "_description": "Skip BPA if dependencies missing",
+                "scope": "all",
+                "include_bpa": False
+            },
+            {
+                "_description": "Time-limited analysis (max 30 seconds)",
+                "scope": "all",
+                "depth": "balanced",
+                "max_seconds": 30
+            }
+        ]
     },
 
     # Dependencies (2 tools)
@@ -312,7 +545,19 @@ TOOL_SCHEMAS = {
                 "description": "Measure name"
             }
         },
-        "required": ["table", "measure"]
+        "required": ["table", "measure"],
+        "examples": [
+            {
+                "_description": "Analyze what a measure depends on",
+                "table": "Sales",
+                "measure": "Profit Margin"
+            },
+            {
+                "_description": "Check dependencies of a KPI measure",
+                "table": "_Measures",
+                "measure": "YTD Revenue"
+            }
+        ]
     },
 
     'get_measure_impact': {
@@ -327,7 +572,19 @@ TOOL_SCHEMAS = {
                 "description": "Measure name"
             }
         },
-        "required": ["table", "measure"]
+        "required": ["table", "measure"],
+        "examples": [
+            {
+                "_description": "See what depends on Total Sales (impact analysis)",
+                "table": "Sales",
+                "measure": "Total Sales"
+            },
+            {
+                "_description": "Check impact before modifying a base measure",
+                "table": "_Measures",
+                "measure": "Base Revenue"
+            }
+        ]
     },
 
     # Export (1 tool)
@@ -340,10 +597,19 @@ TOOL_SCHEMAS = {
                 "default": True
             }
         },
-        "required": []
+        "required": [],
+        "examples": [
+            {
+                "_description": "Export complete model schema including hidden objects"
+            },
+            {
+                "_description": "Export only visible objects",
+                "include_hidden": False
+            }
+        ]
     },
 
-    # 
+    #
     # Documentation (3 tools)
     'generate_model_documentation_word': {
         "type": "object",
@@ -353,7 +619,16 @@ TOOL_SCHEMAS = {
                 "description": "Output Word file path"
             }
         },
-        "required": []
+        "required": [],
+        "examples": [
+            {
+                "_description": "Generate documentation to default location"
+            },
+            {
+                "_description": "Generate documentation to specific path",
+                "output_path": "C:/docs/MyModel_Documentation.docx"
+            }
+        ]
     },
 
     'update_model_documentation_word': {
@@ -368,7 +643,18 @@ TOOL_SCHEMAS = {
                 "description": "Output path"
             }
         },
-        "required": ["input_path"]
+        "required": ["input_path"],
+        "examples": [
+            {
+                "_description": "Update existing documentation in place",
+                "input_path": "C:/docs/MyModel_Documentation.docx"
+            },
+            {
+                "_description": "Update and save to new file",
+                "input_path": "C:/docs/MyModel_Documentation.docx",
+                "output_path": "C:/docs/MyModel_Documentation_v2.docx"
+            }
+        ]
     },
 
     # Comparison (1 tool)
@@ -384,7 +670,17 @@ TOOL_SCHEMAS = {
                 "description": "Port of NEW model instance (optional - if not provided, tool will detect instances and ask)"
             }
         },
-        "required": []
+        "required": [],
+        "examples": [
+            {
+                "_description": "Auto-detect instances and compare (interactive)"
+            },
+            {
+                "_description": "Compare specific instances by port",
+                "old_port": 52000,
+                "new_port": 52100
+            }
+        ]
     },
 
     # PBIP Offline Analysis (1 tool)
@@ -400,7 +696,22 @@ TOOL_SCHEMAS = {
                 "description": "Optional output directory for HTML report (defaults to 'exports')"
             }
         },
-        "required": ["pbip_path"]
+        "required": ["pbip_path"],
+        "examples": [
+            {
+                "_description": "Analyze PBIP repository",
+                "pbip_path": "C:/repos/MyModel/MyModel.pbip"
+            },
+            {
+                "_description": "Analyze with custom output location",
+                "pbip_path": "C:/repos/MyModel/MyModel.pbip",
+                "output_path": "C:/reports/pbip_analysis"
+            },
+            {
+                "_description": "Analyze SemanticModel folder directly",
+                "pbip_path": "C:/repos/MyModel/MyModel.SemanticModel"
+            }
+        ]
     },
 
     # TMDL Automation - Now handled by unified tmdl_operations handler (schema embedded in handler)
@@ -448,14 +759,68 @@ TOOL_SCHEMAS = {
                 }
             }
         },
-        "required": ["expression"]
+        "required": ["expression"],
+        "examples": [
+            {
+                "_description": "Analyze measure by name (auto-fetches DAX from model)",
+                "expression": "Total Revenue"
+            },
+            {
+                "_description": "Analyze measure with fuzzy name matching",
+                "expression": "profit margin"
+            },
+            {
+                "_description": "Full analysis of DAX expression (all modes)",
+                "expression": "CALCULATE(SUM(Sales[Amount]), FILTER(ALL(Date), Date[Year] = 2024))",
+                "analysis_mode": "all"
+            },
+            {
+                "_description": "Context transition analysis only",
+                "expression": "SUMX(FILTER(Sales, Sales[IsActive]), [Unit Price] * Sales[Quantity])",
+                "analysis_mode": "analyze"
+            },
+            {
+                "_description": "Step-by-step debugging with friendly output",
+                "expression": "Profit Margin",
+                "analysis_mode": "debug",
+                "output_format": "friendly"
+            },
+            {
+                "_description": "Debug with raw step data",
+                "expression": "CALCULATE([Total Sales], SAMEPERIODLASTYEAR('Date'[Date]))",
+                "analysis_mode": "debug",
+                "output_format": "steps"
+            },
+            {
+                "_description": "Comprehensive report with all optimizations",
+                "expression": "VAR _Total = SUM(Sales[Amount]) VAR _Cost = SUM(Sales[Cost]) RETURN DIVIDE(_Total - _Cost, _Total)",
+                "analysis_mode": "report",
+                "include_optimization": True,
+                "include_profiling": True
+            },
+            {
+                "_description": "Analyze complex nested CALCULATE",
+                "expression": "CALCULATE(CALCULATE([Base Measure], REMOVEFILTERS(Product)), Date[Year] = 2024)",
+                "analysis_mode": "all"
+            },
+            {
+                "_description": "Analyze iterator with context transition",
+                "expression": "SUMX(ALL(Product[Category]), [Category Sales])",
+                "analysis_mode": "analyze"
+            }
+        ]
     },
 
     # User Guide (1 tool)
     'show_user_guide': {
         "type": "object",
         "properties": {},
-        "required": []
+        "required": [],
+        "examples": [
+            {
+                "_description": "Show the user guide"
+            }
+        ]
     },
 
     # Hybrid Analysis (2 tools) - Category 13
@@ -518,7 +883,34 @@ TOOL_SCHEMAS = {
                 "default": False
             }
         },
-        "required": ["pbip_folder_path"]
+        "required": ["pbip_folder_path"],
+        "examples": [
+            {
+                "_description": "Export with defaults (auto-detect Power BI Desktop)",
+                "pbip_folder_path": "C:/repos/MyModel/MyModel.SemanticModel"
+            },
+            {
+                "_description": "Export with custom output directory",
+                "pbip_folder_path": "C:/repos/MyModel",
+                "output_dir": "C:/analysis/MyModel_export"
+            },
+            {
+                "_description": "Export with more sample data rows",
+                "pbip_folder_path": "C:/repos/MyModel/MyModel.SemanticModel",
+                "sample_rows": 5000,
+                "include_sample_data": True
+            },
+            {
+                "_description": "Export TMDL only (no sample data)",
+                "pbip_folder_path": "C:/repos/MyModel",
+                "include_sample_data": False
+            },
+            {
+                "_description": "Export with copy strategy (no symlinks)",
+                "pbip_folder_path": "C:/repos/MyModel",
+                "tmdl_strategy": "copy"
+            }
+        ]
     },
 
     'analyze_hybrid_model': {
@@ -615,7 +1007,100 @@ TOOL_SCHEMAS = {
                 "default": False
             }
         },
-        "required": ["analysis_path", "operation"]
+        "required": ["analysis_path", "operation"],
+        "examples": [
+            {
+                "_description": "Read full metadata with relationships and expert analysis",
+                "analysis_path": "C:/models/MyModel_analysis",
+                "operation": "read_metadata"
+            },
+            {
+                "_description": "Find all measures in Time Intelligence folder",
+                "analysis_path": "C:/models/MyModel_analysis",
+                "operation": "find_objects",
+                "object_filter": {
+                    "object_type": "measures",
+                    "folder": "Time Intelligence"
+                }
+            },
+            {
+                "_description": "Find complex measures only",
+                "analysis_path": "C:/models/MyModel_analysis",
+                "operation": "find_objects",
+                "object_filter": {
+                    "object_type": "measures",
+                    "complexity": "complex"
+                }
+            },
+            {
+                "_description": "Get measure definition with fuzzy name matching",
+                "analysis_path": "C:/models/MyModel_analysis",
+                "operation": "get_object_definition",
+                "object_filter": {
+                    "object_name": "total revenue",
+                    "object_type": "measure"
+                }
+            },
+            {
+                "_description": "Analyze dependencies of a specific measure",
+                "analysis_path": "C:/models/MyModel_analysis",
+                "operation": "analyze_dependencies",
+                "object_filter": {
+                    "object_name": "Profit Margin"
+                }
+            },
+            {
+                "_description": "Get sample data from Sales table (20 rows)",
+                "analysis_path": "C:/models/MyModel_analysis",
+                "operation": "get_sample_data",
+                "object_filter": {
+                    "table_name": "Sales"
+                },
+                "batch_size": 20
+            },
+            {
+                "_description": "Run performance analysis with high priority issues",
+                "analysis_path": "C:/models/MyModel_analysis",
+                "operation": "analyze_performance",
+                "priority": "high",
+                "detailed": True
+            },
+            {
+                "_description": "Get unused columns report",
+                "analysis_path": "C:/models/MyModel_analysis",
+                "operation": "get_unused_columns"
+            },
+            {
+                "_description": "Get report visual dependencies",
+                "analysis_path": "C:/models/MyModel_analysis",
+                "operation": "get_report_dependencies"
+            },
+            {
+                "_description": "Smart analyze with natural language",
+                "analysis_path": "C:/models/MyModel_analysis",
+                "operation": "smart_analyze",
+                "intent": "Show me all complex measures that use CALCULATE"
+            },
+            {
+                "_description": "Find measures by regex pattern",
+                "analysis_path": "C:/models/MyModel_analysis",
+                "operation": "find_objects",
+                "object_filter": {
+                    "object_type": "measures",
+                    "name_pattern": "^YTD.*"
+                }
+            },
+            {
+                "_description": "Find hidden columns in a specific table",
+                "analysis_path": "C:/models/MyModel_analysis",
+                "operation": "find_objects",
+                "object_filter": {
+                    "object_type": "columns",
+                    "table": "Sales",
+                    "is_hidden": True
+                }
+            }
+        ]
     },
 
     # Token Usage Tracking (1 tool)
@@ -629,6 +1114,19 @@ TOOL_SCHEMAS = {
                 "default": "json"
             }
         },
-        "required": []
+        "required": [],
+        "examples": [
+            {
+                "_description": "Get token usage summary"
+            },
+            {
+                "_description": "Get brief overview",
+                "format": "summary"
+            },
+            {
+                "_description": "Get comprehensive token report",
+                "format": "detailed"
+            }
+        ]
     }
 }
