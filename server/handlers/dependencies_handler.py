@@ -7,6 +7,7 @@ import logging
 from server.registry import ToolDefinition
 from core.infrastructure.connection_state import connection_state
 from core.validation.error_handler import ErrorHandler
+from core.utilities.mermaid_renderer import get_mermaid_image_content
 
 logger = logging.getLogger(__name__)
 
@@ -290,13 +291,30 @@ def handle_analyze_measure_dependencies(args: Dict[str, Any]) -> Dict[str, Any]:
 
     # Include raw mermaid code for clients that want to render it themselves
     if diagram_result and diagram_result.get('success'):
-        response['mermaid_raw'] = diagram_result.get('mermaid', '')
+        mermaid_code = diagram_result.get('mermaid', '')
+        response['mermaid_raw'] = mermaid_code
         response['diagram_metadata'] = {
             'direction': diagram_result.get('direction', 'upstream'),
             'depth': diagram_result.get('depth', 3),
             'node_count': diagram_result.get('node_count', 0),
             'edge_count': diagram_result.get('edge_count', 0)
         }
+
+        # Render Mermaid diagram to PNG image for visual display
+        # The _image_content field triggers special handling in the MCP server
+        # to return the image as ImageContent alongside the text response
+        if mermaid_code:
+            image_result = get_mermaid_image_content(mermaid_code, theme="default")
+            if image_result.get('success'):
+                response['_image_content'] = {
+                    'data': image_result['data'],
+                    'mimeType': image_result['mimeType']
+                }
+                logger.info("Mermaid diagram rendered to PNG image successfully")
+            else:
+                # If image rendering fails, log it but continue with text output
+                logger.warning(f"Mermaid image rendering failed: {image_result.get('error')}")
+                response['image_render_error'] = image_result.get('error')
 
     return response
 
