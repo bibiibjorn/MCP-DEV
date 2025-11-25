@@ -488,38 +488,165 @@ class CallTreeBuilder:
 
         return max_depth
 
-    def visualize_tree(self, node: CallTreeNode, indent: int = 0) -> str:
+    def visualize_tree(self, node: CallTreeNode, indent: int = 0, prefix: str = "", is_last: bool = True) -> str:
         """
-        Generate ASCII visualization of call tree
+        Generate enhanced ASCII visualization of call tree with box-drawing characters
 
         Args:
             node: Root node
             indent: Current indentation level
+            prefix: Accumulated prefix for tree lines
+            is_last: Whether this is the last sibling
 
         Returns:
-            ASCII tree string
+            ASCII tree string with proper hierarchy visualization
         """
         lines = []
 
-        # Create prefix
+        # Root node handling
         if indent == 0:
-            prefix = ""
-            branch = ""
+            # Add tree summary header
+            stats = self._collect_tree_stats(node)
+            lines.append("┌" + "─" * 60 + "┐")
+            lines.append(f"│ 📊 DAX Call Tree Analysis{' ' * 34}│")
+            lines.append("├" + "─" * 60 + "┤")
+            lines.append(f"│ Functions: {stats['total_functions']:<5} │ Variables: {stats['total_variables']:<5} │ Measures: {stats['total_measures']:<5} │")
+            lines.append(f"│ Iterators: {stats['total_iterators']:<5} │ CALCULATE: {stats['total_calculates']:<5} │ Depth: {stats['max_depth']:<7} │")
+            if stats['total_iterations'] > 0:
+                iter_str = f"{stats['total_iterations']:,}"
+                impact = "🔴 CRITICAL" if stats['total_iterations'] >= 1_000_000 else "🟡 HIGH" if stats['total_iterations'] >= 100_000 else "🟢 OK"
+                lines.append(f"│ Est. Iterations: {iter_str:<15} │ Impact: {impact:<17}│")
+            lines.append("└" + "─" * 60 + "┘")
+            lines.append("")
+
+            # Root node
+            node_repr = self._format_node_enhanced(node)
+            lines.append(f"📁 {node_repr}")
+            current_prefix = "   "
         else:
-            prefix = "  " * (indent - 1)
-            branch = "└─ "
+            # Branch characters
+            branch = "└── " if is_last else "├── "
+            node_repr = self._format_node_enhanced(node)
+            lines.append(f"{prefix}{branch}{node_repr}")
 
-        # Create node representation
-        node_repr = self._format_node(node)
-        lines.append(f"{prefix}{branch}{node_repr}")
+            # Update prefix for children
+            current_prefix = prefix + ("    " if is_last else "│   ")
 
-        # Add children
+        # Add children with proper tree structure
+        child_count = len(node.children)
         for i, child in enumerate(node.children):
-            is_last = (i == len(node.children) - 1)
-            child_lines = self.visualize_tree(child, indent + 1)
+            is_last_child = (i == child_count - 1)
+            child_lines = self.visualize_tree(child, indent + 1, current_prefix, is_last_child)
             lines.append(child_lines)
 
+        # Add legend at the end of root
+        if indent == 0:
+            lines.append("")
+            lines.append("─" * 62)
+            lines.append("Legend:")
+            lines.append("  📦 VAR      Variable definition")
+            lines.append("  ⚡ CALCULATE Context modifier (filter context change)")
+            lines.append("  🔄 Iterator  Row-by-row iteration (SUMX, FILTER, etc.)")
+            lines.append("  📊 Measure   Measure reference (implicit CALCULATE)")
+            lines.append("  ⚙️  Function  DAX function call")
+            lines.append("  🔍 Filter    Filter expression")
+            lines.append("")
+            lines.append("Performance Indicators:")
+            lines.append("  🟢 Low impact    🟡 Medium impact    🔴 High/Critical")
+            lines.append("─" * 62)
+
         return "\n".join(lines)
+
+    def _collect_tree_stats(self, node: CallTreeNode) -> Dict[str, Any]:
+        """Collect statistics about the tree for the summary header"""
+        stats = {
+            'total_functions': 0,
+            'total_variables': 0,
+            'total_measures': 0,
+            'total_iterators': 0,
+            'total_calculates': 0,
+            'total_iterations': 0,
+            'max_depth': 0
+        }
+
+        def traverse(n: CallTreeNode, depth: int = 0):
+            stats['max_depth'] = max(stats['max_depth'], depth)
+
+            if n.node_type == NodeType.FUNCTION:
+                stats['total_functions'] += 1
+            elif n.node_type == NodeType.VARIABLE:
+                stats['total_variables'] += 1
+            elif n.node_type == NodeType.MEASURE_REF:
+                stats['total_measures'] += 1
+            elif n.node_type == NodeType.ITERATOR:
+                stats['total_iterators'] += 1
+                stats['total_functions'] += 1
+                if n.estimated_iterations:
+                    stats['total_iterations'] += n.estimated_iterations
+            elif n.node_type == NodeType.CALCULATE:
+                stats['total_calculates'] += 1
+                stats['total_functions'] += 1
+
+            for child in n.children:
+                traverse(child, depth + 1)
+
+        traverse(node)
+        return stats
+
+    def _format_node_enhanced(self, node: CallTreeNode) -> str:
+        """Format node with enhanced visual representation"""
+        parts = []
+
+        # Add icon based on node type
+        icon_map = {
+            NodeType.VARIABLE: "📦",
+            NodeType.MEASURE_REF: "📊",
+            NodeType.CALCULATE: "⚡",
+            NodeType.ITERATOR: "🔄",
+            NodeType.FILTER: "🔍",
+            NodeType.FUNCTION: "⚙️",
+            NodeType.ROOT: "📁",
+            NodeType.COLUMN_REF: "📋",
+            NodeType.LITERAL: "💎"
+        }
+        icon = icon_map.get(node.node_type, "")
+
+        # Build node label
+        if node.function_name:
+            label = node.function_name
+        else:
+            label = node.node_type.value
+
+        # Add performance indicator
+        perf_indicator = ""
+        if node.performance_impact == "critical":
+            perf_indicator = " 🔴"
+        elif node.performance_impact == "high":
+            perf_indicator = " 🟡"
+        elif node.is_iterator or node.has_context_transition:
+            perf_indicator = " 🟢"
+
+        # Build main part
+        parts.append(f"{icon} {label}{perf_indicator}")
+
+        # Add context transition marker
+        if node.has_context_transition and node.node_type != NodeType.CALCULATE:
+            parts.append("⟵ context transition")
+
+        # Add iteration count if available
+        if node.is_iterator and node.estimated_iterations:
+            iter_count = f"{node.estimated_iterations:,}"
+            parts.append(f"({iter_count} iterations)")
+
+        # Add warning if present (shortened)
+        if node.warning_message:
+            # Extract just the key warning
+            warning_short = node.warning_message.split('.')[0][:40]
+            if len(node.warning_message) > 40:
+                warning_short += "..."
+            parts.append(f"⚠️ {warning_short}")
+
+        return " ".join(parts)
 
     def _format_node(self, node: CallTreeNode) -> str:
         """Format node for visualization"""

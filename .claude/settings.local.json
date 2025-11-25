@@ -65,7 +65,8 @@
       "Bash(Select-String -Pattern \"(ERROR|Exception|Traceback|disconnect|failed)\" -Context 3)",
       "Bash(cmd.exe /c \"for /f \"\"tokens=3 delims==\"\" %a in (''findstr \"\"__version__\"\" ..\\src\\__version__.py'') do @echo Version: %a\")",
       "Bash(git worktree:*)",
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(git diff:*)"
     ],
     "deny": [],
     "ask": []

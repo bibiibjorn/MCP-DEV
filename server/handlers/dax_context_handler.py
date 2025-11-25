@@ -535,6 +535,7 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
     Online research enabled for DAX optimization articles and recommendations.
     """
     import re  # For fuzzy measure name matching
+    from difflib import SequenceMatcher  # For proper fuzzy matching scores
 
     if not connection_state.is_connected():
         return ErrorHandler.handle_not_connected()
@@ -597,27 +598,39 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                         # Try exact match first (case-insensitive)
                         if measure_name_lower == search_term:
                             exact_matches.append((measure, table.Name))
-                        # Try partial/fuzzy match - check if all words in search term appear in measure name
-                        # Use word boundary matching to avoid false positives (e.g., "base" shouldn't match "database")
+                        # Try fuzzy match using SequenceMatcher for proper similarity scoring
                         else:
-                            # Split measure name into words
-                            measure_words = set(re.split(r'[\s\-_]+', measure_name_lower))
-                            # Check if all search words appear as complete words in measure name
-                            if all(
-                                any(search_word in measure_word or measure_word in search_word
-                                    for measure_word in measure_words)
-                                for search_word in search_words
-                            ):
-                                partial_matches.append((measure, table.Name))
+                            # Calculate similarity ratio (0.0 to 1.0)
+                            similarity = SequenceMatcher(None, search_term, measure_name_lower).ratio()
 
-                # Prioritize exact matches, then partial matches
+                            # Also check if all significant search words appear in measure name
+                            # Filter out very short words like "in", "to", "a" which are noise
+                            significant_search_words = [w for w in search_words if len(w) > 2]
+                            measure_words = set(re.split(r'[\s\-_]+', measure_name_lower))
+
+                            # Calculate word match score (what fraction of significant words match)
+                            word_match_count = sum(
+                                1 for sw in significant_search_words
+                                if any(sw in mw or mw in sw for mw in measure_words)
+                            )
+                            word_match_ratio = word_match_count / len(significant_search_words) if significant_search_words else 0
+
+                            # Combined score: weight similarity higher for exact-ish matches,
+                            # but also consider word coverage
+                            combined_score = (similarity * 0.6) + (word_match_ratio * 0.4)
+
+                            # Only consider if similarity is reasonable (> 0.3) or most words match
+                            if similarity > 0.3 or word_match_ratio >= 0.7:
+                                partial_matches.append((measure, table.Name, combined_score, similarity))
+
+                # Prioritize exact matches, then partial matches by HIGHEST score (not shortest name)
                 if exact_matches:
                     found_measure, found_table = exact_matches[0]
                 elif partial_matches:
-                    # If multiple partial matches, use the shortest one (most specific)
-                    partial_matches.sort(key=lambda x: len(x[0].Name))
-                    found_measure, found_table = partial_matches[0]
-                    logger.info(f"Using fuzzy match: '{found_measure.Name}' for search term '{expression}'")
+                    # Sort by combined score DESCENDING - highest score wins
+                    partial_matches.sort(key=lambda x: x[2], reverse=True)
+                    found_measure, found_table, score, sim = partial_matches[0]
+                    logger.info(f"Using fuzzy match: '{found_measure.Name}' (score={score:.2f}, similarity={sim:.2f}) for search term '{expression}'")
 
                 if found_measure:
                     expression = found_measure.Expression
@@ -627,30 +640,24 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                     # Clean up AMO connection
                     _cleanup_amo_connection(server)
                 else:
-                    # Measure not found - provide helpful suggestions
-                    # Find similar measure names for suggestions
-                    all_measures = []
+                    # Measure not found - provide helpful suggestions ranked by similarity
+                    all_measures_with_scores = []
                     for table in model.Tables:
                         for measure in table.Measures:
-                            all_measures.append((measure.Name, table.Name))
+                            measure_name_lower = measure.Name.lower()
+                            # Calculate similarity score for suggestions
+                            similarity = SequenceMatcher(None, search_term, measure_name_lower).ratio()
+                            if similarity > 0.2:  # Only suggest if somewhat similar
+                                all_measures_with_scores.append((measure.Name, table.Name, similarity))
 
                     # Clean up AMO connection before returning error
                     _cleanup_amo_connection(server)
 
-                    # Find measures with any matching words (using same word-based logic)
-                    suggestions = []
-                    search_words_set = set(search_words)
-                    for measure_name_str, table_name in all_measures:
-                        measure_words_set = set(re.split(r'[\s\-_]+', measure_name_str.lower()))
-                        # Check if any search word appears in any measure word
-                        if any(
-                            search_word in measure_word or measure_word in search_word
-                            for search_word in search_words_set
-                            for measure_word in measure_words_set
-                        ):
-                            suggestions.append(f"[{table_name}].[{measure_name_str}]")
+                    # Sort by similarity score (highest first) and take top suggestions
+                    all_measures_with_scores.sort(key=lambda x: x[2], reverse=True)
+                    suggestions = [f"[{t}].[{m}]" for m, t, _ in all_measures_with_scores[:10]]
 
-                    error_msg = f"The expression '{original_expression}' looks like a measure name, but no exact match was found in the model."
+                    error_msg = f"The expression '{original_expression}' looks like a measure name, but no match was found in the model."
                     if suggestions:
                         error_msg += f"\n\nDid you mean one of these measures?\n" + "\n".join(f"  • {s}" for s in suggestions[:5])
                     error_msg += f"\n\nPlease provide either:\n1. The full DAX expression to analyze, or\n2. A valid measure name"
@@ -658,8 +665,8 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                     return {
                         'success': False,
                         'error': error_msg,
-                        'suggestions': suggestions[:10] if suggestions else None,
-                        'hint': 'Try using more specific keywords from the measure name'
+                        'suggestions': suggestions if suggestions else None,
+                        'hint': 'Try using the exact measure name or more specific keywords'
                     }
             except Exception as e:
                 logger.warning(f"Error during auto-fetch: {e}")
@@ -799,7 +806,8 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                         'CRITICAL: Over 1 million iterations - severe performance impact!' if total_iterations >= 1_000_000
                         else 'WARNING: Over 100,000 iterations - consider optimization' if total_iterations >= 100_000
                         else None
-                    )
+                    ),
+                    'formatting_note': 'Display this visualization in a ```text code block to preserve the tree structure and box-drawing characters. The visualization includes its own integrated legend.'
                 }
 
             except Exception as e:
@@ -840,19 +848,31 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                 'AI_INSTRUCTIONS': {
                     'READ_THIS_FIRST': '🚨 This response contains ONLY structured data fields. There is NO text report field. You must read and present the structured fields below.',
 
-                    'PRIORITY_1_SHOW_ANNOTATED_CODE_FIRST': '🚨 MANDATORY: Display the annotated_dax_code.code field FIRST at the very beginning of your response. Show the complete annotated code with the legend. This gives users immediate visual understanding of WHERE context transitions occur (🔄 = Iterator, 📊 = Measure Ref, ⚡ = CALCULATE, 🔴🟡🟢 = Impact).',
+                    'FORMATTING_CRITICAL': '🚨 CRITICAL FORMATTING: Each section MUST be a separate markdown section with a ### header followed by content. Use --- horizontal rules between major sections. DO NOT put everything in one code block or one continuous paragraph. Each analysis area gets its own distinct section with a header.',
 
-                    'PRIORITY_2_PRESENT_ANALYSIS_SUMMARY': 'After annotated code, show the analysis_summary field as a quick overview of findings (complexity score, total transitions, patterns detected, improvements available).',
+                    'PRIORITY_1_SHOW_ANNOTATED_CODE_FIRST': '🚨 MANDATORY: Start with "### Annotated DAX Code" header, then display annotated_dax_code.code in a ```dax code block. Then OUTSIDE the code block, show "**Legend:**" followed by the legend as a bullet list. Add --- after this section.',
 
-                    'PRIORITY_3_PRESENT_DETAILED_SECTIONS': 'Then present these sections in order: (1) best_practices_analysis - violations found, (2) anti_patterns - pattern matches with articles, (3) context_analysis.transitions - detailed transition info, (4) improvements.details - specific improvement opportunities, (5) vertipaq_analysis - column metrics if available, (6) call_tree - iteration estimates if available.',
+                    'PRIORITY_2_PRESENT_ANALYSIS_SUMMARY': 'Add "### Analysis Summary" header. Present analysis_summary as a clean table or bullet list showing: complexity score, total transitions, patterns detected, improvements available, best practices score. Add --- after.',
 
-                    'PRIORITY_4_WRITE_OPTIMIZED_CODE': '🚨 CRITICAL: After presenting all analysis, YOU (the AI) MUST write the complete optimized DAX measure. The rewriter_draft field (if present) is just a SUGGESTION - review ALL analysis data and write your OWN optimized code. You may improve upon the draft, combine it with other optimizations, or write something entirely different. Write the FULL measure code, not snippets. The user needs production-ready code to copy-paste into Power BI.',
+                    'PRIORITY_3_BEST_PRACTICES': 'Add "### Best Practices Analysis" header. Show issues grouped by priority (HIGH, MEDIUM, LOW). Each issue on its own line. Add --- after.',
 
-                    'PRIORITY_5_EXPLAIN_CHANGES': 'After writing optimized code, explain what specific optimizations you applied and WHY they improve performance. Reference specific items from improvements.details and cite articles_referenced when relevant.',
+                    'PRIORITY_4_ANTI_PATTERNS': 'Add "### Anti-Pattern Detection" header. For each pattern: show pattern name, matched instances, link to article. Add --- after.',
 
-                    'DATA_STRUCTURE_GUIDE': 'Key fields: annotated_dax_code.code (visual code), analysis_summary (quick stats), best_practices_analysis.issues (violations), anti_patterns.pattern_matches (patterns found), context_analysis.transitions (detailed transitions), improvements.details (improvement list), improvements.rewriter_draft (draft suggestion from code rewriter), vertipaq_analysis.column_analysis (column metrics), call_tree.visualization (call tree), articles_referenced.articles (research articles)',
+                    'PRIORITY_5_CONTEXT_TRANSITIONS': 'Add "### Context Transition Analysis" header. List each transition with function, line, type, and performance impact. Add --- after.',
 
-                    'WORKFLOW_SUMMARY': 'STEP 1: Show annotated_dax_code → STEP 2: Show analysis_summary → STEP 3: Present detailed sections → STEP 4: Write complete optimized DAX code → STEP 5: Explain changes with article references'
+                    'PRIORITY_6_IMPROVEMENTS': 'Add "### Improvement Opportunities" header. Number each improvement with before/after examples where applicable. Add --- after.',
+
+                    'PRIORITY_7_CALL_TREE': 'Add "### Call Tree Visualization" header. Display call_tree.visualization in a ```text code block to preserve the tree structure. The visualization already includes its own legend. Add --- after.',
+
+                    'PRIORITY_8_VERTIPAQ': 'If vertipaq_analysis has data, add "### VertiPaq Analysis" header. Show column metrics in a table format. Add --- after.',
+
+                    'PRIORITY_9_WRITE_OPTIMIZED_CODE': '🚨 CRITICAL: Add "### Optimized DAX Code" header. YOU (the AI) MUST write the complete optimized DAX measure. The rewriter_draft field is just a SUGGESTION. Write production-ready code in a ```dax code block. Add --- after.',
+
+                    'PRIORITY_10_EXPLAIN_CHANGES': 'Add "### Optimization Explanation" header. Explain what specific optimizations you applied and WHY they improve performance. Reference articles_referenced when relevant.',
+
+                    'DATA_STRUCTURE_GUIDE': 'Key fields: annotated_dax_code.code (visual code), annotated_dax_code.legend (show as bullets), analysis_summary (stats), best_practices_analysis.issues (violations), anti_patterns.pattern_matches (patterns), context_analysis.transitions (transitions), improvements.details (improvement list), call_tree.visualization (pre-formatted tree - put in ```text block), vertipaq_analysis.column_analysis (metrics), articles_referenced.articles (links)',
+
+                    'WORKFLOW_SUMMARY': 'SECTION HEADERS: ### Annotated DAX Code → --- → ### Analysis Summary → --- → ### Best Practices Analysis → --- → ### Anti-Pattern Detection → --- → ### Context Transitions → --- → ### Improvements → --- → ### Call Tree Visualization → --- → ### VertiPaq Analysis → --- → ### Optimized DAX Code → --- → ### Optimization Explanation'
                 },
 
                 # ============================================
@@ -868,7 +888,7 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                         '🟡': 'MEDIUM performance impact',
                         '🟢': 'LOW performance impact'
                     },
-                    'note': '🚨 AI: Display this annotated code at the VERY BEGINNING of your response, before any other analysis. The annotations show WHERE each context transition occurs inline in the code. Users need to see this FIRST to understand the problem areas before reading the detailed analysis.'
+                    'formatting_instructions': '🚨 CRITICAL FORMATTING: Put the "code" field inside a ```dax code block. The "legend" field must be rendered OUTSIDE the code block as a markdown bullet list AFTER the closing ``` backticks. NEVER include the legend inside the code block - it breaks formatting.'
                 },
                 'analysis_summary': {
                     'complexity_score': result_analyze.complexity_score,
@@ -1028,17 +1048,27 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                 'AI_INSTRUCTIONS': {
                     'READ_THIS_FIRST': '🚨 This response contains ONLY structured data fields. You must read and present the structured fields below.',
 
-                    'PRIORITY_1_SHOW_ANNOTATED_CODE_FIRST': '🚨 MANDATORY: Display the annotated_dax_code.code field FIRST at the very beginning of your response. Show the complete annotated code with the legend. This gives users immediate visual understanding of WHERE context transitions occur (🔄 = Iterator, 📊 = Measure Ref, ⚡ = CALCULATE, 🔴🟡🟢 = Impact).',
+                    'FORMATTING_CRITICAL': '🚨 CRITICAL FORMATTING: Each section MUST be a separate markdown section with a ### header followed by content. Use --- horizontal rules between major sections. DO NOT put everything in one code block or one continuous paragraph.',
 
-                    'PRIORITY_2_PRESENT_DETAILED_SECTIONS': 'After annotated code, present: (1) best_practices_analysis - violations found, (2) anti_patterns - pattern matches with articles, (3) analysis.transitions - detailed transition info, (4) improvements.details - specific improvement opportunities, (5) vertipaq_analysis - column metrics if available.',
+                    'PRIORITY_1_SHOW_ANNOTATED_CODE_FIRST': '🚨 MANDATORY: Start with "### Annotated DAX Code" header, then display annotated_dax_code.code in a ```dax code block. Then OUTSIDE the code block, show "**Legend:**" followed by the legend as a bullet list. Add --- after this section.',
 
-                    'PRIORITY_3_WRITE_OPTIMIZED_CODE': '🚨 CRITICAL: After presenting all analysis, YOU (the AI) MUST write the complete optimized DAX measure. The rewriter_draft field (if present) is just a SUGGESTION - review ALL analysis data and write your OWN optimized code. You may improve upon the draft, combine it with other optimizations, or write something entirely different. Write the FULL measure code, not snippets. The user needs production-ready code to copy-paste into Power BI.',
+                    'PRIORITY_2_BEST_PRACTICES': 'Add "### Best Practices Analysis" header. Show issues grouped by priority (HIGH, MEDIUM, LOW). Each issue on its own line. Add --- after.',
 
-                    'PRIORITY_4_EXPLAIN_CHANGES': 'After writing optimized code, explain what specific optimizations you applied and WHY they improve performance. Reference specific items from improvements.details and cite articles_referenced when relevant.',
+                    'PRIORITY_3_ANTI_PATTERNS': 'Add "### Anti-Pattern Detection" header. For each pattern: show pattern name, matched instances, link to article. Add --- after.',
 
-                    'DATA_STRUCTURE_GUIDE': 'Key fields: annotated_dax_code.code (visual code), best_practices_analysis.issues (violations), anti_patterns.pattern_matches (patterns found), analysis.transitions (detailed transitions), improvements.details (improvement list), improvements.rewriter_draft (draft suggestion from code rewriter), vertipaq_analysis.column_analysis (column metrics), articles_referenced.articles (research articles)',
+                    'PRIORITY_4_TRANSITIONS': 'Add "### Context Transition Analysis" header. List each transition with function, line, type, and performance impact. Add --- after.',
 
-                    'WORKFLOW_SUMMARY': 'STEP 1: Show annotated_dax_code → STEP 2: Present detailed sections → STEP 3: Write complete optimized DAX code → STEP 4: Explain changes with article references'
+                    'PRIORITY_5_IMPROVEMENTS': 'Add "### Improvement Opportunities" header. Number each improvement with before/after examples where applicable. Add --- after.',
+
+                    'PRIORITY_6_VERTIPAQ': 'If vertipaq_analysis has data, add "### VertiPaq Analysis" header. Show column metrics in a table format. Add --- after.',
+
+                    'PRIORITY_7_WRITE_OPTIMIZED_CODE': '🚨 CRITICAL: Add "### Optimized DAX Code" header. YOU (the AI) MUST write the complete optimized DAX measure. The rewriter_draft field is just a SUGGESTION. Write production-ready code in a ```dax code block. Add --- after.',
+
+                    'PRIORITY_8_EXPLAIN_CHANGES': 'Add "### Optimization Explanation" header. Explain what specific optimizations you applied and WHY they improve performance. Reference articles_referenced when relevant.',
+
+                    'DATA_STRUCTURE_GUIDE': 'Key fields: annotated_dax_code.code (visual code), annotated_dax_code.legend (show as bullets), best_practices_analysis.issues (violations), anti_patterns.pattern_matches (patterns), analysis.transitions (transitions), improvements.details (improvement list), vertipaq_analysis.column_analysis (metrics), articles_referenced.articles (links)',
+
+                    'WORKFLOW_SUMMARY': 'SECTION HEADERS: ### Annotated DAX Code → --- → ### Best Practices Analysis → --- → ### Anti-Pattern Detection → --- → ### Context Transitions → --- → ### Improvements → --- → ### VertiPaq Analysis → --- → ### Optimized DAX Code → --- → ### Optimization Explanation'
                 },
 
                 # ============================================
@@ -1054,7 +1084,7 @@ def handle_dax_intelligence(args: Dict[str, Any]) -> Dict[str, Any]:
                         '🟡': 'MEDIUM performance impact',
                         '🟢': 'LOW performance impact'
                     },
-                    'note': '🚨 AI: Display this annotated code at the VERY BEGINNING of your response, before any other analysis. The annotations show WHERE each context transition occurs inline in the code. Users need to see this FIRST to understand the problem areas before reading the detailed analysis.'
+                    'formatting_instructions': '🚨 CRITICAL FORMATTING: Put the "code" field inside a ```dax code block. The "legend" field must be rendered OUTSIDE the code block as a markdown bullet list AFTER the closing ``` backticks. NEVER include the legend inside the code block - it breaks formatting.'
                 },
                 'analysis': result.to_dict() if hasattr(result, 'to_dict') else result
             }
