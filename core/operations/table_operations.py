@@ -20,6 +20,7 @@ class TableOperationsHandler(BaseOperationsHandler):
         self.register_operation('list', self._list_tables)
         self.register_operation('describe', self._describe_table)
         self.register_operation('preview', self._preview_table)
+        self.register_operation('sample_data', self._sample_data)  # Enhanced sample data retrieval
         self.register_operation('create', self._create_table)
         self.register_operation('update', self._update_table)
         self.register_operation('delete', self._delete_table)
@@ -116,6 +117,83 @@ class TableOperationsHandler(BaseOperationsHandler):
             mode='auto',
             max_rows=max_rows
         )
+
+        return result
+
+    def _sample_data(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Get sample data from a table with optional column selection and ordering.
+
+        This is an enhanced version of preview that supports:
+        - Column selection (return only specific columns)
+        - Ordering by a specific column
+        - Ascending/descending order
+
+        Args (via args dict):
+            table_name: Name of the table to sample (required)
+            max_rows: Maximum number of rows to return (default: 10, max: 1000)
+            columns: List of column names to include (optional, default: all columns)
+            order_by: Column name to order by (optional)
+            order_direction: 'asc' or 'desc' (default: 'asc', only used if order_by is specified)
+        """
+        if not connection_state.is_connected():
+            return ErrorHandler.handle_not_connected()
+
+        agent_policy = connection_state.agent_policy
+        if not agent_policy:
+            return ErrorHandler.handle_manager_unavailable('agent_policy')
+
+        # Support both 'table_name' and 'table' for backward compatibility
+        table_name = args.get('table_name') or args.get('table')
+        if not table_name:
+            return {
+                'success': False,
+                'error': 'table_name (or table) parameter is required for operation: sample_data'
+            }
+
+        max_rows = min(args.get('max_rows', 10), 1000)  # Cap at 1000 rows
+        columns = args.get('columns')  # Optional list of column names
+        order_by = args.get('order_by')  # Optional column to order by
+        order_direction = args.get('order_direction', 'asc').upper()  # ASC or DESC
+
+        # Build DAX query
+        if columns:
+            # Select specific columns using SELECTCOLUMNS
+            # Format: SELECTCOLUMNS('Table', "Col1", 'Table'[Col1], "Col2", 'Table'[Col2], ...)
+            col_parts = []
+            for col in columns:
+                col_parts.append(f'"{col}", \'{table_name}\'[{col}]')
+            inner_query = f"SELECTCOLUMNS('{table_name}', {', '.join(col_parts)})"
+        else:
+            inner_query = f"'{table_name}'"
+
+        if order_by:
+            # Add ordering
+            order_col = f"'{table_name}'[{order_by}]"
+            if order_direction == 'DESC':
+                query = f"EVALUATE TOPN({max_rows}, {inner_query}, {order_col}, DESC)"
+            else:
+                query = f"EVALUATE TOPN({max_rows}, {inner_query}, {order_col}, ASC)"
+        else:
+            # Simple TOPN without ordering
+            query = f"EVALUATE TOPN({max_rows}, {inner_query})"
+
+        result = agent_policy.safe_run_dax(
+            connection_state=connection_state,
+            query=query,
+            mode='auto',
+            max_rows=max_rows
+        )
+
+        # Add metadata about the query
+        if result.get('success'):
+            result['metadata'] = {
+                'table_name': table_name,
+                'max_rows_requested': max_rows,
+                'columns_selected': columns if columns else 'all',
+                'order_by': order_by,
+                'order_direction': order_direction if order_by else None
+            }
 
         return result
 
