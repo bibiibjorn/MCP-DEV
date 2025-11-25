@@ -508,7 +508,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ## 🔀 CATEGORY 13: FULL MODEL (PBIP + SAMPLE) (2 tools)
 
-### 13_Full_Model_Pbip_And_Sample_Export
+### PBIP Model - Sample Export
 **Purpose**: Export combined TMDL + metadata + sample data
 **When to use**: Complete offline analysis package
 **Parameters**:
@@ -533,9 +533,9 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
   - Testing with real data
   - Comprehensive documentation
 
-### 13_Full_Model_Pbip_And_Sample_Analysis (FULLY AUTOMATED)
+### PBIP Model + Sample Analysis (FULLY AUTOMATED)
 **Purpose**: Analyze exported hybrid model (reads all files internally)
-**When to use**: After 13_Full_Model_Pbip_And_Sample_Export
+**When to use**: After PBIP Model - Sample Export
 **Parameters**:
   - analysis_path: Path to analysis folder (tool reads all files internally)
   - operation: Type of analysis

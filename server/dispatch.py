@@ -18,20 +18,11 @@ class ToolDispatcher:
         '01_detect_pbi_instances': 'detect_powerbi_desktop',
         '01_connect_to_instance': 'connect_to_powerbi',
 
-        # 02 - Schema/Metadata Operations (12 tools - consolidated + individual)
-        # Phase 1 Consolidated Operations (preferred)
+        # 02 - Schema/Metadata Operations (6 tools - consolidated)
         '02_table_operations': 'table_operations',
         '02_column_operations': 'column_operations',
         '02_measure_operations': 'measure_operations',
         '02_relationship_operations': 'relationship_operations',
-
-        # Legacy Individual Operations (for backward compatibility)
-        '02_list_tables': 'list_tables',
-        '02_describe_table': 'describe_table',
-        '02_list_columns': 'list_columns',
-        '02_list_measures': 'list_measures',
-        '02_get_measure_details': 'get_measure_details',
-        '02_list_calculated_columns': 'list_calculated_columns',
         '02_search_objects': 'search_objects',
         '02_search_string': 'search_string',
 
@@ -45,22 +36,11 @@ class ToolDispatcher:
         '03_get_data_sources': 'get_data_sources',
         '03_get_m_expressions': 'get_m_expressions',
 
-        # 04 - Model Operations (13 tools - consolidated + individual)
-        # Phase 2-3 Consolidated Operations (preferred)
+        # 04 - Model Operations (4 tools - consolidated)
         '04_calculation_group_operations': 'calculation_group_operations',
         '04_role_operations': 'role_operations',
         '04_batch_operations': 'batch_operations',
         '04_manage_transactions': 'manage_transactions',
-
-        # Legacy Individual Operations (for backward compatibility)
-        '04_upsert_measure': 'upsert_measure',
-        '04_delete_measure': 'delete_measure',
-        '04_bulk_create_measures': 'bulk_create_measures',
-        '04_bulk_delete_measures': 'bulk_delete_measures',
-        '04_list_calculation_groups': 'list_calculation_groups',
-        '04_create_calculation_group': 'create_calculation_group',
-        '04_delete_calculation_group': 'delete_calculation_group',
-        '04_list_roles': 'list_roles',
 
         # 05 - Analysis (2 tools)
         '05_live_model_simple_analysis': 'simple_analysis',
@@ -90,8 +70,8 @@ class ToolDispatcher:
         '12_Show_User_Guide': 'show_user_guide',
 
         # 13 - Full Model (PBIP + Sample) (2 tools)
-        '13_Full_Model_Pbip_And_Sample_Export': 'export_hybrid_analysis',
-        '13_Full_Model_Pbip_And_Sample_Analysis': 'analyze_hybrid_model',
+        'PBIP Model - Sample Export': 'export_hybrid_analysis',
+        'PBIP Model + Sample Analysis': 'analyze_hybrid_model',
 
         # 14 - Monitoring & Token Usage (1 tool)
         '14_Get_Token_Usage': 'get_token_usage'
