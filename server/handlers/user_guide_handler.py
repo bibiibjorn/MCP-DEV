@@ -55,29 +55,29 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 ### Step 1: Connect to Power BI
 ```
 1. Open Power BI Desktop with your model
-2. Use: 01_detect_pbi_instances
-3. Use: 01_connect_to_instance (typically model_index=0)
+2. Use: 01 Detect PBI Instances
+3. Use: 01 Connect To Instance (typically model_index=0)
 ```
 
 ### Step 2: Explore Your Model
 ```
-- List tables: 02_list_tables
-- Describe a table: 02_describe_table
-- List measures: 02_list_measures
-- Get measure details: 02_get_measure_details
+- List tables: 02 Table Operations
+- Describe a table: 02 Table Operations
+- List measures: 02 Measure Operations
+- Get measure details: 02 Measure Operations
 ```
 
 ---
 
 ## 🔧 CATEGORY 01: CONNECTION (2 tools)
 
-### 01_detect_pbi_instances
+### 01 Detect PBI Instances
 **Purpose**: Detect running Power BI Desktop instances
 **When to use**: Start of every session to find available models
 **Parameters**: None
 **Returns**: List of instances with ports and model names
 
-### 01_connect_to_instance
+### 01 Connect To Instance
 **Purpose**: Connect to a specific Power BI Desktop instance
 **When to use**: After detecting instances, to establish connection
 **Parameters**:
@@ -149,7 +149,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ## 🔍 CATEGORY 03: QUERY & DATA + DAX INTELLIGENCE (9 tools)
 
-### 03_preview_table_data
+### 03 Preview Table Data
 **Purpose**: Preview actual data from a table
 **When to use**: Checking data content and quality
 **Parameters**:
@@ -157,7 +157,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
   - max_rows: Limit (default: 10)
 **Returns**: Sample rows from table
 
-### 03_run_dax
+### 03 Run DAX
 **Purpose**: Execute any DAX query
 **When to use**: Custom queries, testing calculations
 **Parameters**:
@@ -166,7 +166,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
   - mode: 'auto', 'analyze', 'profile', or 'simple'
 **Returns**: Query results with optional timing statistics
 
-### 03_standard_dax_analysis (UNIFIED TOOL)
+### 03 Standard DAX Analysis (UNIFIED TOOL)
 **Purpose**: Complete DAX analysis: syntax validation + context analysis + debugging
 **When to use**: Understanding complex DAX, debugging issues, getting optimization recommendations
 **Parameters**:
@@ -189,14 +189,14 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 **Example**:
   Input: "Total Sales" (measure name) → Tool fetches expression → Analyzes → AI writes optimized version
 
-### 03_validate_dax_query
+### 03 Validate DAX Query
 **Purpose**: Validate DAX syntax without execution
 **When to use**: Quick syntax checks
 **Parameters**:
   - query: DAX query to validate
 **Returns**: Validation status and errors if any
 
-### 03_get_column_value_distribution
+### 03 Get Column Value Distribution
 **Purpose**: Get top N values for a column
 **When to use**: Understanding column content, checking for issues
 **Parameters**:
@@ -205,7 +205,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
   - top_n: Number of values (default: 10)
 **Returns**: Values with counts and percentages
 
-### 03_get_column_summary
+### 03 Get Column Summary
 **Purpose**: Get statistical summary of column
 **When to use**: Understanding numeric/date column ranges
 **Parameters**:
@@ -213,20 +213,20 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
   - column: Column name
 **Returns**: Min, max, distinct count, null count
 
-### 03_list_relationships
+### 03 List Relationships
 **Purpose**: List model relationships
 **When to use**: Understanding model connectivity
 **Parameters**:
   - active_only: Filter active relationships (default: false)
 **Returns**: From/to tables/columns, cardinality, cross-filter direction
 
-### 03_get_data_sources
+### 03 Get Data Sources
 **Purpose**: List all data sources
 **When to use**: Understanding data origins
 **Parameters**: None
 **Returns**: Connection strings, types, credentials info
 
-### 03_get_m_expressions
+### 03 Get M Expressions
 **Purpose**: List Power Query M expressions
 **When to use**: Reviewing data transformation logic
 **Parameters**:
@@ -335,7 +335,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ## 🔗 CATEGORY 06: DEPENDENCIES (2 tools)
 
-### 06_analyze_measure_dependencies
+### 06 Analyze Measure Dependencies
 **Purpose**: Analyze what a measure depends on
 **When to use**: Understanding measure calculation chain
 **Parameters**:
@@ -344,7 +344,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 **Returns**: Dependency tree showing referenced measures, columns, tables
 **Note**: Critical before modifying or deleting measures
 
-### 06_get_measure_impact
+### 06 Get Measure Impact
 **Purpose**: Analyze what uses a measure
 **When to use**: Impact analysis before changes
 **Parameters**:
@@ -357,7 +357,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ## 💾 CATEGORY 07: EXPORT (1 tool)
 
-### 07_get_live_model_schema
+### 07 Get Live Model Schema
 **Purpose**: Get live model schema (inline, without DAX expressions)
 **When to use**: Quick model overview, structure analysis, lightweight documentation
 **Parameters**:
@@ -372,7 +372,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ## 📄 CATEGORY 08: DOCUMENTATION (3 tools)
 
-### 08_generate_model_documentation_word
+### 08 Generate Model Documentation
 **Purpose**: Generate comprehensive Word documentation
 **When to use**: Formal documentation, stakeholder reports
 **Parameters**:
@@ -385,7 +385,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
   - Relationships diagram
   - Best practices analysis
 
-### 08_update_model_documentation_word
+### 08 Update Model Documentation
 **Purpose**: Update existing Word documentation
 **When to use**: Incremental documentation updates
 **Parameters**:
@@ -393,7 +393,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
   - output_path: Where to save updated version
 **Returns**: Updated Word document
 
-### 08_export_model_explorer_html
+### 08 Export Model Explorer HTML
 **Purpose**: Generate interactive HTML documentation
 **When to use**: Shareable, searchable documentation
 **Parameters**:
@@ -410,7 +410,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ## 🔄 CATEGORY 09: COMPARISON (1 tool)
 
-### 09_compare_pbi_models
+### 09 Compare Open Live Models
 **Purpose**: Compare two live/open Power BI models - detects instances and compares OLD vs NEW
 **When to use**: When you want to compare two Power BI models
 **Parameters** (optional on first call):
@@ -428,9 +428,9 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
   - DAX formula differences
 **Workflow**:
   1. Open both Power BI files in separate Desktop instances
-  2. Run 09_compare_pbi_models (without parameters) to detect models
+  2. Run 09 Compare Open Live Models (without parameters) to detect models
   3. Identify which is OLD and which is NEW from the returned list
-  4. Run 09_compare_pbi_models again with old_port and new_port
+  4. Run 09 Compare Open Live Models again with old_port and new_port
 **Use cases**:
   - Version comparison
   - Development vs production
@@ -440,7 +440,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ## 📦 CATEGORY 10: PBIP ANALYSIS - HTML (1 tool)
 
-### 10_Pbip_Analysis_Html
+### 10 PBIP Analysis HTML
 **Purpose**: Analyze PBIP format without Power BI Desktop
 **When to use**: CI/CD pipelines, Git repo analysis, no desktop access
 **Parameters**:
@@ -459,7 +459,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ## 🔧 CATEGORY 11: TMDL OPERATIONS (1 unified tool)
 
-### 11_Tmdl_Operations
+### 11 TMDL Operations
 **Purpose**: Unified handler for ALL TMDL automation tasks
 **When to use**: TMDL export, find/replace, bulk rename, script generation
 **Operations**:
@@ -498,7 +498,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ## ❓ CATEGORY 12: HELP (1 tool)
 
-### 12_Show_User_Guide
+### 12 Show User Guide
 **Purpose**: Display this comprehensive user guide
 **When to use**: Anytime you need tool reference
 **Parameters**: None
@@ -508,7 +508,7 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ## 🔀 CATEGORY 13: FULL MODEL (PBIP + SAMPLE) (2 tools)
 
-### PBIP Model - Sample Export
+### 13 PBIP Model - Sample Export
 **Purpose**: Export combined TMDL + metadata + sample data
 **When to use**: Complete offline analysis package
 **Parameters**:
@@ -533,9 +533,9 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
   - Testing with real data
   - Comprehensive documentation
 
-### PBIP Model + Sample Analysis (FULLY AUTOMATED)
+### 13 PBIP Model + Sample Analysis (FULLY AUTOMATED)
 **Purpose**: Analyze exported hybrid model (reads all files internally)
-**When to use**: After PBIP Model - Sample Export
+**When to use**: After 13 PBIP Model - Sample Export
 **Parameters**:
   - analysis_path: Path to analysis folder (tool reads all files internally)
   - operation: Type of analysis
@@ -568,66 +568,66 @@ Welcome to MCP-PowerBi-Finvision! This guide covers all 50+ tools across 13 cate
 
 ### Workflow 1: Model Health Check
 ```
-1. 01_detect_pbi_instances
-2. 01_connect_to_instance
-3. 05_comprehensive_analysis (scope='all', depth='balanced')
+1. 01 Detect PBI Instances
+2. 01 Connect To Instance
+3. 05 Live Model Full Analysis (scope='all', depth='balanced')
 4. Review best practices violations
 5. Address critical/high priority issues
 ```
 
 ### Workflow 2: Measure Development
 ```
-1. 02_get_measure_details (study existing measures)
-2. 03_standard_dax_analysis (test DAX logic, mode='debug')
-3. 04_upsert_measure (create new measure)
-4. 03_run_dax (test with real data)
-5. 06_analyze_measure_dependencies (verify dependencies)
+1. 02 Measure Operations (study existing measures)
+2. 03 Standard DAX Analysis (test DAX logic, mode='debug')
+3. 02 Measure Operations (create new measure)
+4. 03 Run DAX (test with real data)
+5. 06 Analyze Measure Dependencies (verify dependencies)
 ```
 
 ### Workflow 3: Model Documentation
 ```
-1. 02_list_tables (get model overview)
-2. 05_comprehensive_analysis (get full analysis)
-3. 08_generate_model_documentation_word
-4. 08_export_model_explorer_html (shareable version)
-5. 11_Tmdl_Operations with operation='export' (full backup for version control)
+1. 02 Table Operations (get model overview)
+2. 05 Live Model Full Analysis (get full analysis)
+3. 08 Generate Model Documentation
+4. 08 Export Model Explorer HTML (shareable version)
+5. 11 TMDL Operations with operation='export' (full backup for version control)
 ```
 
 ### Workflow 4: Performance Optimization
 ```
-1. 05_comprehensive_analysis (scope='performance')
+1. 05 Live Model Full Analysis (scope='performance')
 2. Review cardinality issues
-3. 03_get_column_value_distribution (check high-cardinality columns)
-4. 02_list_relationships (verify relationship direction)
-5. 03_standard_dax_analysis (mode='report') (optimize measures)
+3. 03 Get Column Value Distribution (check high-cardinality columns)
+4. 03 List Relationships (verify relationship direction)
+5. 03 Standard DAX Analysis (mode='report') (optimize measures)
 ```
 
 ### Workflow 5: Model Comparison
 ```
 1. Open both Power BI files in separate Desktop instances
-2. 09_compare_pbi_models (no parameters) - detects models
+2. 09 Compare Open Live Models (no parameters) - detects models
 3. Identify which is OLD and which is NEW from the list
-4. 09_compare_pbi_models (old_port, new_port) - performs comparison
+4. 09 Compare Open Live Models (old_port, new_port) - performs comparison
 5. Review changes and impacts
 ```
 
 ### Workflow 6: CI/CD Integration
 ```
-1. 10_Pbip_Analysis_Html (offline analysis)
+1. 10 PBIP Analysis HTML (offline analysis)
 2. Review best practices from PBIP
-3. 13_Full_Model_Pbip_And_Sample_Export (if live model available)
-4. 13_Full_Model_Pbip_And_Sample_Analysis (automated analysis)
+3. 13 PBIP Model - Sample Export (if live model available)
+4. 13 PBIP Model + Sample Analysis (automated analysis)
 5. Generate reports for pipeline
 ```
 
 ### Workflow 7: DAX Debugging & Optimization
 ```
-1. 02_get_measure_details (get measure formula)
-2. 06_analyze_measure_dependencies (understand dependencies)
-3. 03_standard_dax_analysis (mode='all' or 'analyze') (get complete analysis)
+1. 02 Measure Operations (get measure formula)
+2. 06 Analyze Measure Dependencies (understand dependencies)
+3. 03 Standard DAX Analysis (mode='all' or 'analyze') (get complete analysis)
 4. AI writes optimized DAX based on recommendations from step 3
-5. 03_run_dax (test the optimized DAX with real data)
-6. 04_upsert_measure (save optimized version)
+5. 03 Run DAX (test the optimized DAX with real data)
+6. 02 Measure Operations (save optimized version)
 
 IMPORTANT: The tool provides analysis and recommendations. The AI must write the optimized code.
 ```

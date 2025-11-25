@@ -111,11 +111,11 @@ pip install -r requirements.txt
 2. **Open Claude Desktop** with the MCP server installed
 3. **Detect Power BI instances**:
    ```
-   Use tool: 01_detect_pbi_instances
+   Use tool: 01 Detect PBI Instances
    ```
 4. **Connect to an instance**:
    ```
-   Use tool: 01_connect_to_instance with the port from detection
+   Use tool: 01 Connect To Instance with the port from detection
    ```
 5. **Start analyzing**!
 
@@ -123,19 +123,19 @@ pip install -r requirements.txt
 
 #### Analyze a Measure
 ```
-Use tool: 03_standard_dax_analysis
+Use tool: 03 Standard DAX Analysis
 Input: "Total Sales" (measure name)
 ```
 
 #### Export Model Documentation
 ```
-Use tool: 08_generate_model_documentation_word
+Use tool: 08 Generate Model Documentation
 Output: Comprehensive Word document with model documentation
 ```
 
 #### Debug DAX Context
 ```
-Use tool: 03_standard_dax_analysis
+Use tool: 03 Standard DAX Analysis
 Input: Full DAX expression or measure name
 Mode: report (detailed analysis with 8 sections)
 ```
