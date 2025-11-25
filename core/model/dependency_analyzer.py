@@ -340,20 +340,152 @@ class DependencyAnalyzer:
     def _check_calc_group_usage(self, table: str, measure: str) -> bool:
         """
         Check if measure is referenced in calculation groups.
-        Currently a placeholder - requires TOM access for implementation.
+
+        Uses DMV query to get calculation items and checks if the measure
+        is referenced in any calculation item expression.
+
+        Args:
+            table: Table name containing the measure
+            measure: Measure name
+
+        Returns:
+            True if measure is used in any calculation group
         """
-        # TODO: Implement calculation group check using TOM
-        # For now, return False as a safe default
-        return False
+        try:
+            # Cache calculation group items to avoid repeated queries
+            if not hasattr(self, '_calc_group_items_cache'):
+                self._calc_group_items_cache = None
+                self._calc_group_cache_built = False
+
+            if not self._calc_group_cache_built:
+                # Build cache of all calculation item expressions
+                self._calc_group_items_cache = []
+
+                # Query calculation groups using DMV
+                calc_groups_query = """
+                SELECT
+                    [ID] AS [CalcGroupID],
+                    [Name] AS [CalcGroupName],
+                    [TableID]
+                FROM $SYSTEM.TMSCHEMA_CALCULATION_GROUPS
+                """
+                calc_groups_result = self.query_executor.execute_dax_query(calc_groups_query, top_n=1000)
+
+                if calc_groups_result.get('success') and calc_groups_result.get('rows'):
+                    # Get calculation items for each group
+                    calc_items_query = """
+                    SELECT
+                        [ID] AS [ItemID],
+                        [Name] AS [ItemName],
+                        [Expression],
+                        [CalculationGroupID]
+                    FROM $SYSTEM.TMSCHEMA_CALCULATION_ITEMS
+                    """
+                    calc_items_result = self.query_executor.execute_dax_query(calc_items_query, top_n=10000)
+
+                    if calc_items_result.get('success') and calc_items_result.get('rows'):
+                        for item in calc_items_result.get('rows', []):
+                            expression = item.get('Expression', '') or item.get('[Expression]', '')
+                            if expression:
+                                self._calc_group_items_cache.append(expression)
+
+                self._calc_group_cache_built = True
+
+            # Check if measure is referenced in any calculation item
+            if self._calc_group_items_cache:
+                measure_patterns = [
+                    f"[{measure}]",  # Unqualified reference
+                    f"'{table}'[{measure}]",  # Qualified reference
+                    f'"{table}"[{measure}]',  # Alternative qualified syntax
+                ]
+
+                for expr in self._calc_group_items_cache:
+                    expr_lower = expr.lower()
+                    for pattern in measure_patterns:
+                        if pattern.lower() in expr_lower:
+                            logger.debug(f"Measure {table}[{measure}] found in calculation group")
+                            return True
+
+            return False
+
+        except Exception as e:
+            logger.debug(f"Error checking calc group usage for {table}[{measure}]: {e}")
+            return False
 
     def _check_rls_usage(self, table: str, measure: str) -> bool:
         """
-        Check if measure is used in RLS rules.
-        Currently a placeholder - requires TOM access for implementation.
+        Check if measure is used in RLS (Row-Level Security) rules.
+
+        Uses DMV query to get role table permissions and checks if the measure
+        is referenced in any filter expression.
+
+        Args:
+            table: Table name containing the measure
+            measure: Measure name
+
+        Returns:
+            True if measure is used in any RLS rule
         """
-        # TODO: Implement RLS check using TOM
-        # For now, return False as a safe default
-        return False
+        try:
+            # Cache RLS expressions to avoid repeated queries
+            if not hasattr(self, '_rls_expressions_cache'):
+                self._rls_expressions_cache = None
+                self._rls_cache_built = False
+
+            if not self._rls_cache_built:
+                # Build cache of all RLS filter expressions
+                self._rls_expressions_cache = []
+
+                # Query role table permissions (RLS filters)
+                rls_query = """
+                SELECT
+                    [ID],
+                    [RoleID],
+                    [TableID],
+                    [FilterExpression]
+                FROM $SYSTEM.TMSCHEMA_ROLE_TABLE_PERMISSIONS
+                """
+                rls_result = self.query_executor.execute_dax_query(rls_query, top_n=10000)
+
+                if rls_result.get('success') and rls_result.get('rows'):
+                    for row in rls_result.get('rows', []):
+                        filter_expr = row.get('FilterExpression', '') or row.get('[FilterExpression]', '')
+                        if filter_expr:
+                            self._rls_expressions_cache.append(filter_expr)
+
+                self._rls_cache_built = True
+
+            # Check if measure is referenced in any RLS filter
+            if self._rls_expressions_cache:
+                measure_patterns = [
+                    f"[{measure}]",  # Unqualified reference
+                    f"'{table}'[{measure}]",  # Qualified reference
+                    f'"{table}"[{measure}]',  # Alternative qualified syntax
+                ]
+
+                for expr in self._rls_expressions_cache:
+                    expr_lower = expr.lower()
+                    for pattern in measure_patterns:
+                        if pattern.lower() in expr_lower:
+                            logger.debug(f"Measure {table}[{measure}] found in RLS rule")
+                            return True
+
+            return False
+
+        except Exception as e:
+            logger.debug(f"Error checking RLS usage for {table}[{measure}]: {e}")
+            return False
+
+    def clear_security_caches(self) -> None:
+        """
+        Clear the RLS and calculation group caches.
+        Call this when the model changes or after significant edits.
+        """
+        self._calc_group_items_cache = None
+        self._calc_group_cache_built = False
+        self._rls_expressions_cache = None
+        self._rls_cache_built = False
+        logger.debug("Cleared RLS and calculation group caches")
 
     def _get_impact_recommendation(self, impact_level: str, dependent_count: int) -> str:
         """Generate recommendation based on impact level."""
@@ -525,3 +657,354 @@ class DependencyAnalyzer:
             'tree': convert_node(tree),
             'description': 'Tree structure suitable for D3.js or similar visualization libraries'
         }
+
+    def generate_dependency_mermaid(
+        self,
+        table: str,
+        measure: str,
+        direction: str = "downstream",
+        depth: int = 5,
+        include_columns: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Generate a Mermaid flowchart diagram of measure dependencies.
+
+        Args:
+            table: Table name containing the measure
+            measure: Measure name
+            direction: "downstream" (what depends on this) or "upstream" (what this depends on)
+            depth: Maximum depth to traverse (default: 5)
+            include_columns: Include column references in the diagram (default: False)
+
+        Returns:
+            Dictionary with Mermaid diagram code and metadata
+        """
+        try:
+            measure_key = f"{table}[{measure}]"
+            nodes = set()
+            edges = []
+            visited = set()
+            node_styles = {}  # Track node styling
+
+            def sanitize_node_id(name: str) -> str:
+                """Convert measure name to valid Mermaid node ID"""
+                # Replace special characters with underscores
+                return name.replace("[", "_").replace("]", "").replace("'", "").replace(" ", "_").replace("-", "_")
+
+            def sanitize_label(name: str) -> str:
+                """Escape special characters in labels"""
+                return name.replace('"', '\\"')
+
+            if direction == "upstream":
+                # Get what this measure depends on
+                def traverse_upstream(tbl: str, msr: str, current_depth: int):
+                    if current_depth > depth:
+                        return
+                    key = f"{tbl}[{msr}]"
+                    if key in visited:
+                        return
+                    visited.add(key)
+                    nodes.add(key)
+
+                    deps_result = self.analyze_measure_dependencies(tbl, msr)
+                    if deps_result.get('success'):
+                        # Add measure dependencies
+                        for dep_table, dep_name in deps_result.get('referenced_measures', []):
+                            if dep_table:
+                                dep_key = f"{dep_table}[{dep_name}]"
+                                nodes.add(dep_key)
+                                edges.append((dep_key, key))  # dependency -> measure
+                                traverse_upstream(dep_table, dep_name, current_depth + 1)
+
+                        # Add column dependencies (optional)
+                        if include_columns:
+                            for col_table, col_name in deps_result.get('referenced_columns', []):
+                                col_key = f"{col_table}[{col_name}]"
+                                nodes.add(col_key)
+                                node_styles[col_key] = "column"
+                                edges.append((col_key, key))
+
+                traverse_upstream(table, measure, 0)
+
+            else:  # downstream
+                # Get what depends on this measure
+                def traverse_downstream(tbl: str, msr: str, current_depth: int):
+                    if current_depth > depth:
+                        return
+                    key = f"{tbl}[{msr}]"
+                    if key in visited:
+                        return
+                    visited.add(key)
+                    nodes.add(key)
+
+                    usage_result = self.find_measure_usage(tbl, msr)
+                    if usage_result.get('success'):
+                        for dep in usage_result.get('used_by', []):
+                            dep_table = dep.get('table', '')
+                            dep_name = dep.get('measure', '')
+                            if dep_table and dep_name:
+                                dep_key = f"{dep_table}[{dep_name}]"
+                                nodes.add(dep_key)
+                                edges.append((key, dep_key))  # measure -> dependent
+                                traverse_downstream(dep_table, dep_name, current_depth + 1)
+
+                traverse_downstream(table, measure, 0)
+
+            # Generate Mermaid code
+            lines = ["```mermaid", "flowchart TD"]
+
+            # Define node styles
+            lines.append("    %% Node definitions")
+            for node in sorted(nodes):
+                node_id = sanitize_node_id(node)
+                node_label = sanitize_label(node)
+
+                if node == measure_key:
+                    # Root measure - highlight
+                    lines.append(f'    {node_id}["{node_label}"]:::root')
+                elif node_styles.get(node) == "column":
+                    # Column reference
+                    lines.append(f'    {node_id}(["{node_label}"]):::column')
+                else:
+                    # Regular measure
+                    lines.append(f'    {node_id}["{node_label}"]')
+
+            # Define edges
+            lines.append("")
+            lines.append("    %% Dependencies")
+            for source, target in edges:
+                source_id = sanitize_node_id(source)
+                target_id = sanitize_node_id(target)
+                lines.append(f"    {source_id} --> {target_id}")
+
+            # Add styling
+            lines.append("")
+            lines.append("    %% Styles")
+            lines.append("    classDef root fill:#2196F3,stroke:#1565C0,color:#fff,stroke-width:3px")
+            lines.append("    classDef column fill:#FF9800,stroke:#F57C00,color:#fff")
+            lines.append("```")
+
+            mermaid_code = "\n".join(lines)
+
+            return {
+                'success': True,
+                'measure': {'table': table, 'name': measure},
+                'direction': direction,
+                'depth': depth,
+                'mermaid': mermaid_code,
+                'node_count': len(nodes),
+                'edge_count': len(edges),
+                'format': 'mermaid_flowchart'
+            }
+
+        except Exception as e:
+            logger.error(f"Error generating Mermaid diagram for {table}[{measure}]: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def generate_full_dependency_matrix(self, max_measures: int = 100) -> Dict[str, Any]:
+        """
+        Generate a dependency matrix for all measures in the model.
+
+        Useful for identifying "hub" measures that many others depend on.
+
+        Args:
+            max_measures: Maximum number of measures to analyze (default: 100)
+
+        Returns:
+            Dictionary with adjacency matrix and analysis
+        """
+        try:
+            measures_result = self.query_executor.execute_info_query("MEASURES")
+            if not measures_result.get('success'):
+                return {'success': False, 'error': measures_result.get('error')}
+
+            all_measures = measures_result.get('rows', [])[:max_measures]
+
+            # Build measure list
+            measure_list = []
+            for m in all_measures:
+                tbl = m.get('Table', '') or m.get('[Table]', '')
+                name = m.get('Name', '') or m.get('[Name]', '')
+                if tbl and name:
+                    measure_list.append({'table': tbl, 'name': name, 'key': f"{tbl}[{name}]"})
+
+            # Build adjacency data
+            adjacency = {}  # measure_key -> list of dependent measure keys
+            hub_scores = {}  # measure_key -> number of dependents
+
+            for m in measure_list:
+                key = m['key']
+                usage = self.find_measure_usage(m['table'], m['name'])
+                if usage.get('success'):
+                    dependents = [f"{d['table']}[{d['measure']}]" for d in usage.get('used_by', [])]
+                    adjacency[key] = dependents
+                    hub_scores[key] = len(dependents)
+
+            # Find top hubs (most depended-upon measures)
+            sorted_hubs = sorted(hub_scores.items(), key=lambda x: x[1], reverse=True)
+            top_hubs = [{'measure': k, 'dependents': v} for k, v in sorted_hubs[:10] if v > 0]
+
+            # Find orphans (measures with no dependents and no dependencies)
+            orphans = []
+            for m in measure_list:
+                key = m['key']
+                deps = self.analyze_measure_dependencies(m['table'], m['name'])
+                has_dependencies = bool(deps.get('referenced_measures', []))
+                has_dependents = hub_scores.get(key, 0) > 0
+                if not has_dependencies and not has_dependents:
+                    orphans.append(m)
+
+            return {
+                'success': True,
+                'total_measures': len(measure_list),
+                'adjacency_list': adjacency,
+                'hub_measures': top_hubs,
+                'orphan_measures': orphans[:20],  # Limit orphans list
+                'orphan_count': len(orphans),
+                'summary': {
+                    'total_edges': sum(len(deps) for deps in adjacency.values()),
+                    'avg_dependents': round(sum(hub_scores.values()) / len(hub_scores), 2) if hub_scores else 0,
+                    'max_dependents': max(hub_scores.values()) if hub_scores else 0
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"Error generating dependency matrix: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def generate_impact_mermaid(self, table: str, measure: str) -> Dict[str, Any]:
+        """
+        Generate a bidirectional Mermaid diagram showing both upstream and downstream dependencies.
+
+        Args:
+            table: Table name containing the measure
+            measure: Measure name
+
+        Returns:
+            Dictionary with comprehensive Mermaid diagram
+        """
+        try:
+            # Get upstream dependencies
+            upstream = self.generate_dependency_mermaid(table, measure, "upstream", depth=3)
+            # Get downstream dependencies
+            downstream = self.generate_dependency_mermaid(table, measure, "downstream", depth=3)
+
+            # Combine into single diagram
+            measure_key = f"{table}[{measure}]"
+            all_nodes = set()
+            upstream_edges = []
+            downstream_edges = []
+            visited_upstream = set()
+            visited_downstream = set()
+
+            def sanitize_node_id(name: str) -> str:
+                return name.replace("[", "_").replace("]", "").replace("'", "").replace(" ", "_").replace("-", "_")
+
+            def sanitize_label(name: str) -> str:
+                return name.replace('"', '\\"')
+
+            # Collect upstream
+            def collect_upstream(tbl: str, msr: str, depth: int):
+                if depth > 3:
+                    return
+                key = f"{tbl}[{msr}]"
+                if key in visited_upstream:
+                    return
+                visited_upstream.add(key)
+                all_nodes.add(key)
+
+                deps = self.analyze_measure_dependencies(tbl, msr)
+                if deps.get('success'):
+                    for dep_tbl, dep_name in deps.get('referenced_measures', []):
+                        if dep_tbl:
+                            dep_key = f"{dep_tbl}[{dep_name}]"
+                            all_nodes.add(dep_key)
+                            upstream_edges.append((dep_key, key))
+                            collect_upstream(dep_tbl, dep_name, depth + 1)
+
+            # Collect downstream
+            def collect_downstream(tbl: str, msr: str, depth: int):
+                if depth > 3:
+                    return
+                key = f"{tbl}[{msr}]"
+                if key in visited_downstream:
+                    return
+                visited_downstream.add(key)
+                all_nodes.add(key)
+
+                usage = self.find_measure_usage(tbl, msr)
+                if usage.get('success'):
+                    for dep in usage.get('used_by', []):
+                        dep_tbl = dep.get('table', '')
+                        dep_name = dep.get('measure', '')
+                        if dep_tbl and dep_name:
+                            dep_key = f"{dep_tbl}[{dep_name}]"
+                            all_nodes.add(dep_key)
+                            downstream_edges.append((key, dep_key))
+                            collect_downstream(dep_tbl, dep_name, depth + 1)
+
+            collect_upstream(table, measure, 0)
+            collect_downstream(table, measure, 0)
+
+            # Generate combined diagram
+            lines = ["```mermaid", "flowchart LR"]
+            lines.append("    %% Impact Analysis Diagram")
+            lines.append("    %% Left = Dependencies (upstream), Right = Dependents (downstream)")
+            lines.append("")
+
+            # Subgraphs for organization
+            upstream_nodes = set(e[0] for e in upstream_edges) - {measure_key}
+            downstream_nodes = set(e[1] for e in downstream_edges) - {measure_key}
+
+            if upstream_nodes:
+                lines.append("    subgraph Dependencies")
+                lines.append("    direction TB")
+                for node in sorted(upstream_nodes):
+                    node_id = sanitize_node_id(node)
+                    lines.append(f'    {node_id}["{sanitize_label(node)}"]:::upstream')
+                lines.append("    end")
+                lines.append("")
+
+            # Root measure
+            root_id = sanitize_node_id(measure_key)
+            lines.append(f'    {root_id}["{sanitize_label(measure_key)}"]:::root')
+            lines.append("")
+
+            if downstream_nodes:
+                lines.append("    subgraph Dependents")
+                lines.append("    direction TB")
+                for node in sorted(downstream_nodes):
+                    node_id = sanitize_node_id(node)
+                    lines.append(f'    {node_id}["{sanitize_label(node)}"]:::downstream')
+                lines.append("    end")
+                lines.append("")
+
+            # Edges
+            lines.append("    %% Dependency edges (upstream)")
+            for source, target in upstream_edges:
+                lines.append(f"    {sanitize_node_id(source)} --> {sanitize_node_id(target)}")
+
+            lines.append("")
+            lines.append("    %% Impact edges (downstream)")
+            for source, target in downstream_edges:
+                lines.append(f"    {sanitize_node_id(source)} --> {sanitize_node_id(target)}")
+
+            # Styles
+            lines.append("")
+            lines.append("    classDef root fill:#2196F3,stroke:#1565C0,color:#fff,stroke-width:3px")
+            lines.append("    classDef upstream fill:#4CAF50,stroke:#388E3C,color:#fff")
+            lines.append("    classDef downstream fill:#FF9800,stroke:#F57C00,color:#fff")
+            lines.append("```")
+
+            return {
+                'success': True,
+                'measure': {'table': table, 'name': measure},
+                'mermaid': "\n".join(lines),
+                'upstream_count': len(upstream_nodes),
+                'downstream_count': len(downstream_nodes),
+                'format': 'mermaid_flowchart_bidirectional'
+            }
+
+        except Exception as e:
+            logger.error(f"Error generating impact Mermaid diagram for {table}[{measure}]: {e}")
+            return {'success': False, 'error': str(e)}

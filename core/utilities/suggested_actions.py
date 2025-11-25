@@ -1,6 +1,12 @@
 """
 Suggested Actions Utility
 Provides context-aware next action suggestions for tool responses
+
+Enhanced in v6.5.0:
+- Added suggestions for dax_intelligence, analyze_pbip_repository, export_hybrid_analysis
+- Added intelligent branching based on result content
+- Added workflow suggestions for common patterns
+- Improved context mapping between tools
 """
 from typing import Dict, Any, List, Optional
 
@@ -62,6 +68,17 @@ def _get_suggestions_for_tool(
         'list_relationships': _suggest_after_list_relationships,
         'comprehensive_analysis': _suggest_after_analysis,
         'connect_to_powerbi': _suggest_after_connection,
+        # NEW v6.5.0 additions
+        'dax_intelligence': _suggest_after_dax_intelligence,
+        'analyze_measure_dependencies': _suggest_after_dependencies,
+        'get_measure_impact': _suggest_after_impact,
+        'simple_analysis': _suggest_after_simple_analysis,
+        'full_analysis': _suggest_after_full_analysis,
+        'analyze_pbip_repository': _suggest_after_pbip_analysis,
+        'export_hybrid_analysis': _suggest_after_hybrid_export,
+        'analyze_hybrid_model': _suggest_after_hybrid_analysis,
+        'batch_operations': _suggest_after_batch_operations,
+        'tmdl_operations': _suggest_after_tmdl_operations,
     }
 
     suggest_fn = suggestions_map.get(tool_name)
@@ -401,12 +418,18 @@ def _get_workflow_hint(tool_name: str, result: Dict[str, Any], context: Dict[str
     """Generate a workflow hint message"""
 
     hints_map = {
-        'list_tables': lambda r, c: f"Found {len(r.get('rows', []))} tables. Next: Explore a table with describe_table or run comprehensive_analysis for health check.",
+        'list_tables': lambda r, c: f"Found {len(r.get('rows', []))} tables. Next: Explore a table with describe_table or run simple_analysis for health check.",
         'describe_table': lambda r, c: f"Table '{c.get('table', 'table')}' has {len(r.get('columns', []))} columns and {len(r.get('measures', []))} measures. Next: Preview data or analyze measures.",
         'list_measures': lambda r, c: f"Found {len(r.get('rows', []))} measures. Next: Get details or analyze DAX with dax_intelligence.",
         'list_columns': lambda r, c: f"Found {len(r.get('rows', []))} columns. Next: Analyze value distribution or preview data.",
         'comprehensive_analysis': lambda r, c: f"Analysis complete. Found {len(r.get('issues', []))} issues. Next: Review findings and export documentation.",
-        'connect_to_powerbi': lambda r, c: "Connected successfully. Next: Explore schema with list_tables or run comprehensive_analysis.",
+        'connect_to_powerbi': lambda r, c: "Connected successfully. Next: Explore schema with simple_analysis or search_objects.",
+        # NEW v6.5.0 hints
+        'dax_intelligence': lambda r, c: f"DAX analysis complete. Found {len(r.get('issues', []))} issues and {len(r.get('optimizations', []))} optimization opportunities.",
+        'simple_analysis': lambda r, c: f"Quick analysis complete. {r.get('table_count', 0)} tables, {r.get('measure_count', 0)} measures. Run full_analysis for detailed BPA.",
+        'full_analysis': lambda r, c: f"Full analysis complete. Found {len(r.get('issues', []))} issues. Review high-priority items first.",
+        'analyze_measure_dependencies': lambda r, c: f"Found {len(r.get('referenced_measures', []))} measure dependencies. Check impact before modifying.",
+        'get_measure_impact': lambda r, c: f"Measure has {r.get('impact_score', {}).get('total_dependents', 0)} dependents. High-impact measures need careful testing.",
     }
 
     hint_fn = hints_map.get(tool_name)
@@ -417,3 +440,312 @@ def _get_workflow_hint(tool_name: str, result: Dict[str, Any], context: Dict[str
             return ""
 
     return ""
+
+
+# ==================== NEW v6.5.0 Suggestion Functions ====================
+
+def _suggest_after_dax_intelligence(result: Dict[str, Any], context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Suggestions after DAX intelligence analysis"""
+    table = context.get('table') or result.get('table', '')
+    measure = context.get('measure') or result.get('measure', '')
+    suggestions = []
+
+    # Check for optimization opportunities
+    optimizations = result.get('optimizations', []) or result.get('code_improvements', [])
+    if optimizations:
+        suggestions.append({
+            'action': 'apply_optimization',
+            'description': 'Apply suggested DAX optimizations using measure operations',
+            'tool': 'measure_operations',
+            'example': {'operation': 'update', 'table': table, 'measure': measure}
+        })
+
+    # Check for dependencies
+    suggestions.append({
+        'action': 'check_dependencies',
+        'description': 'Analyze what this measure depends on',
+        'tool': 'analyze_measure_dependencies',
+        'example': {'table': table, 'measure': measure}
+    })
+
+    # Check for impact
+    suggestions.append({
+        'action': 'check_impact',
+        'description': 'See what depends on this measure before making changes',
+        'tool': 'get_measure_impact',
+        'example': {'table': table, 'measure': measure}
+    })
+
+    # If issues found, suggest batch fix
+    issues = result.get('issues', [])
+    if len(issues) > 3:
+        suggestions.append({
+            'action': 'review_all_measures',
+            'description': 'Multiple issues found - consider reviewing all measures in table',
+            'tool': 'dax_intelligence',
+            'example': {'table': table, 'mode': 'analyze'}
+        })
+
+    return suggestions
+
+
+def _suggest_after_dependencies(result: Dict[str, Any], context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Suggestions after dependency analysis"""
+    table = context.get('table') or result.get('table', '')
+    measure = context.get('measure') or result.get('measure', '')
+    suggestions = []
+
+    # Suggest impact check (inverse)
+    suggestions.append({
+        'action': 'check_impact',
+        'description': 'Now check what depends ON this measure',
+        'tool': 'get_measure_impact',
+        'example': {'table': table, 'measure': measure}
+    })
+
+    # If complex dependencies, suggest DAX analysis
+    ref_measures = result.get('referenced_measures', [])
+    if len(ref_measures) > 3:
+        suggestions.append({
+            'action': 'analyze_dax',
+            'description': 'Complex dependency chain - analyze DAX for optimization',
+            'tool': 'dax_intelligence',
+            'example': {'table': table, 'measure': measure, 'mode': 'analyze'}
+        })
+
+    # Suggest visualization
+    suggestions.append({
+        'action': 'visualize_dependencies',
+        'description': 'Generate dependency diagram for documentation',
+        'tool': 'analyze_measure_dependencies',
+        'example': {'table': table, 'measure': measure, 'output_format': 'mermaid'}
+    })
+
+    return suggestions
+
+
+def _suggest_after_impact(result: Dict[str, Any], context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Suggestions after impact analysis"""
+    table = context.get('table') or result.get('table', '')
+    measure = context.get('measure') or result.get('measure', '')
+    suggestions = []
+
+    impact_score = result.get('impact_score', {})
+    total_deps = impact_score.get('total_dependents', 0)
+
+    # Suggest dependency check (inverse)
+    suggestions.append({
+        'action': 'check_dependencies',
+        'description': 'Now check what this measure depends ON',
+        'tool': 'analyze_measure_dependencies',
+        'example': {'table': table, 'measure': measure}
+    })
+
+    # If high impact, suggest thorough testing
+    if total_deps > 5:
+        suggestions.append({
+            'action': 'analyze_dependents',
+            'description': f'High impact ({total_deps} dependents) - analyze dependent measures',
+            'tool': 'dax_intelligence',
+            'example': {'table': table, 'measure': measure, 'mode': 'analyze'}
+        })
+
+    # If used in calc groups or RLS
+    if impact_score.get('in_calculation_groups') or impact_score.get('in_rls_rules'):
+        suggestions.append({
+            'action': 'review_security',
+            'description': 'Measure used in security/calc groups - review carefully before changes',
+            'tool': 'full_analysis',
+            'example': {'scope': 'security'}
+        })
+
+    return suggestions
+
+
+def _suggest_after_simple_analysis(result: Dict[str, Any], context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Suggestions after simple analysis"""
+    suggestions = []
+
+    # Suggest full analysis for details
+    suggestions.append({
+        'action': 'full_analysis',
+        'description': 'Run detailed BPA and performance analysis',
+        'tool': 'full_analysis',
+        'example': {'scope': 'all'}
+    })
+
+    # If many measures, suggest search
+    measure_count = result.get('measure_count', 0)
+    if measure_count > 50:
+        suggestions.append({
+            'action': 'search_measures',
+            'description': 'Large model - use search to find specific measures',
+            'tool': 'search_objects',
+            'example': {'pattern': '*', 'types': ['measures']}
+        })
+
+    # Suggest documentation
+    suggestions.append({
+        'action': 'generate_docs',
+        'description': 'Generate model documentation',
+        'tool': 'generate_model_documentation_word',
+        'example': {}
+    })
+
+    return suggestions
+
+
+def _suggest_after_full_analysis(result: Dict[str, Any], context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Suggestions after full analysis"""
+    suggestions = []
+    issues = result.get('issues', [])
+
+    # Group issues by type
+    perf_issues = [i for i in issues if i.get('category') == 'performance']
+    dax_issues = [i for i in issues if i.get('category') in ['anti_pattern', 'dax_complexity']]
+    unused_issues = [i for i in issues if 'unused' in str(i.get('category', '')).lower()]
+
+    if perf_issues:
+        suggestions.append({
+            'action': 'fix_performance',
+            'description': f'{len(perf_issues)} performance issues - analyze with DAX intelligence',
+            'tool': 'dax_intelligence',
+            'example': {'mode': 'optimize'}
+        })
+
+    if dax_issues:
+        suggestions.append({
+            'action': 'review_dax',
+            'description': f'{len(dax_issues)} DAX issues - review problematic measures',
+            'tool': 'dax_intelligence',
+            'example': {'mode': 'analyze'}
+        })
+
+    if unused_issues:
+        suggestions.append({
+            'action': 'cleanup_unused',
+            'description': f'{len(unused_issues)} unused objects - consider cleanup',
+            'tool': 'batch_operations',
+            'example': {'operation': 'delete', 'preview': True}
+        })
+
+    # Always suggest documentation
+    suggestions.append({
+        'action': 'export_documentation',
+        'description': 'Generate Word documentation with analysis findings',
+        'tool': 'generate_model_documentation_word',
+        'example': {}
+    })
+
+    return suggestions
+
+
+def _suggest_after_pbip_analysis(result: Dict[str, Any], context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Suggestions after PBIP repository analysis"""
+    suggestions = []
+
+    # Suggest hybrid export for deeper analysis
+    suggestions.append({
+        'action': 'export_hybrid',
+        'description': 'Export hybrid package for offline analysis with sample data',
+        'tool': 'export_hybrid_analysis',
+        'example': {}
+    })
+
+    # If HTML report generated
+    if result.get('html_report_path'):
+        suggestions.append({
+            'action': 'view_report',
+            'description': 'HTML report generated - open in browser for interactive analysis',
+            'note': f"Report at: {result.get('html_report_path')}"
+        })
+
+    return suggestions
+
+
+def _suggest_after_hybrid_export(result: Dict[str, Any], context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Suggestions after hybrid export"""
+    suggestions = []
+    export_path = result.get('export_path', result.get('path', ''))
+
+    # Suggest analysis of exported model
+    suggestions.append({
+        'action': 'analyze_export',
+        'description': 'Analyze the exported hybrid model',
+        'tool': 'analyze_hybrid_model',
+        'example': {'path': export_path}
+    })
+
+    return suggestions
+
+
+def _suggest_after_hybrid_analysis(result: Dict[str, Any], context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Suggestions after hybrid model analysis"""
+    suggestions = []
+
+    # Suggest specific tool based on findings
+    if result.get('measures'):
+        suggestions.append({
+            'action': 'review_measures',
+            'description': 'Review measures found in hybrid analysis',
+            'tool': 'dax_intelligence',
+            'example': {'mode': 'analyze'}
+        })
+
+    if result.get('data_quality_issues'):
+        suggestions.append({
+            'action': 'investigate_data',
+            'description': 'Data quality issues detected - investigate sample data',
+            'tool': 'run_dax',
+            'example': {'query': 'EVALUATE ...'}
+        })
+
+    return suggestions
+
+
+def _suggest_after_batch_operations(result: Dict[str, Any], context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Suggestions after batch operations"""
+    suggestions = []
+    operation = context.get('operation', result.get('operation', ''))
+
+    if operation == 'delete' and result.get('preview'):
+        suggestions.append({
+            'action': 'confirm_delete',
+            'description': 'Preview shown - confirm deletion to execute',
+            'tool': 'batch_operations',
+            'example': {'operation': 'delete', 'confirm': True}
+        })
+
+    # After any batch operation, suggest validation
+    suggestions.append({
+        'action': 'validate_model',
+        'description': 'After batch changes, validate model integrity',
+        'tool': 'full_analysis',
+        'example': {'scope': 'integrity'}
+    })
+
+    return suggestions
+
+
+def _suggest_after_tmdl_operations(result: Dict[str, Any], context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Suggestions after TMDL operations"""
+    suggestions = []
+    operation = context.get('operation', result.get('operation', ''))
+
+    if operation == 'export':
+        suggestions.append({
+            'action': 'analyze_tmdl',
+            'description': 'Analyze exported TMDL for patterns',
+            'tool': 'analyze_pbip_repository',
+            'example': {'path': result.get('export_path', '')}
+        })
+
+    if operation in ['find_replace', 'bulk_rename']:
+        suggestions.append({
+            'action': 'validate_changes',
+            'description': 'After TMDL changes, validate model',
+            'tool': 'full_analysis',
+            'example': {'scope': 'best_practices'}
+        })
+
+    return suggestions
