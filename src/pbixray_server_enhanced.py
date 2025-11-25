@@ -253,27 +253,42 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent | ImageConten
         if name == "get_recent_logs" and isinstance(result, dict) and 'logs' in result:
             return [TextContent(type="text", text=result['logs'])]
 
-        # Handle responses with image content (e.g., rendered Mermaid diagrams)
-        # Return both: text analysis first, then image as separate content block
+        # Handle responses with diagram content - generate professional HTML
         if isinstance(result, dict) and '_image_content' in result:
-            image_data = result.pop('_image_content')
-            content_list = []
+            result.pop('_image_content')  # Remove image content, we'll use Mermaid HTML instead
 
-            # First: the text analysis (JSON data)
-            content_list.append(TextContent(
-                type="text",
-                text=json.dumps(result, separators=(',', ':'))
-            ))
+            # Get the mermaid code from diagram_metadata or regenerate
+            mermaid_code = result.get('_mermaid_code', '')
+            measure_info = result.get('measure', {})
+            diagram_meta = result.get('diagram_metadata', {})
 
-            # Second: the image as a separate output block
-            if image_data.get('data') and image_data.get('mimeType'):
-                content_list.append(ImageContent(
-                    type="image",
-                    data=image_data['data'],
-                    mimeType=image_data['mimeType']
-                ))
+            # Get formatted text analysis
+            if 'formatted_output' in result:
+                text_output = result['formatted_output']
+            else:
+                text_output = json.dumps(result, separators=(',', ':'))
 
-            return content_list
+            # Generate and open HTML if we have mermaid code
+            if mermaid_code:
+                try:
+                    from core.utilities.diagram_html_generator import generate_dependency_html
+                    html_path = generate_dependency_html(
+                        mermaid_code=mermaid_code,
+                        measure_table=measure_info.get('table', ''),
+                        measure_name=measure_info.get('name', ''),
+                        metadata=diagram_meta,
+                        auto_open=True
+                    )
+                    if html_path:
+                        text_output += f"\n\n{'═' * 80}\n"
+                        text_output += f"  DEPENDENCY DIAGRAM\n"
+                        text_output += f"{'═' * 80}\n"
+                        text_output += f"  Interactive diagram opened in browser: {html_path}\n"
+                        text_output += f"{'═' * 80}"
+                except Exception as e:
+                    logger.warning(f"Failed to generate HTML diagram: {e}")
+
+            return [TextContent(type="text", text=text_output)]
 
         return [TextContent(type="text", text=json.dumps(result, separators=(',', ':')))]
 

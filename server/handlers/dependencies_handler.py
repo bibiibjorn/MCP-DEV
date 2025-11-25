@@ -310,7 +310,16 @@ def handle_analyze_measure_dependencies(args: Dict[str, Any]) -> Dict[str, Any]:
                     'data': image_result['data'],
                     'mimeType': image_result['mimeType']
                 }
-                logger.info("Mermaid diagram rendered to PNG image successfully")
+                # Include mermaid code for HTML generation
+                response['_mermaid_code'] = mermaid_code
+                # Remove text-based mermaid output
+                if 'mermaid_diagram_output' in response:
+                    del response['mermaid_diagram_output']
+                if 'mermaid_raw' in response:
+                    del response['mermaid_raw']
+                response['display_instructions'] = 'Interactive diagram will open in browser.'
+                response['diagram_rendered'] = True
+                logger.info("Mermaid diagram ready for HTML generation")
             else:
                 # If image rendering fails, log it but continue with text output
                 logger.warning(f"Mermaid image rendering failed: {image_result.get('error')}")
@@ -345,7 +354,7 @@ def register_dependencies_handlers(registry):
     tools = [
         ToolDefinition(
             name="analyze_measure_dependencies",
-            description="Analyze measure dependencies with formatted output and Mermaid diagram. Returns formatted_output (text analysis) and mermaid_diagram_output (visual diagram) - display BOTH to user.",
+            description="Analyze measure dependencies with formatted text output and rendered diagram image. Returns formatted_output (text analysis) and a visual dependency diagram as PNG image.",
             handler=handle_analyze_measure_dependencies,
             input_schema=TOOL_SCHEMAS.get('analyze_measure_dependencies', {}),
             category="dependencies",

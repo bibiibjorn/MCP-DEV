@@ -165,14 +165,17 @@ def render_mermaid_to_svg(
 
 def get_mermaid_image_content(
     mermaid_code: str,
-    theme: str = "default"
+    theme: str = "default",
+    max_size_bytes: int = 900000  # Under 1MB limit for Claude Desktop
 ) -> Dict[str, Any]:
     """
     Get Mermaid diagram as MCP ImageContent dict.
+    Ensures image is under Claude Desktop's 1MB limit.
 
     Args:
         mermaid_code: The Mermaid diagram code
         theme: Mermaid theme
+        max_size_bytes: Maximum image size (default 900KB to be safe under 1MB)
 
     Returns:
         Dict suitable for MCP ImageContent, or error dict
@@ -186,11 +189,25 @@ def get_mermaid_image_content(
             "mermaid_code": mermaid_code
         }
 
+    # Check size and log it
+    size_kb = len(png_data) / 1024
+    logger.info(f"Mermaid PNG size: {size_kb:.1f} KB")
+
+    # If too large, return error (Claude Desktop has 1MB limit)
+    if len(png_data) > max_size_bytes:
+        logger.warning(f"Mermaid image too large ({size_kb:.1f} KB > {max_size_bytes/1024:.0f} KB limit)")
+        return {
+            "success": False,
+            "error": f"Image too large ({size_kb:.0f} KB). Claude Desktop has 1MB limit.",
+            "mermaid_code": mermaid_code
+        }
+
     return {
         "success": True,
         "type": "image",
         "data": base64.b64encode(png_data).decode('ascii'),
-        "mimeType": "image/png"
+        "mimeType": "image/png",
+        "size_bytes": len(png_data)
     }
 
 
