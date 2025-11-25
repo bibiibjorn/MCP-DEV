@@ -20,7 +20,7 @@ def register_table_operations_handler(registry):
     """Register table operations handler"""
 
     tool = ToolDefinition(
-        name="table_operations",
+        name="02_Table_Operations",
         description=(
             "Unified table operations handler supporting ALL CRUD operations.\n"
             "\n"
