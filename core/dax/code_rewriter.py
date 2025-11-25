@@ -96,19 +96,34 @@ class DaxCodeRewriter:
             }
 
     def _extract_repeated_measures(self, dax: str) -> str:
-        """Extract repeated measure references into variables"""
-        # Find all measure references
-        measure_pattern = r'\[([^\]]+)\]'
-        measures = re.findall(measure_pattern, dax)
+        """
+        Extract repeated MEASURE references into variables.
 
-        # Count occurrences
+        IMPORTANT: This only caches STANDALONE measure references like [Measure Name].
+        It does NOT cache column references like 'Table'[Column] or Table[Column].
+
+        Why this matters:
+        - [Measure Name] = standalone measure reference, can be cached in a variable
+        - 'Table'[Column] = column reference, CANNOT be cached outside of row context
+        - Writing VAR x = [Column] when [Column] is a column (not measure) causes DAX errors
+        """
+        # Find all bracket references
+        bracket_pattern = r'\[([^\]]+)\]'
+        all_refs = re.findall(bracket_pattern, dax)
+
+        if not all_refs:
+            return dax
+
+        # Count ONLY standalone measure references (no table prefix)
+        # A standalone measure reference is [Something] without 'Table' or Table before it
         measure_counts = {}
-        for measure in measures:
-            # Skip if it looks like a column reference (has table prefix before it)
-            if not self._is_column_reference(dax, measure):
-                measure_counts[measure] = measure_counts.get(measure, 0) + 1
+        for ref in all_refs:
+            # Check if this reference EVER appears as a standalone measure (no table prefix)
+            standalone_count = self._count_standalone_measure_refs(dax, ref)
+            if standalone_count > 0:
+                measure_counts[ref] = standalone_count
 
-        # Find measures referenced more than once
+        # Find measures referenced more than once AS STANDALONE
         repeated_measures = {m: c for m, c in measure_counts.items() if c > 1}
 
         if not repeated_measures:
@@ -123,20 +138,23 @@ class DaxCodeRewriter:
             var_lines.append(f"VAR {var_name} = [{measure}]")
             var_mapping[f"[{measure}]"] = var_name
 
-        # Replace measure references with variables
-        new_dax = dax
-        for original, var_name in var_mapping.items():
-            new_dax = new_dax.replace(original, var_name)
+        # Only replace STANDALONE measure references (not table-prefixed columns)
+        new_dax = self._replace_standalone_measures(dax, var_mapping)
+
+        # Check if any replacements were actually made
+        if new_dax == dax:
+            # No actual replacements - don't add useless variables
+            return dax
 
         # Construct final code
         if var_lines:
             # Check if already has VAR statements
             if "VAR" in dax.upper():
                 # Insert after existing VARs
-                return_pos = dax.upper().find("RETURN")
+                return_pos = new_dax.upper().find("RETURN")
                 if return_pos != -1:
-                    existing_vars = dax[:return_pos].strip()
-                    return_part = dax[return_pos:].strip()
+                    existing_vars = new_dax[:return_pos].strip()
+                    return_part = new_dax[return_pos:].strip()
                     rewritten = f"{existing_vars}\n" + "\n".join(var_lines) + f"\n{return_part}"
                 else:
                     rewritten = "\n".join(var_lines) + f"\nRETURN\n{new_dax}"
@@ -160,9 +178,143 @@ class DaxCodeRewriter:
 
         return dax
 
+    # DAX keywords that are NOT table names (used to avoid false positives)
+    DAX_KEYWORDS = {
+        'VAR', 'RETURN', 'IF', 'THEN', 'ELSE', 'SWITCH', 'TRUE', 'FALSE',
+        'AND', 'OR', 'NOT', 'IN', 'CALCULATE', 'CALCULATETABLE', 'FILTER',
+        'ALL', 'ALLEXCEPT', 'ALLSELECTED', 'VALUES', 'DISTINCT', 'RELATED',
+        'RELATEDTABLE', 'USERELATIONSHIP', 'CROSSFILTER', 'EARLIER', 'EARLIEST',
+        'SUM', 'SUMX', 'AVERAGE', 'AVERAGEX', 'COUNT', 'COUNTX', 'COUNTROWS',
+        'COUNTA', 'COUNTBLANK', 'MIN', 'MINX', 'MAX', 'MAXX', 'DIVIDE',
+        'SELECTEDVALUE', 'HASONEVALUE', 'ISBLANK', 'ISEMPTY', 'ISINSCOPE',
+        'BLANK', 'ERROR', 'UNICHAR', 'FORMAT', 'CONCATENATE', 'CONCATENATEX',
+        'LEFT', 'RIGHT', 'MID', 'LEN', 'UPPER', 'LOWER', 'TRIM', 'SUBSTITUTE',
+        'YEAR', 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND', 'DATE', 'TIME',
+        'TODAY', 'NOW', 'EOMONTH', 'DATEADD', 'DATEDIFF', 'CALENDAR', 'CALENDARAUTO',
+        'FIRSTDATE', 'LASTDATE', 'STARTOFMONTH', 'ENDOFMONTH', 'STARTOFQUARTER',
+        'STARTOFYEAR', 'ENDOFYEAR', 'SAMEPERIODLASTYEAR', 'PARALLELPERIOD',
+        'PREVIOUSMONTH', 'PREVIOUSQUARTER', 'PREVIOUSYEAR', 'NEXTMONTH', 'NEXTQUARTER',
+        'GENERATE', 'GENERATEALL', 'GENERATESERIES', 'ROW', 'TOPN', 'SAMPLE',
+        'SUMMARIZE', 'SUMMARIZECOLUMNS', 'GROUPBY', 'ADDCOLUMNS', 'SELECTCOLUMNS',
+        'UNION', 'INTERSECT', 'EXCEPT', 'CROSSJOIN', 'NATURALINNERJOIN', 'NATURALLEFTOUTERJOIN',
+        'TREATAS', 'KEEPFILTERS', 'REMOVEFILTERS', 'LOOKUPVALUE', 'PATH', 'PATHITEM',
+        'RANK', 'RANKX', 'ROWNUMBER', 'PERCENTILEX', 'MEDIANX', 'PRODUCTX',
+        'MAXA', 'MINA', 'AVERAGEA', 'GEOMEAN', 'GEOMEANX', 'STDEV', 'STDEVX',
+        'EVALUATE', 'DEFINE', 'MEASURE', 'ORDER', 'BY', 'ASC', 'DESC', 'START', 'AT'
+    }
+
+    def _count_standalone_measure_refs(self, dax: str, ref_name: str) -> int:
+        """
+        Count how many times a reference appears as a STANDALONE measure.
+
+        A standalone measure reference is [Something] that is NOT preceded by:
+        - A table name like 'Table Name' or TableName
+        - RELATED( or other functions that return column references
+
+        DAX keywords (VAR, RETURN, IF, etc.) are NOT considered table names.
+
+        Returns count of standalone occurrences.
+        """
+        # Pattern for any occurrence of [ref_name]
+        any_ref_pattern = rf"\[\s*{re.escape(ref_name)}\s*\]"
+
+        standalone_count = 0
+
+        for match in re.finditer(any_ref_pattern, dax):
+            start = match.start()
+            prefix = dax[:start].rstrip()
+
+            # Check if preceded by a quoted table name: 'Table Name'
+            if re.search(r"'[^']+'\s*$", prefix):
+                continue  # Column reference
+
+            # Check if preceded by an unquoted identifier
+            unquoted_match = re.search(r"([A-Za-z_]\w*)\s*$", prefix)
+            if unquoted_match:
+                identifier = unquoted_match.group(1).upper()
+                # If it's a DAX keyword, this is a measure reference, not column
+                if identifier not in self.DAX_KEYWORDS:
+                    continue  # Column reference (preceded by table name)
+
+            # This is a standalone measure reference
+            standalone_count += 1
+
+        return standalone_count
+
+    def _replace_standalone_measures(self, dax: str, var_mapping: Dict[str, str]) -> str:
+        """
+        Replace only STANDALONE measure references with variable names.
+
+        Does NOT replace table-prefixed column references like 'Table'[Column].
+        """
+        result = dax
+
+        for original, var_name in var_mapping.items():
+            # Extract the measure name from [MeasureName]
+            measure_name = original[1:-1]  # Remove [ and ]
+
+            # Only replace standalone references (not table-prefixed)
+            # Use negative lookbehind to ensure no table prefix
+            # This handles: 'Table'[Col] and Table[Col]
+            standalone_pattern = rf"(?<!'[^']*')(?<![A-Za-z_]\w*)(?<!\w)\[\s*{re.escape(measure_name)}\s*\]"
+
+            # Simpler approach: find all occurrences and only replace those without table prefix
+            result = self._replace_standalone_only(result, measure_name, var_name)
+
+        return result
+
+    def _replace_standalone_only(self, dax: str, measure_name: str, var_name: str) -> str:
+        """Replace only standalone [measure_name] occurrences with var_name."""
+        # Find all positions of [measure_name]
+        ref_pattern = rf'\[\s*{re.escape(measure_name)}\s*\]'
+
+        result_parts = []
+        last_end = 0
+
+        for match in re.finditer(ref_pattern, dax):
+            start = match.start()
+
+            # Check what comes before this match
+            prefix = dax[:start].rstrip()
+
+            # Check if preceded by a quoted table name: 'Table Name'
+            is_quoted_table = bool(re.search(r"'[^']+'\s*$", prefix))
+
+            # Check if preceded by an unquoted identifier (potential table name)
+            is_column = False
+            if is_quoted_table:
+                is_column = True
+            else:
+                unquoted_match = re.search(r"([A-Za-z_]\w*)\s*$", prefix)
+                if unquoted_match:
+                    identifier = unquoted_match.group(1).upper()
+                    # If it's NOT a DAX keyword, it's a table name -> column reference
+                    if identifier not in self.DAX_KEYWORDS:
+                        is_column = True
+
+            if is_column:
+                # Keep original
+                result_parts.append(dax[last_end:match.end()])
+            else:
+                # Replace with variable
+                result_parts.append(dax[last_end:start])
+                result_parts.append(var_name)
+
+            last_end = match.end()
+
+        result_parts.append(dax[last_end:])
+        return ''.join(result_parts)
+
     def _is_column_reference(self, dax: str, column_name: str) -> bool:
-        """Check if a reference is likely a column (has table prefix)"""
-        pattern = rf"(?:'[^']+|\w+)\s*\[\s*{re.escape(column_name)}\s*\]"
+        """
+        Check if a reference is likely a column (has table prefix).
+
+        Returns True if [column_name] appears with a table prefix like:
+        - 'Table Name'[Column]
+        - TableName[Column]
+        """
+        # Fixed pattern: include closing quote for quoted table names
+        pattern = rf"(?:'[^']+'\s*|\w+\s*)\[\s*{re.escape(column_name)}\s*\]"
         return bool(re.search(pattern, dax))
 
     def _flatten_nested_calculate(self, dax: str) -> str:

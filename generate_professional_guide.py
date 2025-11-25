@@ -603,7 +603,7 @@ CATEGORIES = [
         "number": "02",
         "title": "Schema & Search",
         "color": Colors.CAT_SCHEMA,
-        "description": "Search and explore model structure",
+        "description": "Search, explore, and modify model objects",
         "tools": [
             {
                 "name": "Search Objects",
@@ -649,6 +649,51 @@ CATEGORIES = [
                 "example": "operation='list' -> Shows all relationships. operation='find' table='Sales' -> Finds relationships involving Sales table.",
                 "parameters": "operation (required): 'list', 'get', 'find', 'create', 'update', 'delete'\nfrom_table, from_column, to_table, to_column (for specific relationships)",
                 "returns": "Relationship details with cardinality, cross-filter direction, and active status."
+            },
+            {
+                "name": "TMDL Operations",
+                "id": "tmdl_operations",
+                "description": "Unified TMDL operations: export, find & replace, bulk rename, generate scripts. TMDL is the source code format for Power BI models.",
+                "when_to_use": "Use for version control, batch updates, or refactoring model objects.",
+                "example": "operation='export' output_dir='C:\\TMDL' -> Exports model. operation='find_replace' pattern='OldName' replacement='NewName'",
+                "parameters": "operation (required): 'export', 'find_replace', 'bulk_rename', 'generate_script'\noutput_dir, pattern, replacement, renames (depending on operation)\ndry_run (optional): Preview without applying",
+                "returns": "Operation results: exported files, matches found, or changes made."
+            },
+            {
+                "name": "Calculation Group Operations",
+                "id": "calculation_group_operations",
+                "description": "Manage calculation groups (advanced DAX feature for reusable patterns like time intelligence).",
+                "when_to_use": "Use to create, list, or delete calculation groups.",
+                "example": "operation='list' -> Shows all calculation groups with items. operation='create' name='Time Intel' items=[...]",
+                "parameters": "operation (required): 'list', 'list_items', 'create', 'delete'\nname (for create/delete): Group name\nitems (for create): Array of calculation items",
+                "returns": "Calculation group details or operation result."
+            },
+            {
+                "name": "Role Operations",
+                "id": "role_operations",
+                "description": "View Row-Level Security (RLS) and Object-Level Security (OLS) roles.",
+                "when_to_use": "Use to see what security roles exist and their filter expressions.",
+                "example": "operation='list' -> Shows: 'Regional Manager' role with DAX filters on Country table",
+                "parameters": "operation (required): 'list'\nrole (optional): Specific role name",
+                "returns": "List of security roles with their table filters and permissions."
+            },
+            {
+                "name": "Batch Operations",
+                "id": "batch_operations",
+                "description": "Execute multiple operations in a single call - 3-5x faster than individual operations. Supports transaction rollback.",
+                "when_to_use": "Use when creating/updating many objects at once for better performance.",
+                "example": "Create 10 measures in one call, or update multiple columns at once.",
+                "parameters": "operations (required): Array of operation definitions\nuse_transaction (optional): Enable rollback on failure",
+                "returns": "Results for each operation with success/failure status."
+            },
+            {
+                "name": "Manage Transactions",
+                "id": "manage_transactions",
+                "description": "ACID transaction management for model changes - begin, commit, or rollback groups of changes.",
+                "when_to_use": "Use for complex changes where you want all-or-nothing behavior.",
+                "example": "Begin transaction -> Make changes -> Commit (or Rollback if something fails)",
+                "parameters": "action (required): 'begin', 'commit', 'rollback', 'status'",
+                "returns": "Transaction status and ID."
             }
         ]
     },
@@ -750,59 +795,6 @@ CATEGORIES = [
     },
     {
         "number": "06",
-        "title": "Model Operations",
-        "color": Colors.CAT_TMDL,
-        "description": "Advanced model operations and automation",
-        "tools": [
-            {
-                "name": "TMDL Operations",
-                "id": "tmdl_operations",
-                "description": "Unified TMDL operations: export, find & replace, bulk rename, generate scripts. TMDL is the source code format for Power BI models.",
-                "when_to_use": "Use for version control, batch updates, or refactoring model objects.",
-                "example": "operation='export' output_dir='C:\\TMDL' -> Exports model. operation='find_replace' pattern='OldName' replacement='NewName'",
-                "parameters": "operation (required): 'export', 'find_replace', 'bulk_rename', 'generate_script'\noutput_dir, pattern, replacement, renames (depending on operation)\ndry_run (optional): Preview without applying",
-                "returns": "Operation results: exported files, matches found, or changes made."
-            },
-            {
-                "name": "Calculation Group Operations",
-                "id": "calculation_group_operations",
-                "description": "Manage calculation groups (advanced DAX feature for reusable patterns like time intelligence).",
-                "when_to_use": "Use to create, list, or delete calculation groups.",
-                "example": "operation='list' -> Shows all calculation groups with items. operation='create' name='Time Intel' items=[...]",
-                "parameters": "operation (required): 'list', 'list_items', 'create', 'delete'\nname (for create/delete): Group name\nitems (for create): Array of calculation items",
-                "returns": "Calculation group details or operation result."
-            },
-            {
-                "name": "Role Operations",
-                "id": "role_operations",
-                "description": "View Row-Level Security (RLS) and Object-Level Security (OLS) roles.",
-                "when_to_use": "Use to see what security roles exist and their filter expressions.",
-                "example": "operation='list' -> Shows: 'Regional Manager' role with DAX filters on Country table",
-                "parameters": "operation (required): 'list'\nrole (optional): Specific role name",
-                "returns": "List of security roles with their table filters and permissions."
-            },
-            {
-                "name": "Batch Operations",
-                "id": "batch_operations",
-                "description": "Execute multiple operations in a single call - 3-5x faster than individual operations. Supports transaction rollback.",
-                "when_to_use": "Use when creating/updating many objects at once for better performance.",
-                "example": "Create 10 measures in one call, or update multiple columns at once.",
-                "parameters": "operations (required): Array of operation definitions\nuse_transaction (optional): Enable rollback on failure",
-                "returns": "Results for each operation with success/failure status."
-            },
-            {
-                "name": "Manage Transactions",
-                "id": "manage_transactions",
-                "description": "ACID transaction management for model changes - begin, commit, or rollback groups of changes.",
-                "when_to_use": "Use for complex changes where you want all-or-nothing behavior.",
-                "example": "Begin transaction -> Make changes -> Commit (or Rollback if something fails)",
-                "parameters": "action (required): 'begin', 'commit', 'rollback', 'status'",
-                "returns": "Transaction status and ID."
-            }
-        ]
-    },
-    {
-        "number": "07",
         "title": "Export & Schema",
         "color": Colors.CAT_EXPORT,
         "description": "Export model schema and structure",
@@ -819,7 +811,7 @@ CATEGORIES = [
         ]
     },
     {
-        "number": "08",
+        "number": "07",
         "title": "Documentation",
         "color": Colors.CAT_DOCS,
         "description": "Generate professional model documentation",
@@ -845,7 +837,7 @@ CATEGORIES = [
         ]
     },
     {
-        "number": "09",
+        "number": "08",
         "title": "Comparison",
         "color": Colors.CAT_COMPARE,
         "description": "Compare Power BI models side-by-side",
@@ -862,7 +854,7 @@ CATEGORIES = [
         ]
     },
     {
-        "number": "10",
+        "number": "09",
         "title": "PBIP Analysis",
         "color": Colors.CAT_PBIP,
         "description": "Offline analysis of Power BI Project files",
@@ -879,7 +871,7 @@ CATEGORIES = [
         ]
     },
     {
-        "number": "11",
+        "number": "10",
         "title": "Hybrid Analysis",
         "color": Colors.CAT_HYBRID,
         "description": "AI-powered comprehensive model analysis",
@@ -905,10 +897,10 @@ CATEGORIES = [
         ]
     },
     {
-        "number": "12",
-        "title": "Help & Monitoring",
+        "number": "11",
+        "title": "Help",
         "color": Colors.CAT_HELP,
-        "description": "Built-in documentation and usage statistics",
+        "description": "Built-in documentation and user guides",
         "tools": [
             {
                 "name": "Show User Guide",
@@ -918,7 +910,15 @@ CATEGORIES = [
                 "example": "Show user guide -> Returns: Full documentation with categories, descriptions, examples.",
                 "parameters": "section (optional): Specific section to show",
                 "returns": "User guide with usage instructions and examples."
-            },
+            }
+        ]
+    },
+    {
+        "number": "12",
+        "title": "Monitoring",
+        "color": colors.HexColor('#6b7280'),
+        "description": "Usage statistics and monitoring",
+        "tools": [
             {
                 "name": "Get Token Usage Statistics",
                 "id": "get_token_usage",
@@ -994,7 +994,7 @@ WORKFLOWS = [
 def build_document():
     """Build the complete PDF document"""
 
-    output_path = r"C:\Users\bjorn.braet\powerbi-mcp-servers\MCP-PowerBi-Finvision\MCP_PowerBI_Tools_Guide_Professional.pdf"
+    output_path = r"C:\Users\bjorn.braet\powerbi-mcp-servers\MCP-PowerBi-Finvision\MCP_PowerBI_Tools_Guide.pdf"
 
     doc = SimpleDocTemplate(
         output_path,
@@ -1097,7 +1097,7 @@ def build_document():
 
     quick_ref_sections = [
         {
-            "title": "Connection (Always First!)",
+            "title": "01 - Connection (Always First!)",
             "color": Colors.CAT_CONNECTION,
             "tools": [
                 ("detect_powerbi_desktop", "Find open Power BI files"),
@@ -1105,41 +1105,43 @@ def build_document():
             ]
         },
         {
-            "title": "Quick Model Overview",
-            "color": Colors.CAT_ANALYSIS,
+            "title": "02 - Schema, Search & Operations",
+            "color": Colors.CAT_SCHEMA,
             "tools": [
-                ("simple_analysis", "Fast 2-5 second overview"),
-                ("column_operations", "List columns"),
-                ("measure_operations", "List measures")
+                ("search_objects", "Find tables, columns, measures"),
+                ("column_operations", "List/modify columns"),
+                ("measure_operations", "List/modify measures"),
+                ("relationship_operations", "View/modify relationships"),
+                ("tmdl_operations", "Export/refactor model"),
+                ("batch_operations", "Batch changes (3-5x faster)")
             ]
         },
         {
-            "title": "Deep Analysis",
+            "title": "03 - DAX Intelligence",
             "color": Colors.CAT_DAX,
             "tools": [
-                ("full_analysis", "Complete health check (120+ rules)"),
+                ("run_dax", "Execute DAX queries"),
                 ("dax_intelligence", "Analyze and optimize DAX")
             ]
         },
         {
-            "title": "Making Changes",
-            "color": Colors.CAT_OPERATIONS,
+            "title": "05 - Model Analysis",
+            "color": Colors.CAT_ANALYSIS,
             "tools": [
-                ("measure_operations", "Create/update measures"),
-                ("batch_operations", "Batch changes"),
-                ("tmdl_operations", "Rename objects safely")
+                ("simple_analysis", "Fast 2-5 second overview"),
+                ("full_analysis", "Complete health check (120+ rules)")
             ]
         },
         {
-            "title": "Documentation",
+            "title": "06-07 - Export & Documentation",
             "color": Colors.CAT_DOCS,
             "tools": [
-                ("generate_model_documentation_word", "Professional Word doc"),
-                ("get_live_model_schema", "Export model schema")
+                ("get_live_model_schema", "Export model schema"),
+                ("generate_model_documentation_word", "Professional Word doc")
             ]
         },
         {
-            "title": "AI Analysis (Most Powerful!)",
+            "title": "10 - Hybrid Analysis (Most Powerful!)",
             "color": Colors.CAT_HYBRID,
             "tools": [
                 ("export_hybrid_analysis", "Export complete package"),

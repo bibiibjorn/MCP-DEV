@@ -326,41 +326,40 @@ RETURN SUMX(Sales, TotalSales * TaxRate)"""
         context_analysis: ContextFlowExplanation,
         anti_patterns: Optional[Dict[str, Any]] = None,
         vertipaq_analysis: Optional[Dict[str, Any]] = None,
+        connection_state=None,  # Kept for API compatibility but not used
     ) -> Dict[str, Any]:
         """
-        Generate specific DAX improvements with before/after code examples
+        Generate DAX improvement SUGGESTIONS for the AI to use.
+
+        The code rewriter provides suggestions and a draft optimized code,
+        but the AI has the final say and should write its own optimized measure
+        based on ALL the analysis (context transitions, anti-patterns, VertiPaq, etc.).
 
         Args:
             dax_expression: Original DAX expression
             context_analysis: Context analysis result
             anti_patterns: Optional anti-pattern detection results
             vertipaq_analysis: Optional VertiPaq column analysis results
+            connection_state: Not used (kept for API compatibility)
 
         Returns:
-            Dictionary with specific improvements and rewritten code
-
-        Note:
-            This method provides analysis and recommendations. When automatic transformations
-            are not possible (requires DAX parser), suggested_code will be None and the AI
-            should use the improvements list to generate optimized code.
+            Dictionary with improvement suggestions and draft code for AI to review
         """
         improvements = []
-        improved_code = None  # Only set if we actually transform the code
-        code_actually_transformed = False  # Track if we made real code changes
+        rewriter_suggestion = None  # Draft from code rewriter - AI should review/improve
         transformation_details = []
 
         try:
-            # STEP 1: Apply automatic code transformations using DaxCodeRewriter
+            # STEP 1: Get code rewriter suggestions (draft for AI to review)
             from core.dax.code_rewriter import DaxCodeRewriter
 
             rewriter = DaxCodeRewriter()
             rewrite_result = rewriter.rewrite_dax(dax_expression)
 
             if rewrite_result.get('success') and rewrite_result.get('has_changes'):
-                improved_code = rewrite_result['rewritten_code']
-                code_actually_transformed = True
+                rewriter_suggestion = rewrite_result['rewritten_code']
 
-                # Add rewriter transformations to improvements list
+                # Add rewriter transformations as suggestions for AI
                 for trans in rewrite_result.get('transformations', []):
                     improvements.append({
                         "issue": f"Code transformation: {trans['type'].replace('_', ' ').title()}",
@@ -368,11 +367,12 @@ RETURN SUMX(Sales, TotalSales * TaxRate)"""
                         "original_code": trans['original'][:100] + "..." if len(trans['original']) > 100 else trans['original'],
                         "improved_code": trans['transformed'][:100] + "..." if len(trans['transformed']) > 100 else trans['transformed'],
                         "explanation": trans['explanation'],
-                        "specific_suggestion": f"Estimated improvement: {trans['estimated_improvement']}"
+                        "specific_suggestion": f"Estimated improvement: {trans['estimated_improvement']}",
+                        "auto_transform_available": True
                     })
                     transformation_details.append(trans['explanation'])
 
-                logger.info(f"Applied {rewrite_result['transformation_count']} automatic transformations")
+                logger.info(f"Code rewriter suggested {rewrite_result['transformation_count']} transformations")
 
             # STEP 2: Detect pattern-based improvement opportunities
             # These are detected but not automatically transformed (requires DAX parser)
@@ -475,19 +475,24 @@ RETURN M1 + M2 + M3""",
                 }
                 improvements.append(improvement)
 
-            # Determine if we have improvements (either actual transformations or recommendations)
-            has_improvements = code_actually_transformed or len(improvements) > 0
+            # Determine if we have improvements
+            has_improvements = len(improvements) > 0
 
             return {
                 "has_improvements": has_improvements,
-                "code_actually_transformed": code_actually_transformed,
                 "improvements_count": len(improvements),
                 "improvements": improvements,
                 "original_code": dax_expression.strip(),
-                "suggested_code": improved_code.strip() if code_actually_transformed else None,
-                "summary": self._generate_improvement_summary(improvements, code_actually_transformed),
+                "rewriter_draft": rewriter_suggestion.strip() if rewriter_suggestion else None,
+                "summary": self._generate_improvement_summary(improvements),
                 "transformation_details": transformation_details,
-                "note": "Automatic code transformation requires DAX parser. Use the improvements list to guide manual optimization or let the AI generate optimized code." if not code_actually_transformed and has_improvements else None
+                "AI_INSTRUCTION": (
+                    "🚨 IMPORTANT: The 'rewriter_draft' field contains a SUGGESTED optimization from the code rewriter. "
+                    "You (the AI) should review ALL analysis data (context transitions, anti-patterns, VertiPaq metrics, "
+                    "best practices) and write your OWN optimized DAX measure. The rewriter draft is just a starting point - "
+                    "you may improve upon it, combine it with other optimizations, or write something entirely different "
+                    "based on the full analysis. Always explain your optimization choices to the user."
+                )
             }
 
         except Exception as e:
@@ -529,7 +534,7 @@ RETURN Result
 
         return suggestion
 
-    def _generate_improvement_summary(self, improvements: List[Dict[str, Any]], code_actually_transformed: bool = False) -> str:
+    def _generate_improvement_summary(self, improvements: List[Dict[str, Any]]) -> str:
         """Generate human-readable summary of improvements"""
         if not improvements:
             return "No significant improvements identified. Your DAX code follows best practices."
@@ -537,11 +542,9 @@ RETURN Result
         high_severity = sum(1 for i in improvements if i.get('severity') == 'high')
         medium_severity = sum(1 for i in improvements if i.get('severity') == 'medium')
         low_severity = sum(1 for i in improvements if i.get('severity') == 'low')
+        auto_available = sum(1 for i in improvements if i.get('auto_transform_available'))
 
-        if code_actually_transformed:
-            summary_parts = [f"Applied {len(improvements)} automatic transformation(s):"]
-        else:
-            summary_parts = [f"Detected {len(improvements)} improvement opportunity(ies):"]
+        summary_parts = [f"Found {len(improvements)} optimization opportunity(ies):"]
 
         if high_severity > 0:
             summary_parts.append(f"  • {high_severity} high-priority issue(s) - should be addressed")
@@ -550,8 +553,9 @@ RETURN Result
         if low_severity > 0:
             summary_parts.append(f"  • {low_severity} low-priority enhancement(s) - optional")
 
-        if not code_actually_transformed and improvements:
-            summary_parts.append("\nNote: Automatic transformation not available. Use the AI to generate optimized code based on these recommendations.")
+        if auto_available > 0:
+            summary_parts.append(f"\n{auto_available} optimization(s) have draft code from the rewriter.")
+            summary_parts.append("The AI will review all analysis and write the final optimized measure.")
 
         return "\n".join(summary_parts)
 
