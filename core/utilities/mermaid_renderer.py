@@ -43,6 +43,10 @@ def _encode_mermaid_simple(mermaid_code: str) -> str:
     return base64.urlsafe_b64encode(mermaid_code.encode('utf-8')).decode('ascii')
 
 
+# Maximum URL length for mermaid.ink API (HTTP 414 occurs around 8KB)
+MAX_URL_LENGTH = 7500
+
+
 def render_mermaid_to_png(
     mermaid_code: str,
     theme: str = "default",
@@ -83,6 +87,11 @@ def render_mermaid_to_png(
         # Build URL with options
         # mermaid.ink format: https://mermaid.ink/img/{base64}?type=png&theme=...
         url = f"https://mermaid.ink/img/{encoded}"
+
+        # Check URL length - mermaid.ink returns HTTP 414 if URL is too long
+        if len(url) > MAX_URL_LENGTH:
+            logger.warning(f"Mermaid URL too long ({len(url)} chars > {MAX_URL_LENGTH} limit)")
+            return None, f"DIAGRAM_TOO_LARGE: URL length {len(url)} exceeds limit. Use HTML fallback."
 
         params = {"type": "png"}
         if theme != "default":

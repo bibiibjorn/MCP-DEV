@@ -7,7 +7,7 @@ import logging
 from server.registry import ToolDefinition
 from core.infrastructure.connection_state import connection_state
 from core.validation.error_handler import ErrorHandler
-from core.utilities.mermaid_renderer import get_mermaid_image_content
+from core.utilities.diagram_html_generator import generate_dependency_html
 
 logger = logging.getLogger(__name__)
 
@@ -351,30 +351,32 @@ def handle_analyze_measure_dependencies(args: Dict[str, Any]) -> Dict[str, Any]:
             'downstream_count': diagram_result.get('downstream_count', len(used_by_measures))
         }
 
-        # Render Mermaid diagram to PNG image for visual display
-        # The _image_content field triggers special handling in the MCP server
-        # to return the image as ImageContent alongside the text response
+        # Always generate interactive HTML diagram (works for any size)
+        # This provides a consistent experience regardless of diagram complexity
         if mermaid_code:
-            image_result = get_mermaid_image_content(mermaid_code, theme="default")
-            if image_result.get('success'):
-                response['_image_content'] = {
-                    'data': image_result['data'],
-                    'mimeType': image_result['mimeType']
-                }
-                # Include mermaid code for HTML generation
-                response['_mermaid_code'] = mermaid_code
-                # Remove text-based mermaid output
+            html_path = generate_dependency_html(
+                mermaid_code=mermaid_code,
+                measure_table=table,
+                measure_name=measure,
+                metadata=response.get('diagram_metadata', {}),
+                auto_open=True,
+                referenced_measures=deps_result.get('referenced_measures', []),
+                referenced_columns=deps_result.get('referenced_columns', []),
+                used_by_measures=used_by_measures
+            )
+            if html_path:
+                response['diagram_rendered'] = True
+                response['html_diagram_path'] = html_path
+                response['display_instructions'] = f'Interactive diagram opened in browser: {html_path}'
+                # Remove text-based mermaid since HTML is better
                 if 'mermaid_diagram_output' in response:
                     del response['mermaid_diagram_output']
                 if 'mermaid_raw' in response:
                     del response['mermaid_raw']
-                response['display_instructions'] = 'Interactive diagram will open in browser.'
-                response['diagram_rendered'] = True
-                logger.info("Mermaid diagram ready for HTML generation")
+                logger.info(f"Generated HTML diagram: {html_path}")
             else:
-                # If image rendering fails, log it but continue with text output
-                logger.warning(f"Mermaid image rendering failed: {image_result.get('error')}")
-                response['image_render_error'] = image_result.get('error')
+                logger.warning("Failed to generate HTML diagram")
+                response['diagram_render_error'] = "Failed to generate HTML diagram"
 
     return response
 

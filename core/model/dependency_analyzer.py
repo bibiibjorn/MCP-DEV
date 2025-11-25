@@ -730,16 +730,22 @@ class DependencyAnalyzer:
             column_nodes = set()  # Track which nodes are columns
 
             def sanitize_node_id(name: str, prefix: str = "M") -> str:
-                """Convert name to valid Mermaid node ID"""
-                clean = name.replace("[", "_").replace("]", "").replace("'", "")
-                clean = clean.replace(" ", "_").replace("-", "_").replace("(", "_").replace(")", "_")
-                clean = clean.replace(".", "_").replace("/", "_").replace("\\", "_")
-                # Remove double underscores
-                while "__" in clean:
-                    clean = clean.replace("__", "_")
-                # Remove leading/trailing underscores
+                """Convert name to valid Mermaid node ID (alphanumeric and underscores only)"""
+                import re
+                clean = name.replace("[", "_").replace("]", "").replace(" ", "_")
+                clean = clean.replace("-", "_").replace("/", "_").replace("\\", "_")
+                clean = clean.replace("(", "_").replace(")", "_").replace("%", "pct")
+                clean = clean.replace("&", "and").replace("'", "").replace('"', "")
+                clean = clean.replace(".", "_").replace(",", "_").replace(":", "_")
+                clean = clean.replace("+", "plus").replace("*", "x").replace("=", "eq")
+                clean = clean.replace("<", "lt").replace(">", "gt").replace("!", "not")
+                clean = clean.replace("#", "num").replace("@", "at").replace("$", "dollar")
+                # Remove any remaining non-alphanumeric chars except underscore
+                clean = re.sub(r'[^a-zA-Z0-9_]', '', clean)
+                # Collapse multiple underscores
+                clean = re.sub(r'_+', '_', clean)
                 clean = clean.strip("_")
-                return f"{prefix}_{clean}"
+                return f"{prefix}_{clean}" if clean else f"{prefix}_node"
 
             def get_table_type(tbl_name: str) -> str:
                 """Determine table type hint based on naming convention"""
@@ -1011,7 +1017,25 @@ class DependencyAnalyzer:
             visited_downstream = set()
 
             def sanitize_node_id(name: str) -> str:
-                return name.replace("[", "_").replace("]", "").replace("'", "").replace(" ", "_").replace("-", "_")
+                """Sanitize node ID to only contain alphanumeric and underscore characters."""
+                import re
+                # Replace common special chars with underscore, then remove any remaining invalid chars
+                result = name.replace("[", "_").replace("]", "").replace(" ", "_")
+                result = result.replace("-", "_").replace("/", "_").replace("\\", "_")
+                result = result.replace("(", "_").replace(")", "_").replace("%", "pct")
+                result = result.replace("&", "and").replace("'", "").replace('"', "")
+                result = result.replace(".", "_").replace(",", "_").replace(":", "_")
+                result = result.replace("+", "plus").replace("*", "x").replace("=", "eq")
+                result = result.replace("<", "lt").replace(">", "gt").replace("!", "not")
+                result = result.replace("#", "num").replace("@", "at").replace("$", "dollar")
+                # Remove any remaining non-alphanumeric chars except underscore
+                result = re.sub(r'[^a-zA-Z0-9_]', '', result)
+                # Collapse multiple underscores
+                result = re.sub(r'_+', '_', result)
+                # Ensure it starts with a letter (Mermaid requirement)
+                if result and not result[0].isalpha():
+                    result = 'n_' + result
+                return result.strip('_') or 'node'
 
             def sanitize_label(name: str) -> str:
                 return name.replace('"', '\\"')
