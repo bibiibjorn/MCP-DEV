@@ -139,8 +139,8 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
         # Fast path: Skip validation for read-only metadata tools (5-15% speedup)
         fast_path_tools = {
             'list_tables', 'list_columns', 'list_measures', 'list_relationships',
-            'detect_powerbi_desktop', '02 Table Operations', '02 Column Operations',
-            '02 Measure Operations', '03 List Relationships', '01 Detect PBI Instances'
+            'detect_powerbi_desktop', '02_Table_Operations', '02_Column_Operations',
+            '02_Measure_Operations', '03_List_Relationships', '01_Detect_PBI_Instances'
         }
 
         needs_validation = name not in fast_path_tools
@@ -212,7 +212,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 if result.get('_limits_info', {}).get('token_usage', {}).get('level') == 'over':
                     high_token_tools = {
                         'full_analysis', 'export_tmdl', 'analyze_model_bpa',
-                        '05 Live Model Full Analysis', '11 TMDL Operations'
+                        '05_Live_Model_Full_Analysis', '11_TMDL_Operations'
                     }
                     if name in high_token_tools:
                         token_info = result['_limits_info']['token_usage']
