@@ -222,7 +222,7 @@ def register_relationship_operations_handler(registry):
             ]
         },
         category="metadata",
-        sort_order=13
+        sort_order=14
     )
 
     registry.register(tool)

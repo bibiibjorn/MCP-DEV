@@ -32,116 +32,112 @@
       "description": "[Connection] Connect to Power BI Desktop (auto-detect or specify model_index)"
     },
     {
-      "name": "table_operations",
-      "description": "[Schema] Unified table operations: list, describe, preview, create, update, delete, rename, refresh"
-    },
-    {
-      "name": "column_operations",
-      "description": "[Schema] Unified column operations: list, get, statistics, distribution, create, update, delete"
-    },
-    {
-      "name": "measure_operations",
-      "description": "[Schema] Unified measure operations: list, get (with DAX), create, update, delete, rename"
-    },
-    {
       "name": "search_objects",
-      "description": "[Schema] Search across tables, columns, and measures"
+      "description": "[Schema] Search across tables, columns, and measures by name"
     },
     {
       "name": "search_string",
-      "description": "[Schema] Search in measure names and/or DAX expressions"
+      "description": "[Schema] Search inside measure DAX expressions"
     },
     {
-      "name": "dax_intelligence",
-      "description": "[DAX v6.4] Complete DAX analysis with structured JSON output. Performs ALL operations: context analysis, web research for anti-patterns (not just SQLBI), code improvements, VertiPaq metrics, call tree visualization, debug steps. Returns comprehensive structured data for AI to format and present."
+      "name": "column_operations",
+      "description": "[Schema] Unified column operations (CRUD)"
     },
     {
-      "name": "run_dax",
-      "description": "[Query] Execute DAX query with auto limits"
+      "name": "measure_operations",
+      "description": "[Schema] Unified measure operations (CRUD)"
     },
     {
       "name": "relationship_operations",
-      "description": "[Relationships] Unified relationship operations: list, get, find, create, update, delete"
+      "description": "[Schema] Unified relationship operations (CRUD)"
+    },
+    {
+      "name": "tmdl_operations",
+      "description": "[TMDL] TMDL automation"
+    },
+    {
+      "name": "calculation_group_operations",
+      "description": "[Model Operations] Calculation group CRUD"
+    },
+    {
+      "name": "role_operations",
+      "description": "[Model Operations] RLS/OLS role operations"
+    },
+    {
+      "name": "batch_operations",
+      "description": "[Model Operations] Batch operations with transaction support"
+    },
+    {
+      "name": "manage_transactions",
+      "description": "[Model Operations] ACID transactions"
+    },
+    {
+      "name": "run_dax",
+      "description": "[DAX] Execute DAX query"
+    },
+    {
+      "name": "dax_intelligence",
+      "description": "[DAX] Comprehensive DAX analysis"
+    },
+    {
+      "name": "analyze_measure_dependencies",
+      "description": "[DAX] Measure dependency tree"
+    },
+    {
+      "name": "get_measure_impact",
+      "description": "[DAX] Measure usage impact"
     },
     {
       "name": "get_data_sources",
-      "description": "[Data Sources] List data sources with fallback to TOM"
+      "description": "[Data Sources] List data sources"
     },
     {
       "name": "get_m_expressions",
       "description": "[Data Sources] List M/Power Query expressions"
     },
     {
-      "name": "calculation_group_operations",
-      "description": "[Model Operations] Unified calculation group operations: list, list_items, create, delete"
-    },
-    {
-      "name": "role_operations",
-      "description": "[Model Operations] Unified RLS/OLS role operations: list security roles"
-    },
-    {
-      "name": "batch_operations",
-      "description": "[Model Operations] Execute batch operations with transaction support (3-5x faster)"
-    },
-    {
-      "name": "manage_transactions",
-      "description": "[Model Operations] Manage ACID transactions for atomic model changes with rollback support"
-    },
-    {
       "name": "simple_analysis",
-      "description": "[Analysis] Fast Microsoft MCP operations: 8 core operations + expert insights (2-5s)"
+      "description": "[Analysis] Fast model analysis"
     },
     {
       "name": "full_analysis",
-      "description": "[Analysis] Comprehensive analysis: BPA + performance + integrity validation (10-180s)"
-    },
-    {
-      "name": "analyze_measure_dependencies",
-      "description": "[Dependencies] Analyze measure dependencies tree"
-    },
-    {
-      "name": "get_measure_impact",
-      "description": "[Dependencies] Get measure usage impact analysis"
+      "description": "[Analysis] Comprehensive analysis"
     },
     {
       "name": "get_live_model_schema",
-      "description": "[Export] Get live model schema (lightweight, without DAX expressions)"
-    },
-    {
-      "name": "tmdl_operations",
-      "description": "[TMDL] Unified TMDL operations: export, find_replace, bulk_rename, generate_script"
+      "description": "[Export] Get model schema"
     },
     {
       "name": "generate_model_documentation_word",
-      "description": "[Documentation] Generate comprehensive Word documentation report"
+      "description": "[Documentation] Generate Word documentation"
     },
     {
       "name": "update_model_documentation_word",
-      "description": "[Documentation] Update existing Word documentation report"
+      "description": "[Documentation] Update Word documentation"
     },
     {
       "name": "compare_pbi_models",
-      "description": "[Comparison] Compare two open/live Power BI models"
+      "description": "[Comparison] Compare models"
     },
     {
       "name": "analyze_pbip_repository",
-      "description": "[PBIP Analysis] Offline PBIP repository analysis with HTML report export"
+      "description": "[PBIP Analysis] Offline PBIP analysis"
     },
     {
       "name": "export_hybrid_analysis",
-      "description": "[Hybrid Analysis] Export TMDL + metadata + sample data package for AI analysis"
+      "description": "[Hybrid Analysis] Export TMDL + metadata"
     },
     {
       "name": "analyze_hybrid_model",
-      "description": "[Hybrid Analysis] BI Expert analysis with TMDL, metadata, and sample data (supports fuzzy search)"
+      "description": "[Hybrid Analysis] Analyze exported model"
     },
     {
       "name": "show_user_guide",
-      "description": "[Help] Show comprehensive user guide"
+      "description": "[Help] Show user guide"
     },
     {
       "name": "get_token_usage",
-      "description": "[Monitoring] Get token usage statistics for the current MCP session"
+      "description": "[Monitoring] Get token statistics"
     }
   ],
   "keywords": [

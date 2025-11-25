@@ -61,7 +61,7 @@ def register_dependencies_handlers(registry):
             handler=handle_analyze_measure_dependencies,
             input_schema=TOOL_SCHEMAS.get('analyze_measure_dependencies', {}),
             category="dependencies",
-            sort_order=50
+            sort_order=22
         ),
         ToolDefinition(
             name="get_measure_impact",
@@ -69,7 +69,7 @@ def register_dependencies_handlers(registry):
             handler=handle_get_measure_impact,
             input_schema=TOOL_SCHEMAS.get('get_measure_impact', {}),
             category="dependencies",
-            sort_order=51
+            sort_order=23
         ),
     ]
 

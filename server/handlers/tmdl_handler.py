@@ -423,7 +423,7 @@ def register_tmdl_operations_handler(registry):
             ]
         },
         category="tmdl",
-        sort_order=100
+        sort_order=15
     )
 
     registry.register(tool)

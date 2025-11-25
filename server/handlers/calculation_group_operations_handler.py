@@ -150,7 +150,7 @@ def register_calculation_group_operations_handler(registry):
             ]
         },
         category="model_operations",
-        sort_order=30
+        sort_order=16
     )
 
     registry.register(tool)

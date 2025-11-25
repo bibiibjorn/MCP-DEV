@@ -1222,8 +1222,8 @@ def register_hybrid_analysis_handlers(registry):
         description='Export Power BI model: TMDL from PBIP folder + metadata/sample data from active model (auto-detects Power BI Desktop if no connection provided)',
         handler=make_handler(handle_export_hybrid_analysis),
         input_schema=TOOL_SCHEMAS['export_hybrid_analysis'],
-        category='14 - Hybrid Analysis',
-        sort_order=130
+        category='10 - Hybrid Analysis',
+        sort_order=90
     ))
 
     registry.register(ToolDefinition(
@@ -1231,8 +1231,8 @@ def register_hybrid_analysis_handlers(registry):
         description='⚠️ 100% AUTOMATED MCP SERVER TOOL ⚠️: This tool AUTOMATICALLY reads ALL TMDL files, relationships, JSON files, and parquet data INTERNALLY. 🚫🚫🚫 NEVER use Read, Glob, Grep, or any filesystem tools - this tool returns COMPLETE data including full relationships list parsed from TMDL. Just provide analysis_path and operation - everything else is automatic! Returns: complete relationships data, metadata, measures with DAX expressions, all parsed from TMDL internally.',
         handler=make_handler(handle_analyze_hybrid_model),
         input_schema=TOOL_SCHEMAS['analyze_hybrid_model'],
-        category='14 - Hybrid Analysis',
-        sort_order=131
+        category='10 - Hybrid Analysis',
+        sort_order=91
     ))
 
     logger.info("Registered 2 hybrid analysis handlers")

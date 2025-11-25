@@ -54,7 +54,7 @@ def register_documentation_handlers(registry):
             handler=handle_generate_model_documentation_word,
             input_schema=TOOL_SCHEMAS.get('generate_model_documentation_word', {}),
             category="documentation",
-            sort_order=70
+            sort_order=60
         ),
         ToolDefinition(
             name="update_model_documentation_word",
@@ -62,7 +62,7 @@ def register_documentation_handlers(registry):
             handler=handle_update_model_documentation_word,
             input_schema=TOOL_SCHEMAS.get('update_model_documentation_word', {}),
             category="documentation",
-            sort_order=71
+            sort_order=61
         ),
     ]
 

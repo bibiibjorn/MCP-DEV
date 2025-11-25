@@ -215,7 +215,7 @@ def register_pbip_handlers(registry):
             handler=handle_analyze_pbip_repository,
             input_schema=TOOL_SCHEMAS.get('analyze_pbip_repository', {}),
             category="pbip",
-            sort_order=90
+            sort_order=80
         ),
     ]
 

@@ -231,7 +231,7 @@ def register_column_operations_handler(registry):
             ]
         },
         category="metadata",
-        sort_order=11
+        sort_order=12
     )
 
     registry.register(tool)

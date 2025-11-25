@@ -199,7 +199,7 @@ def register_metadata_handlers(registry):
                 "required": []
             },
             category="metadata",
-            sort_order=14
+            sort_order=10
         ),
         ToolDefinition(
             name="search_string",
@@ -229,7 +229,7 @@ def register_metadata_handlers(registry):
                 "required": ["search_text"]
             },
             category="metadata",
-            sort_order=15
+            sort_order=11
         ),
     ]
 

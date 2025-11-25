@@ -81,7 +81,7 @@ def register_role_operations_handler(registry):
             ]
         },
         category="model_operations",
-        sort_order=31
+        sort_order=17
     )
 
     registry.register(tool)

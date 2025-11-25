@@ -144,7 +144,7 @@ def register_batch_operations_handler(registry):
             ]
         },
         category="model_operations",
-        sort_order=32
+        sort_order=18
     )
 
     registry.register(tool)

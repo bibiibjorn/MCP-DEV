@@ -193,7 +193,7 @@ def register_measure_operations_handler(registry):
             ]
         },
         category="metadata",
-        sort_order=12
+        sort_order=13
     )
 
     registry.register(tool)

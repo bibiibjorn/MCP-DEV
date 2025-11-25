@@ -33,7 +33,7 @@ def register_export_handlers(registry):
         handler=handle_get_live_model_schema,
         input_schema=TOOL_SCHEMAS.get('get_live_model_schema', {}),
         category="export",
-        sort_order=60
+        sort_order=50
     )
 
     registry.register(tool)
