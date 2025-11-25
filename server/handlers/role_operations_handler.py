@@ -72,7 +72,13 @@ def register_role_operations_handler(registry):
                     "description": "Table name (required for: delete_permission, test_role)"
                 }
             },
-            "required": ["operation"]
+            "required": ["operation"],
+            "examples": [
+                {
+                    "_description": "List all security roles (RLS/OLS)",
+                    "operation": "list"
+                }
+            ]
         },
         category="model_operations",
         sort_order=31
