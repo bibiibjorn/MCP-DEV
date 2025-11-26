@@ -1327,9 +1327,10 @@ def generate_dependency_html(
             // Reset visibility tracking
             visibleSanitizedIds = new Set();
 
-            // Using global helper functions getSanitizedId and idMatchesList
+            // FIRST PASS: Identify which nodes should be visible (but don't hide yet)
+            // Also collect nodes for viewBox calculation BEFORE hiding
+            const nodesToShow = [];
 
-            // Apply visibility to nodes
             allNodes.forEach(node => {{
                 const mermaidId = node.id || '';
                 const sanitizedId = getSanitizedId(mermaidId);
@@ -1346,12 +1347,27 @@ def generate_dependency_html(
                     shouldShow = isDownstream || isRoot;
                 }}
 
-                node.style.display = shouldShow ? '' : 'none';
-                node.style.opacity = shouldShow ? '1' : '0';
-
                 if (shouldShow) {{
                     visibleSanitizedIds.add(sanitizedId);
+                    nodesToShow.push(node);
                 }}
+            }});
+
+            // Calculate viewBox BEFORE hiding elements (for non-all filters)
+            let preCalculatedViewBox = null;
+            if (filter !== 'all' && nodesToShow.length > 0) {{
+                preCalculatedViewBox = calculateViewBoxForNodes(svg, nodesToShow);
+                console.log('Pre-calculated viewBox:', preCalculatedViewBox);
+            }}
+
+            // SECOND PASS: Now actually apply visibility
+            allNodes.forEach(node => {{
+                const mermaidId = node.id || '';
+                const sanitizedId = getSanitizedId(mermaidId);
+                const shouldShow = visibleSanitizedIds.has(sanitizedId);
+
+                node.style.display = shouldShow ? '' : 'none';
+                node.style.opacity = shouldShow ? '1' : '0';
             }});
 
             console.log('Visible nodes after filter:', [...visibleSanitizedIds]);
@@ -1472,7 +1488,7 @@ def generate_dependency_html(
                 }}
             }}
 
-            // Fit SVG to visible content and scroll to top
+            // Apply pre-calculated viewBox and scroll to top
             setTimeout(() => {{
                 const diagramContent = document.getElementById('diagram-content');
                 const svg = document.querySelector('.mermaid svg');
@@ -1494,70 +1510,63 @@ def generate_dependency_html(
                     return;
                 }}
 
-                // Calculate bounding box of visible elements using getBBox() directly
-                // (simpler approach that works better with SVG transforms)
-                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-                let hasVisibleElements = false;
-
-                // Get visible nodes
-                svg.querySelectorAll('g.node').forEach(node => {{
-                    if (node.style.display !== 'none' && node.style.visibility !== 'hidden' && node.style.opacity !== '0') {{
-                        try {{
-                            const bbox = node.getBBox();
-                            if (bbox.width > 0 && bbox.height > 0) {{
-                                minX = Math.min(minX, bbox.x);
-                                minY = Math.min(minY, bbox.y);
-                                maxX = Math.max(maxX, bbox.x + bbox.width);
-                                maxY = Math.max(maxY, bbox.y + bbox.height);
-                                hasVisibleElements = true;
-                            }}
-                        }} catch(e) {{ console.log('getBBox error:', e); }}
-                    }}
-                }});
-
-                // Get visible clusters
-                svg.querySelectorAll('g.cluster').forEach(cluster => {{
-                    if (cluster.style.display !== 'none' && cluster.style.visibility !== 'hidden' && cluster.style.opacity !== '0') {{
-                        try {{
-                            const bbox = cluster.getBBox();
-                            if (bbox.width > 0 && bbox.height > 0) {{
-                                minX = Math.min(minX, bbox.x);
-                                minY = Math.min(minY, bbox.y);
-                                maxX = Math.max(maxX, bbox.x + bbox.width);
-                                maxY = Math.max(maxY, bbox.y + bbox.height);
-                                hasVisibleElements = true;
-                            }}
-                        }} catch(e) {{}}
-                    }}
-                }});
-
-                console.log('Visible bounds:', {{ minX, minY, maxX, maxY, hasVisibleElements }});
-
-                if (hasVisibleElements && minX !== Infinity && maxX > minX && maxY > minY) {{
-                    // Add generous padding
-                    const padding = 100;
-                    minX -= padding;
-                    minY -= padding;
-                    maxX += padding;
-                    maxY += padding;
-
-                    const width = maxX - minX;
-                    const height = maxY - minY;
-
-                    // Ensure minimum dimensions
-                    const finalWidth = Math.max(width, 400);
-                    const finalHeight = Math.max(height, 300);
-
-                    // Update viewBox to fit visible content
-                    const newViewBox = `${{minX}} ${{minY}} ${{finalWidth}} ${{finalHeight}}`;
-                    svg.setAttribute('viewBox', newViewBox);
-                    console.log('Filter viewBox set to:', newViewBox);
+                // Apply the pre-calculated viewBox (calculated BEFORE hiding elements)
+                if (preCalculatedViewBox) {{
+                    svg.setAttribute('viewBox', preCalculatedViewBox);
+                    console.log('Applied pre-calculated viewBox:', preCalculatedViewBox);
+                }} else {{
+                    console.warn('No pre-calculated viewBox, keeping current view');
                 }}
 
                 // Scroll to top-left
                 diagramContent.scrollTop = 0;
                 diagramContent.scrollLeft = 0;
-            }}, 300);
+            }}, 100);
+        }}
+
+        // Calculate viewBox for a set of nodes (called BEFORE hiding elements)
+        function calculateViewBoxForNodes(svg, nodes) {{
+            if (!svg || !nodes || nodes.length === 0) return null;
+
+            // Force reflow to ensure accurate bounding boxes
+            svg.getBoundingClientRect();
+
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            let validNodes = 0;
+
+            nodes.forEach(node => {{
+                try {{
+                    const bbox = node.getBBox();
+                    if (bbox.width > 0 && bbox.height > 0) {{
+                        minX = Math.min(minX, bbox.x);
+                        minY = Math.min(minY, bbox.y);
+                        maxX = Math.max(maxX, bbox.x + bbox.width);
+                        maxY = Math.max(maxY, bbox.y + bbox.height);
+                        validNodes++;
+                    }}
+                }} catch(e) {{
+                    console.log('getBBox error for node:', e);
+                }}
+            }});
+
+            if (validNodes === 0 || minX === Infinity) {{
+                console.warn('Could not calculate viewBox - no valid bounding boxes');
+                return null;
+            }}
+
+            // Add generous padding
+            const padding = 100;
+            minX -= padding;
+            minY -= padding;
+            maxX += padding;
+            maxY += padding;
+
+            // Ensure minimum dimensions
+            const width = Math.max(maxX - minX, 400);
+            const height = Math.max(maxY - minY, 300);
+
+            console.log(`ViewBox calculated for ${{validNodes}} nodes: ${{minX}} ${{minY}} ${{width}} ${{height}}`);
+            return `${{minX}} ${{minY}} ${{width}} ${{height}}`;
         }}
 
         // Store original viewBox on first load
@@ -1797,6 +1806,12 @@ def generate_dependency_html(
 
             console.log('Total nodes to highlight:', highlightedNodeElements.size);
 
+            // IMPORTANT: Calculate viewBox BEFORE applying any hiding
+            // Use the reusable function we defined for setFilter
+            const nodesToHighlight = Array.from(highlightedNodeElements);
+            const preCalculatedViewBox = calculateViewBoxForNodes(svg, nodesToHighlight);
+            console.log('Pre-calculated viewBox for highlight:', preCalculatedViewBox);
+
             // Activate highlight mode
             flowHighlightActive = true;
             selectedNodeId = clickedSanitizedId;
@@ -1900,9 +1915,15 @@ def generate_dependency_html(
 
             console.log('========================================');
 
-            // Adjust viewBox to fit only the highlighted elements
+            // Apply pre-calculated viewBox (calculated BEFORE hiding elements)
             setTimeout(() => {{
-                fitViewBoxToHighlighted(svg);
+                if (preCalculatedViewBox) {{
+                    svg.setAttribute('viewBox', preCalculatedViewBox);
+                    console.log('Applied pre-calculated viewBox for highlight:', preCalculatedViewBox);
+                }} else {{
+                    // Fallback: keep current viewBox if calculation failed
+                    console.warn('No pre-calculated viewBox, keeping current view');
+                }}
             }}, 100);
         }}
 
@@ -2227,7 +2248,8 @@ def generate_dependency_html(
         function groupByTable(items, nameKey = 'name') {{
             const groups = {{}};
             items.forEach(item => {{
-                const table = item.table || 'Unknown';
+                // Use "Unresolved" for empty table names instead of "Unknown"
+                const table = (item.table && item.table.trim()) ? item.table : 'Unresolved';
                 if (!groups[table]) {{
                     groups[table] = [];
                 }}
@@ -2355,14 +2377,14 @@ def generate_dependency_html(
 
             // Add measures
             referencedMeasures.forEach(item => {{
-                const table = item.table || 'Unknown';
+                const table = (item.table && item.table.trim()) ? item.table : 'Unresolved';
                 if (!depsGroups[table]) depsGroups[table] = {{ measures: [], columns: [] }};
                 depsGroups[table].measures.push(item.name);
             }});
 
             // Add columns
             referencedColumns.forEach(item => {{
-                const table = item.table || 'Unknown';
+                const table = (item.table && item.table.trim()) ? item.table : 'Unresolved';
                 if (!depsGroups[table]) depsGroups[table] = {{ measures: [], columns: [] }};
                 depsGroups[table].columns.push(item.name);
             }});
@@ -2428,7 +2450,7 @@ def generate_dependency_html(
                     // Group by table
                     const usedByByTable = {{}};
                     usedByMeasures.forEach(item => {{
-                        const table = item.table || 'Unknown';
+                        const table = (item.table && item.table.trim()) ? item.table : 'Unresolved';
                         if (!usedByByTable[table]) usedByByTable[table] = [];
                         usedByByTable[table].push({{
                             name: item.measure,

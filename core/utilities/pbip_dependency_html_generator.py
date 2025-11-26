@@ -106,12 +106,27 @@ def generate_pbip_dependency_html(
     # Build nodes list with sanitized IDs
     node_id_map = {}  # original_key -> sanitized_id
 
+    def extract_table_and_name(key: str) -> tuple:
+        """Extract table and name from a key in Table[Name] format.
+
+        Returns (table, name) tuple. If key is malformed, returns best effort.
+        """
+        if '[' in key and ']' in key:
+            bracket_idx = key.index('[')
+            table = key[:bracket_idx].strip()
+            name = key[bracket_idx + 1:].rstrip(']').strip()
+            # Handle case where key starts with '[' (no table prefix)
+            if not table and name:
+                # Try to find the table from model data (fallback to "Unresolved")
+                return ("Unresolved", name)
+            return (table if table else "Unresolved", name if name else key)
+        return ("Unresolved", key)
+
     # Add measure nodes
     for measure_key in sorted(all_measures):
         node_id = sanitize_node_id(measure_key, "M")
         node_id_map[measure_key] = node_id
-        table = measure_key.split('[')[0] if '[' in measure_key else ''
-        name = measure_key.split('[')[1].rstrip(']') if '[' in measure_key else measure_key
+        table, name = extract_table_and_name(measure_key)
         nodes.append({
             'id': node_id,
             'key': measure_key,
@@ -125,8 +140,7 @@ def generate_pbip_dependency_html(
     for column_key in sorted(all_columns):
         node_id = sanitize_node_id(column_key, "C")
         node_id_map[column_key] = node_id
-        table = column_key.split('[')[0] if '[' in column_key else ''
-        name = column_key.split('[')[1].rstrip(']') if '[' in column_key else column_key
+        table, name = extract_table_and_name(column_key)
         nodes.append({
             'id': node_id,
             'key': column_key,
@@ -1505,42 +1519,18 @@ def generate_pbip_dependency_html(
                     }}
                 }});
 
-                // Apply pre-calculated viewBox
+                // Apply pre-calculated viewBox or fall back to original if calculation failed
                 if (viewBoxData) {{
                     svg.setAttribute('viewBox', viewBoxData);
                     console.log('Filter viewBox applied:', viewBoxData);
+                }} else {{
+                    // Fallback: keep original viewBox but still apply filtering
+                    console.warn('Filter viewBox calculation failed, keeping original view');
                 }}
             }}
 
             // Update visible count
             document.getElementById('visible-count').textContent = visibleIds.size;
-        }}
-
-        // REMOVED OLD FILTER CODE - replaced above
-                        edge.classList.remove('edge-visible');
-                    }}
-                }});
-
-                // Show clusters that contain visible nodes
-                svg.querySelectorAll('g.cluster').forEach(cluster => {{
-                    const hasVisibleNode = cluster.querySelector('g.node.node-visible');
-                    if (hasVisibleNode) {{
-                        cluster.classList.add('cluster-visible');
-                    }} else {{
-                        cluster.classList.remove('cluster-visible');
-                    }}
-                }});
-            }}
-
-            // Update visible count
-            document.getElementById('visible-count').textContent = visibleIds.size;
-
-            // Adjust viewBox to focus on visible nodes (fix blank space)
-            if (filterType !== 'all') {{
-                setTimeout(() => {{
-                    focusOnVisibleNodes(svg, 'g.node.node-visible');
-                }}, 100);
-            }}
         }}
 
         // Node selection functionality
@@ -1725,26 +1715,51 @@ def generate_pbip_dependency_html(
                 }}
             }});
 
-            // Apply pre-calculated viewBox
+            // Apply pre-calculated viewBox or fall back to original if calculation failed
             if (viewBoxData) {{
                 svg.setAttribute('viewBox', viewBoxData);
                 console.log('Applied viewBox:', viewBoxData);
+            }} else {{
+                // Fallback: if we couldn't calculate viewBox, don't zoom and keep original
+                console.warn('ViewBox calculation failed, keeping original view');
+                // Don't change viewBox, but still filter visible elements
             }}
         }}
 
         function calculateBoundsForNodes(svg, nodes) {{
-            if (!nodes || nodes.length === 0) return null;
+            if (!nodes || nodes.length === 0) {{
+                console.log('calculateBoundsForNodes: no nodes provided');
+                return null;
+            }}
+
+            // Force a reflow to ensure accurate bounding rects
+            svg.getBoundingClientRect();
 
             const svgCTM = svg.getScreenCTM();
-            if (!svgCTM) return null;
-            const svgCTMInverse = svgCTM.inverse();
+            if (!svgCTM) {{
+                console.warn('calculateBoundsForNodes: could not get CTM');
+                return null;
+            }}
+
+            let svgCTMInverse;
+            try {{
+                svgCTMInverse = svgCTM.inverse();
+            }} catch (e) {{
+                console.warn('calculateBoundsForNodes: could not invert CTM:', e);
+                return null;
+            }}
 
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            let validNodes = 0;
 
             nodes.forEach(node => {{
                 try {{
                     const rect = node.getBoundingClientRect();
-                    if (rect.width === 0 || rect.height === 0) return;
+                    // Skip nodes with no visible size
+                    if (rect.width < 1 || rect.height < 1) {{
+                        console.log('Skipping node with no size:', node.id);
+                        return;
+                    }}
 
                     const topLeft = svg.createSVGPoint();
                     topLeft.x = rect.left;
@@ -1760,22 +1775,29 @@ def generate_pbip_dependency_html(
                     minY = Math.min(minY, svgTopLeft.y);
                     maxX = Math.max(maxX, svgBottomRight.x);
                     maxY = Math.max(maxY, svgBottomRight.y);
+                    validNodes++;
                 }} catch (e) {{
-                    console.warn('Error calculating bounds:', e);
+                    console.warn('Error calculating bounds for node:', e);
                 }}
             }});
 
-            if (minX === Infinity) return null;
+            if (minX === Infinity || validNodes === 0) {{
+                console.warn('calculateBoundsForNodes: no valid bounds found');
+                return null;
+            }}
 
-            const padding = 50;
+            // Add generous padding
+            const padding = 80;
             minX -= padding;
             minY -= padding;
             maxX += padding;
             maxY += padding;
 
-            const width = Math.max(maxX - minX, 300);
-            const height = Math.max(maxY - minY, 200);
+            // Ensure minimum dimensions
+            const width = Math.max(maxX - minX, 400);
+            const height = Math.max(maxY - minY, 300);
 
+            console.log(`Calculated bounds: ${{validNodes}} nodes, viewBox: ${{minX}} ${{minY}} ${{width}} ${{height}}`);
             return `${{minX}} ${{minY}} ${{width}} ${{height}}`;
         }}
 
