@@ -1,7 +1,8 @@
 """
 PBIP Dependency HTML Generator
 Creates interactive, comprehensive dependency diagrams for PBIP projects.
-Includes Visuals, Measures, Columns, and Field Parameters with filtering.
+Includes sidebar navigation for all Measures, Columns, and Field Parameters.
+Supports selecting any item to view its dependencies.
 """
 
 import os
@@ -37,16 +38,23 @@ def generate_pbip_dependency_html(
     dependency_data: Dict[str, Any],
     model_name: str = "Power BI Model",
     auto_open: bool = True,
-    output_path: Optional[str] = None
+    output_path: Optional[str] = None,
+    main_item: Optional[str] = None,
+    main_item_type: Optional[str] = None
 ) -> Optional[str]:
     """
     Generate a professional HTML page with interactive PBIP dependency diagram.
+
+    Features a left sidebar with all measures, columns, and field parameters.
+    Clicking any item in the sidebar switches the diagram to show that item's dependencies.
 
     Args:
         dependency_data: Output from PbipDependencyEngine.analyze_all_dependencies()
         model_name: Name of the model for display
         auto_open: Whether to open the HTML in browser
         output_path: Optional custom output path
+        main_item: Optional specific item to select initially (e.g., "Table[Measure]")
+        main_item_type: Type of main_item ("measure", "column", "field_parameter")
 
     Returns:
         Path to generated HTML file or None if failed
@@ -62,14 +70,9 @@ def generate_pbip_dependency_html(
     column_to_measure = dependency_data.get('column_to_measure', {})
     column_to_field_params = dependency_data.get('column_to_field_params', {})
     visual_dependencies = dependency_data.get('visual_dependencies', {})
-    page_dependencies = dependency_data.get('page_dependencies', {})
     summary = dependency_data.get('summary', {})
 
-    # Build comprehensive node and edge lists
-    nodes = []  # {'id': str, 'label': str, 'type': str, 'table': str, 'page': str}
-    edges = []  # {'source': str, 'target': str, 'type': str}
-
-    # Track all unique entities
+    # Build comprehensive node lists
     all_measures: Set[str] = set()
     all_columns: Set[str] = set()
     all_visuals: Set[str] = set()
@@ -93,307 +96,174 @@ def generate_pbip_dependency_html(
     for column_key in column_to_field_params.keys():
         all_columns.add(column_key)
 
-    # Collect visuals and their dependencies
-    for visual_key, visual_deps in visual_dependencies.items():
+    # Collect visuals
+    for visual_key in visual_dependencies.keys():
         all_visuals.add(visual_key)
-        all_measures.update(visual_deps.get('measures', []))
-        all_columns.update(visual_deps.get('columns', []))
 
     # Collect field parameters
     for fp_list in column_to_field_params.values():
         all_field_params.update(fp_list)
 
-    # Build nodes list with sanitized IDs
-    node_id_map = {}  # original_key -> sanitized_id
+    # Pre-compute dependencies for EACH item
+    # This will be embedded as JSON in the HTML for client-side switching
+    item_dependencies = {}
 
-    def extract_table_and_name(key: str) -> tuple:
-        """Extract table and name from a key in Table[Name] format.
-
-        Returns (table, name) tuple. If key is malformed, returns best effort.
-        """
+    def extract_table_and_name(key: str) -> Tuple[str, str]:
+        """Extract table and name from a key in Table[Name] format."""
         if '[' in key and ']' in key:
             bracket_idx = key.index('[')
             table = key[:bracket_idx].strip()
             name = key[bracket_idx + 1:].rstrip(']').strip()
-            # Handle case where key starts with '[' (no table prefix)
             if not table and name:
-                # Try to find the table from model data (fallback to "Unresolved")
                 return ("Unresolved", name)
             return (table if table else "Unresolved", name if name else key)
         return ("Unresolved", key)
 
-    # Add measure nodes
+    # Build dependencies for each MEASURE
     for measure_key in sorted(all_measures):
-        node_id = sanitize_node_id(measure_key, "M")
-        node_id_map[measure_key] = node_id
         table, name = extract_table_and_name(measure_key)
-        nodes.append({
-            'id': node_id,
+        node_id = sanitize_node_id(measure_key, "M")
+
+        # Upstream: what this measure depends on (columns and measures)
+        upstream_measures = measure_to_measure.get(measure_key, [])
+        upstream_columns = measure_to_column.get(measure_key, [])
+
+        # Downstream: what depends on this measure
+        downstream_measures = measure_to_measure_reverse.get(measure_key, [])
+        downstream_visuals = []
+        for visual_key, visual_deps in visual_dependencies.items():
+            if measure_key in visual_deps.get('measures', []):
+                downstream_visuals.append({
+                    'key': visual_key,
+                    'page': visual_deps.get('page', ''),
+                    'visual_type': visual_deps.get('visual_type', '')
+                })
+
+        item_dependencies[measure_key] = {
             'key': measure_key,
-            'label': name,
+            'nodeId': node_id,
             'type': 'measure',
             'table': table,
-            'page': ''
-        })
+            'name': name,
+            'upstream': {
+                'measures': upstream_measures,
+                'columns': upstream_columns
+            },
+            'downstream': {
+                'measures': downstream_measures,
+                'visuals': downstream_visuals
+            }
+        }
 
-    # Add column nodes
+    # Build dependencies for each COLUMN
     for column_key in sorted(all_columns):
-        node_id = sanitize_node_id(column_key, "C")
-        node_id_map[column_key] = node_id
         table, name = extract_table_and_name(column_key)
-        nodes.append({
-            'id': node_id,
+        node_id = sanitize_node_id(column_key, "C")
+
+        # Downstream: what uses this column
+        downstream_measures = column_to_measure.get(column_key, [])
+        downstream_field_params = column_to_field_params.get(column_key, [])
+        downstream_visuals = []
+        for visual_key, visual_deps in visual_dependencies.items():
+            if column_key in visual_deps.get('columns', []):
+                downstream_visuals.append({
+                    'key': visual_key,
+                    'page': visual_deps.get('page', ''),
+                    'visual_type': visual_deps.get('visual_type', '')
+                })
+
+        item_dependencies[column_key] = {
             'key': column_key,
-            'label': name,
+            'nodeId': node_id,
             'type': 'column',
             'table': table,
-            'page': ''
-        })
+            'name': name,
+            'upstream': {
+                'measures': [],
+                'columns': []
+            },
+            'downstream': {
+                'measures': downstream_measures,
+                'visuals': downstream_visuals,
+                'fieldParams': downstream_field_params
+            }
+        }
 
-    # Add visual nodes
-    for visual_key in sorted(all_visuals):
-        node_id = sanitize_node_id(visual_key, "V")
-        node_id_map[visual_key] = node_id
-        visual_deps = visual_dependencies.get(visual_key, {})
-        page = visual_deps.get('page', '')
-        visual_type = visual_deps.get('visual_type', 'unknown')
-        nodes.append({
-            'id': node_id,
-            'key': visual_key,
-            'label': f"{visual_type}",
-            'type': 'visual',
-            'table': '',
-            'page': page,
-            'visual_type': visual_type
-        })
-
-    # Add field parameter nodes
+    # Build dependencies for each FIELD PARAMETER
     for fp_name in sorted(all_field_params):
         node_id = sanitize_node_id(fp_name, "FP")
-        node_id_map[fp_name] = node_id
-        nodes.append({
-            'id': node_id,
+
+        # Upstream: columns referenced by this field parameter
+        upstream_columns = []
+        for column_key, fp_list in column_to_field_params.items():
+            if fp_name in fp_list:
+                upstream_columns.append(column_key)
+
+        item_dependencies[fp_name] = {
             'key': fp_name,
-            'label': fp_name,
+            'nodeId': node_id,
             'type': 'field_parameter',
             'table': fp_name,
-            'page': ''
+            'name': fp_name,
+            'upstream': {
+                'measures': [],
+                'columns': upstream_columns
+            },
+            'downstream': {
+                'measures': [],
+                'visuals': []
+            }
+        }
+
+    # Build grouped data for sidebar
+    measures_by_table = {}
+    for measure_key in sorted(all_measures):
+        table, name = extract_table_and_name(measure_key)
+        if table not in measures_by_table:
+            measures_by_table[table] = []
+        measures_by_table[table].append({
+            'name': name,
+            'key': measure_key,
+            'nodeId': sanitize_node_id(measure_key, "M")
         })
 
-    # Build edges
-    # Measure -> Measure dependencies
-    for measure_key, deps in measure_to_measure.items():
-        source_id = node_id_map.get(measure_key)
-        if source_id:
-            for dep_key in deps:
-                target_id = node_id_map.get(dep_key)
-                if target_id:
-                    edges.append({
-                        'source': target_id,  # Dependency points TO the measure that uses it
-                        'target': source_id,
-                        'type': 'measure_to_measure'
-                    })
+    columns_by_table = {}
+    for column_key in sorted(all_columns):
+        table, name = extract_table_and_name(column_key)
+        if table not in columns_by_table:
+            columns_by_table[table] = []
+        columns_by_table[table].append({
+            'name': name,
+            'key': column_key,
+            'nodeId': sanitize_node_id(column_key, "C")
+        })
 
-    # Measure -> Column dependencies
-    for measure_key, cols in measure_to_column.items():
-        source_id = node_id_map.get(measure_key)
-        if source_id:
-            for col_key in cols:
-                target_id = node_id_map.get(col_key)
-                if target_id:
-                    edges.append({
-                        'source': target_id,  # Column points TO measure that uses it
-                        'target': source_id,
-                        'type': 'column_to_measure'
-                    })
+    field_params_list = []
+    for fp_name in sorted(all_field_params):
+        field_params_list.append({
+            'name': fp_name,
+            'key': fp_name,
+            'nodeId': sanitize_node_id(fp_name, "FP")
+        })
 
-    # Visual -> Measure/Column dependencies
-    for visual_key, visual_deps in visual_dependencies.items():
-        visual_id = node_id_map.get(visual_key)
-        if visual_id:
-            for measure_key in visual_deps.get('measures', []):
-                measure_id = node_id_map.get(measure_key)
-                if measure_id:
-                    edges.append({
-                        'source': measure_id,
-                        'target': visual_id,
-                        'type': 'measure_to_visual'
-                    })
-            for column_key in visual_deps.get('columns', []):
-                column_id = node_id_map.get(column_key)
-                if column_id:
-                    edges.append({
-                        'source': column_id,
-                        'target': visual_id,
-                        'type': 'column_to_visual'
-                    })
-
-    # Field Parameter -> Column dependencies
-    for column_key, fp_list in column_to_field_params.items():
-        column_id = node_id_map.get(column_key)
-        if column_id:
-            for fp_name in fp_list:
-                fp_id = node_id_map.get(fp_name)
-                if fp_id:
-                    edges.append({
-                        'source': column_id,
-                        'target': fp_id,
-                        'type': 'column_to_field_param'
-                    })
-
-    # Generate Mermaid diagram
-    mermaid_lines = ["flowchart LR"]
-    mermaid_lines.append("")
-    mermaid_lines.append("    %% PBIP Comprehensive Dependency Diagram")
-    mermaid_lines.append("")
-
-    # Group nodes by type into subgraphs
-    # Visuals subgraph
-    visual_nodes = [n for n in nodes if n['type'] == 'visual']
-    if visual_nodes:
-        # Group by page
-        pages = {}
-        for node in visual_nodes:
-            page = node['page'] or 'Unknown Page'
-            if page not in pages:
-                pages[page] = []
-            pages[page].append(node)
-
-        mermaid_lines.append("    subgraph Visuals[\"Visuals\"]")
-        mermaid_lines.append("    direction TB")
-        for page_name, page_nodes in sorted(pages.items()):
-            safe_page_id = sanitize_node_id(page_name, "PG")
-            mermaid_lines.append(f"        subgraph {safe_page_id}[\"{page_name}\"]")
-            for node in page_nodes:
-                mermaid_lines.append(f'            {node["id"]}["{node["label"]}"]:::visual')
-            mermaid_lines.append("        end")
-        mermaid_lines.append("    end")
-        mermaid_lines.append("")
-
-    # Measures subgraph
-    measure_nodes = [n for n in nodes if n['type'] == 'measure']
-    if measure_nodes:
-        # Group by table
-        tables = {}
-        for node in measure_nodes:
-            table = node['table'] or 'Unknown'
-            if table not in tables:
-                tables[table] = []
-            tables[table].append(node)
-
-        mermaid_lines.append("    subgraph Measures[\"Measures\"]")
-        mermaid_lines.append("    direction TB")
-        for table_name, table_nodes in sorted(tables.items()):
-            safe_table_id = sanitize_node_id(table_name, "TM")
-            mermaid_lines.append(f"        subgraph {safe_table_id}[\"{table_name}\"]")
-            for node in table_nodes[:20]:  # Limit per table to avoid huge diagrams
-                mermaid_lines.append(f'            {node["id"]}["{node["label"]}"]:::measure')
-            if len(table_nodes) > 20:
-                mermaid_lines.append(f'            {safe_table_id}_more["... +{len(table_nodes) - 20} more"]:::measure')
-            mermaid_lines.append("        end")
-        mermaid_lines.append("    end")
-        mermaid_lines.append("")
-
-    # Columns subgraph
-    column_nodes = [n for n in nodes if n['type'] == 'column']
-    if column_nodes:
-        # Group by table
-        tables = {}
-        for node in column_nodes:
-            table = node['table'] or 'Unknown'
-            if table not in tables:
-                tables[table] = []
-            tables[table].append(node)
-
-        mermaid_lines.append("    subgraph Columns[\"Columns\"]")
-        mermaid_lines.append("    direction TB")
-        for table_name, table_nodes in sorted(tables.items()):
-            safe_table_id = sanitize_node_id(table_name, "TC")
-            mermaid_lines.append(f"        subgraph {safe_table_id}[\"{table_name}\"]")
-            for node in table_nodes[:15]:  # Limit per table
-                mermaid_lines.append(f'            {node["id"]}["{node["label"]}"]:::column')
-            if len(table_nodes) > 15:
-                mermaid_lines.append(f'            {safe_table_id}_more["... +{len(table_nodes) - 15} more"]:::column')
-            mermaid_lines.append("        end")
-        mermaid_lines.append("    end")
-        mermaid_lines.append("")
-
-    # Field Parameters subgraph
-    fp_nodes = [n for n in nodes if n['type'] == 'field_parameter']
-    if fp_nodes:
-        mermaid_lines.append("    subgraph FieldParams[\"Field Parameters\"]")
-        mermaid_lines.append("    direction TB")
-        for node in fp_nodes:
-            mermaid_lines.append(f'        {node["id"]}["{node["label"]}"]:::fieldparam')
-        mermaid_lines.append("    end")
-        mermaid_lines.append("")
-
-    # Add edges (limit to prevent huge diagrams)
-    edge_count = 0
-    max_edges = 200
-    for edge in edges:
-        if edge_count >= max_edges:
-            mermaid_lines.append(f"    %% ... and {len(edges) - max_edges} more edges")
-            break
-        mermaid_lines.append(f"    {edge['source']} --> {edge['target']}")
-        edge_count += 1
-
-    # Add styles
-    mermaid_lines.append("")
-    mermaid_lines.append("    %% Styling")
-    mermaid_lines.append("    classDef visual fill:#FF9800,stroke:#F57C00,color:#fff,stroke-width:2px")
-    mermaid_lines.append("    classDef measure fill:#2196F3,stroke:#1565C0,color:#fff,stroke-width:2px")
-    mermaid_lines.append("    classDef column fill:#9C27B0,stroke:#7B1FA2,color:#fff,stroke-width:2px")
-    mermaid_lines.append("    classDef fieldparam fill:#4CAF50,stroke:#388E3C,color:#fff,stroke-width:2px")
-
-    mermaid_code = "\n".join(mermaid_lines)
+    # Determine initial selection
+    initial_item = None
+    if main_item and main_item in item_dependencies:
+        initial_item = main_item
+    elif all_measures:
+        # Default to first measure
+        initial_item = sorted(all_measures)[0]
+    elif all_columns:
+        initial_item = sorted(all_columns)[0]
+    elif all_field_params:
+        initial_item = sorted(all_field_params)[0]
 
     # Prepare JSON data for JavaScript
-    nodes_json = json.dumps(nodes)
-    edges_json = json.dumps(edges)
-    summary_json = json.dumps(summary)
-
-    # Prepare category lists for filtering
-    measure_ids = json.dumps([n['id'] for n in nodes if n['type'] == 'measure'])
-    column_ids = json.dumps([n['id'] for n in nodes if n['type'] == 'column'])
-    visual_ids = json.dumps([n['id'] for n in nodes if n['type'] == 'visual'])
-    field_param_ids = json.dumps([n['id'] for n in nodes if n['type'] == 'field_parameter'])
-
-    # Prepare grouped data for panels
-    measures_by_table = {}
-    for node in nodes:
-        if node['type'] == 'measure':
-            table = node['table'] or 'Unknown'
-            if table not in measures_by_table:
-                measures_by_table[table] = []
-            measures_by_table[table].append({'name': node['label'], 'key': node['key']})
-
-    columns_by_table = {}
-    for node in nodes:
-        if node['type'] == 'column':
-            table = node['table'] or 'Unknown'
-            if table not in columns_by_table:
-                columns_by_table[table] = []
-            columns_by_table[table].append({'name': node['label'], 'key': node['key']})
-
-    visuals_by_page = {}
-    for node in nodes:
-        if node['type'] == 'visual':
-            page = node['page'] or 'Unknown'
-            if page not in visuals_by_page:
-                visuals_by_page[page] = []
-            visuals_by_page[page].append({
-                'name': node['label'],
-                'key': node['key'],
-                'visual_type': node.get('visual_type', '')
-            })
-
-    field_params_list = [{'name': n['label'], 'key': n['key']} for n in nodes if n['type'] == 'field_parameter']
-
+    item_dependencies_json = json.dumps(item_dependencies)
     measures_by_table_json = json.dumps(measures_by_table)
     columns_by_table_json = json.dumps(columns_by_table)
-    visuals_by_page_json = json.dumps(visuals_by_page)
     field_params_json = json.dumps(field_params_list)
+    initial_item_json = json.dumps(initial_item)
 
     timestamp = datetime.now().strftime("%B %d, %Y at %H:%M")
 
@@ -416,9 +286,11 @@ def generate_pbip_dependency_html(
             --measure-color: #2196F3;
             --column-color: #9C27B0;
             --fieldparam-color: #4CAF50;
-            --bg-dark: #09090b;
+            --bg-dark: #0a0a0f;
+            --bg-sidebar: #0d0d14;
             --bg-card: rgba(24, 24, 27, 0.8);
             --bg-elevated: rgba(39, 39, 42, 0.6);
+            --bg-hover: rgba(99, 102, 241, 0.1);
             --border: rgba(63, 63, 70, 0.5);
             --border-light: rgba(82, 82, 91, 0.3);
             --text: #fafafa;
@@ -438,296 +310,156 @@ def generate_pbip_dependency_html(
             color: var(--text);
             min-height: 100vh;
             line-height: 1.6;
-            overflow-x: hidden;
-        }}
-
-        .bg-pattern {{
-            position: fixed;
-            inset: 0;
-            z-index: -1;
-            background:
-                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.15), transparent),
-                radial-gradient(ellipse 60% 40% at 80% 100%, rgba(139, 92, 246, 0.1), transparent),
-                radial-gradient(ellipse 40% 30% at 10% 60%, rgba(79, 172, 254, 0.08), transparent);
-        }}
-
-        .container {{
-            max-width: 1800px;
-            margin: 0 auto;
-            padding: 2rem;
-            position: relative;
-        }}
-
-        .header {{
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 2rem;
-            gap: 2rem;
-        }}
-
-        .brand {{
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }}
-
-        .brand-icon {{
-            width: 56px;
-            height: 56px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.75rem;
-            box-shadow: 0 8px 32px rgba(99, 102, 241, 0.3);
-        }}
-
-        .brand-text h1 {{
-            font-size: 1.5rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, #fff 0%, #a1a1aa 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }}
-
-        .brand-text span {{
-            font-size: 0.875rem;
-            color: var(--text-muted);
-        }}
-
-        .timestamp {{
-            padding: 0.625rem 1rem;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            font-size: 0.8125rem;
-            color: var(--text-secondary);
-            font-family: 'JetBrains Mono', monospace;
-        }}
-
-        .hero-card {{
-            background: var(--bg-card);
-            backdrop-filter: blur(20px);
-            border: 1px solid var(--border);
-            border-radius: 24px;
-            padding: 2rem;
-            margin-bottom: 1.5rem;
-            position: relative;
             overflow: hidden;
         }}
 
-        .hero-card::before {{
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, var(--accent-light), transparent);
-        }}
-
-        .hero-label {{
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            color: var(--accent-light);
-            margin-bottom: 1rem;
-        }}
-
-        .hero-title {{
-            font-size: 2rem;
-            font-weight: 800;
-            margin-bottom: 0.5rem;
-        }}
-
-        .hero-subtitle {{
-            color: var(--text-muted);
-            font-size: 1rem;
-        }}
-
-        /* Stats Row */
-        .stats-row {{
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-        }}
-
-        .stat-card {{
-            background: var(--bg-card);
-            backdrop-filter: blur(20px);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 1.25rem;
-            text-align: center;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            cursor: pointer;
-        }}
-
-        .stat-card:hover {{
-            transform: translateY(-4px);
-            border-color: var(--accent);
-            box-shadow: 0 20px 40px -20px var(--accent-glow);
-        }}
-
-        .stat-card.active {{
-            border-color: var(--accent);
-            box-shadow: 0 0 20px var(--accent-glow);
-        }}
-
-        .stat-value {{
-            font-size: 2rem;
-            font-weight: 800;
-            font-family: 'JetBrains Mono', monospace;
-            line-height: 1.2;
-        }}
-
-        .stat-card.visual .stat-value {{ color: var(--visual-color); }}
-        .stat-card.measure .stat-value {{ color: var(--measure-color); }}
-        .stat-card.column .stat-value {{ color: var(--column-color); }}
-        .stat-card.fieldparam .stat-value {{ color: var(--fieldparam-color); }}
-        .stat-card.all .stat-value {{ color: var(--accent-light); }}
-
-        .stat-label {{
-            font-size: 0.8125rem;
-            color: var(--text-muted);
-            margin-top: 0.5rem;
-            font-weight: 500;
-        }}
-
-        /* Filter Section */
-        .filter-section {{
-            background: var(--bg-card);
-            backdrop-filter: blur(20px);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 1rem 1.5rem;
-            margin-bottom: 1.5rem;
+        .app-container {{
             display: flex;
-            align-items: center;
-            gap: 1rem;
-            flex-wrap: wrap;
+            height: 100vh;
+            overflow: hidden;
         }}
 
-        .filter-label {{
-            font-weight: 600;
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-        }}
-
-        .filter-group {{
-            display: flex;
-            gap: 0.25rem;
-            background: var(--bg-dark);
-            padding: 0.25rem;
-            border-radius: 10px;
-            border: 1px solid var(--border);
-        }}
-
-        .btn-filter {{
-            background: transparent;
-            color: var(--text-muted);
-            border: none;
-            padding: 0.5rem 1rem;
-            font-size: 0.8125rem;
-            font-weight: 600;
-            border-radius: 8px;
-            transition: all 0.2s;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }}
-
-        .btn-filter:hover {{
-            color: var(--text);
-            background: var(--bg-elevated);
-        }}
-
-        .btn-filter.active {{
-            background: var(--accent);
-            color: white;
-            box-shadow: 0 2px 8px var(--accent-glow);
-        }}
-
-        .btn-filter .dot {{
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-        }}
-
-        .btn-filter.visual .dot {{ background: var(--visual-color); }}
-        .btn-filter.measure .dot {{ background: var(--measure-color); }}
-        .btn-filter.column .dot {{ background: var(--column-color); }}
-        .btn-filter.fieldparam .dot {{ background: var(--fieldparam-color); }}
-
-        /* Main Content Grid */
-        .content-grid {{
-            display: grid;
-            grid-template-columns: 300px 1fr;
-            gap: 1.5rem;
-        }}
-
-        /* Sidebar Panels */
+        /* Left Sidebar - Model Browser */
         .sidebar {{
+            width: 320px;
+            min-width: 320px;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
-            gap: 1rem;
-        }}
-
-        .panel {{
-            background: var(--bg-card);
-            backdrop-filter: blur(20px);
-            border: 1px solid var(--border);
-            border-radius: 16px;
             overflow: hidden;
         }}
 
-        .panel-header {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem 1.25rem;
-            background: var(--bg-elevated);
+        .sidebar-header {{
+            padding: 1.25rem;
             border-bottom: 1px solid var(--border);
-            cursor: pointer;
+            background: linear-gradient(180deg, rgba(99, 102, 241, 0.08) 0%, transparent 100%);
         }}
 
-        .panel-header:hover {{
-            background: rgba(99, 102, 241, 0.1);
-        }}
-
-        .panel-title {{
+        .sidebar-title {{
             display: flex;
             align-items: center;
             gap: 0.75rem;
+            font-size: 1rem;
             font-weight: 600;
-            font-size: 0.875rem;
+            color: var(--text);
+            margin-bottom: 0.5rem;
         }}
 
-        .panel-icon {{
-            width: 24px;
-            height: 24px;
-            border-radius: 6px;
+        .sidebar-title-icon {{
+            font-size: 1.25rem;
+        }}
+
+        .sidebar-subtitle {{
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }}
+
+        .sidebar-search {{
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }}
+
+        .search-input {{
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 0.8125rem;
+            font-family: inherit;
+        }}
+
+        .search-input::placeholder {{
+            color: var(--text-muted);
+        }}
+
+        .search-input:focus {{
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }}
+
+        .sidebar-content {{
+            flex: 1;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
+        }}
+
+        .sidebar-content::-webkit-scrollbar {{
+            width: 6px;
+        }}
+
+        .sidebar-content::-webkit-scrollbar-track {{
+            background: transparent;
+        }}
+
+        .sidebar-content::-webkit-scrollbar-thumb {{
+            background: var(--border);
+            border-radius: 3px;
+        }}
+
+        /* Category Panels */
+        .category-panel {{
+            border-bottom: 1px solid var(--border);
+        }}
+
+        .category-header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.875rem 1rem;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.2s;
+        }}
+
+        .category-header:hover {{
+            background: var(--bg-hover);
+        }}
+
+        .category-title {{
+            display: flex;
+            align-items: center;
+            gap: 0.625rem;
+        }}
+
+        .category-icon {{
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 0.75rem;
+            font-size: 0.875rem;
         }}
 
-        .panel-icon.visual {{ background: var(--visual-color); }}
-        .panel-icon.measure {{ background: var(--measure-color); }}
-        .panel-icon.column {{ background: var(--column-color); }}
-        .panel-icon.fieldparam {{ background: var(--fieldparam-color); }}
+        .category-icon.measure {{
+            background: linear-gradient(135deg, #2196F3, #1976D2);
+        }}
 
-        .panel-count {{
+        .category-icon.column {{
+            background: linear-gradient(135deg, #9C27B0, #7B1FA2);
+        }}
+
+        .category-icon.fieldparam {{
+            background: linear-gradient(135deg, #4CAF50, #388E3C);
+        }}
+
+        .category-name {{
+            font-size: 0.875rem;
+            font-weight: 600;
+        }}
+
+        .category-badge {{
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }}
+
+        .category-count {{
             background: var(--accent);
             color: white;
             font-size: 0.6875rem;
@@ -737,70 +469,51 @@ def generate_pbip_dependency_html(
             font-family: 'JetBrains Mono', monospace;
         }}
 
-        .panel-content {{
-            max-height: 250px;
-            overflow-y: auto;
-            scrollbar-width: thin;
-            scrollbar-color: var(--border) transparent;
-        }}
-
-        .panel-content::-webkit-scrollbar {{
-            width: 6px;
-        }}
-
-        .panel-content::-webkit-scrollbar-track {{
-            background: transparent;
-        }}
-
-        .panel-content::-webkit-scrollbar-thumb {{
-            background: var(--border);
-            border-radius: 3px;
-        }}
-
-        .panel.collapsed .panel-content {{
-            display: none;
-        }}
-
-        .panel-header .chevron {{
-            transition: transform 0.2s;
-            font-size: 0.75rem;
+        .category-chevron {{
             color: var(--text-muted);
+            font-size: 0.75rem;
+            transition: transform 0.2s;
         }}
 
-        .panel.collapsed .chevron {{
+        .category-panel.collapsed .category-chevron {{
             transform: rotate(-90deg);
         }}
 
-        .table-group {{
-            border-bottom: 1px solid var(--border);
+        .category-content {{
+            display: block;
         }}
 
-        .table-group:last-child {{
-            border-bottom: none;
+        .category-panel.collapsed .category-content {{
+            display: none;
+        }}
+
+        /* Table Groups */
+        .table-group {{
+            border-top: 1px solid var(--border-light);
         }}
 
         .table-group-header {{
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0.625rem 1rem;
-            background: rgba(99, 102, 241, 0.05);
+            padding: 0.5rem 1rem 0.5rem 1.25rem;
             cursor: pointer;
+            background: rgba(99, 102, 241, 0.03);
             transition: background 0.2s;
-            font-size: 0.8125rem;
         }}
 
         .table-group-header:hover {{
-            background: rgba(99, 102, 241, 0.1);
+            background: rgba(99, 102, 241, 0.08);
         }}
 
         .table-group-name {{
+            font-size: 0.75rem;
             color: var(--accent-light);
             font-weight: 500;
         }}
 
         .table-group-count {{
-            font-size: 0.6875rem;
+            font-size: 0.625rem;
             color: var(--text-muted);
             background: var(--bg-elevated);
             padding: 0.125rem 0.375rem;
@@ -815,71 +528,109 @@ def generate_pbip_dependency_html(
             display: none;
         }}
 
+        /* Items */
         .item {{
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            padding: 0.375rem 1rem 0.375rem 1.5rem;
-            font-size: 0.75rem;
-            color: var(--text-secondary);
-            transition: all 0.2s;
+            padding: 0.375rem 1rem 0.375rem 2rem;
             cursor: pointer;
+            transition: all 0.15s;
         }}
 
         .item:hover {{
-            background: var(--bg-elevated);
-            color: var(--text);
+            background: var(--bg-hover);
         }}
 
-        .item-icon {{
-            font-size: 0.5rem;
+        .item.selected {{
+            background: var(--accent);
+            color: white;
         }}
 
-        .item.visual .item-icon {{ color: var(--visual-color); }}
-        .item.measure .item-icon {{ color: var(--measure-color); }}
-        .item.column .item-icon {{ color: var(--column-color); }}
-        .item.fieldparam .item-icon {{ color: var(--fieldparam-color); }}
+        .item.selected .item-name {{
+            color: white;
+        }}
+
+        .item-dot {{
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }}
+
+        .item.measure .item-dot {{
+            background: var(--measure-color);
+        }}
+
+        .item.column .item-dot {{
+            background: var(--column-color);
+        }}
+
+        .item.fieldparam .item-dot {{
+            background: var(--fieldparam-color);
+        }}
+
+        .item.selected .item-dot {{
+            background: white;
+        }}
 
         .item-name {{
+            font-size: 0.75rem;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 0.6875rem;
-        }}
-
-        /* Diagram Container */
-        .diagram-wrapper {{
-            background: var(--bg-card);
-            backdrop-filter: blur(20px);
-            border: 1px solid var(--border);
-            border-radius: 24px;
+            color: var(--text-secondary);
+            white-space: nowrap;
             overflow: hidden;
-            position: relative;
+            text-overflow: ellipsis;
         }}
 
-        .diagram-header {{
+        /* Main Content Area */
+        .main-content {{
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: var(--bg-dark);
+        }}
+
+        .main-header {{
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 1rem 1.5rem;
-            border-bottom: 1px solid var(--border);
-            background: var(--bg-elevated);
+            background: var(--bg-card);
         }}
 
-        .diagram-title {{
+        .main-title {{
             display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            font-weight: 600;
+            flex-direction: column;
+            gap: 0.25rem;
+        }}
+
+        .main-title h1 {{
+            font-size: 1.125rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #fff 0%, #a1a1aa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }}
+
+        .main-title span {{
+            font-size: 0.75rem;
+            color: var(--text-muted);
         }}
 
         .toolbar {{
             display: flex;
             gap: 0.5rem;
+            align-items: center;
         }}
 
         .btn {{
             display: inline-flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.375rem;
             padding: 0.5rem 0.875rem;
             font-size: 0.75rem;
             font-weight: 500;
@@ -911,101 +662,123 @@ def generate_pbip_dependency_html(
             background: var(--accent-light);
         }}
 
-        .diagram-content {{
-            padding: 2rem;
-            min-height: 600px;
+        .timestamp {{
+            font-size: 0.6875rem;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }}
+
+        /* Diagram Area */
+        .diagram-area {{
+            flex: 1;
             display: flex;
-            justify-content: center;
-            align-items: flex-start;
+            flex-direction: column;
+            overflow: hidden;
+        }}
+
+        .selected-item-info {{
+            padding: 1rem 1.5rem;
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+        }}
+
+        .selected-item-badge {{
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+        }}
+
+        .selected-item-type {{
+            font-size: 0.625rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+            font-weight: 600;
+        }}
+
+        .selected-item-type.measure {{
+            background: var(--measure-color);
+            color: white;
+        }}
+
+        .selected-item-type.column {{
+            background: var(--column-color);
+            color: white;
+        }}
+
+        .selected-item-type.field_parameter {{
+            background: var(--fieldparam-color);
+            color: white;
+        }}
+
+        .selected-item-name {{
+            font-size: 0.875rem;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }}
+
+        .dependency-stats {{
+            display: flex;
+            gap: 1.5rem;
+            margin-top: 0.75rem;
+        }}
+
+        .dep-stat {{
+            display: flex;
+            align-items: center;
+            gap: 0.375rem;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }}
+
+        .dep-stat-value {{
+            font-weight: 600;
+            color: var(--text);
+            font-family: 'JetBrains Mono', monospace;
+        }}
+
+        .diagram-container {{
+            flex: 1;
+            overflow: auto;
+            padding: 1.5rem;
             background:
                 radial-gradient(ellipse at center, rgba(99, 102, 241, 0.03), transparent 70%),
                 linear-gradient(180deg, transparent, rgba(0,0,0,0.2));
-            overflow: auto;
         }}
 
         .mermaid {{
-            width: 100%;
-            min-width: 1000px;
+            display: flex;
+            justify-content: center;
         }}
 
         .mermaid svg {{
-            width: 100% !important;
-            height: auto !important;
-            min-height: 500px;
+            max-width: 100%;
+            height: auto;
         }}
 
-        /* Node hover and click styles */
-        .mermaid svg g.node {{
-            cursor: pointer;
-            transition: opacity 0.3s ease, filter 0.3s ease;
+        .no-diagram {{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-muted);
+            text-align: center;
         }}
 
-        .mermaid svg g.node:hover {{
-            filter: brightness(1.2);
+        .no-diagram-icon {{
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
         }}
 
-        .mermaid svg.filter-active g.node {{
-            opacity: 0.15;
-        }}
-
-        .mermaid svg.filter-active g.node.node-visible {{
-            opacity: 1;
-        }}
-
-        .mermaid svg.filter-active g.edgePath {{
-            opacity: 0.1;
-        }}
-
-        .mermaid svg.filter-active g.edgePath.edge-visible {{
-            opacity: 1;
-        }}
-
-        .mermaid svg.filter-active g.cluster {{
-            opacity: 0.3;
-        }}
-
-        .mermaid svg.filter-active g.cluster.cluster-visible {{
-            opacity: 1;
-        }}
-
-        /* Selection mode styles - when a node is clicked */
-        .mermaid svg.selection-active g.node {{
-            opacity: 0.2;
-        }}
-
-        .mermaid svg.selection-active g.node.node-selected {{
-            opacity: 1;
-            filter: brightness(1.3) drop-shadow(0 0 8px rgba(0, 255, 255, 0.8));
-        }}
-
-        .mermaid svg.selection-active g.node.node-connected {{
-            opacity: 1;
-        }}
-
-        .mermaid svg.selection-active g.edgePath {{
-            opacity: 0;
-        }}
-
-        .mermaid svg.selection-active g.edgePath.edge-selected {{
-            opacity: 1;
-        }}
-
-        .mermaid svg.selection-active g.edgePath.edge-selected path {{
-            stroke: #00ffff !important;
-            stroke-width: 3px !important;
-        }}
-
-        .mermaid svg.selection-active g.edgePath.edge-selected marker path {{
-            fill: #00ffff !important;
-            stroke: #00ffff !important;
-        }}
-
-        .mermaid svg.selection-active g.cluster {{
-            opacity: 0.3;
-        }}
-
-        .mermaid svg.selection-active g.cluster.cluster-has-selection {{
-            opacity: 1;
+        .no-diagram-text {{
+            font-size: 0.875rem;
         }}
 
         /* Legend */
@@ -1015,7 +788,7 @@ def generate_pbip_dependency_html(
             gap: 2rem;
             padding: 1rem;
             border-top: 1px solid var(--border);
-            background: var(--bg-elevated);
+            background: var(--bg-card);
             flex-wrap: wrap;
         }}
 
@@ -1023,7 +796,7 @@ def generate_pbip_dependency_html(
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            font-size: 0.8125rem;
+            font-size: 0.75rem;
             color: var(--text-secondary);
         }}
 
@@ -1033,245 +806,193 @@ def generate_pbip_dependency_html(
             border-radius: 4px;
         }}
 
-        .legend-dot.visual {{ background: var(--visual-color); }}
-        .legend-dot.measure {{ background: var(--measure-color); }}
-        .legend-dot.column {{ background: var(--column-color); }}
-        .legend-dot.fieldparam {{ background: var(--fieldparam-color); }}
-
-        /* Footer */
-        .footer {{
-            text-align: center;
-            padding: 2rem;
-            color: var(--text-muted);
-            font-size: 0.8125rem;
+        .legend-dot.measure {{
+            background: var(--measure-color);
         }}
 
-        .footer strong {{
-            color: var(--text-secondary);
+        .legend-dot.column {{
+            background: var(--column-color);
+        }}
+
+        .legend-dot.fieldparam {{
+            background: var(--fieldparam-color);
+        }}
+
+        .legend-dot.visual {{
+            background: var(--visual-color);
+        }}
+
+        .legend-dot.selected {{
+            background: #00ffff;
         }}
 
         /* Responsive */
-        @media (max-width: 1200px) {{
-            .content-grid {{
-                grid-template-columns: 1fr;
+        @media (max-width: 900px) {{
+            .sidebar {{
+                width: 280px;
+                min-width: 280px;
+            }}
+        }}
+
+        @media (max-width: 700px) {{
+            .app-container {{
+                flex-direction: column;
             }}
             .sidebar {{
-                flex-direction: row;
-                flex-wrap: wrap;
-            }}
-            .panel {{
-                flex: 1;
-                min-width: 250px;
-            }}
-        }}
-
-        @media (max-width: 900px) {{
-            .stats-row {{
-                grid-template-columns: repeat(3, 1fr);
-            }}
-        }}
-
-        @media (max-width: 600px) {{
-            .stats-row {{
-                grid-template-columns: repeat(2, 1fr);
-            }}
-            .filter-section {{
-                flex-direction: column;
-                align-items: stretch;
+                width: 100%;
+                max-height: 40vh;
             }}
         }}
     </style>
 </head>
 <body>
-    <div class="bg-pattern"></div>
-
-    <div class="container">
-        <!-- Header -->
-        <header class="header">
-            <div class="brand">
-                <div class="brand-icon">🔗</div>
-                <div class="brand-text">
-                    <h1>PBIP Dependency Analysis</h1>
-                    <span>Comprehensive Model Explorer</span>
+    <div class="app-container">
+        <!-- Left Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-title">
+                    <span class="sidebar-title-icon">📊</span>
+                    <span>{model_name}</span>
                 </div>
+                <div class="sidebar-subtitle">Model Browser - Click to view dependencies</div>
             </div>
-            <div class="timestamp">{timestamp}</div>
-        </header>
 
-        <!-- Hero Card -->
-        <div class="hero-card">
-            <div class="hero-label">Analyzing Model</div>
-            <h2 class="hero-title">{model_name}</h2>
-            <p class="hero-subtitle">Visualizing dependencies across Visuals, Measures, Columns, and Field Parameters</p>
-        </div>
+            <div class="sidebar-search">
+                <input type="text" class="search-input" id="search-input" placeholder="Search measures, columns...">
+            </div>
 
-        <!-- Stats Row (clickable filters) -->
-        <div class="stats-row">
-            <div class="stat-card all active" onclick="setFilter('all')">
-                <div class="stat-value">{len(nodes)}</div>
-                <div class="stat-label">All Objects</div>
-            </div>
-            <div class="stat-card visual" onclick="setFilter('visual')">
-                <div class="stat-value">{len(visual_nodes)}</div>
-                <div class="stat-label">Visuals</div>
-            </div>
-            <div class="stat-card measure" onclick="setFilter('measure')">
-                <div class="stat-value">{len(measure_nodes)}</div>
-                <div class="stat-label">Measures</div>
-            </div>
-            <div class="stat-card column" onclick="setFilter('column')">
-                <div class="stat-value">{len(column_nodes)}</div>
-                <div class="stat-label">Columns</div>
-            </div>
-            <div class="stat-card fieldparam" onclick="setFilter('field_parameter')">
-                <div class="stat-value">{len(fp_nodes)}</div>
-                <div class="stat-label">Field Params</div>
-            </div>
-        </div>
-
-        <!-- Filter Section -->
-        <div class="filter-section">
-            <span class="filter-label">Filter by Type:</span>
-            <div class="filter-group">
-                <button class="btn-filter active" id="filter-all" onclick="setFilter('all')">All</button>
-                <button class="btn-filter visual" id="filter-visual" onclick="setFilter('visual')">
-                    <span class="dot"></span> Visuals
-                </button>
-                <button class="btn-filter measure" id="filter-measure" onclick="setFilter('measure')">
-                    <span class="dot"></span> Measures
-                </button>
-                <button class="btn-filter column" id="filter-column" onclick="setFilter('column')">
-                    <span class="dot"></span> Columns
-                </button>
-                <button class="btn-filter fieldparam" id="filter-field_parameter" onclick="setFilter('field_parameter')">
-                    <span class="dot"></span> Field Params
-                </button>
-            </div>
-            <span class="filter-label" style="margin-left: auto;">Showing: <span id="visible-count">{len(nodes)}</span> objects</span>
-        </div>
-
-        <!-- Main Content -->
-        <div class="content-grid">
-            <!-- Sidebar -->
-            <div class="sidebar">
-                <!-- Visuals Panel -->
-                <div class="panel" id="panel-visuals">
-                    <div class="panel-header" onclick="togglePanel('visuals')">
-                        <div class="panel-title">
-                            <div class="panel-icon visual">📊</div>
-                            <span>Visuals</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span class="panel-count">{len(visual_nodes)}</span>
-                            <span class="chevron">▼</span>
-                        </div>
-                    </div>
-                    <div class="panel-content" id="content-visuals">
-                        <!-- Populated by JS -->
-                    </div>
-                </div>
-
+            <div class="sidebar-content" id="sidebar-content">
                 <!-- Measures Panel -->
-                <div class="panel" id="panel-measures">
-                    <div class="panel-header" onclick="togglePanel('measures')">
-                        <div class="panel-title">
-                            <div class="panel-icon measure">📐</div>
-                            <span>Measures</span>
+                <div class="category-panel" id="panel-measures">
+                    <div class="category-header" onclick="toggleCategory('measures')">
+                        <div class="category-title">
+                            <div class="category-icon measure">📐</div>
+                            <span class="category-name">Measures</span>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span class="panel-count">{len(measure_nodes)}</span>
-                            <span class="chevron">▼</span>
+                        <div class="category-badge">
+                            <span class="category-count" id="count-measures">{len(all_measures)}</span>
+                            <span class="category-chevron">▼</span>
                         </div>
                     </div>
-                    <div class="panel-content" id="content-measures">
+                    <div class="category-content" id="content-measures">
                         <!-- Populated by JS -->
                     </div>
                 </div>
 
                 <!-- Columns Panel -->
-                <div class="panel collapsed" id="panel-columns">
-                    <div class="panel-header" onclick="togglePanel('columns')">
-                        <div class="panel-title">
-                            <div class="panel-icon column">📋</div>
-                            <span>Columns</span>
+                <div class="category-panel collapsed" id="panel-columns">
+                    <div class="category-header" onclick="toggleCategory('columns')">
+                        <div class="category-title">
+                            <div class="category-icon column">📋</div>
+                            <span class="category-name">Columns</span>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span class="panel-count">{len(column_nodes)}</span>
-                            <span class="chevron">▼</span>
+                        <div class="category-badge">
+                            <span class="category-count" id="count-columns">{len(all_columns)}</span>
+                            <span class="category-chevron">▼</span>
                         </div>
                     </div>
-                    <div class="panel-content" id="content-columns">
+                    <div class="category-content" id="content-columns">
                         <!-- Populated by JS -->
                     </div>
                 </div>
 
                 <!-- Field Parameters Panel -->
-                <div class="panel" id="panel-fieldparams">
-                    <div class="panel-header" onclick="togglePanel('fieldparams')">
-                        <div class="panel-title">
-                            <div class="panel-icon fieldparam">🎛️</div>
-                            <span>Field Parameters</span>
+                <div class="category-panel" id="panel-fieldparams">
+                    <div class="category-header" onclick="toggleCategory('fieldparams')">
+                        <div class="category-title">
+                            <div class="category-icon fieldparam">🎛️</div>
+                            <span class="category-name">Field Parameters</span>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span class="panel-count">{len(fp_nodes)}</span>
-                            <span class="chevron">▼</span>
+                        <div class="category-badge">
+                            <span class="category-count" id="count-fieldparams">{len(all_field_params)}</span>
+                            <span class="category-chevron">▼</span>
                         </div>
                     </div>
-                    <div class="panel-content" id="content-fieldparams">
+                    <div class="category-content" id="content-fieldparams">
                         <!-- Populated by JS -->
                     </div>
                 </div>
             </div>
+        </aside>
 
-            <!-- Diagram -->
-            <div class="diagram-wrapper">
-                <div class="diagram-header">
-                    <div class="diagram-title">
-                        <span>🔗</span>
-                        <span>Dependency Graph</span>
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="main-header">
+                <div class="main-title">
+                    <h1>PBIP Dependency Analysis</h1>
+                    <span class="timestamp">Generated: {timestamp}</span>
+                </div>
+                <div class="toolbar">
+                    <button class="btn btn-ghost" onclick="zoomIn()">🔍+ Zoom</button>
+                    <button class="btn btn-ghost" onclick="zoomOut()">🔍- Zoom</button>
+                    <button class="btn btn-ghost" onclick="resetZoom()">↺ Reset</button>
+                    <button class="btn btn-primary" onclick="downloadSVG()">💾 Download SVG</button>
+                </div>
+            </header>
+
+            <div class="diagram-area">
+                <div class="selected-item-info" id="selected-item-info">
+                    <div class="selected-item-badge">
+                        <span class="selected-item-type" id="selected-type">MEASURE</span>
+                        <span class="selected-item-name" id="selected-name">Select an item</span>
                     </div>
-                    <div class="toolbar">
-                        <button class="btn btn-ghost" onclick="zoomIn()">🔍+ Zoom In</button>
-                        <button class="btn btn-ghost" onclick="zoomOut()">🔍- Zoom Out</button>
-                        <button class="btn btn-ghost" onclick="resetZoom()">↺ Reset</button>
-                        <button class="btn btn-primary" onclick="downloadSVG()">💾 Download SVG</button>
+                    <div class="dependency-stats" id="dependency-stats">
+                        <div class="dep-stat">
+                            <span>Upstream:</span>
+                            <span class="dep-stat-value" id="stat-upstream">0</span>
+                        </div>
+                        <div class="dep-stat">
+                            <span>Downstream:</span>
+                            <span class="dep-stat-value" id="stat-downstream">0</span>
+                        </div>
                     </div>
                 </div>
-                <div class="diagram-content" id="diagram-content">
-                    <pre class="mermaid" id="mermaid-diagram">
-{mermaid_code}
-                    </pre>
+
+                <div class="diagram-container" id="diagram-container">
+                    <div class="mermaid" id="mermaid-diagram"></div>
                 </div>
+
                 <div class="legend">
                     <div class="legend-item">
-                        <div class="legend-dot visual"></div>
-                        <span>Visuals ({len(visual_nodes)})</span>
+                        <div class="legend-dot selected"></div>
+                        <span>Selected Item</span>
                     </div>
                     <div class="legend-item">
                         <div class="legend-dot measure"></div>
-                        <span>Measures ({len(measure_nodes)})</span>
+                        <span>Measure</span>
                     </div>
                     <div class="legend-item">
                         <div class="legend-dot column"></div>
-                        <span>Columns ({len(column_nodes)})</span>
+                        <span>Column</span>
                     </div>
                     <div class="legend-item">
                         <div class="legend-dot fieldparam"></div>
-                        <span>Field Parameters ({len(fp_nodes)})</span>
+                        <span>Field Parameter</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-dot visual"></div>
+                        <span>Visual</span>
                     </div>
                 </div>
             </div>
-        </div>
-
-        <!-- Footer -->
-        <footer class="footer">
-            Generated by <strong>MCP-PowerBi-Finvision</strong> - PBIP Dependency Analysis
-        </footer>
+        </main>
     </div>
 
     <script>
+        // Data from Python
+        const itemDependencies = {item_dependencies_json};
+        const measuresByTable = {measures_by_table_json};
+        const columnsByTable = {columns_by_table_json};
+        const fieldParamsList = {field_params_json};
+        const initialItem = {initial_item_json};
+
+        // State
+        let currentSelectedItem = null;
+        let currentZoom = 1;
+
+        // Mermaid configuration
         mermaid.initialize({{
-            startOnLoad: true,
+            startOnLoad: false,
             theme: 'dark',
             themeVariables: {{
                 primaryColor: '#6366f1',
@@ -1294,74 +1015,366 @@ def generate_pbip_dependency_html(
             flowchart: {{
                 htmlLabels: true,
                 curve: 'basis',
-                nodeSpacing: 60,
-                rankSpacing: 80,
-                padding: 20,
-                useMaxWidth: false
+                nodeSpacing: 50,
+                rankSpacing: 70,
+                padding: 15,
+                useMaxWidth: true
             }},
             securityLevel: 'loose'
         }});
 
-        // Data from Python
-        const allNodes = {nodes_json};
-        const allEdges = {edges_json};
-        const measureIds = {measure_ids};
-        const columnIds = {column_ids};
-        const visualIds = {visual_ids};
-        const fieldParamIds = {field_param_ids};
+        // Sanitize node ID for Mermaid
+        function sanitizeNodeId(name, prefix = 'N') {{
+            let clean = name.replace(/[\\[\\]]/g, '_').replace(/\\s/g, '_');
+            clean = clean.replace(/[-\\/\\\\()%&'".,:\\+\\*=<>!#@$]/g, '_');
+            clean = clean.replace(/_+/g, '_').replace(/^_|_$/g, '');
+            return prefix + '_' + (clean || 'node');
+        }}
 
-        const measuresByTable = {measures_by_table_json};
-        const columnsByTable = {columns_by_table_json};
-        const visualsByPage = {visuals_by_page_json};
-        const fieldParamsList = {field_params_json};
+        // Generate Mermaid diagram for selected item
+        function generateDiagramForItem(itemKey) {{
+            const item = itemDependencies[itemKey];
+            if (!item) {{
+                return 'flowchart LR\\n    nodata[No data available]';
+            }}
 
-        // Node type to IDs mapping
-        const typeToIds = {{
-            'all': allNodes.map(n => n.id),
-            'visual': visualIds,
-            'measure': measureIds,
-            'column': columnIds,
-            'field_parameter': fieldParamIds
-        }};
+            const lines = ['flowchart LR'];
+            lines.push('');
 
-        // Zoom functionality
-        let currentZoom = 1;
-        const zoomStep = 0.15;
+            const rootId = sanitizeNodeId(item.key, item.type === 'measure' ? 'M' : item.type === 'column' ? 'C' : 'FP');
+            const rootLabel = item.name.replace(/"/g, '\\"');
 
+            // Root node (selected item)
+            lines.push(`    ${{rootId}}["<b>${{rootLabel}}</b>"]:::selected`);
+            lines.push('');
+
+            const addedNodes = new Set([rootId]);
+            const edges = [];
+
+            // Add upstream nodes (what this item depends on)
+            const upstream = item.upstream || {{}};
+
+            // Upstream measures
+            const upstreamMeasures = upstream.measures || [];
+            if (upstreamMeasures.length > 0) {{
+                lines.push('    subgraph Upstream_Measures["Upstream Measures"]');
+                lines.push('    direction TB');
+                upstreamMeasures.slice(0, 20).forEach(mKey => {{
+                    const mItem = itemDependencies[mKey];
+                    if (mItem) {{
+                        const nodeId = sanitizeNodeId(mKey, 'UM');
+                        const label = mItem.name.replace(/"/g, '\\"');
+                        lines.push(`        ${{nodeId}}["${{label}}"]:::measure`);
+                        addedNodes.add(nodeId);
+                        edges.push({{ from: nodeId, to: rootId }});
+                    }}
+                }});
+                if (upstreamMeasures.length > 20) {{
+                    lines.push(`        UM_more["... +${{upstreamMeasures.length - 20}} more"]:::measure`);
+                }}
+                lines.push('    end');
+                lines.push('');
+            }}
+
+            // Upstream columns
+            const upstreamColumns = upstream.columns || [];
+            if (upstreamColumns.length > 0) {{
+                lines.push('    subgraph Upstream_Columns["Upstream Columns"]');
+                lines.push('    direction TB');
+                upstreamColumns.slice(0, 15).forEach(cKey => {{
+                    const cItem = itemDependencies[cKey];
+                    if (cItem) {{
+                        const nodeId = sanitizeNodeId(cKey, 'UC');
+                        const label = cItem.name.replace(/"/g, '\\"');
+                        lines.push(`        ${{nodeId}}["${{label}}"]:::column`);
+                        addedNodes.add(nodeId);
+                        edges.push({{ from: nodeId, to: rootId }});
+                    }}
+                }});
+                if (upstreamColumns.length > 15) {{
+                    lines.push(`        UC_more["... +${{upstreamColumns.length - 15}} more"]:::column`);
+                }}
+                lines.push('    end');
+                lines.push('');
+            }}
+
+            // Add downstream nodes (what depends on this item)
+            const downstream = item.downstream || {{}};
+
+            // Downstream measures
+            const downstreamMeasures = downstream.measures || [];
+            if (downstreamMeasures.length > 0) {{
+                lines.push('    subgraph Downstream_Measures["Downstream Measures"]');
+                lines.push('    direction TB');
+                downstreamMeasures.slice(0, 20).forEach(mKey => {{
+                    const mItem = itemDependencies[mKey];
+                    if (mItem) {{
+                        const nodeId = sanitizeNodeId(mKey, 'DM');
+                        const label = mItem.name.replace(/"/g, '\\"');
+                        lines.push(`        ${{nodeId}}["${{label}}"]:::measure`);
+                        addedNodes.add(nodeId);
+                        edges.push({{ from: rootId, to: nodeId }});
+                    }}
+                }});
+                if (downstreamMeasures.length > 20) {{
+                    lines.push(`        DM_more["... +${{downstreamMeasures.length - 20}} more"]:::measure`);
+                }}
+                lines.push('    end');
+                lines.push('');
+            }}
+
+            // Downstream field parameters (for columns)
+            const downstreamFieldParams = downstream.fieldParams || [];
+            if (downstreamFieldParams.length > 0) {{
+                lines.push('    subgraph Downstream_FieldParams["Field Parameters"]');
+                lines.push('    direction TB');
+                downstreamFieldParams.forEach(fpName => {{
+                    const nodeId = sanitizeNodeId(fpName, 'DFP');
+                    const label = fpName.replace(/"/g, '\\"');
+                    lines.push(`        ${{nodeId}}["${{label}}"]:::fieldparam`);
+                    addedNodes.add(nodeId);
+                    edges.push({{ from: rootId, to: nodeId }});
+                }});
+                lines.push('    end');
+                lines.push('');
+            }}
+
+            // Downstream visuals
+            const downstreamVisuals = downstream.visuals || [];
+            if (downstreamVisuals.length > 0) {{
+                lines.push('    subgraph Downstream_Visuals["Visuals Using This"]');
+                lines.push('    direction TB');
+                downstreamVisuals.slice(0, 10).forEach((v, idx) => {{
+                    const nodeId = `DV_${{idx}}`;
+                    const label = `${{v.visual_type || 'Visual'}}\\n(${{v.page || 'Unknown Page'}})`.replace(/"/g, '\\"');
+                    lines.push(`        ${{nodeId}}["${{label}}"]:::visual`);
+                    addedNodes.add(nodeId);
+                    edges.push({{ from: rootId, to: nodeId }});
+                }});
+                if (downstreamVisuals.length > 10) {{
+                    lines.push(`        DV_more["... +${{downstreamVisuals.length - 10}} more visuals"]:::visual`);
+                }}
+                lines.push('    end');
+                lines.push('');
+            }}
+
+            // Add edges
+            edges.forEach(edge => {{
+                lines.push(`    ${{edge.from}} --> ${{edge.to}}`);
+            }});
+
+            // Styling
+            lines.push('');
+            lines.push('    %% Styling');
+            lines.push('    classDef selected fill:#00ffff,stroke:#00cccc,color:#000,stroke-width:3px');
+            lines.push('    classDef measure fill:#2196F3,stroke:#1565C0,color:#fff,stroke-width:2px');
+            lines.push('    classDef column fill:#9C27B0,stroke:#7B1FA2,color:#fff,stroke-width:2px');
+            lines.push('    classDef fieldparam fill:#4CAF50,stroke:#388E3C,color:#fff,stroke-width:2px');
+            lines.push('    classDef visual fill:#FF9800,stroke:#F57C00,color:#fff,stroke-width:2px');
+
+            return lines.join('\\n');
+        }}
+
+        // Select an item and render its diagram
+        async function selectItem(itemKey) {{
+            // Update selection state
+            currentSelectedItem = itemKey;
+
+            // Update sidebar selection
+            document.querySelectorAll('.item.selected').forEach(el => el.classList.remove('selected'));
+            const itemEl = document.querySelector(`.item[data-key="${{CSS.escape(itemKey)}}"]`);
+            if (itemEl) {{
+                itemEl.classList.add('selected');
+            }}
+
+            // Get item data
+            const item = itemDependencies[itemKey];
+            if (!item) {{
+                console.error('Item not found:', itemKey);
+                return;
+            }}
+
+            // Update info panel
+            document.getElementById('selected-type').textContent = item.type.toUpperCase().replace('_', ' ');
+            document.getElementById('selected-type').className = 'selected-item-type ' + item.type;
+            document.getElementById('selected-name').textContent = item.key;
+
+            // Calculate stats
+            const upstream = item.upstream || {{}};
+            const downstream = item.downstream || {{}};
+            const upstreamCount = (upstream.measures?.length || 0) + (upstream.columns?.length || 0);
+            const downstreamCount = (downstream.measures?.length || 0) +
+                                    (downstream.visuals?.length || 0) +
+                                    (downstream.fieldParams?.length || 0);
+
+            document.getElementById('stat-upstream').textContent = upstreamCount;
+            document.getElementById('stat-downstream').textContent = downstreamCount;
+
+            // Generate and render diagram
+            const diagramCode = generateDiagramForItem(itemKey);
+            const diagramContainer = document.getElementById('mermaid-diagram');
+
+            try {{
+                // Clear previous diagram
+                diagramContainer.innerHTML = '';
+                diagramContainer.removeAttribute('data-processed');
+
+                // Generate unique ID for this render
+                const id = 'mermaid-' + Date.now();
+
+                // Render new diagram
+                const {{ svg }} = await mermaid.render(id, diagramCode);
+                diagramContainer.innerHTML = svg;
+
+                // Reset zoom when switching items
+                currentZoom = 1;
+                applyZoom();
+            }} catch (err) {{
+                console.error('Mermaid render error:', err);
+                diagramContainer.innerHTML = `<div class="no-diagram">
+                    <div class="no-diagram-icon">⚠️</div>
+                    <div class="no-diagram-text">Error rendering diagram</div>
+                </div>`;
+            }}
+        }}
+
+        // Toggle category panel
+        function toggleCategory(category) {{
+            const panel = document.getElementById('panel-' + category);
+            if (panel) {{
+                panel.classList.toggle('collapsed');
+            }}
+        }}
+
+        // Toggle table group
+        function toggleTableGroup(element) {{
+            const group = element.closest('.table-group');
+            if (group) {{
+                group.classList.toggle('collapsed');
+            }}
+        }}
+
+        // Populate sidebar
+        function populateSidebar() {{
+            // Measures
+            const measuresContent = document.getElementById('content-measures');
+            let measuresHtml = '';
+            for (const [table, measures] of Object.entries(measuresByTable).sort()) {{
+                measuresHtml += `
+                    <div class="table-group">
+                        <div class="table-group-header" onclick="toggleTableGroup(this)">
+                            <span class="table-group-name">📁 ${{table}}</span>
+                            <span class="table-group-count">${{measures.length}}</span>
+                        </div>
+                        <div class="table-group-items">
+                            ${{measures.map(m => `
+                                <div class="item measure" data-key="${{m.key}}" onclick="selectItem('${{m.key.replace(/'/g, "\\\\'")}}')" title="${{m.key}}">
+                                    <span class="item-dot"></span>
+                                    <span class="item-name">${{m.name}}</span>
+                                </div>
+                            `).join('')}}
+                        </div>
+                    </div>
+                `;
+            }}
+            measuresContent.innerHTML = measuresHtml || '<div style="padding: 1rem; color: var(--text-muted); font-size: 0.75rem;">No measures found</div>';
+
+            // Columns
+            const columnsContent = document.getElementById('content-columns');
+            let columnsHtml = '';
+            for (const [table, columns] of Object.entries(columnsByTable).sort()) {{
+                columnsHtml += `
+                    <div class="table-group collapsed">
+                        <div class="table-group-header" onclick="toggleTableGroup(this)">
+                            <span class="table-group-name">📁 ${{table}}</span>
+                            <span class="table-group-count">${{columns.length}}</span>
+                        </div>
+                        <div class="table-group-items">
+                            ${{columns.map(c => `
+                                <div class="item column" data-key="${{c.key}}" onclick="selectItem('${{c.key.replace(/'/g, "\\\\'")}}')" title="${{c.key}}">
+                                    <span class="item-dot"></span>
+                                    <span class="item-name">${{c.name}}</span>
+                                </div>
+                            `).join('')}}
+                        </div>
+                    </div>
+                `;
+            }}
+            columnsContent.innerHTML = columnsHtml || '<div style="padding: 1rem; color: var(--text-muted); font-size: 0.75rem;">No columns found</div>';
+
+            // Field Parameters
+            const fpContent = document.getElementById('content-fieldparams');
+            if (fieldParamsList.length > 0) {{
+                fpContent.innerHTML = `
+                    <div class="table-group-items">
+                        ${{fieldParamsList.map(fp => `
+                            <div class="item fieldparam" data-key="${{fp.key}}" onclick="selectItem('${{fp.key.replace(/'/g, "\\\\'")}}')" title="${{fp.key}}">
+                                <span class="item-dot"></span>
+                                <span class="item-name">${{fp.name}}</span>
+                            </div>
+                        `).join('')}}
+                    </div>
+                `;
+            }} else {{
+                fpContent.innerHTML = '<div style="padding: 1rem; color: var(--text-muted); font-size: 0.75rem;">No field parameters found</div>';
+            }}
+        }}
+
+        // Search functionality
+        function setupSearch() {{
+            const searchInput = document.getElementById('search-input');
+            searchInput.addEventListener('input', (e) => {{
+                const query = e.target.value.toLowerCase();
+                document.querySelectorAll('.item').forEach(item => {{
+                    const name = item.querySelector('.item-name')?.textContent?.toLowerCase() || '';
+                    const key = item.dataset.key?.toLowerCase() || '';
+                    const matches = name.includes(query) || key.includes(query);
+                    item.style.display = matches ? '' : 'none';
+                }});
+
+                // Expand all table groups when searching
+                if (query) {{
+                    document.querySelectorAll('.table-group').forEach(g => g.classList.remove('collapsed'));
+                    document.querySelectorAll('.category-panel').forEach(p => p.classList.remove('collapsed'));
+                }}
+            }});
+        }}
+
+        // Zoom functions
         function zoomIn() {{
-            currentZoom = Math.min(3, currentZoom + zoomStep);
+            currentZoom = Math.min(3, currentZoom + 0.2);
             applyZoom();
         }}
 
         function zoomOut() {{
-            currentZoom = Math.max(0.3, currentZoom - zoomStep);
+            currentZoom = Math.max(0.3, currentZoom - 0.2);
             applyZoom();
         }}
 
         function resetZoom() {{
             currentZoom = 1;
             applyZoom();
-            resetViewBox();
-            clearSelection();
         }}
 
         function applyZoom() {{
-            const svg = document.querySelector('.mermaid svg');
+            const svg = document.querySelector('#mermaid-diagram svg');
             if (svg) {{
                 svg.style.transform = `scale(${{currentZoom}})`;
-                svg.style.transformOrigin = 'top center';
+                svg.style.transformOrigin = 'center top';
             }}
         }}
 
+        // Download SVG
         function downloadSVG() {{
-            const svg = document.querySelector('.mermaid svg');
+            const svg = document.querySelector('#mermaid-diagram svg');
             if (svg) {{
                 const svgData = new XMLSerializer().serializeToString(svg);
                 const blob = new Blob([svgData], {{ type: 'image/svg+xml' }});
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = '{model_name.replace(" ", "_")}_dependencies.svg';
+                const itemName = currentSelectedItem ? currentSelectedItem.replace(/[\\[\\]]/g, '_') : 'diagram';
+                a.download = `${{itemName}}_dependencies.svg`;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
@@ -1369,699 +1382,23 @@ def generate_pbip_dependency_html(
             }}
         }}
 
-        // Filter functionality
-        let currentFilter = 'all';
-
-        function setFilter(filterType) {{
-            currentFilter = filterType;
-            console.log('Setting filter to:', filterType);
-
-            // Update button states
-            document.querySelectorAll('.btn-filter').forEach(btn => btn.classList.remove('active'));
-            const filterBtn = document.getElementById(`filter-${{filterType}}`);
-            if (filterBtn) filterBtn.classList.add('active');
-
-            // Update stat card states
-            document.querySelectorAll('.stat-card').forEach(card => card.classList.remove('active'));
-            const statCard = document.querySelector(`.stat-card.${{filterType === 'field_parameter' ? 'fieldparam' : filterType}}`);
-            if (statCard) statCard.classList.add('active');
-
-            // Get visible node IDs based on filter
-            const visibleIds = new Set(typeToIds[filterType] || typeToIds['all']);
-
-            // If filtering to a specific type, also show connected nodes
-            if (filterType !== 'all') {{
-                // Find all edges connected to visible nodes and add their endpoints
-                allEdges.forEach(edge => {{
-                    const sourceVisible = visibleIds.has(edge.source);
-                    const targetVisible = visibleIds.has(edge.target);
-                    // Keep edge visible if either endpoint matches the filter
-                    // Don't auto-expand to show all connected nodes (keeps filter clean)
-                }});
-            }}
-
-            // Apply to SVG
-            const svg = document.querySelector('.mermaid svg');
-            if (!svg) {{
-                console.error('SVG not found');
-                return;
-            }}
-
-            if (filterType === 'all') {{
-                svg.classList.remove('filter-active');
-                svg.classList.remove('selection-active');
-                clearSelection();
-                resetViewBox();
-                // Show all nodes - reset everything
-                svg.querySelectorAll('g.node').forEach(node => {{
-                    node.classList.remove('node-visible', 'node-hidden', 'node-selected', 'node-connected');
-                    node.style.display = '';
-                    node.style.visibility = 'visible';
-                    node.style.opacity = '1';
-                }});
-                svg.querySelectorAll('g.edgePath').forEach(edge => {{
-                    edge.classList.remove('edge-visible', 'edge-hidden', 'edge-selected');
-                    edge.style.display = '';
-                    edge.style.visibility = 'visible';
-                    edge.style.opacity = '1';
-                    const paths = edge.querySelectorAll('path');
-                    paths.forEach(pathEl => {{
-                        pathEl.style.stroke = '';
-                        pathEl.style.strokeWidth = '';
-                    }});
-                }});
-                svg.querySelectorAll('g.cluster').forEach(cluster => {{
-                    cluster.classList.remove('cluster-visible', 'cluster-has-selection');
-                    cluster.style.display = '';
-                    cluster.style.visibility = 'visible';
-                    cluster.style.opacity = '1';
-                }});
-            }} else {{
-                svg.classList.add('filter-active');
-                svg.classList.remove('selection-active');
-
-                // FIRST: Show ALL elements to calculate viewBox properly
-                svg.querySelectorAll('g.node, g.edgePath, g.cluster').forEach(el => {{
-                    el.style.display = '';
-                    el.style.visibility = 'visible';
-                    el.style.opacity = '1';
-                    el.classList.remove('node-visible', 'node-hidden', 'node-selected', 'node-connected');
-                    el.classList.remove('edge-visible', 'edge-hidden', 'edge-selected');
-                    el.classList.remove('cluster-visible', 'cluster-has-selection');
-                }});
-                resetViewBox();
-
-                // Find nodes to show and calculate viewBox
-                const nodesToShow = [];
-                const visibleMermaidIds = new Set();
-                svg.querySelectorAll('g.node').forEach(node => {{
-                    const mermaidId = node.id || '';
-                    const nodeId = extractNodeId(mermaidId);
-                    if (visibleIds.has(nodeId)) {{
-                        nodesToShow.push(node);
-                        visibleMermaidIds.add(nodeId);
-                    }}
-                }});
-
-                // Calculate viewBox BEFORE hiding
-                const viewBoxData = calculateBoundsForNodes(svg, nodesToShow);
-
-                // NOW hide non-matching nodes with display:none
-                svg.querySelectorAll('g.node').forEach(node => {{
-                    const mermaidId = node.id || '';
-                    const nodeId = extractNodeId(mermaidId);
-                    const isVisible = visibleIds.has(nodeId);
-
-                    if (isVisible) {{
-                        node.classList.add('node-visible');
-                        node.style.display = '';
-                        node.style.visibility = 'visible';
-                        node.style.opacity = '1';
-                    }} else {{
-                        node.classList.add('node-hidden');
-                        node.style.display = 'none';
-                    }}
-                }});
-
-                // Hide edges where endpoints are not both visible
-                svg.querySelectorAll('g.edgePath').forEach(edge => {{
-                    const classList = Array.from(edge.classList || []);
-                    let startId = '';
-                    let endId = '';
-
-                    classList.forEach(cls => {{
-                        if (cls.startsWith('LS-')) startId = cls.substring(3);
-                        if (cls.startsWith('LE-')) endId = cls.substring(3);
-                    }});
-
-                    const shouldShow = visibleMermaidIds.has(startId) && visibleMermaidIds.has(endId);
-                    if (shouldShow) {{
-                        edge.classList.add('edge-visible');
-                        edge.style.display = '';
-                        edge.style.visibility = 'visible';
-                        edge.style.opacity = '1';
-                    }} else {{
-                        edge.classList.add('edge-hidden');
-                        edge.style.display = 'none';
-                    }}
-                }});
-
-                // Hide clusters without visible nodes
-                svg.querySelectorAll('g.cluster').forEach(cluster => {{
-                    const hasVisibleNode = cluster.querySelector('g.node.node-visible');
-                    if (hasVisibleNode) {{
-                        cluster.classList.add('cluster-visible');
-                        cluster.style.display = '';
-                        cluster.style.visibility = 'visible';
-                        cluster.style.opacity = '1';
-                    }} else {{
-                        cluster.style.display = 'none';
-                    }}
-                }});
-
-                // Apply pre-calculated viewBox or fall back to original if calculation failed
-                if (viewBoxData) {{
-                    svg.setAttribute('viewBox', viewBoxData);
-                    console.log('Filter viewBox applied:', viewBoxData);
-                }} else {{
-                    // Fallback: keep original viewBox but still apply filtering
-                    console.warn('Filter viewBox calculation failed, keeping original view');
-                }}
-            }}
-
-            // Update visible count
-            document.getElementById('visible-count').textContent = visibleIds.size;
-        }}
-
-        // Node selection functionality
-        let selectedNodeId = null;
-        let nodeIdToMermaidId = {{}};  // Map our IDs to Mermaid SVG element IDs
-
-        function extractNodeId(mermaidId) {{
-            // Handle formats like "flowchart-M_some_measure-123" or just "M_some_measure"
-            const match = mermaidId.match(/flowchart-(.+)-\\d+$/);
-            return match ? match[1] : mermaidId;
-        }}
-
-        function buildNodeIdMap() {{
-            const svg = document.querySelector('.mermaid svg');
-            if (!svg) return;
-
-            nodeIdToMermaidId = {{}};
-            svg.querySelectorAll('g.node').forEach(node => {{
-                const mermaidId = node.id || '';
-                const nodeId = extractNodeId(mermaidId);
-                nodeIdToMermaidId[nodeId] = mermaidId;
-            }});
-            console.log('Built node ID map with', Object.keys(nodeIdToMermaidId).length, 'entries');
-        }}
-
-        function clearSelection() {{
-            console.log('Clearing selection');
-            selectedNodeId = null;
-            const svg = document.querySelector('.mermaid svg');
-            if (!svg) return;
-
-            svg.classList.remove('selection-active');
-
-            // Show ALL nodes and edges - reset everything including display
-            svg.querySelectorAll('g.node').forEach(node => {{
-                node.classList.remove('node-selected', 'node-connected', 'node-hidden', 'node-visible');
-                node.style.display = '';
-                node.style.visibility = 'visible';
-                node.style.opacity = '1';
-            }});
-            svg.querySelectorAll('g.edgePath').forEach(edge => {{
-                edge.classList.remove('edge-selected', 'edge-hidden', 'edge-visible');
-                edge.style.display = '';
-                edge.style.visibility = 'visible';
-                edge.style.opacity = '1';
-                const paths = edge.querySelectorAll('path');
-                paths.forEach(pathEl => {{
-                    pathEl.style.stroke = '';
-                    pathEl.style.strokeWidth = '';
-                }});
-            }});
-            svg.querySelectorAll('g.cluster').forEach(cluster => {{
-                cluster.classList.remove('cluster-has-selection', 'cluster-visible');
-                cluster.style.display = '';
-                cluster.style.visibility = 'visible';
-                cluster.style.opacity = '1';
-            }});
-
-            // Reset viewBox to original
-            resetViewBox();
-        }}
-
-        function selectNode(nodeId) {{
-            console.log('selectNode called with:', nodeId);
-            const svg = document.querySelector('.mermaid svg');
-            if (!svg) {{
-                console.error('SVG not found');
-                return;
-            }}
-
-            // If clicking the same node while selected, deselect (toggle off)
-            if (selectedNodeId === nodeId) {{
-                clearSelection();
-                return;
-            }}
-
-            // FIRST: Show ALL elements temporarily to calculate viewBox properly
-            svg.querySelectorAll('g.node, g.edgePath, g.cluster').forEach(el => {{
-                el.style.display = '';
-                el.style.visibility = 'visible';
-                el.style.opacity = '1';
-            }});
-
-            // Reset viewBox to original
-            resetViewBox();
-
-            selectedNodeId = nodeId;
-            svg.classList.add('selection-active');
-            svg.classList.remove('filter-active');
-
-            // Find ALL connected nodes (direct connections only)
-            const connectedNodeIds = new Set();
-            connectedNodeIds.add(nodeId);
-
-            allEdges.forEach(edge => {{
-                if (edge.source === nodeId || edge.target === nodeId) {{
-                    connectedNodeIds.add(edge.source);
-                    connectedNodeIds.add(edge.target);
-                }}
-            }});
-
-            console.log('Selected node:', nodeId);
-            console.log('Connected nodes:', Array.from(connectedNodeIds));
-
-            // Calculate viewBox BEFORE hiding elements (so we get proper dimensions)
-            const nodesToShow = [];
-            svg.querySelectorAll('g.node').forEach(node => {{
-                const mermaidId = node.id || '';
-                const nId = extractNodeId(mermaidId);
-                if (nId === nodeId || connectedNodeIds.has(nId)) {{
-                    nodesToShow.push(node);
-                }}
-            }});
-
-            // Calculate bounding box of nodes to show
-            const viewBoxData = calculateBoundsForNodes(svg, nodesToShow);
-
-            // NOW hide all non-related nodes
-            svg.querySelectorAll('g.node').forEach(node => {{
-                const mermaidId = node.id || '';
-                const nId = extractNodeId(mermaidId);
-                node.classList.remove('node-selected', 'node-connected', 'node-hidden', 'node-visible');
-
-                if (nId === nodeId) {{
-                    node.classList.add('node-selected');
-                    node.style.display = '';
-                    node.style.visibility = 'visible';
-                    node.style.opacity = '1';
-                }} else if (connectedNodeIds.has(nId)) {{
-                    node.classList.add('node-connected');
-                    node.style.display = '';
-                    node.style.visibility = 'visible';
-                    node.style.opacity = '1';
-                }} else {{
-                    node.classList.add('node-hidden');
-                    node.style.display = 'none';
-                }}
-            }});
-
-            // Hide all non-related edges
-            svg.querySelectorAll('g.edgePath').forEach(edge => {{
-                const classList = Array.from(edge.classList || []);
-                let startId = '';
-                let endId = '';
-
-                classList.forEach(cls => {{
-                    if (cls.startsWith('LS-')) startId = cls.substring(3);
-                    if (cls.startsWith('LE-')) endId = cls.substring(3);
-                }});
-
-                edge.classList.remove('edge-selected', 'edge-hidden', 'edge-visible');
-                const isDirectlyConnected = (startId === nodeId || endId === nodeId);
-
-                if (isDirectlyConnected) {{
-                    edge.classList.add('edge-selected');
-                    edge.style.display = '';
-                    edge.style.visibility = 'visible';
-                    edge.style.opacity = '1';
-                    const paths = edge.querySelectorAll('path');
-                    paths.forEach(pathEl => {{
-                        pathEl.style.stroke = '#00ffff';
-                        pathEl.style.strokeWidth = '3px';
-                    }});
-                }} else {{
-                    edge.classList.add('edge-hidden');
-                    edge.style.display = 'none';
-                }}
-            }});
-
-            // Hide clusters without selected nodes
-            svg.querySelectorAll('g.cluster').forEach(cluster => {{
-                const hasSelectedNode = cluster.querySelector('g.node.node-selected, g.node.node-connected');
-                cluster.classList.remove('cluster-has-selection', 'cluster-visible');
-
-                if (hasSelectedNode) {{
-                    cluster.classList.add('cluster-has-selection');
-                    cluster.style.display = '';
-                    cluster.style.visibility = 'visible';
-                    cluster.style.opacity = '1';
-                }} else {{
-                    cluster.style.display = 'none';
-                }}
-            }});
-
-            // Apply pre-calculated viewBox or fall back to original if calculation failed
-            if (viewBoxData) {{
-                svg.setAttribute('viewBox', viewBoxData);
-                console.log('Applied viewBox:', viewBoxData);
-            }} else {{
-                // Fallback: if we couldn't calculate viewBox, don't zoom and keep original
-                console.warn('ViewBox calculation failed, keeping original view');
-                // Don't change viewBox, but still filter visible elements
-            }}
-        }}
-
-        function calculateBoundsForNodes(svg, nodes) {{
-            if (!nodes || nodes.length === 0) {{
-                console.log('calculateBoundsForNodes: no nodes provided');
-                return null;
-            }}
-
-            // Force a reflow to ensure accurate bounding rects
-            svg.getBoundingClientRect();
-
-            const svgCTM = svg.getScreenCTM();
-            if (!svgCTM) {{
-                console.warn('calculateBoundsForNodes: could not get CTM');
-                return null;
-            }}
-
-            let svgCTMInverse;
-            try {{
-                svgCTMInverse = svgCTM.inverse();
-            }} catch (e) {{
-                console.warn('calculateBoundsForNodes: could not invert CTM:', e);
-                return null;
-            }}
-
-            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-            let validNodes = 0;
-
-            nodes.forEach(node => {{
-                try {{
-                    const rect = node.getBoundingClientRect();
-                    // Skip nodes with no visible size
-                    if (rect.width < 1 || rect.height < 1) {{
-                        console.log('Skipping node with no size:', node.id);
-                        return;
-                    }}
-
-                    const topLeft = svg.createSVGPoint();
-                    topLeft.x = rect.left;
-                    topLeft.y = rect.top;
-                    const svgTopLeft = topLeft.matrixTransform(svgCTMInverse);
-
-                    const bottomRight = svg.createSVGPoint();
-                    bottomRight.x = rect.right;
-                    bottomRight.y = rect.bottom;
-                    const svgBottomRight = bottomRight.matrixTransform(svgCTMInverse);
-
-                    minX = Math.min(minX, svgTopLeft.x);
-                    minY = Math.min(minY, svgTopLeft.y);
-                    maxX = Math.max(maxX, svgBottomRight.x);
-                    maxY = Math.max(maxY, svgBottomRight.y);
-                    validNodes++;
-                }} catch (e) {{
-                    console.warn('Error calculating bounds for node:', e);
-                }}
-            }});
-
-            if (minX === Infinity || validNodes === 0) {{
-                console.warn('calculateBoundsForNodes: no valid bounds found');
-                return null;
-            }}
-
-            // Add generous padding
-            const padding = 80;
-            minX -= padding;
-            minY -= padding;
-            maxX += padding;
-            maxY += padding;
-
-            // Ensure minimum dimensions
-            const width = Math.max(maxX - minX, 400);
-            const height = Math.max(maxY - minY, 300);
-
-            console.log(`Calculated bounds: ${{validNodes}} nodes, viewBox: ${{minX}} ${{minY}} ${{width}} ${{height}}`);
-            return `${{minX}} ${{minY}} ${{width}} ${{height}}`;
-        }}
-
-        function focusOnVisibleNodes(svg, selector) {{
-            // Get visible nodes based on selector (default for selection mode)
-            const nodeSelector = selector || 'g.node.node-selected, g.node.node-connected';
-            const visibleNodes = svg.querySelectorAll(nodeSelector);
-            if (visibleNodes.length === 0) {{
-                console.log('No visible nodes found for selector:', nodeSelector);
-                return;
-            }}
-
-            console.log('Focusing on', visibleNodes.length, 'visible nodes');
-
-            // Store original viewBox if not stored
-            const viewBox = svg.viewBox.baseVal;
-            if (!svg.dataset.originalViewBox) {{
-                svg.dataset.originalViewBox = `${{viewBox.x}} ${{viewBox.y}} ${{viewBox.width}} ${{viewBox.height}}`;
-            }}
-
-            // Use getScreenCTM to properly convert coordinates
-            const svgCTM = svg.getScreenCTM();
-            if (!svgCTM) {{
-                console.warn('Could not get SVG CTM');
-                return;
-            }}
-            const svgCTMInverse = svgCTM.inverse();
-
-            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-
-            visibleNodes.forEach(node => {{
-                try {{
-                    // Get the bounding client rect (screen coordinates)
-                    const rect = node.getBoundingClientRect();
-
-                    // Convert screen coordinates to SVG coordinates
-                    const topLeft = svg.createSVGPoint();
-                    topLeft.x = rect.left;
-                    topLeft.y = rect.top;
-                    const svgTopLeft = topLeft.matrixTransform(svgCTMInverse);
-
-                    const bottomRight = svg.createSVGPoint();
-                    bottomRight.x = rect.right;
-                    bottomRight.y = rect.bottom;
-                    const svgBottomRight = bottomRight.matrixTransform(svgCTMInverse);
-
-                    minX = Math.min(minX, svgTopLeft.x);
-                    minY = Math.min(minY, svgTopLeft.y);
-                    maxX = Math.max(maxX, svgBottomRight.x);
-                    maxY = Math.max(maxY, svgBottomRight.y);
-
-                    console.log('Node bounds:', svgTopLeft.x, svgTopLeft.y, svgBottomRight.x, svgBottomRight.y);
-                }} catch (e) {{
-                    console.warn('Error calculating node bounds:', e);
-                }}
-            }});
-
-            if (minX !== Infinity && maxX > minX && maxY > minY) {{
-                // Add padding
-                const padding = 60;
-                minX -= padding;
-                minY -= padding;
-                maxX += padding;
-                maxY += padding;
-
-                const width = Math.max(maxX - minX, 300);
-                const height = Math.max(maxY - minY, 200);
-
-                // Set new viewBox to focus on visible content
-                const newViewBox = `${{minX}} ${{minY}} ${{width}} ${{height}}`;
-                console.log('Setting viewBox to:', newViewBox);
-                svg.setAttribute('viewBox', newViewBox);
-            }} else {{
-                console.warn('Could not calculate valid bounds');
-            }}
-        }}
-
-        function resetViewBox() {{
-            const svg = document.querySelector('.mermaid svg');
-            if (svg && svg.dataset.originalViewBox) {{
-                console.log('Resetting viewBox to:', svg.dataset.originalViewBox);
-                svg.setAttribute('viewBox', svg.dataset.originalViewBox);
-            }}
-        }}
-
-        function setupNodeClickHandlers() {{
-            const svg = document.querySelector('.mermaid svg');
-            if (!svg) {{
-                console.error('SVG not found for click handlers');
-                return;
-            }}
-
-            console.log('Setting up click handlers');
-
-            // Build node ID mapping
-            buildNodeIdMap();
-
-            // Store original viewBox
-            const viewBox = svg.viewBox.baseVal;
-            if (!svg.dataset.originalViewBox) {{
-                svg.dataset.originalViewBox = `${{viewBox.x}} ${{viewBox.y}} ${{viewBox.width}} ${{viewBox.height}}`;
-                console.log('Stored original viewBox:', svg.dataset.originalViewBox);
-            }}
-
-            // Set cursor style on all nodes
-            const nodes = svg.querySelectorAll('g.node');
-            console.log('Found', nodes.length, 'nodes');
-            console.log('Available node IDs:', Object.keys(nodeIdToMermaidId).slice(0, 5), '...');
-            console.log('Sample edges:', allEdges.slice(0, 3));
-
-            nodes.forEach(node => {{
-                node.style.cursor = 'pointer';
-            }});
-
-            // Use event delegation on SVG - this survives DOM changes
-            svg.addEventListener('click', function(e) {{
-                // Find if we clicked on a node
-                const nodeElement = e.target.closest('g.node');
-
-                if (nodeElement) {{
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const mermaidId = nodeElement.id || '';
-                    const nodeId = extractNodeId(mermaidId);
-                    console.log('=== NODE CLICKED ===');
-                    console.log('Mermaid ID:', mermaidId);
-                    console.log('Extracted ID:', nodeId);
-                    selectNode(nodeId);
-                }}
-            }}, true);
-
-            // Add click handler to diagram background to clear selection
-            const diagramContent = document.getElementById('diagram-content');
-            if (diagramContent) {{
-                diagramContent.addEventListener('click', function(e) {{
-                    // Only clear if NOT clicking on a node
-                    const clickedNode = e.target.closest('g.node');
-                    if (!clickedNode && !e.target.closest('g.edgePath')) {{
-                        console.log('Background click - clearing selection');
-                        clearSelection();
-                    }}
-                }});
-            }}
-
-            console.log('Click handlers setup complete');
-        }}
-
-        // Panel toggle
-        function togglePanel(panelName) {{
-            const panel = document.getElementById(`panel-${{panelName}}`);
-            if (panel) {{
-                panel.classList.toggle('collapsed');
-            }}
-        }}
-
-        // Populate panels
-        function populatePanels() {{
-            // Visuals panel
-            const visualsContent = document.getElementById('content-visuals');
-            if (visualsContent) {{
-                let html = '';
-                for (const [page, visuals] of Object.entries(visualsByPage).sort()) {{
-                    html += `
-                        <div class="table-group">
-                            <div class="table-group-header" onclick="this.parentElement.classList.toggle('collapsed')">
-                                <span class="table-group-name">📄 ${{page}}</span>
-                                <span class="table-group-count">${{visuals.length}}</span>
-                            </div>
-                            <div class="table-group-items">
-                                ${{visuals.map(v => `
-                                    <div class="item visual">
-                                        <span class="item-icon">●</span>
-                                        <span class="item-name">${{v.visual_type || v.name}}</span>
-                                    </div>
-                                `).join('')}}
-                            </div>
-                        </div>
-                    `;
-                }}
-                visualsContent.innerHTML = html || '<div style="padding: 1rem; color: var(--text-muted);">No visuals found</div>';
-            }}
-
-            // Measures panel
-            const measuresContent = document.getElementById('content-measures');
-            if (measuresContent) {{
-                let html = '';
-                for (const [table, measures] of Object.entries(measuresByTable).sort()) {{
-                    html += `
-                        <div class="table-group">
-                            <div class="table-group-header" onclick="this.parentElement.classList.toggle('collapsed')">
-                                <span class="table-group-name">📁 ${{table}}</span>
-                                <span class="table-group-count">${{measures.length}}</span>
-                            </div>
-                            <div class="table-group-items">
-                                ${{measures.slice(0, 20).map(m => `
-                                    <div class="item measure">
-                                        <span class="item-icon">●</span>
-                                        <span class="item-name">${{m.name}}</span>
-                                    </div>
-                                `).join('')}}
-                                ${{measures.length > 20 ? `<div class="item measure"><span class="item-icon">...</span><span class="item-name">+${{measures.length - 20}} more</span></div>` : ''}}
-                            </div>
-                        </div>
-                    `;
-                }}
-                measuresContent.innerHTML = html || '<div style="padding: 1rem; color: var(--text-muted);">No measures found</div>';
-            }}
-
-            // Columns panel
-            const columnsContent = document.getElementById('content-columns');
-            if (columnsContent) {{
-                let html = '';
-                for (const [table, columns] of Object.entries(columnsByTable).sort()) {{
-                    html += `
-                        <div class="table-group collapsed">
-                            <div class="table-group-header" onclick="this.parentElement.classList.toggle('collapsed')">
-                                <span class="table-group-name">📁 ${{table}}</span>
-                                <span class="table-group-count">${{columns.length}}</span>
-                            </div>
-                            <div class="table-group-items">
-                                ${{columns.slice(0, 15).map(c => `
-                                    <div class="item column">
-                                        <span class="item-icon">●</span>
-                                        <span class="item-name">${{c.name}}</span>
-                                    </div>
-                                `).join('')}}
-                                ${{columns.length > 15 ? `<div class="item column"><span class="item-icon">...</span><span class="item-name">+${{columns.length - 15}} more</span></div>` : ''}}
-                            </div>
-                        </div>
-                    `;
-                }}
-                columnsContent.innerHTML = html || '<div style="padding: 1rem; color: var(--text-muted);">No columns found</div>';
-            }}
-
-            // Field Parameters panel
-            const fpContent = document.getElementById('content-fieldparams');
-            if (fpContent) {{
-                if (fieldParamsList.length > 0) {{
-                    fpContent.innerHTML = fieldParamsList.map(fp => `
-                        <div class="item fieldparam">
-                            <span class="item-icon">●</span>
-                            <span class="item-name">${{fp.name}}</span>
-                        </div>
-                    `).join('');
-                }} else {{
-                    fpContent.innerHTML = '<div style="padding: 1rem; color: var(--text-muted);">No field parameters found</div>';
-                }}
-            }}
-        }}
-
         // Initialize
-        document.addEventListener('DOMContentLoaded', function() {{
-            populatePanels();
-            // Force SVG resize and setup click handlers after Mermaid renders
-            setTimeout(() => {{
-                const svg = document.querySelector('.mermaid svg');
-                if (svg) {{
-                    svg.style.minWidth = '1000px';
-                    svg.style.minHeight = '500px';
-                    // Store original viewBox for later reset
-                    svg.dataset.originalViewBox = svg.getAttribute('viewBox') || '';
-                    setupNodeClickHandlers();
-                }}
-            }}, 1000);
+        document.addEventListener('DOMContentLoaded', () => {{
+            populateSidebar();
+            setupSearch();
+
+            // Select initial item
+            if (initialItem) {{
+                selectItem(initialItem);
+            }} else {{
+                // Show empty state
+                document.getElementById('mermaid-diagram').innerHTML = `
+                    <div class="no-diagram">
+                        <div class="no-diagram-icon">📊</div>
+                        <div class="no-diagram-text">Select an item from the sidebar to view its dependencies</div>
+                    </div>
+                `;
+            }}
         }});
     </script>
 </body>

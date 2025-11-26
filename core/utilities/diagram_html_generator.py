@@ -1,13 +1,15 @@
 """
 Professional HTML generator for dependency diagrams.
 Creates interactive, beautifully styled Mermaid diagrams that open in browser.
+Supports sidebar with ALL measures/columns for instant switching.
 """
 
 import os
 import logging
 import webbrowser
+import json
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 logger = logging.getLogger(__name__)
 
@@ -20,10 +22,18 @@ def generate_dependency_html(
     auto_open: bool = True,
     referenced_measures: list = None,
     referenced_columns: list = None,
-    used_by_measures: list = None
+    used_by_measures: list = None,
+    # NEW: Sidebar data for all items
+    all_measures: List[Dict[str, Any]] = None,
+    all_columns: List[Dict[str, Any]] = None,
+    all_dependencies: Dict[str, Any] = None,
+    main_item: str = None
 ) -> Optional[str]:
     """
     Generate a professional HTML page with interactive Mermaid diagram.
+
+    Features a left sidebar with ALL measures and columns from the model.
+    Click any item in the sidebar to view its dependencies.
 
     Args:
         mermaid_code: The Mermaid diagram code
@@ -34,6 +44,10 @@ def generate_dependency_html(
         referenced_measures: List of (table, measure) tuples this measure depends on
         referenced_columns: List of (table, column) tuples this measure uses
         used_by_measures: List of {'table': ..., 'measure': ...} dicts of measures using this one
+        all_measures: List of ALL measures in the model for sidebar
+        all_columns: List of ALL columns in the model for sidebar
+        all_dependencies: Pre-computed dependencies for all items (for instant switching)
+        main_item: Currently selected item key (e.g., 'Table[Measure]')
     """
     if not mermaid_code:
         return None
@@ -126,13 +140,61 @@ def generate_dependency_html(
                 downstream_node_ids.append(node_id)
 
     # Generate JSON data for JavaScript
-    import json
     ref_measures_json = json.dumps([{'table': t, 'name': m} for t, m in referenced_measures])
     ref_columns_json = json.dumps([{'table': t, 'name': c} for t, c in referenced_columns])
     used_by_json = json.dumps(used_by_measures)
     upstream_ids_json = json.dumps(upstream_node_ids)
     downstream_ids_json = json.dumps(downstream_node_ids)
     root_id_json = json.dumps(root_node_id)
+
+    # Process sidebar data (NEW)
+    all_measures = all_measures or []
+    all_columns = all_columns or []
+    all_dependencies = all_dependencies or {}
+    has_sidebar = bool(all_measures or all_columns or all_dependencies)
+
+    # Build grouped lists for sidebar
+    measures_by_table = {}
+    columns_by_table = {}
+
+    for m in all_measures:
+        table = m.get('table', 'Unknown')
+        name = m.get('name', '')
+        if table and name:
+            if table not in measures_by_table:
+                measures_by_table[table] = []
+            measures_by_table[table].append({
+                'name': name,
+                'key': f"{table}[{name}]"
+            })
+
+    for c in all_columns:
+        table = c.get('table', 'Unknown')
+        name = c.get('name', '')
+        if table and name:
+            if table not in columns_by_table:
+                columns_by_table[table] = []
+            columns_by_table[table].append({
+                'name': name,
+                'key': f"{table}[{name}]"
+            })
+
+    # Sort measures and columns within each table
+    for table in measures_by_table:
+        measures_by_table[table].sort(key=lambda x: x['name'])
+    for table in columns_by_table:
+        columns_by_table[table].sort(key=lambda x: x['name'])
+
+    # Count totals for sidebar
+    total_sidebar_measures = sum(len(m) for m in measures_by_table.values())
+    total_sidebar_columns = sum(len(c) for c in columns_by_table.values())
+
+    # Prepare sidebar JSON data
+    measures_by_table_json = json.dumps(measures_by_table)
+    columns_by_table_json = json.dumps(columns_by_table)
+    all_dependencies_json = json.dumps(all_dependencies)
+    main_item_key = main_item or f"{measure_table}[{measure_name}]"
+    main_item_json = json.dumps(main_item_key)
 
     # Debug logging
     logger.info(f"Root node ID: {root_node_id}")
@@ -622,6 +684,20 @@ def generate_dependency_html(
             visibility: visible !important;
         }}
 
+        /* Override Mermaid's default subgraph/cluster styling - remove yellow background */
+        .mermaid svg g.cluster rect {{
+            fill: rgba(30, 30, 40, 0.6) !important;
+            stroke: rgba(99, 102, 241, 0.4) !important;
+            stroke-width: 2px !important;
+            rx: 8px !important;
+            ry: 8px !important;
+        }}
+
+        .mermaid svg g.cluster text {{
+            fill: var(--text-secondary) !important;
+            font-weight: 600 !important;
+        }}
+
         /* Filter-based visibility - completely hide filtered items */
         .mermaid svg g.node.filter-hidden {{
             display: none !important;
@@ -957,11 +1033,361 @@ def generate_dependency_html(
             .toolbar {{ flex-wrap: wrap; }}
             .legend {{ flex-direction: column; align-items: center; gap: 1rem; }}
         }}
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           SIDEBAR STYLES (NEW)
+           ═══════════════════════════════════════════════════════════════════════ */
+        .app-wrapper {{
+            display: flex;
+            min-height: 100vh;
+        }}
+
+        .sidebar {{
+            width: 300px;
+            min-width: 300px;
+            background: rgba(13, 13, 20, 0.95);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            z-index: 100;
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+        }}
+
+        .sidebar.visible {{
+            transform: translateX(0);
+        }}
+
+        .sidebar-toggle {{
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            z-index: 101;
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 0.75rem 1rem;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            box-shadow: 0 4px 12px var(--accent-glow);
+            transition: all 0.2s;
+        }}
+
+        .sidebar-toggle:hover {{
+            background: var(--accent-light);
+            transform: translateY(-2px);
+        }}
+
+        .sidebar-toggle.sidebar-open {{
+            left: 310px;
+        }}
+
+        .main-content {{
+            flex: 1;
+            transition: margin-left 0.3s ease;
+        }}
+
+        .main-content.sidebar-open {{
+            margin-left: 300px;
+        }}
+
+        .sidebar-header {{
+            padding: 1.25rem;
+            border-bottom: 1px solid var(--border);
+            background: linear-gradient(180deg, rgba(99, 102, 241, 0.1) 0%, transparent 100%);
+        }}
+
+        .sidebar-title {{
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 0.25rem;
+        }}
+
+        .sidebar-subtitle {{
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }}
+
+        .sidebar-search {{
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }}
+
+        .sidebar-search-input {{
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 0.8125rem;
+        }}
+
+        .sidebar-search-input::placeholder {{
+            color: var(--text-muted);
+        }}
+
+        .sidebar-search-input:focus {{
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }}
+
+        .sidebar-content {{
+            flex: 1;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
+        }}
+
+        .sidebar-category {{
+            border-bottom: 1px solid var(--border);
+        }}
+
+        .sidebar-category-header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.875rem 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }}
+
+        .sidebar-category-header:hover {{
+            background: rgba(99, 102, 241, 0.1);
+        }}
+
+        .sidebar-category-title {{
+            display: flex;
+            align-items: center;
+            gap: 0.625rem;
+        }}
+
+        .sidebar-category-icon {{
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.875rem;
+        }}
+
+        .sidebar-category-icon.measures {{
+            background: linear-gradient(135deg, #2196F3, #1976D2);
+        }}
+
+        .sidebar-category-icon.columns {{
+            background: linear-gradient(135deg, #9C27B0, #7B1FA2);
+        }}
+
+        .sidebar-category-name {{
+            font-size: 0.875rem;
+            font-weight: 600;
+        }}
+
+        .sidebar-category-count {{
+            background: var(--accent);
+            color: white;
+            font-size: 0.6875rem;
+            padding: 0.125rem 0.5rem;
+            border-radius: 999px;
+            font-weight: 600;
+        }}
+
+        .sidebar-category-chevron {{
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            transition: transform 0.2s;
+        }}
+
+        .sidebar-category.collapsed .sidebar-category-chevron {{
+            transform: rotate(-90deg);
+        }}
+
+        .sidebar-category-content {{
+            display: block;
+        }}
+
+        .sidebar-category.collapsed .sidebar-category-content {{
+            display: none;
+        }}
+
+        .sidebar-table-group {{
+            border-top: 1px solid rgba(63, 63, 70, 0.3);
+        }}
+
+        .sidebar-table-header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.5rem 1rem 0.5rem 1.25rem;
+            cursor: pointer;
+            background: rgba(99, 102, 241, 0.03);
+            transition: background 0.2s;
+        }}
+
+        .sidebar-table-header:hover {{
+            background: rgba(99, 102, 241, 0.08);
+        }}
+
+        .sidebar-table-name {{
+            font-size: 0.75rem;
+            color: var(--accent-light);
+            font-weight: 500;
+        }}
+
+        .sidebar-table-count {{
+            font-size: 0.625rem;
+            color: var(--text-muted);
+            background: var(--bg-elevated);
+            padding: 0.125rem 0.375rem;
+            border-radius: 999px;
+        }}
+
+        .sidebar-table-items {{
+            padding: 0.25rem 0;
+        }}
+
+        .sidebar-table-group.collapsed .sidebar-table-items {{
+            display: none;
+        }}
+
+        .sidebar-item {{
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.375rem 1rem 0.375rem 2rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }}
+
+        .sidebar-item:hover {{
+            background: rgba(99, 102, 241, 0.1);
+        }}
+
+        .sidebar-item.selected {{
+            background: var(--accent);
+            color: white;
+        }}
+
+        .sidebar-item.selected .sidebar-item-name {{
+            color: white;
+        }}
+
+        .sidebar-item-dot {{
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }}
+
+        .sidebar-item.measure .sidebar-item-dot {{
+            background: #2196F3;
+        }}
+
+        .sidebar-item.column .sidebar-item-dot {{
+            background: #9C27B0;
+        }}
+
+        .sidebar-item.selected .sidebar-item-dot {{
+            background: white;
+        }}
+
+        .sidebar-item-name {{
+            font-size: 0.75rem;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+
+        @media (max-width: 900px) {{
+            .sidebar {{ width: 280px; min-width: 280px; }}
+            .main-content.sidebar-open {{ margin-left: 280px; }}
+            .sidebar-toggle.sidebar-open {{ left: 290px; }}
+        }}
+
+        @media (max-width: 700px) {{
+            .sidebar {{ width: 100%; }}
+            .main-content.sidebar-open {{ margin-left: 0; }}
+            .sidebar-toggle.sidebar-open {{ left: auto; right: 1rem; }}
+        }}
     </style>
 </head>
 <body>
     <div class="bg-pattern"></div>
 
+    <!-- Sidebar Toggle Button (only if sidebar data available) -->
+    <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" style="display: {'flex' if has_sidebar else 'none'};">
+        <span id="sidebar-toggle-icon">📂</span>
+        <span id="sidebar-toggle-text">Model Browser</span>
+    </button>
+
+    <!-- Sidebar (only if sidebar data available) -->
+    <aside class="sidebar" id="sidebar" style="display: {'flex' if has_sidebar else 'none'};">
+        <div class="sidebar-header">
+            <div class="sidebar-title">
+                <span>📊</span>
+                <span>Model Browser</span>
+            </div>
+            <div class="sidebar-subtitle">Click any item to analyze • {total_sidebar_measures} measures, {total_sidebar_columns} columns</div>
+        </div>
+        <div class="sidebar-search">
+            <input type="text" class="sidebar-search-input" id="sidebar-search" placeholder="Search measures, columns...">
+        </div>
+        <div class="sidebar-content" id="sidebar-content">
+            <!-- Measures Category -->
+            <div class="sidebar-category" id="sidebar-measures">
+                <div class="sidebar-category-header" onclick="toggleSidebarCategory('measures')">
+                    <div class="sidebar-category-title">
+                        <div class="sidebar-category-icon measures">📐</div>
+                        <span class="sidebar-category-name">Measures</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span class="sidebar-category-count">{total_sidebar_measures}</span>
+                        <span class="sidebar-category-chevron">▼</span>
+                    </div>
+                </div>
+                <div class="sidebar-category-content" id="sidebar-measures-content">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+            <!-- Columns Category -->
+            <div class="sidebar-category collapsed" id="sidebar-columns">
+                <div class="sidebar-category-header" onclick="toggleSidebarCategory('columns')">
+                    <div class="sidebar-category-title">
+                        <div class="sidebar-category-icon columns">📋</div>
+                        <span class="sidebar-category-name">Columns</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span class="sidebar-category-count">{total_sidebar_columns}</span>
+                        <span class="sidebar-category-chevron">▼</span>
+                    </div>
+                </div>
+                <div class="sidebar-category-content" id="sidebar-columns-content">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="main-content" id="main-content">
     <div class="container">
         <!-- Header -->
         <header class="header">
@@ -1099,6 +1525,7 @@ def generate_dependency_html(
             Generated by <strong>MCP-PowerBi-Finvision</strong>
         </footer>
     </div>
+    </div><!-- End main-content -->
 
     <script>
         console.log('=== MCP-PowerBi-Finvision Dependency Diagram v2.0 ===');
@@ -1281,15 +1708,90 @@ def generate_dependency_html(
             }}
         }}
 
-        // Node ID lists for filtering (pre-computed to match Mermaid IDs)
-        const upstreamNodeIds = {upstream_ids_json};
-        const downstreamNodeIds = {downstream_ids_json};
-        const rootNodeId = {root_id_json};
+        // Node ID lists for filtering (can be updated when switching items)
+        let upstreamNodeIds = {upstream_ids_json};
+        let downstreamNodeIds = {downstream_ids_json};
+        let rootNodeId = {root_id_json};
+        const currentMainItem = {main_item_json};  // The initially selected item
+        let currentItemKey = currentMainItem;  // Track current item
 
-        console.log('Pre-computed node IDs:');
+        console.log('Initial node IDs:');
         console.log('  Upstream:', upstreamNodeIds);
         console.log('  Downstream:', downstreamNodeIds);
         console.log('  Root:', rootNodeId);
+
+        // Sanitize names for Mermaid node IDs (defined early for use by other functions)
+        function sanitizeForMermaid(name) {{
+            let result = name.replace(/\[/g, '_').replace(/\]/g, '').replace(/ /g, '_');
+            result = result.replace(/-/g, '_').replace(/\//g, '_').replace(/\\\\/g, '_');
+            result = result.replace(/\(/g, '_').replace(/\)/g, '_').replace(/%/g, 'pct');
+            result = result.replace(/&/g, 'and').replace(/'/g, '').replace(/"/g, '');
+            result = result.replace(/\./g, '_').replace(/,/g, '_').replace(/:/g, '_');
+            result = result.replace(/\+/g, 'plus').replace(/\*/g, 'x').replace(/=/g, 'eq');
+            result = result.replace(/</, 'lt').replace(/>/, 'gt').replace(/!/g, 'not');
+            result = result.replace(/#/g, 'num').replace(/@/g, 'at').replace(/\$/g, 'dollar');
+            result = result.replace(/[^a-zA-Z0-9_]/g, '');
+            result = result.replace(/_+/g, '_');
+            if (result && !/^[a-zA-Z]/.test(result)) result = 'n_' + result;
+            return result.replace(/^_+|_+$/g, '') || 'node';
+        }}
+
+        // Auto-size the viewBox to fit all content with padding (defined early)
+        function autoSizeViewBox() {{
+            const svg = document.querySelector('.mermaid svg');
+            if (!svg) return;
+
+            try {{
+                const bbox = svg.getBBox();
+                if (bbox.width > 0 && bbox.height > 0) {{
+                    const padding = 50;
+                    const viewBox = `${{bbox.x - padding}} ${{bbox.y - padding}} ${{bbox.width + padding * 2}} ${{bbox.height + padding * 2}}`;
+
+                    svg.setAttribute('viewBox', viewBox);
+                    svg.dataset.originalViewBox = viewBox;
+
+                    svg.style.width = '100%';
+                    svg.style.height = 'auto';
+                    svg.style.minHeight = '400px';
+                    svg.style.maxHeight = '800px';
+
+                    console.log('Auto-sized viewBox:', viewBox);
+                }}
+            }} catch (e) {{
+                console.warn('Could not auto-size viewBox:', e);
+            }}
+        }}
+
+        // Update node ID lists when switching items (called after regenerateDiagram)
+        function updateNodeIdLists(itemKey, deps) {{
+            const upMeasures = deps.upstream?.measures || [];
+            const upColumns = deps.upstream?.columns || [];
+            const downMeasures = deps.downstream?.measures || [];
+
+            // Update root
+            rootNodeId = sanitizeForMermaid(itemKey);
+            currentItemKey = itemKey;
+
+            // Update upstream list
+            upstreamNodeIds = [];
+            upMeasures.forEach(key => {{
+                upstreamNodeIds.push(sanitizeForMermaid(key));
+            }});
+            upColumns.forEach(key => {{
+                upstreamNodeIds.push(sanitizeForMermaid(key));
+            }});
+
+            // Update downstream list
+            downstreamNodeIds = [];
+            downMeasures.forEach(key => {{
+                downstreamNodeIds.push(sanitizeForMermaid(key));
+            }});
+
+            console.log('Updated node IDs for', itemKey);
+            console.log('  Root:', rootNodeId);
+            console.log('  Upstream:', upstreamNodeIds);
+            console.log('  Downstream:', downstreamNodeIds);
+        }}
 
         // Filter functionality for upstream/downstream view
         let currentFilter = 'all';
@@ -1327,10 +1829,9 @@ def generate_dependency_html(
             // Reset visibility tracking
             visibleSanitizedIds = new Set();
 
-            // FIRST PASS: Identify which nodes should be visible (but don't hide yet)
-            // Also collect nodes for viewBox calculation BEFORE hiding
-            const nodesToShow = [];
+            // Using global helper functions getSanitizedId and idMatchesList
 
+            // Apply visibility to nodes
             allNodes.forEach(node => {{
                 const mermaidId = node.id || '';
                 const sanitizedId = getSanitizedId(mermaidId);
@@ -1347,27 +1848,12 @@ def generate_dependency_html(
                     shouldShow = isDownstream || isRoot;
                 }}
 
-                if (shouldShow) {{
-                    visibleSanitizedIds.add(sanitizedId);
-                    nodesToShow.push(node);
-                }}
-            }});
-
-            // Calculate viewBox BEFORE hiding elements (for non-all filters)
-            let preCalculatedViewBox = null;
-            if (filter !== 'all' && nodesToShow.length > 0) {{
-                preCalculatedViewBox = calculateViewBoxForNodes(svg, nodesToShow);
-                console.log('Pre-calculated viewBox:', preCalculatedViewBox);
-            }}
-
-            // SECOND PASS: Now actually apply visibility
-            allNodes.forEach(node => {{
-                const mermaidId = node.id || '';
-                const sanitizedId = getSanitizedId(mermaidId);
-                const shouldShow = visibleSanitizedIds.has(sanitizedId);
-
                 node.style.display = shouldShow ? '' : 'none';
                 node.style.opacity = shouldShow ? '1' : '0';
+
+                if (shouldShow) {{
+                    visibleSanitizedIds.add(sanitizedId);
+                }}
             }});
 
             console.log('Visible nodes after filter:', [...visibleSanitizedIds]);
@@ -1488,7 +1974,7 @@ def generate_dependency_html(
                 }}
             }}
 
-            // Apply pre-calculated viewBox and scroll to top
+            // Fit SVG to visible content and scroll to top
             setTimeout(() => {{
                 const diagramContent = document.getElementById('diagram-content');
                 const svg = document.querySelector('.mermaid svg');
@@ -1510,78 +1996,91 @@ def generate_dependency_html(
                     return;
                 }}
 
-                // Apply the pre-calculated viewBox (calculated BEFORE hiding elements)
-                if (preCalculatedViewBox) {{
-                    svg.setAttribute('viewBox', preCalculatedViewBox);
-                    console.log('Applied pre-calculated viewBox:', preCalculatedViewBox);
-                }} else {{
-                    console.warn('No pre-calculated viewBox, keeping current view');
+                // Calculate bounding box of visible elements using getBBox() directly
+                // (simpler approach that works better with SVG transforms)
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                let hasVisibleElements = false;
+
+                // Get visible nodes
+                svg.querySelectorAll('g.node').forEach(node => {{
+                    if (node.style.display !== 'none' && node.style.visibility !== 'hidden' && node.style.opacity !== '0') {{
+                        try {{
+                            const bbox = node.getBBox();
+                            if (bbox.width > 0 && bbox.height > 0) {{
+                                minX = Math.min(minX, bbox.x);
+                                minY = Math.min(minY, bbox.y);
+                                maxX = Math.max(maxX, bbox.x + bbox.width);
+                                maxY = Math.max(maxY, bbox.y + bbox.height);
+                                hasVisibleElements = true;
+                            }}
+                        }} catch(e) {{ console.log('getBBox error:', e); }}
+                    }}
+                }});
+
+                // Get visible clusters
+                svg.querySelectorAll('g.cluster').forEach(cluster => {{
+                    if (cluster.style.display !== 'none' && cluster.style.visibility !== 'hidden' && cluster.style.opacity !== '0') {{
+                        try {{
+                            const bbox = cluster.getBBox();
+                            if (bbox.width > 0 && bbox.height > 0) {{
+                                minX = Math.min(minX, bbox.x);
+                                minY = Math.min(minY, bbox.y);
+                                maxX = Math.max(maxX, bbox.x + bbox.width);
+                                maxY = Math.max(maxY, bbox.y + bbox.height);
+                                hasVisibleElements = true;
+                            }}
+                        }} catch(e) {{}}
+                    }}
+                }});
+
+                console.log('Visible bounds:', {{ minX, minY, maxX, maxY, hasVisibleElements }});
+
+                if (hasVisibleElements && minX !== Infinity && maxX > minX && maxY > minY) {{
+                    // Add generous padding
+                    const padding = 100;
+                    minX -= padding;
+                    minY -= padding;
+                    maxX += padding;
+                    maxY += padding;
+
+                    const width = maxX - minX;
+                    const height = maxY - minY;
+
+                    // Ensure minimum dimensions
+                    const finalWidth = Math.max(width, 400);
+                    const finalHeight = Math.max(height, 300);
+
+                    // Update viewBox to fit visible content
+                    const newViewBox = `${{minX}} ${{minY}} ${{finalWidth}} ${{finalHeight}}`;
+                    svg.setAttribute('viewBox', newViewBox);
+                    console.log('Filter viewBox set to:', newViewBox);
                 }}
 
                 // Scroll to top-left
                 diagramContent.scrollTop = 0;
                 diagramContent.scrollLeft = 0;
-            }}, 100);
+            }}, 300);
         }}
 
-        // Calculate viewBox for a set of nodes (called BEFORE hiding elements)
-        function calculateViewBoxForNodes(svg, nodes) {{
-            if (!svg || !nodes || nodes.length === 0) return null;
-
-            // Force reflow to ensure accurate bounding boxes
-            svg.getBoundingClientRect();
-
-            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-            let validNodes = 0;
-
-            nodes.forEach(node => {{
-                try {{
-                    const bbox = node.getBBox();
-                    if (bbox.width > 0 && bbox.height > 0) {{
-                        minX = Math.min(minX, bbox.x);
-                        minY = Math.min(minY, bbox.y);
-                        maxX = Math.max(maxX, bbox.x + bbox.width);
-                        maxY = Math.max(maxY, bbox.y + bbox.height);
-                        validNodes++;
-                    }}
-                }} catch(e) {{
-                    console.log('getBBox error for node:', e);
-                }}
-            }});
-
-            if (validNodes === 0 || minX === Infinity) {{
-                console.warn('Could not calculate viewBox - no valid bounding boxes');
-                return null;
-            }}
-
-            // Add generous padding
-            const padding = 100;
-            minX -= padding;
-            minY -= padding;
-            maxX += padding;
-            maxY += padding;
-
-            // Ensure minimum dimensions
-            const width = Math.max(maxX - minX, 400);
-            const height = Math.max(maxY - minY, 300);
-
-            console.log(`ViewBox calculated for ${{validNodes}} nodes: ${{minX}} ${{minY}} ${{width}} ${{height}}`);
-            return `${{minX}} ${{minY}} ${{width}} ${{height}}`;
-        }}
-
-        // Store original viewBox on first load
-        function storeOriginalViewBox() {{
+        // Store and auto-size viewBox on first load
+        function initializeViewBox() {{
             const svg = document.querySelector('.mermaid svg');
             if (svg && !svg.dataset.originalViewBox) {{
-                const viewBox = svg.getAttribute('viewBox');
-                if (viewBox) {{
-                    svg.dataset.originalViewBox = viewBox;
-                }} else {{
-                    svg.dataset.originalViewBox = `0 0 ${{svg.clientWidth || 1200}} ${{svg.clientHeight || 600}}`;
+                // First try to auto-size based on content
+                autoSizeViewBox();
+
+                // If auto-size didn't work, use fallback
+                if (!svg.dataset.originalViewBox) {{
+                    const viewBox = svg.getAttribute('viewBox');
+                    if (viewBox) {{
+                        svg.dataset.originalViewBox = viewBox;
+                    }} else {{
+                        svg.dataset.originalViewBox = `0 0 ${{svg.clientWidth || 1200}} ${{svg.clientHeight || 600}}`;
+                    }}
                 }}
             }}
         }}
-        setTimeout(storeOriginalViewBox, 1000);
+        setTimeout(initializeViewBox, 1000);
 
         // ═══════════════════════════════════════════════════════════════════════
         // CLICK-TO-HIGHLIGHT FLOW FUNCTIONALITY
@@ -1806,12 +2305,6 @@ def generate_dependency_html(
 
             console.log('Total nodes to highlight:', highlightedNodeElements.size);
 
-            // IMPORTANT: Calculate viewBox BEFORE applying any hiding
-            // Use the reusable function we defined for setFilter
-            const nodesToHighlight = Array.from(highlightedNodeElements);
-            const preCalculatedViewBox = calculateViewBoxForNodes(svg, nodesToHighlight);
-            console.log('Pre-calculated viewBox for highlight:', preCalculatedViewBox);
-
             // Activate highlight mode
             flowHighlightActive = true;
             selectedNodeId = clickedSanitizedId;
@@ -1915,15 +2408,9 @@ def generate_dependency_html(
 
             console.log('========================================');
 
-            // Apply pre-calculated viewBox (calculated BEFORE hiding elements)
+            // Adjust viewBox to fit only the highlighted elements
             setTimeout(() => {{
-                if (preCalculatedViewBox) {{
-                    svg.setAttribute('viewBox', preCalculatedViewBox);
-                    console.log('Applied pre-calculated viewBox for highlight:', preCalculatedViewBox);
-                }} else {{
-                    // Fallback: keep current viewBox if calculation failed
-                    console.warn('No pre-calculated viewBox, keeping current view');
-                }}
+                fitViewBoxToHighlighted(svg);
             }}, 100);
         }}
 
@@ -2248,8 +2735,7 @@ def generate_dependency_html(
         function groupByTable(items, nameKey = 'name') {{
             const groups = {{}};
             items.forEach(item => {{
-                // Use "Unresolved" for empty table names instead of "Unknown"
-                const table = (item.table && item.table.trim()) ? item.table : 'Unresolved';
+                const table = item.table || 'Unknown';
                 if (!groups[table]) {{
                     groups[table] = [];
                 }}
@@ -2377,14 +2863,14 @@ def generate_dependency_html(
 
             // Add measures
             referencedMeasures.forEach(item => {{
-                const table = (item.table && item.table.trim()) ? item.table : 'Unresolved';
+                const table = item.table || 'Unknown';
                 if (!depsGroups[table]) depsGroups[table] = {{ measures: [], columns: [] }};
                 depsGroups[table].measures.push(item.name);
             }});
 
             // Add columns
             referencedColumns.forEach(item => {{
-                const table = (item.table && item.table.trim()) ? item.table : 'Unresolved';
+                const table = item.table || 'Unknown';
                 if (!depsGroups[table]) depsGroups[table] = {{ measures: [], columns: [] }};
                 depsGroups[table].columns.push(item.name);
             }});
@@ -2450,7 +2936,7 @@ def generate_dependency_html(
                     // Group by table
                     const usedByByTable = {{}};
                     usedByMeasures.forEach(item => {{
-                        const table = (item.table && item.table.trim()) ? item.table : 'Unresolved';
+                        const table = item.table || 'Unknown';
                         if (!usedByByTable[table]) usedByByTable[table] = [];
                         usedByByTable[table].push({{
                             name: item.measure,
@@ -2487,6 +2973,473 @@ def generate_dependency_html(
                     usedByContainer.innerHTML = html;
                 }}
             }}
+        }});
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // SIDEBAR FUNCTIONALITY (NEW)
+        // ═══════════════════════════════════════════════════════════════════════
+        const sidebarMeasuresByTable = {measures_by_table_json};
+        const sidebarColumnsByTable = {columns_by_table_json};
+        const allDependencies = {all_dependencies_json};
+        // currentMainItem is declared earlier with the other initial state variables
+
+        let sidebarOpen = false;
+
+        function toggleSidebar() {{
+            sidebarOpen = !sidebarOpen;
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('main-content');
+            const toggleBtn = document.getElementById('sidebar-toggle');
+            const toggleIcon = document.getElementById('sidebar-toggle-icon');
+            const toggleText = document.getElementById('sidebar-toggle-text');
+
+            if (sidebarOpen) {{
+                sidebar.classList.add('visible');
+                mainContent.classList.add('sidebar-open');
+                toggleBtn.classList.add('sidebar-open');
+                toggleIcon.textContent = '✕';
+                toggleText.textContent = 'Close';
+            }} else {{
+                sidebar.classList.remove('visible');
+                mainContent.classList.remove('sidebar-open');
+                toggleBtn.classList.remove('sidebar-open');
+                toggleIcon.textContent = '📂';
+                toggleText.textContent = 'Model Browser';
+            }}
+        }}
+
+        function toggleSidebarCategory(category) {{
+            const panel = document.getElementById('sidebar-' + category);
+            if (panel) {{
+                panel.classList.toggle('collapsed');
+            }}
+        }}
+
+        function toggleSidebarTableGroup(element) {{
+            const group = element.closest('.sidebar-table-group');
+            if (group) {{
+                group.classList.toggle('collapsed');
+            }}
+        }}
+
+        function populateSidebar() {{
+            // Populate measures
+            const measuresContent = document.getElementById('sidebar-measures-content');
+            if (measuresContent) {{
+                let html = '';
+                for (const [table, measures] of Object.entries(sidebarMeasuresByTable).sort()) {{
+                    html += `
+                        <div class="sidebar-table-group">
+                            <div class="sidebar-table-header" onclick="toggleSidebarTableGroup(this)">
+                                <span class="sidebar-table-name">📁 ${{table}}</span>
+                                <span class="sidebar-table-count">${{measures.length}}</span>
+                            </div>
+                            <div class="sidebar-table-items">
+                                ${{measures.map(m => `
+                                    <div class="sidebar-item measure ${{m.key === currentMainItem ? 'selected' : ''}}"
+                                         data-key="${{m.key}}"
+                                         onclick="selectSidebarItem('${{m.key.replace(/'/g, "\\\\'")}}', 'measure')"
+                                         title="${{m.key}}">
+                                        <span class="sidebar-item-dot"></span>
+                                        <span class="sidebar-item-name">${{m.name}}</span>
+                                    </div>
+                                `).join('')}}
+                            </div>
+                        </div>
+                    `;
+                }}
+                measuresContent.innerHTML = html || '<div style="padding: 1rem; color: var(--text-muted);">No measures available</div>';
+            }}
+
+            // Populate columns
+            const columnsContent = document.getElementById('sidebar-columns-content');
+            if (columnsContent) {{
+                let html = '';
+                for (const [table, columns] of Object.entries(sidebarColumnsByTable).sort()) {{
+                    html += `
+                        <div class="sidebar-table-group collapsed">
+                            <div class="sidebar-table-header" onclick="toggleSidebarTableGroup(this)">
+                                <span class="sidebar-table-name">📁 ${{table}}</span>
+                                <span class="sidebar-table-count">${{columns.length}}</span>
+                            </div>
+                            <div class="sidebar-table-items">
+                                ${{columns.map(c => `
+                                    <div class="sidebar-item column ${{c.key === currentMainItem ? 'selected' : ''}}"
+                                         data-key="${{c.key}}"
+                                         onclick="selectSidebarItem('${{c.key.replace(/'/g, "\\\\'")}}', 'column')"
+                                         title="${{c.key}}">
+                                        <span class="sidebar-item-dot"></span>
+                                        <span class="sidebar-item-name">${{c.name}}</span>
+                                    </div>
+                                `).join('')}}
+                            </div>
+                        </div>
+                    `;
+                }}
+                columnsContent.innerHTML = html || '<div style="padding: 1rem; color: var(--text-muted);">No columns available</div>';
+            }}
+        }}
+
+        function selectSidebarItem(itemKey, itemType) {{
+            // Check if we have dependency data for this item
+            const deps = allDependencies[itemKey];
+
+            if (!deps) {{
+                console.warn(`No dependency data for ${{itemKey}}`);
+                return;
+            }}
+
+            console.log('Switching to item:', itemKey, deps);
+
+            // Update sidebar selection
+            document.querySelectorAll('.sidebar-item.selected').forEach(el => el.classList.remove('selected'));
+            const itemEl = document.querySelector(`.sidebar-item[data-key="${{CSS.escape(itemKey)}}"]`);
+            if (itemEl) {{
+                itemEl.classList.add('selected');
+                // Scroll item into view
+                itemEl.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
+            }}
+
+            // Parse item key to get table and name
+            const match = itemKey.match(/^(.+)\[(.+)\]$/);
+            if (!match) return;
+            const itemTable = match[1];
+            const itemName = match[2];
+
+            // Update hero card
+            const heroTitle = document.querySelector('.hero-title');
+            if (heroTitle) {{
+                heroTitle.innerHTML = `<span class="table-name">${{itemTable}}</span><span class="measure-name">[${{itemName}}]</span>`;
+            }}
+
+            // Get dependency counts
+            const upstreamMeasures = deps.upstream?.measures || [];
+            const upstreamColumns = deps.upstream?.columns || [];
+            const downstreamMeasures = deps.downstream?.measures || [];
+            const totalUpstream = upstreamMeasures.length + upstreamColumns.length;
+            const totalDownstream = downstreamMeasures.length;
+
+            // Update stats
+            const statCards = document.querySelectorAll('.stat-card');
+            if (statCards.length >= 4) {{
+                statCards[0].querySelector('.stat-value').textContent = totalUpstream;
+                statCards[1].querySelector('.stat-value').textContent = totalDownstream;
+                // Node and edge counts will be updated after diagram regeneration
+            }}
+
+            // Update panel counts
+            const depsCount = document.getElementById('deps-count');
+            const usedByCount = document.getElementById('used-by-count');
+            if (depsCount) depsCount.textContent = totalUpstream;
+            if (usedByCount) usedByCount.textContent = totalDownstream;
+
+            // Rebuild dependencies panel (upstream)
+            rebuildDepsPanel(upstreamMeasures, upstreamColumns);
+
+            // Rebuild used-by panel (downstream)
+            rebuildUsedByPanel(downstreamMeasures);
+
+            // Regenerate Mermaid diagram
+            regenerateDiagram(itemKey, itemTable, itemName, deps);
+        }}
+
+        function rebuildDepsPanel(measures, columns) {{
+            const container = document.getElementById('deps-content');
+            if (!container) return;
+
+            // Group by table
+            const groups = {{}};
+
+            measures.forEach(key => {{
+                const m = key.match(/^(.+)\[(.+)\]$/);
+                if (m) {{
+                    const table = m[1];
+                    if (!groups[table]) groups[table] = {{ measures: [], columns: [] }};
+                    groups[table].measures.push(m[2]);
+                }}
+            }});
+
+            columns.forEach(key => {{
+                const m = key.match(/^(.+)\[(.+)\]$/);
+                if (m) {{
+                    const table = m[1];
+                    if (!groups[table]) groups[table] = {{ measures: [], columns: [] }};
+                    groups[table].columns.push(m[2]);
+                }}
+            }});
+
+            const tables = Object.keys(groups).sort();
+            if (tables.length === 0) {{
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📊</div>
+                        <div>No dependencies found</div>
+                    </div>`;
+                return;
+            }}
+
+            let html = '';
+            tables.forEach(table => {{
+                const data = groups[table];
+                const items = [
+                    ...data.measures.map(m => ({{ name: m, type: 'measure' }})),
+                    ...data.columns.map(c => ({{ name: c, type: 'column' }}))
+                ].sort((a, b) => a.name.localeCompare(b.name));
+
+                html += `
+                    <div class="table-group" data-table="${{table.toLowerCase()}}">
+                        <div class="table-group-header" onclick="toggleGroup(this)">
+                            <span class="table-group-name">${{table}}</span>
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <span class="table-group-count">${{items.length}}</span>
+                                <span class="chevron">▼</span>
+                            </div>
+                        </div>
+                        <div class="table-group-items">
+                            ${{items.map(item => `
+                                <div class="item ${{item.type}}" data-name="${{item.name.toLowerCase()}}" data-table="${{table.toLowerCase()}}">
+                                    <span class="item-icon">${{item.type === 'measure' ? '●' : '◇'}}</span>
+                                    <span class="item-name">${{item.name}}</span>
+                                    <span style="color: var(--text-muted); font-size: 0.6875rem; margin-left: auto;">${{item.type}}</span>
+                                </div>
+                            `).join('')}}
+                        </div>
+                    </div>`;
+            }});
+            container.innerHTML = html;
+        }}
+
+        function rebuildUsedByPanel(measures) {{
+            const container = document.getElementById('used-by-content');
+            if (!container) return;
+
+            if (measures.length === 0) {{
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <div>No measures use this item</div>
+                    </div>`;
+                return;
+            }}
+
+            // Group by table
+            const groups = {{}};
+            measures.forEach(key => {{
+                const m = key.match(/^(.+)\[(.+)\]$/);
+                if (m) {{
+                    const table = m[1];
+                    if (!groups[table]) groups[table] = [];
+                    groups[table].push(m[2]);
+                }}
+            }});
+
+            let html = '';
+            Object.keys(groups).sort().forEach(table => {{
+                const items = groups[table].sort();
+                html += `
+                    <div class="table-group" data-table="${{table.toLowerCase()}}">
+                        <div class="table-group-header" onclick="toggleGroup(this)">
+                            <span class="table-group-name">${{table}}</span>
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <span class="table-group-count">${{items.length}}</span>
+                                <span class="chevron">▼</span>
+                            </div>
+                        </div>
+                        <div class="table-group-items">
+                            ${{items.map(name => `
+                                <div class="item measure" data-name="${{name.toLowerCase()}}" data-table="${{table.toLowerCase()}}">
+                                    <span class="item-icon">●</span>
+                                    <span class="item-name">${{name}}</span>
+                                </div>
+                            `).join('')}}
+                        </div>
+                    </div>`;
+            }});
+            container.innerHTML = html;
+        }}
+
+        function regenerateDiagram(itemKey, itemTable, itemName, deps) {{
+            const upstreamMeasures = deps.upstream?.measures || [];
+            const upstreamColumns = deps.upstream?.columns || [];
+            const downstreamMeasures = deps.downstream?.measures || [];
+
+            // Update the global node ID lists for filtering/highlighting
+            updateNodeIdLists(itemKey, deps);
+
+            // Build Mermaid code
+            const rootId = sanitizeForMermaid(itemKey);
+            let mermaidCode = 'flowchart LR\\n';
+
+            // Add styling classes
+            mermaidCode += '    classDef root fill:#6366f1,stroke:#818cf8,stroke-width:3px,color:#fff\\n';
+            mermaidCode += '    classDef upstream fill:#10b981,stroke:#34d399,stroke-width:2px,color:#fff\\n';
+            mermaidCode += '    classDef downstream fill:#f59e0b,stroke:#fbbf24,stroke-width:2px,color:#fff\\n';
+            mermaidCode += '    classDef column fill:#8b5cf6,stroke:#a78bfa,stroke-width:2px,color:#fff\\n';
+
+            // Root node
+            mermaidCode += `    ${{rootId}}["${{itemName}}"]:::root\\n`;
+
+            // Track node count
+            let nodeCount = 1;
+            let edgeCount = 0;
+
+            // Upstream subgraph (Dependencies)
+            if (upstreamMeasures.length > 0 || upstreamColumns.length > 0) {{
+                mermaidCode += '    subgraph Dependencies["⬆ Dependencies"]\\n';
+                mermaidCode += '    direction TB\\n';
+
+                upstreamMeasures.forEach(key => {{
+                    const m = key.match(/^(.+)\[(.+)\]$/);
+                    if (m) {{
+                        const nodeId = sanitizeForMermaid(key);
+                        mermaidCode += `        ${{nodeId}}["${{m[2]}}"]:::upstream\\n`;
+                        nodeCount++;
+                    }}
+                }});
+
+                upstreamColumns.forEach(key => {{
+                    const m = key.match(/^(.+)\[(.+)\]$/);
+                    if (m) {{
+                        const nodeId = sanitizeForMermaid(key);
+                        mermaidCode += `        ${{nodeId}}["${{m[2]}}"]:::column\\n`;
+                        nodeCount++;
+                    }}
+                }});
+
+                mermaidCode += '    end\\n';
+
+                // Edges from upstream to root
+                upstreamMeasures.forEach(key => {{
+                    const nodeId = sanitizeForMermaid(key);
+                    mermaidCode += `    ${{nodeId}} --> ${{rootId}}\\n`;
+                    edgeCount++;
+                }});
+                upstreamColumns.forEach(key => {{
+                    const nodeId = sanitizeForMermaid(key);
+                    mermaidCode += `    ${{nodeId}} --> ${{rootId}}\\n`;
+                    edgeCount++;
+                }});
+            }}
+
+            // Downstream subgraph (Dependents)
+            if (downstreamMeasures.length > 0) {{
+                mermaidCode += '    subgraph Dependents["⬇ Used By"]\\n';
+                mermaidCode += '    direction TB\\n';
+
+                downstreamMeasures.forEach(key => {{
+                    const m = key.match(/^(.+)\[(.+)\]$/);
+                    if (m) {{
+                        const nodeId = sanitizeForMermaid(key);
+                        mermaidCode += `        ${{nodeId}}["${{m[2]}}"]:::downstream\\n`;
+                        nodeCount++;
+                    }}
+                }});
+
+                mermaidCode += '    end\\n';
+
+                // Edges from root to downstream
+                downstreamMeasures.forEach(key => {{
+                    const nodeId = sanitizeForMermaid(key);
+                    mermaidCode += `    ${{rootId}} --> ${{nodeId}}\\n`;
+                    edgeCount++;
+                }});
+            }}
+
+            // Update node/edge stats
+            const statCards = document.querySelectorAll('.stat-card');
+            if (statCards.length >= 4) {{
+                statCards[2].querySelector('.stat-value').textContent = nodeCount;
+                statCards[3].querySelector('.stat-value').textContent = edgeCount;
+            }}
+
+            // Re-render Mermaid diagram using mermaid.render (more reliable than init)
+            const diagramContainer = document.getElementById('mermaid-diagram');
+            if (diagramContainer) {{
+                // Generate unique ID for this render
+                const renderId = 'mermaid-' + Date.now();
+
+                // Use mermaid.render which returns SVG directly
+                mermaid.render(renderId, mermaidCode).then(({{ svg }}) => {{
+                    // Replace container contents with new SVG
+                    diagramContainer.innerHTML = svg;
+
+                    console.log('Mermaid diagram regenerated for', itemKey);
+
+                    // Reset filter to 'all' after regeneration
+                    currentFilter = 'all';
+                    document.querySelectorAll('.btn-filter').forEach(btn => btn.classList.remove('active'));
+                    document.getElementById('filter-all')?.classList.add('active');
+
+                    // Show both panels
+                    const depsPanel = document.getElementById('dependencies-panel');
+                    const usedByPanel = document.getElementById('used-by-panel');
+                    if (depsPanel) depsPanel.style.display = '';
+                    if (usedByPanel) usedByPanel.style.display = '';
+
+                    // Auto-size viewBox and setup after render
+                    setTimeout(() => {{
+                        autoSizeViewBox();
+                        buildEdgeGraph();
+                        initClickHandlersForNewDiagram();
+                        // Clear any stale highlight state
+                        flowHighlightActive = false;
+                        selectedNodeId = null;
+                        const clearBtn = document.getElementById('clear-selection-btn');
+                        if (clearBtn) clearBtn.style.display = 'none';
+                    }}, 300);
+                }}).catch(err => {{
+                    console.error('Mermaid render error:', err);
+                    diagramContainer.innerHTML = '<div style="color: red; padding: 2rem;">Error rendering diagram: ' + err.message + '</div>';
+                }});
+            }}
+        }}
+
+        function initClickHandlersForNewDiagram() {{
+            const svg = document.querySelector('.mermaid svg');
+            if (!svg) return;
+
+            svg.querySelectorAll('g.node').forEach(node => {{
+                node.addEventListener('click', (e) => {{
+                    e.stopPropagation();
+                    const mermaidId = node.id;
+                    const nodeId = extractNodeId(mermaidId);
+                    console.log('Node clicked:', nodeId);
+
+                    if (flowHighlightActive && selectedNodeId === nodeId) {{
+                        clearFlowHighlight();
+                    }} else {{
+                        clearFlowHighlight();
+                        highlightNodeFlow(node);
+                    }}
+                }});
+            }});
+        }}
+
+        function setupSidebarSearch() {{
+            const searchInput = document.getElementById('sidebar-search');
+            if (searchInput) {{
+                searchInput.addEventListener('input', (e) => {{
+                    const query = e.target.value.toLowerCase();
+                    document.querySelectorAll('.sidebar-item').forEach(item => {{
+                        const name = item.querySelector('.sidebar-item-name')?.textContent?.toLowerCase() || '';
+                        const key = item.dataset.key?.toLowerCase() || '';
+                        const matches = name.includes(query) || key.includes(query);
+                        item.style.display = matches ? '' : 'none';
+                    }});
+
+                    // Expand all groups when searching
+                    if (query) {{
+                        document.querySelectorAll('.sidebar-table-group').forEach(g => g.classList.remove('collapsed'));
+                        document.querySelectorAll('.sidebar-category').forEach(c => c.classList.remove('collapsed'));
+                    }}
+                }});
+            }}
+        }}
+
+        // Initialize sidebar on load
+        document.addEventListener('DOMContentLoaded', function() {{
+            populateSidebar();
+            setupSidebarSearch();
         }});
     </script>
 </body>

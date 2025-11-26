@@ -1215,7 +1215,8 @@ def _operation_get_report_dependencies(reader: HybridReader) -> Dict[str, Any]:
 def handle_generate_pbip_dependency_diagram(
     pbip_folder_path: str,
     auto_open: bool = True,
-    output_path: Optional[str] = None
+    output_path: Optional[str] = None,
+    main_item: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Generate an interactive HTML dependency diagram for a PBIP project.
@@ -1227,12 +1228,14 @@ def handle_generate_pbip_dependency_diagram(
     - Columns and which measures use them
     - Field Parameters and their column references
 
-    Each category is filterable in the interactive HTML diagram.
+    Features a sidebar with ALL measures, columns, and field parameters.
+    Click any item in the sidebar to view its dependencies.
 
     Args:
         pbip_folder_path: Path to .SemanticModel folder or parent folder containing one
         auto_open: Whether to automatically open the diagram in browser (default: True)
         output_path: Optional custom output path for the HTML file
+        main_item: Optional specific item to select initially (e.g., 'Table[Measure]')
 
     Returns:
         Result dictionary with success status and diagram path
@@ -1340,7 +1343,8 @@ def handle_generate_pbip_dependency_diagram(
             dependency_data=dependency_data,
             model_name=model_name,
             auto_open=auto_open,
-            output_path=output_path
+            output_path=output_path,
+            main_item=main_item
         )
 
         if html_path:
@@ -1350,6 +1354,7 @@ def handle_generate_pbip_dependency_diagram(
                 'message': f"✓ PBIP dependency diagram generated successfully",
                 'diagram_path': html_path,
                 'model_name': model_name,
+                'initial_selection': main_item if main_item else 'First measure in model',
                 'summary': {
                     'visuals': dependency_data['summary'].get('total_visuals', 0),
                     'pages': dependency_data['summary'].get('total_pages', 0),
@@ -1360,10 +1365,12 @@ def handle_generate_pbip_dependency_diagram(
                     'unused_columns': dependency_data['summary']['unused_columns']
                 },
                 'features': [
-                    'Interactive filtering by Visuals/Measures/Columns/Field Parameters',
-                    'Zoom and pan controls',
-                    'SVG download',
-                    'Grouped by page (visuals) and table (measures/columns)',
+                    'Left sidebar with ALL measures, columns, and field parameters',
+                    'Click any item in sidebar to view its dependencies instantly',
+                    'Search/filter items by name',
+                    'Items grouped by table with expand/collapse',
+                    'Upstream & downstream dependency visualization',
+                    'Zoom controls and SVG download',
                     'Auto-opens in browser' if auto_open else 'Saved to file'
                 ]
             }
@@ -1415,7 +1422,7 @@ def register_hybrid_analysis_handlers(registry):
 
     registry.register(ToolDefinition(
         name='generate_pbip_dependency_diagram',
-        description='Generate interactive HTML dependency diagram for PBIP project. Analyzes TMDL model and PBIR report to visualize: Visuals, Measures, Columns, and Field Parameters with their dependencies. Each category is filterable. Auto-opens in browser.',
+        description='Generate interactive HTML dependency diagram for PBIP project. Features a sidebar with ALL measures, columns, and field parameters - click any item to instantly view its upstream and downstream dependencies. Optional main_item parameter to pre-select a specific item. Auto-opens in browser.',
         handler=make_handler(handle_generate_pbip_dependency_diagram),
         input_schema=TOOL_SCHEMAS['generate_pbip_dependency_diagram'],
         category='10 - Hybrid Analysis',

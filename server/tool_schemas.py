@@ -1131,6 +1131,10 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
             "output_path": {
                 "type": "string",
                 "description": "Optional custom output path for the HTML file. If not specified, saves to exports/pbip_dependency_diagram.html"
+            },
+            "main_item": {
+                "type": "string",
+                "description": "Optional specific item to select initially (e.g., 'TableName[MeasureName]' or 'TableName[ColumnName]'). If not specified, selects the first measure in the model. The HTML includes a sidebar with all measures, columns, and field parameters - click any item to view its dependencies."
             }
         },
         "required": ["pbip_folder_path"],
@@ -1142,6 +1146,11 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
             {
                 "_description": "Generate diagram from parent folder (auto-detects .SemanticModel)",
                 "pbip_folder_path": "C:/repos/MyProject"
+            },
+            {
+                "_description": "Generate diagram and select a specific measure initially",
+                "pbip_folder_path": "C:/repos/MyProject/MyModel.SemanticModel",
+                "main_item": "Measures[Total Sales]"
             },
             {
                 "_description": "Generate diagram without auto-opening browser",

@@ -8,9 +8,74 @@ from server.registry import ToolDefinition
 from core.infrastructure.connection_state import connection_state
 from core.validation.error_handler import ErrorHandler
 from core.utilities.diagram_html_generator import generate_dependency_html
+from core.utilities.dependency_cache import DependencyCache, compute_all_dependencies
 from core.dax.dax_reference_parser import normalize_dax_name
 
 logger = logging.getLogger(__name__)
+
+# Global cache instance for sidebar data
+_sidebar_cache = {
+    'all_measures': [],
+    'all_columns': [],
+    'all_dependencies': {}
+}
+
+
+def _load_sidebar_data(force_refresh: bool = False) -> dict:
+    """
+    Load sidebar data from cache file or compute ALL dependencies if not available.
+    Returns dict with all_measures, all_columns, all_dependencies.
+    All dependencies are pre-computed so the HTML can switch items instantly.
+    """
+    global _sidebar_cache
+
+    # Check if we already have COMPLETE data in memory (including dependencies)
+    if not force_refresh and _sidebar_cache.get('all_measures') and _sidebar_cache.get('all_dependencies'):
+        logger.debug("Using in-memory sidebar cache with dependencies")
+        return _sidebar_cache
+
+    # Try to load from file cache
+    cache = DependencyCache()
+    cache_data = cache.load_cache()
+
+    if cache_data and cache_data.get('all_dependencies'):
+        _sidebar_cache = {
+            'all_measures': cache_data.get('all_measures', []),
+            'all_columns': cache_data.get('all_columns', []),
+            'all_dependencies': cache_data.get('all_dependencies', {})
+        }
+        logger.info(f"Loaded sidebar data from cache: {len(_sidebar_cache['all_measures'])} measures, "
+                   f"{len(_sidebar_cache['all_columns'])} columns, {len(_sidebar_cache['all_dependencies'])} dependencies")
+        return _sidebar_cache
+
+    # If no cache, compute ALL dependencies for ALL items
+    # This enables instant switching in the HTML without re-running analysis
+    query_executor = connection_state.query_executor
+    dependency_analyzer = connection_state.dependency_analyzer
+
+    if not query_executor or not dependency_analyzer:
+        logger.warning("Query executor or dependency analyzer not available for sidebar data")
+        return _sidebar_cache
+
+    logger.info("Computing all dependencies for sidebar (this may take a moment)...")
+
+    # Use the compute_all_dependencies function from dependency_cache
+    result = compute_all_dependencies(
+        query_executor=query_executor,
+        dependency_analyzer=dependency_analyzer,
+        model_name="default",
+        save_to_cache=True  # Save to file for faster loads next time
+    )
+
+    _sidebar_cache = {
+        'all_measures': result.get('all_measures', []),
+        'all_columns': result.get('all_columns', []),
+        'all_dependencies': result.get('all_dependencies', {})
+    }
+
+    logger.info(f"Computed sidebar data: {len(_sidebar_cache['all_measures'])} measures, "
+               f"{len(_sidebar_cache['all_columns'])} columns, {len(_sidebar_cache['all_dependencies'])} dependencies")
+    return _sidebar_cache
 
 
 def _format_dependency_analysis_output(
@@ -401,6 +466,10 @@ def handle_analyze_measure_dependencies(args: Dict[str, Any]) -> Dict[str, Any]:
         # Always generate interactive HTML diagram (works for any size)
         # This provides a consistent experience regardless of diagram complexity
         if mermaid_code:
+            # Load sidebar data for the Model Browser
+            sidebar_data = _load_sidebar_data()
+            main_item_key = f"{table}[{measure}]"
+
             html_path = generate_dependency_html(
                 mermaid_code=mermaid_code,
                 measure_table=table,
@@ -409,7 +478,12 @@ def handle_analyze_measure_dependencies(args: Dict[str, Any]) -> Dict[str, Any]:
                 auto_open=True,
                 referenced_measures=deps_result.get('referenced_measures', []),
                 referenced_columns=deps_result.get('referenced_columns', []),
-                used_by_measures=used_by_measures
+                used_by_measures=used_by_measures,
+                # Sidebar data for Model Browser
+                all_measures=sidebar_data.get('all_measures', []),
+                all_columns=sidebar_data.get('all_columns', []),
+                all_dependencies=sidebar_data.get('all_dependencies', {}),
+                main_item=main_item_key
             )
             if html_path:
                 response['diagram_rendered'] = True
