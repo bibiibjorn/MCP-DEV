@@ -22,8 +22,9 @@ logger = logging.getLogger("mcp_powerbi_finvision.limits")
 class QueryLimits:
     """Limits for query execution and data retrieval."""
     # INFO.* query limits (per-call defaults)
-    default_info_limit: int = 100
-    max_info_limit: int = 1000
+    # Note: 10000 allows fetching all measures/columns for large models
+    default_info_limit: int = 10000
+    max_info_limit: int = 10000
 
     # Preview limits
     max_rows_preview: int = 1000
@@ -214,8 +215,8 @@ class LimitsManager:
     def _init_query_limits(self) -> QueryLimits:
         """Initialize query limits from config."""
         return QueryLimits(
-            default_info_limit=self._get_config("query.default_info_limit", 100),
-            max_info_limit=self._get_config("query.max_info_limit", 1000),
+            default_info_limit=self._get_config("query.default_info_limit", 10000),
+            max_info_limit=self._get_config("query.max_info_limit", 10000),
             max_rows_preview=self._get_config("query.max_rows_preview", 1000),
             preview_sample_size=self._get_config("query.preview_sample_size", 30),
             max_dax_query_length=self._get_config("query.max_dax_query_length", 50000),

@@ -43,6 +43,29 @@ class DependencyCache:
         safe_name = model_name.replace(" ", "_").replace("/", "_").replace("\\", "_")
         return self.cache_dir / f"dependencies_{safe_name}.json.gz"
 
+    def clear_cache(self, model_name: str = "default") -> bool:
+        """
+        Delete the cache file for a model.
+
+        Args:
+            model_name: Name of the model (for cache file naming)
+
+        Returns:
+            True if cache was deleted, False if it didn't exist
+        """
+        cache_path = self._get_cache_path(model_name)
+        try:
+            if cache_path.exists():
+                cache_path.unlink()
+                logger.info(f"Deleted cache file: {cache_path}")
+                return True
+            else:
+                logger.debug(f"Cache file does not exist: {cache_path}")
+                return False
+        except Exception as e:
+            logger.warning(f"Failed to delete cache file {cache_path}: {e}")
+            return False
+
     def save_cache(
         self,
         all_measures: List[Dict[str, Any]],
@@ -168,8 +191,8 @@ def compute_all_dependencies(
     # Build measure lookup for resolving unqualified measure references
     measure_name_to_table = {}
 
-    # Fetch all measures (no TOP limit)
-    measures_result = query_executor.execute_info_query("MEASURES")
+    # Fetch ALL measures - use high limit to override default 100
+    measures_result = query_executor.execute_info_query("MEASURES", top_n=10000)
     if measures_result.get('success'):
         rows = measures_result.get('rows', [])
         logger.info(f"MEASURES query returned {len(rows)} rows")
@@ -192,8 +215,8 @@ def compute_all_dependencies(
 
     logger.info(f"Found {len(all_measures)} measures")
 
-    # Fetch all columns (no TOP limit)
-    columns_result = query_executor.execute_info_query("COLUMNS")
+    # Fetch ALL columns - use high limit to override default 100
+    columns_result = query_executor.execute_info_query("COLUMNS", top_n=10000)
     if columns_result.get('success'):
         rows = columns_result.get('rows', [])
         logger.info(f"COLUMNS query returned {len(rows)} rows")
@@ -203,10 +226,17 @@ def compute_all_dependencies(
             c_name = c.get('Name', '') or c.get('Column', '') or c.get('ExplicitName', '') or ''
             # Skip system columns
             c_type = c.get('Type', 0)
+            c_data_type = c.get('DataType', '') or ''
+            c_is_hidden = c.get('IsHidden', False)
+            c_is_key = c.get('IsKey', False)
             if c_table and c_name and c_type != 2:  # Type 2 is RowNumber
                 all_columns.append({
                     'table': c_table,
-                    'name': c_name
+                    'name': c_name,
+                    'dataType': c_data_type,
+                    'isHidden': c_is_hidden,
+                    'isKey': c_is_key,
+                    'columnType': 'Calculated' if c_type == 2 else 'Data'
                 })
     else:
         logger.warning(f"COLUMNS query failed: {columns_result.get('error', 'unknown')}")
@@ -251,11 +281,12 @@ def compute_all_dependencies(
                     if ref not in upstream_measures:
                         upstream_measures.append(ref)
 
-                # Columns should always have table names
+                # Columns - use 'Unknown' if table name is missing
                 upstream_columns = []
                 for t, n in m_deps.get('referenced_columns', []):
-                    if t and n:
-                        col_ref = f"{t}[{n}]"
+                    if n:  # Only require name, table can be empty
+                        table_name = t if t else 'Unknown'
+                        col_ref = f"{table_name}[{n}]"
                         if col_ref not in upstream_columns:
                             upstream_columns.append(col_ref)
 

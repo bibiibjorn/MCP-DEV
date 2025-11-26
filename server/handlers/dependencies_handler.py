@@ -21,32 +21,27 @@ _sidebar_cache = {
 }
 
 
-def _load_sidebar_data(force_refresh: bool = False) -> dict:
+def _load_sidebar_data(force_refresh: bool = True) -> dict:
     """
-    Load sidebar data from cache file or compute ALL dependencies if not available.
+    Load sidebar data by computing ALL dependencies fresh.
     Returns dict with all_measures, all_columns, all_dependencies.
     All dependencies are pre-computed so the HTML can switch items instantly.
+
+    Note: force_refresh defaults to True to ensure fresh data with correct limits.
     """
     global _sidebar_cache
 
     # Check if we already have COMPLETE data in memory (including dependencies)
+    # Only use memory cache if not forcing refresh
     if not force_refresh and _sidebar_cache.get('all_measures') and _sidebar_cache.get('all_dependencies'):
         logger.debug("Using in-memory sidebar cache with dependencies")
         return _sidebar_cache
 
-    # Try to load from file cache
+    # Always delete old cache file and recompute to ensure we have all data
+    # This fixes issues where old cache had limited data (100 row default)
     cache = DependencyCache()
-    cache_data = cache.load_cache()
-
-    if cache_data and cache_data.get('all_dependencies'):
-        _sidebar_cache = {
-            'all_measures': cache_data.get('all_measures', []),
-            'all_columns': cache_data.get('all_columns', []),
-            'all_dependencies': cache_data.get('all_dependencies', {})
-        }
-        logger.info(f"Loaded sidebar data from cache: {len(_sidebar_cache['all_measures'])} measures, "
-                   f"{len(_sidebar_cache['all_columns'])} columns, {len(_sidebar_cache['all_dependencies'])} dependencies")
-        return _sidebar_cache
+    cache.clear_cache()  # Delete old cache file
+    logger.info("Cleared old cache - will recompute all dependencies")
 
     # If no cache, compute ALL dependencies for ALL items
     # This enables instant switching in the HTML without re-running analysis

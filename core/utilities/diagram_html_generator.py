@@ -196,6 +196,29 @@ def generate_dependency_html(
     main_item_key = main_item or f"{measure_table}[{measure_name}]"
     main_item_json = json.dumps(main_item_key)
 
+    # Build node metadata map for info tooltips (expression for measures, dataType for columns)
+    node_metadata = {}
+    for m in all_measures:
+        m_key = f"{m.get('table', '')}[{m.get('name', '')}]"
+        node_metadata[m_key] = {
+            'type': 'measure',
+            'table': m.get('table', ''),
+            'name': m.get('name', ''),
+            'expression': m.get('expression', ''),
+        }
+    for c in all_columns:
+        c_key = f"{c.get('table', '')}[{c.get('name', '')}]"
+        node_metadata[c_key] = {
+            'type': 'column',
+            'table': c.get('table', ''),
+            'name': c.get('name', ''),
+            'dataType': c.get('dataType', 'Unknown'),
+            'isHidden': c.get('isHidden', False),
+            'isKey': c.get('isKey', False),
+            'columnType': c.get('columnType', 'Data'),
+        }
+    node_metadata_json = json.dumps(node_metadata)
+
     # Debug logging
     logger.info(f"Root node ID: {root_node_id}")
     logger.info(f"Upstream node IDs ({len(upstream_node_ids)}): {upstream_node_ids[:10]}...")  # First 10
@@ -218,19 +241,24 @@ def generate_dependency_html(
             --accent: #6366f1;
             --accent-light: #818cf8;
             --accent-glow: rgba(99, 102, 241, 0.4);
+            --accent-neon: rgba(99, 102, 241, 0.8);
             --success: #10b981;
             --warning: #f59e0b;
-            --bg-dark: #09090b;
-            --bg-card: rgba(24, 24, 27, 0.8);
-            --bg-elevated: rgba(39, 39, 42, 0.6);
-            --border: rgba(63, 63, 70, 0.5);
-            --border-light: rgba(82, 82, 91, 0.3);
-            --text: #fafafa;
-            --text-secondary: #a1a1aa;
-            --text-muted: #71717a;
+            --bg-dark: #030303;
+            --bg-card: rgba(16, 16, 20, 0.85);
+            --bg-elevated: rgba(28, 28, 35, 0.7);
+            --border: rgba(99, 102, 241, 0.15);
+            --border-light: rgba(99, 102, 241, 0.08);
+            --border-glow: rgba(99, 102, 241, 0.3);
+            --text: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
             --gradient-1: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             --gradient-2: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
             --gradient-3: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --gradient-cyber: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
+            --glow-soft: 0 0 40px rgba(99, 102, 241, 0.15);
+            --glow-strong: 0 0 60px rgba(99, 102, 241, 0.25);
         }}
 
         * {{
@@ -252,15 +280,38 @@ def generate_dependency_html(
             overflow-x: hidden;
         }}
 
-        /* Animated background */
+        /* Animated background with grid and aurora effect */
         .bg-pattern {{
             position: fixed;
             inset: 0;
             z-index: -1;
             background:
-                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.15), transparent),
-                radial-gradient(ellipse 60% 40% at 80% 100%, rgba(139, 92, 246, 0.1), transparent),
-                radial-gradient(ellipse 40% 30% at 10% 60%, rgba(79, 172, 254, 0.08), transparent);
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.2), transparent),
+                radial-gradient(ellipse 60% 40% at 80% 100%, rgba(139, 92, 246, 0.15), transparent),
+                radial-gradient(ellipse 50% 35% at 10% 60%, rgba(79, 172, 254, 0.1), transparent),
+                radial-gradient(circle at 30% 30%, rgba(236, 72, 153, 0.08), transparent 50%);
+        }}
+
+        .bg-pattern::before {{
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
+            background-size: 60px 60px;
+            mask-image: radial-gradient(ellipse 80% 60% at 50% 50%, black, transparent);
+        }}
+
+        .bg-pattern::after {{
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 400px;
+            background: linear-gradient(180deg, rgba(99, 102, 241, 0.08) 0%, transparent 100%);
+            pointer-events: none;
         }}
 
         .container {{
@@ -329,16 +380,21 @@ def generate_dependency_html(
             backdrop-filter: blur(12px);
         }}
 
-        /* Hero Card */
+        /* Hero Card - Cyberpunk Glass Effect */
         .hero-card {{
-            background: var(--bg-card);
-            backdrop-filter: blur(20px);
+            background: linear-gradient(135deg, rgba(16, 16, 24, 0.9) 0%, rgba(24, 24, 35, 0.85) 100%);
+            backdrop-filter: blur(24px) saturate(150%);
+            -webkit-backdrop-filter: blur(24px) saturate(150%);
             border: 1px solid var(--border);
             border-radius: 24px;
-            padding: 2rem;
+            padding: 2.5rem;
             margin-bottom: 1.5rem;
             position: relative;
             overflow: hidden;
+            box-shadow:
+                0 25px 50px -12px rgba(0, 0, 0, 0.4),
+                var(--glow-soft),
+                inset 0 1px 0 rgba(255, 255, 255, 0.05);
         }}
 
         .hero-card::before {{
@@ -347,8 +403,25 @@ def generate_dependency_html(
             top: 0;
             left: 0;
             right: 0;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, var(--accent-light), transparent);
+            height: 2px;
+            background: linear-gradient(90deg, transparent 0%, var(--accent) 20%, var(--accent-light) 50%, var(--accent) 80%, transparent 100%);
+            animation: borderGlow 4s ease-in-out infinite;
+        }}
+
+        .hero-card::after {{
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(99, 102, 241, 0.08) 0%, transparent 60%);
+            pointer-events: none;
+        }}
+
+        @keyframes borderGlow {{
+            0%, 100% {{ opacity: 0.6; }}
+            50% {{ opacity: 1; }}
         }}
 
         .hero-label {{
@@ -407,30 +480,44 @@ def generate_dependency_html(
         }}
 
         .stat-card {{
-            background: var(--bg-card);
-            backdrop-filter: blur(20px);
+            background: linear-gradient(135deg, rgba(16, 16, 24, 0.85) 0%, rgba(20, 20, 30, 0.8) 100%);
+            backdrop-filter: blur(20px) saturate(150%);
+            -webkit-backdrop-filter: blur(20px) saturate(150%);
             border: 1px solid var(--border);
             border-radius: 16px;
-            padding: 1.5rem;
+            padding: 1.75rem 1.5rem;
             text-align: center;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
             overflow: hidden;
+            box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.3);
+        }}
+
+        .stat-card::before {{
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
         }}
 
         .stat-card::after {{
             content: '';
             position: absolute;
             inset: 0;
-            background: linear-gradient(135deg, transparent 40%, rgba(99, 102, 241, 0.05));
+            background: radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.1), transparent 60%);
             opacity: 0;
-            transition: opacity 0.3s;
+            transition: opacity 0.4s;
         }}
 
         .stat-card:hover {{
-            transform: translateY(-4px);
-            border-color: var(--accent);
-            box-shadow: 0 20px 40px -20px var(--accent-glow);
+            transform: translateY(-6px) scale(1.02);
+            border-color: var(--border-glow);
+            box-shadow:
+                0 25px 50px -15px rgba(0, 0, 0, 0.4),
+                0 0 40px rgba(99, 102, 241, 0.2);
         }}
 
         .stat-card:hover::after {{
@@ -765,6 +852,255 @@ def generate_dependency_html(
         .legend-downstream {{ background: linear-gradient(135deg, #FF9800, #FFB74D); border: 2px solid #F57C00; }}
         .legend-root {{ background: linear-gradient(135deg, #2196F3, #64B5F6); border: 2px solid #1565C0; }}
 
+        /* ═══════════════════════════════════════════════════════════════════════
+           NODE INFO ICON & TOOLTIP - 2025 GLASS-MORPHISM STYLE
+           ═══════════════════════════════════════════════════════════════════════ */
+        .node-info-btn {{
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+            border: 2px solid rgba(255, 255, 255, 0.9);
+            color: white;
+            font-size: 12px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.5), 0 0 0 3px rgba(99, 102, 241, 0.2);
+            z-index: 100;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            font-family: 'Inter', sans-serif;
+            pointer-events: all;
+        }}
+
+        .node-info-btn:hover {{
+            transform: scale(1.15);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6), 0 0 0 5px rgba(99, 102, 241, 0.3);
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+        }}
+
+        .node-info-btn::before {{
+            content: 'i';
+            font-style: italic;
+        }}
+
+        /* Modern Glass-Morphism Tooltip */
+        .node-tooltip {{
+            position: fixed;
+            z-index: 10000;
+            max-width: 480px;
+            min-width: 320px;
+            padding: 0;
+            background: linear-gradient(135deg, rgba(15, 15, 25, 0.95) 0%, rgba(25, 25, 40, 0.98) 100%);
+            backdrop-filter: blur(24px) saturate(180%);
+            -webkit-backdrop-filter: blur(24px) saturate(180%);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 16px;
+            box-shadow:
+                0 25px 50px -12px rgba(0, 0, 0, 0.5),
+                0 0 0 1px rgba(255, 255, 255, 0.05),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1),
+                0 0 40px rgba(99, 102, 241, 0.15);
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(8px) scale(0.96);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            pointer-events: none;
+            overflow: hidden;
+        }}
+
+        .node-tooltip.visible {{
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+        }}
+
+        .node-tooltip::before {{
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, #6366f1, #8b5cf6, #ec4899, #6366f1);
+            background-size: 200% 100%;
+            animation: shimmer 3s linear infinite;
+        }}
+
+        @keyframes shimmer {{
+            0% {{ background-position: 200% 0; }}
+            100% {{ background-position: -200% 0; }}
+        }}
+
+        .tooltip-header {{
+            padding: 16px 20px 12px;
+            background: linear-gradient(180deg, rgba(99, 102, 241, 0.15) 0%, transparent 100%);
+            border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+        }}
+
+        .tooltip-type-badge {{
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }}
+
+        .tooltip-type-badge.measure {{
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(99, 102, 241, 0.2));
+            color: #93c5fd;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }}
+
+        .tooltip-type-badge.column {{
+            background: linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(139, 92, 246, 0.2));
+            color: #d8b4fe;
+            border: 1px solid rgba(168, 85, 247, 0.3);
+        }}
+
+        .tooltip-type-badge svg {{
+            width: 12px;
+            height: 12px;
+        }}
+
+        .tooltip-title {{
+            font-size: 15px;
+            font-weight: 600;
+            color: #f1f5f9;
+            font-family: 'JetBrains Mono', monospace;
+            word-break: break-word;
+        }}
+
+        .tooltip-table {{
+            font-size: 12px;
+            color: #94a3b8;
+            margin-top: 2px;
+        }}
+
+        .tooltip-body {{
+            padding: 16px 20px;
+        }}
+
+        .tooltip-section {{
+            margin-bottom: 16px;
+        }}
+
+        .tooltip-section:last-child {{
+            margin-bottom: 0;
+        }}
+
+        .tooltip-section-label {{
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #64748b;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }}
+
+        .tooltip-section-label::before {{
+            content: '';
+            width: 4px;
+            height: 4px;
+            background: var(--accent);
+            border-radius: 50%;
+        }}
+
+        .tooltip-expression {{
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            color: #e2e8f0;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(99, 102, 241, 0.15);
+            border-radius: 8px;
+            padding: 12px 14px;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            scrollbar-width: thin;
+            scrollbar-color: var(--accent) transparent;
+        }}
+
+        .tooltip-expression::-webkit-scrollbar {{
+            width: 6px;
+        }}
+
+        .tooltip-expression::-webkit-scrollbar-track {{
+            background: transparent;
+        }}
+
+        .tooltip-expression::-webkit-scrollbar-thumb {{
+            background: var(--accent);
+            border-radius: 3px;
+        }}
+
+        .tooltip-meta-grid {{
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }}
+
+        .tooltip-meta-item {{
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 10px 12px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(99, 102, 241, 0.1);
+            border-radius: 8px;
+        }}
+
+        .tooltip-meta-label {{
+            font-size: 10px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #64748b;
+        }}
+
+        .tooltip-meta-value {{
+            font-size: 13px;
+            font-weight: 600;
+            color: #f1f5f9;
+        }}
+
+        .tooltip-meta-value.data-type {{
+            color: #a5b4fc;
+        }}
+
+        .tooltip-meta-value.hidden-yes {{
+            color: #fbbf24;
+        }}
+
+        .tooltip-meta-value.key-yes {{
+            color: #34d399;
+        }}
+
+        .tooltip-footer {{
+            padding: 12px 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-top: 1px solid rgba(99, 102, 241, 0.1);
+            font-size: 11px;
+            color: #64748b;
+            text-align: center;
+        }}
+
         /* Dependency Panels */
         .panels-container {{
             display: grid;
@@ -1008,16 +1344,32 @@ def generate_dependency_html(
             }}
         }}
 
-        /* Footer */
+        /* Footer - Subtle Modern Design */
         .footer {{
             text-align: center;
-            padding: 2rem;
+            padding: 2.5rem 2rem;
             color: var(--text-muted);
             font-size: 0.8125rem;
+            position: relative;
+            margin-top: 2rem;
+        }}
+
+        .footer::before {{
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 10%;
+            right: 10%;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--border), transparent);
         }}
 
         .footer strong {{
-            color: var(--text-secondary);
+            background: var(--gradient-cyber);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: 700;
         }}
 
         /* Responsive */
@@ -1331,6 +1683,20 @@ def generate_dependency_html(
 </head>
 <body>
     <div class="bg-pattern"></div>
+
+    <!-- Info Tooltip (positioned globally) -->
+    <div class="node-tooltip" id="node-tooltip">
+        <div class="tooltip-header">
+            <div class="tooltip-type-badge" id="tooltip-type-badge">
+                <span id="tooltip-type-icon">📐</span>
+                <span id="tooltip-type-text">Measure</span>
+            </div>
+            <div class="tooltip-title" id="tooltip-title"></div>
+            <div class="tooltip-table" id="tooltip-table"></div>
+        </div>
+        <div class="tooltip-body" id="tooltip-body"></div>
+        <div class="tooltip-footer">Click info icon to view details • ESC to close</div>
+    </div>
 
     <!-- Sidebar Toggle Button (only if sidebar data available) -->
     <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" style="display: {'flex' if has_sidebar else 'none'};">
@@ -1865,16 +2231,25 @@ def generate_dependency_html(
                 texts.forEach(t => {{ clusterLabel += ' ' + (t.textContent || ''); }});
                 clusterLabel = clusterLabel.toLowerCase();
 
-                const isUpstreamCluster = clusterLabel.includes('dependencies') && !clusterLabel.includes('dependents');
-                const isDownstreamCluster = clusterLabel.includes('dependents');
+                // Check cluster ID as well as label text
+                const clusterId = (cluster.id || '').toLowerCase();
+
+                // Upstream clusters have "dependencies" in label/id but NOT "dependents"/"used by"
+                const isUpstreamCluster = (clusterLabel.includes('dependencies') || clusterId.includes('dependencies')) &&
+                                          !clusterLabel.includes('dependents') && !clusterLabel.includes('used by');
+                // Downstream clusters have "dependents" or "used by" in label/id
+                const isDownstreamCluster = clusterLabel.includes('dependents') || clusterLabel.includes('used by') ||
+                                            clusterId.includes('dependents') || clusterId.includes('usedby');
+
+                console.log('Cluster:', clusterId, 'label:', clusterLabel, 'isUpstream:', isUpstreamCluster, 'isDownstream:', isDownstreamCluster);
 
                 let shouldShow = false;
                 if (filter === 'all') {{
                     shouldShow = true;
                 }} else if (filter === 'upstream') {{
-                    shouldShow = !isDownstreamCluster;
+                    shouldShow = isUpstreamCluster || (!isUpstreamCluster && !isDownstreamCluster);
                 }} else if (filter === 'downstream') {{
-                    shouldShow = !isUpstreamCluster;
+                    shouldShow = isDownstreamCluster || (!isUpstreamCluster && !isDownstreamCluster);
                 }}
 
                 cluster.style.display = shouldShow ? '' : 'none';
@@ -1975,97 +2350,134 @@ def generate_dependency_html(
             }}
 
             // Fit SVG to visible content and scroll to top
+            // Use multiple attempts with increasing delays to ensure elements are properly hidden/shown
             setTimeout(() => {{
-                const diagramContent = document.getElementById('diagram-content');
-                const svg = document.querySelector('.mermaid svg');
-                if (!diagramContent || !svg) return;
+                fitViewToFilter(filter);
+            }}, 300);
+            setTimeout(() => {{
+                fitViewToFilter(filter);
+            }}, 600);
+            setTimeout(() => {{
+                fitViewToFilter(filter);
+            }}, 1000);
+        }}
 
-                // Store original viewBox BEFORE making any changes (if not already stored)
-                if (!svg.dataset.originalViewBox) {{
-                    const currentViewBox = svg.getAttribute('viewBox');
-                    if (currentViewBox) {{
-                        svg.dataset.originalViewBox = currentViewBox;
-                        console.log('Stored original viewBox:', currentViewBox);
-                    }}
+        // Function to fit view to filtered content (can be called multiple times)
+        function fitViewToFilter(filter) {{
+            const diagramContent = document.getElementById('diagram-content');
+            const svg = document.querySelector('.mermaid svg');
+            if (!diagramContent || !svg) return;
+
+            // Force a reflow to ensure getBBox returns accurate values
+            void svg.offsetHeight;
+
+            // Store original viewBox BEFORE making any changes (if not already stored)
+            if (!svg.dataset.originalViewBox) {{
+                const currentViewBox = svg.getAttribute('viewBox');
+                if (currentViewBox) {{
+                    svg.dataset.originalViewBox = currentViewBox;
+                    console.log('Stored original viewBox:', currentViewBox);
                 }}
+            }}
 
-                // For "all" filter, don't modify viewBox - already restored above
-                if (filter === 'all') {{
-                    diagramContent.scrollTop = 0;
-                    diagramContent.scrollLeft = 0;
-                    return;
-                }}
-
-                // Calculate bounding box of visible elements using getBBox() directly
-                // (simpler approach that works better with SVG transforms)
-                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-                let hasVisibleElements = false;
-
-                // Get visible nodes
-                svg.querySelectorAll('g.node').forEach(node => {{
-                    if (node.style.display !== 'none' && node.style.visibility !== 'hidden' && node.style.opacity !== '0') {{
-                        try {{
-                            const bbox = node.getBBox();
-                            if (bbox.width > 0 && bbox.height > 0) {{
-                                minX = Math.min(minX, bbox.x);
-                                minY = Math.min(minY, bbox.y);
-                                maxX = Math.max(maxX, bbox.x + bbox.width);
-                                maxY = Math.max(maxY, bbox.y + bbox.height);
-                                hasVisibleElements = true;
-                            }}
-                        }} catch(e) {{ console.log('getBBox error:', e); }}
-                    }}
-                }});
-
-                // Get visible clusters
-                svg.querySelectorAll('g.cluster').forEach(cluster => {{
-                    if (cluster.style.display !== 'none' && cluster.style.visibility !== 'hidden' && cluster.style.opacity !== '0') {{
-                        try {{
-                            const bbox = cluster.getBBox();
-                            if (bbox.width > 0 && bbox.height > 0) {{
-                                minX = Math.min(minX, bbox.x);
-                                minY = Math.min(minY, bbox.y);
-                                maxX = Math.max(maxX, bbox.x + bbox.width);
-                                maxY = Math.max(maxY, bbox.y + bbox.height);
-                                hasVisibleElements = true;
-                            }}
-                        }} catch(e) {{}}
-                    }}
-                }});
-
-                console.log('Visible bounds:', {{ minX, minY, maxX, maxY, hasVisibleElements }});
-
-                if (hasVisibleElements && minX !== Infinity && maxX > minX && maxY > minY) {{
-                    // Add generous padding
-                    const padding = 100;
-                    minX -= padding;
-                    minY -= padding;
-                    maxX += padding;
-                    maxY += padding;
-
-                    const width = maxX - minX;
-                    const height = maxY - minY;
-
-                    // Ensure minimum dimensions
-                    const finalWidth = Math.max(width, 400);
-                    const finalHeight = Math.max(height, 300);
-
-                    // Update viewBox to fit visible content
-                    const newViewBox = `${{minX}} ${{minY}} ${{finalWidth}} ${{finalHeight}}`;
-                    svg.setAttribute('viewBox', newViewBox);
-                    console.log('Filter viewBox set to:', newViewBox);
-                }}
-
-                // Scroll to top-left
+            // For "all" filter, don't modify viewBox - already restored above
+            if (filter === 'all') {{
                 diagramContent.scrollTop = 0;
                 diagramContent.scrollLeft = 0;
-            }}, 300);
+                return;
+            }}
+
+            // Calculate bounding box of visible elements using getBBox() directly
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            let hasVisibleElements = false;
+            let visibleNodeCount = 0;
+
+            // Get visible nodes
+            svg.querySelectorAll('g.node').forEach(node => {{
+                if (node.style.display !== 'none' && node.style.visibility !== 'hidden' && node.style.opacity !== '0') {{
+                    try {{
+                        const bbox = node.getBBox();
+                        if (bbox.width > 0 && bbox.height > 0) {{
+                            minX = Math.min(minX, bbox.x);
+                            minY = Math.min(minY, bbox.y);
+                            maxX = Math.max(maxX, bbox.x + bbox.width);
+                            maxY = Math.max(maxY, bbox.y + bbox.height);
+                            hasVisibleElements = true;
+                            visibleNodeCount++;
+                        }}
+                    }} catch(e) {{ console.log('getBBox error:', e); }}
+                }}
+            }});
+
+            // Get visible clusters
+            svg.querySelectorAll('g.cluster').forEach(cluster => {{
+                if (cluster.style.display !== 'none' && cluster.style.visibility !== 'hidden' && cluster.style.opacity !== '0') {{
+                    try {{
+                        const bbox = cluster.getBBox();
+                        if (bbox.width > 0 && bbox.height > 0) {{
+                            minX = Math.min(minX, bbox.x);
+                            minY = Math.min(minY, bbox.y);
+                            maxX = Math.max(maxX, bbox.x + bbox.width);
+                            maxY = Math.max(maxY, bbox.y + bbox.height);
+                            hasVisibleElements = true;
+                        }}
+                    }} catch(e) {{}}
+                }}
+            }});
+
+            console.log('Visible bounds:', {{ minX, minY, maxX, maxY, hasVisibleElements, visibleNodeCount }});
+
+            if (hasVisibleElements && minX !== Infinity && maxX > minX && maxY > minY) {{
+                // Add generous padding
+                const padding = 150;
+                minX -= padding;
+                minY -= padding;
+                maxX += padding;
+                maxY += padding;
+
+                const width = maxX - minX;
+                const height = maxY - minY;
+
+                // Ensure minimum dimensions
+                const finalWidth = Math.max(width, 600);
+                const finalHeight = Math.max(height, 400);
+
+                // Update viewBox to fit visible content
+                const newViewBox = `${{minX}} ${{minY}} ${{finalWidth}} ${{finalHeight}}`;
+                svg.setAttribute('viewBox', newViewBox);
+                console.log('Filter viewBox set to:', newViewBox);
+            }} else {{
+                // Fallback: couldn't calculate bounds, try using full SVG bbox
+                console.log('Could not calculate visible bounds, using fallback');
+                try {{
+                    const fullBbox = svg.getBBox();
+                    if (fullBbox.width > 0 && fullBbox.height > 0) {{
+                        const padding = 50;
+                        const newViewBox = `${{fullBbox.x - padding}} ${{fullBbox.y - padding}} ${{fullBbox.width + padding * 2}} ${{fullBbox.height + padding * 2}}`;
+                        svg.setAttribute('viewBox', newViewBox);
+                        console.log('Fallback viewBox set to:', newViewBox);
+                    }}
+                }} catch(e) {{
+                    console.log('Fallback getBBox failed:', e);
+                }}
+            }}
+
+            // Scroll to top-left
+            diagramContent.scrollTop = 0;
+            diagramContent.scrollLeft = 0;
         }}
 
         // Store and auto-size viewBox on first load
         function initializeViewBox() {{
             const svg = document.querySelector('.mermaid svg');
-            if (svg && !svg.dataset.originalViewBox) {{
+            if (!svg) {{
+                // SVG not ready yet, retry
+                console.log('SVG not found, retrying...');
+                setTimeout(initializeViewBox, 500);
+                return;
+            }}
+
+            if (!svg.dataset.originalViewBox) {{
                 // First try to auto-size based on content
                 autoSizeViewBox();
 
@@ -2079,8 +2491,25 @@ def generate_dependency_html(
                     }}
                 }}
             }}
+
+            // Build edge graph after SVG is ready
+            buildEdgeGraph();
         }}
-        setTimeout(initializeViewBox, 1000);
+
+        // Wait for Mermaid to finish rendering before initializing
+        const initCheckInterval = setInterval(() => {{
+            const svg = document.querySelector('.mermaid svg');
+            if (svg && svg.querySelector('g.node')) {{
+                clearInterval(initCheckInterval);
+                console.log('SVG and nodes detected, initializing...');
+                setTimeout(initializeViewBox, 300);
+            }}
+        }}, 200);
+        // Fallback timeout
+        setTimeout(() => {{
+            clearInterval(initCheckInterval);
+            initializeViewBox();
+        }}, 3000);
 
         // ═══════════════════════════════════════════════════════════════════════
         // CLICK-TO-HIGHLIGHT FLOW FUNCTIONALITY
@@ -2328,15 +2757,58 @@ def generate_dependency_html(
 
             // Build set of highlighted sanitized IDs for edge matching
             const highlightedIds = new Set();
+            const highlightedLabels = new Set();
             highlightedNodeElements.forEach(el => {{
                 const info = nodeInfoMap.get(el.id);
-                if (info) highlightedIds.add(info.sanitizedId);
+                if (info) {{
+                    highlightedIds.add(info.sanitizedId);
+                    highlightedIds.add(info.mermaidId);
+                    if (info.label) highlightedLabels.add(info.label);
+                }}
             }});
+
+            console.log('Highlighted IDs for edge matching:', [...highlightedIds]);
+            console.log('Edge graph keys:', {{ outgoing: Object.keys(edgeGraph.outgoing), incoming: Object.keys(edgeGraph.incoming) }});
 
             // Highlight edges - only show edges where BOTH endpoints are highlighted
             // Use both CSS classes AND inline styles for maximum compatibility
             let edgesHighlighted = 0;
             let edgesHidden = 0;
+            let edgeDebugCount = 0;
+
+            // Helper to check if ID matches any highlighted ID
+            function matchesHighlighted(edgeId) {{
+                if (!edgeId) return false;
+                // Direct match
+                if (highlightedIds.has(edgeId)) return true;
+                // Partial match (ID contains highlighted or vice versa)
+                for (const hId of highlightedIds) {{
+                    if (hId && edgeId) {{
+                        // Check substring match in both directions
+                        if (hId.includes(edgeId) || edgeId.includes(hId)) return true;
+                        // Also check with flowchart- prefix stripped
+                        const cleanEdgeId = edgeId.replace(/^flowchart-/, '').replace(/-\d+$/, '');
+                        const cleanHId = hId.replace(/^flowchart-/, '').replace(/-\d+$/, '');
+                        if (cleanEdgeId && cleanHId && (cleanEdgeId.includes(cleanHId) || cleanHId.includes(cleanEdgeId))) return true;
+                    }}
+                }}
+                return false;
+            }}
+
+            // Also add a fallback check using node labels
+            function matchesHighlightedByLabel(edgeId) {{
+                if (!edgeId) return false;
+                for (const label of highlightedLabels) {{
+                    if (label && edgeId && edgeId.toLowerCase().includes(label.toLowerCase().replace(/[\[\]]/g, ''))) {{
+                        return true;
+                    }}
+                }}
+                return false;
+            }}
+
+            console.log('All highlighted IDs for matching:', [...highlightedIds]);
+            console.log('All highlighted labels:', [...highlightedLabels]);
+
             svg.querySelectorAll('g.edgePath').forEach(edge => {{
                 edge.classList.remove('flow-highlighted', 'flow-hidden');
 
@@ -2349,29 +2821,49 @@ def generate_dependency_html(
                     if (cls.startsWith('LE-')) endNode = cls.substring(3);
                 }});
 
-                const startInFlow = highlightedIds.has(startNode);
-                const endInFlow = highlightedIds.has(endNode);
+                // Debug first few edges
+                if (edgeDebugCount < 5) {{
+                    console.log(`Edge ${{edgeDebugCount}}: start='${{startNode}}', end='${{endNode}}'`);
+                    console.log(`  startMatch=${{matchesHighlighted(startNode)}}, endMatch=${{matchesHighlighted(endNode)}}`);
+                    edgeDebugCount++;
+                }}
+
+                // Check if both endpoints match highlighted nodes (try multiple methods)
+                const startInFlow = matchesHighlighted(startNode) || matchesHighlightedByLabel(startNode);
+                const endInFlow = matchesHighlighted(endNode) || matchesHighlightedByLabel(endNode);
 
                 if (startInFlow && endInFlow) {{
                     edge.classList.add('flow-highlighted');
+                    // Reset ALL visibility styles (display may be 'none' from filter)
+                    edge.style.display = '';
                     edge.style.opacity = '1';
                     edge.style.visibility = 'visible';
+                    edge.style.pointerEvents = 'auto';
                     // Style the path for emphasis
                     const path = edge.querySelector('path');
                     if (path) {{
+                        path.style.display = '';
                         path.style.opacity = '1';
                         path.style.visibility = 'visible';
                         path.style.strokeWidth = '4px';
                         path.style.stroke = '#818cf8';
                     }}
+                    // Also show any marker elements
+                    edge.querySelectorAll('marker, [marker-end], [marker-start]').forEach(m => {{
+                        m.style.display = '';
+                        m.style.opacity = '1';
+                        m.style.visibility = 'visible';
+                    }});
                     edgesHighlighted++;
                 }} else {{
                     edge.classList.add('flow-hidden');
                     // Force hide with inline styles
+                    edge.style.display = 'none';
                     edge.style.opacity = '0';
                     edge.style.visibility = 'hidden';
                     const path = edge.querySelector('path');
                     if (path) {{
+                        path.style.display = 'none';
                         path.style.opacity = '0';
                         path.style.visibility = 'hidden';
                     }}
@@ -2421,45 +2913,65 @@ def generate_dependency_html(
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             let hasElements = false;
 
+            // Helper to get element bounds in SVG coordinate space
+            function getElementBounds(element) {{
+                try {{
+                    const bbox = element.getBBox();
+                    // Walk up the transform chain to get actual position
+                    let x = bbox.x;
+                    let y = bbox.y;
+                    let el = element;
+                    while (el && el !== svg) {{
+                        const transform = el.getAttribute('transform');
+                        if (transform) {{
+                            const translateMatch = transform.match(/translate\s*\(\s*([^,\s]+)[\s,]+([^,\s\)]+)/);
+                            if (translateMatch) {{
+                                x += parseFloat(translateMatch[1]) || 0;
+                                y += parseFloat(translateMatch[2]) || 0;
+                            }}
+                        }}
+                        el = el.parentElement;
+                    }}
+                    return {{ x, y, width: bbox.width, height: bbox.height }};
+                }} catch(e) {{
+                    return null;
+                }}
+            }}
+
             // Find bounds of highlighted nodes
             svg.querySelectorAll('g.node.flow-highlighted, g.node.flow-selected').forEach(node => {{
-                try {{
-                    const bbox = node.getBBox();
-                    const transform = node.getCTM();
-                    if (transform) {{
-                        const x = bbox.x + (transform.e || 0);
-                        const y = bbox.y + (transform.f || 0);
-                        minX = Math.min(minX, x);
-                        minY = Math.min(minY, y);
-                        maxX = Math.max(maxX, x + bbox.width);
-                        maxY = Math.max(maxY, y + bbox.height);
-                        hasElements = true;
-                    }}
-                }} catch(e) {{}}
+                const bounds = getElementBounds(node);
+                if (bounds) {{
+                    minX = Math.min(minX, bounds.x);
+                    minY = Math.min(minY, bounds.y);
+                    maxX = Math.max(maxX, bounds.x + bounds.width);
+                    maxY = Math.max(maxY, bounds.y + bounds.height);
+                    hasElements = true;
+                }}
             }});
 
             // Include highlighted clusters
             svg.querySelectorAll('g.cluster.flow-highlighted').forEach(cluster => {{
-                try {{
-                    const bbox = cluster.getBBox();
-                    minX = Math.min(minX, bbox.x);
-                    minY = Math.min(minY, bbox.y);
-                    maxX = Math.max(maxX, bbox.x + bbox.width);
-                    maxY = Math.max(maxY, bbox.y + bbox.height);
+                const bounds = getElementBounds(cluster);
+                if (bounds) {{
+                    minX = Math.min(minX, bounds.x);
+                    minY = Math.min(minY, bounds.y);
+                    maxX = Math.max(maxX, bounds.x + bounds.width);
+                    maxY = Math.max(maxY, bounds.y + bounds.height);
                     hasElements = true;
-                }} catch(e) {{}}
+                }}
             }});
 
             if (hasElements && minX !== Infinity) {{
                 // Add generous padding
-                const padding = 80;
+                const padding = 150;
                 minX -= padding;
                 minY -= padding;
                 maxX += padding;
                 maxY += padding;
 
-                const width = maxX - minX;
-                const height = maxY - minY;
+                const width = Math.max(maxX - minX, 400);
+                const height = Math.max(maxY - minY, 300);
 
                 // Update viewBox
                 const newViewBox = `${{minX}} ${{minY}} ${{width}} ${{height}}`;
@@ -2858,6 +3370,11 @@ def generate_dependency_html(
 
         // Initialize panels on load
         document.addEventListener('DOMContentLoaded', function() {{
+            // Debug: Log initial data
+            console.log('=== Initializing Dependency Panels ===');
+            console.log('referencedMeasures:', referencedMeasures);
+            console.log('referencedColumns:', referencedColumns);
+
             // Combine measures and columns for dependencies panel
             const depsGroups = {{}};
 
@@ -2870,10 +3387,13 @@ def generate_dependency_html(
 
             // Add columns
             referencedColumns.forEach(item => {{
+                console.log('Adding column:', item);
                 const table = item.table || 'Unknown';
                 if (!depsGroups[table]) depsGroups[table] = {{ measures: [], columns: [] }};
                 depsGroups[table].columns.push(item.name);
             }});
+
+            console.log('Final depsGroups:', depsGroups);
 
             // Render dependencies panel with both measures and columns
             const depsContainer = document.getElementById('deps-content');
@@ -2892,8 +3412,8 @@ def generate_dependency_html(
                     tables.forEach(table => {{
                         const data = depsGroups[table];
                         const items = [
-                            ...data.measures.map(m => ({{ name: m, type: 'measure' }})),
-                            ...data.columns.map(c => ({{ name: c, type: 'column' }}))
+                            ...data.measures.map(m => ({{ name: m, type: 'measure', displayName: `${{table}}[${{m}}]` }})),
+                            ...data.columns.map(c => ({{ name: c, type: 'column', displayName: `${{table}}[${{c}}]` }}))
                         ].sort((a, b) => a.name.localeCompare(b.name));
 
                         html += `
@@ -2909,7 +3429,7 @@ def generate_dependency_html(
                                     ${{items.map(item => `
                                         <div class="item ${{item.type}}" data-name="${{item.name.toLowerCase()}}" data-table="${{table.toLowerCase()}}">
                                             <span class="item-icon">${{item.type === 'measure' ? '●' : '◇'}}</span>
-                                            <span class="item-name">${{item.name}}</span>
+                                            <span class="item-name">${{item.displayName}}</span>
                                             <span style="color: var(--text-muted); font-size: 0.6875rem; margin-left: auto;">${{item.type}}</span>
                                         </div>
                                     `).join('')}}
@@ -2940,6 +3460,7 @@ def generate_dependency_html(
                         if (!usedByByTable[table]) usedByByTable[table] = [];
                         usedByByTable[table].push({{
                             name: item.measure,
+                            displayName: `${{table}}[${{item.measure}}]`,
                             displayFolder: item.display_folder || ''
                         }});
                     }});
@@ -2961,7 +3482,7 @@ def generate_dependency_html(
                                         <div class="item measure" data-name="${{item.name.toLowerCase()}}" data-table="${{table.toLowerCase()}}">
                                             <span class="item-icon">●</span>
                                             <div style="display: flex; flex-direction: column; gap: 0.125rem; flex: 1;">
-                                                <span class="item-name">${{item.name}}</span>
+                                                <span class="item-name">${{item.displayName}}</span>
                                                 ${{item.displayFolder ? `<span style="color: var(--text-muted); font-size: 0.625rem;">📁 ${{item.displayFolder}}</span>` : ''}}
                                             </div>
                                         </div>
@@ -2982,6 +3503,225 @@ def generate_dependency_html(
         const sidebarColumnsByTable = {columns_by_table_json};
         const allDependencies = {all_dependencies_json};
         // currentMainItem is declared earlier with the other initial state variables
+
+        // Node metadata for info tooltips (expression for measures, dataType for columns)
+        const nodeMetadata = {node_metadata_json};
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // INFO ICON & TOOLTIP FUNCTIONALITY
+        // ═══════════════════════════════════════════════════════════════════════
+        let activeTooltip = null;
+
+        function escapeHtml(text) {{
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }}
+
+        function getNodeKeyFromLabel(labelText) {{
+            // Try to extract Table[Name] from node label
+            if (!labelText) return null;
+            // Match patterns like "TableName[MeasureName]" or just the text
+            const match = labelText.match(/^(.+?)\[(.+?)\]$/);
+            if (match) {{
+                return labelText;
+            }}
+            // Try matching from nodeMetadata keys
+            for (const key of Object.keys(nodeMetadata)) {{
+                if (key.includes(labelText) || labelText.includes(key.split('[')[1]?.replace(']', '') || '')) {{
+                    return key;
+                }}
+            }}
+            return null;
+        }}
+
+        function showNodeTooltip(nodeKey, x, y) {{
+            const tooltip = document.getElementById('node-tooltip');
+            const meta = nodeMetadata[nodeKey];
+
+            if (!tooltip || !meta) {{
+                console.log('No metadata for:', nodeKey);
+                return;
+            }}
+
+            // Update tooltip content
+            const typeBadge = document.getElementById('tooltip-type-badge');
+            const typeIcon = document.getElementById('tooltip-type-icon');
+            const typeText = document.getElementById('tooltip-type-text');
+            const titleEl = document.getElementById('tooltip-title');
+            const tableEl = document.getElementById('tooltip-table');
+            const bodyEl = document.getElementById('tooltip-body');
+
+            // Set type badge
+            typeBadge.className = 'tooltip-type-badge ' + meta.type;
+            typeIcon.textContent = meta.type === 'measure' ? '📐' : '📋';
+            typeText.textContent = meta.type === 'measure' ? 'Measure' : 'Column';
+
+            // Set title and table
+            titleEl.textContent = meta.name;
+            tableEl.textContent = 'Table: ' + meta.table;
+
+            // Build body content based on type
+            let bodyHtml = '';
+            if (meta.type === 'measure') {{
+                bodyHtml = `
+                    <div class="tooltip-section">
+                        <div class="tooltip-section-label">DAX Expression</div>
+                        <div class="tooltip-expression">${{escapeHtml(meta.expression) || 'No expression available'}}</div>
+                    </div>
+                `;
+            }} else {{
+                bodyHtml = `
+                    <div class="tooltip-section">
+                        <div class="tooltip-section-label">Column Properties</div>
+                        <div class="tooltip-meta-grid">
+                            <div class="tooltip-meta-item">
+                                <span class="tooltip-meta-label">Data Type</span>
+                                <span class="tooltip-meta-value data-type">${{escapeHtml(String(meta.dataType)) || 'Unknown'}}</span>
+                            </div>
+                            <div class="tooltip-meta-item">
+                                <span class="tooltip-meta-label">Column Type</span>
+                                <span class="tooltip-meta-value">${{escapeHtml(meta.columnType) || 'Data'}}</span>
+                            </div>
+                            <div class="tooltip-meta-item">
+                                <span class="tooltip-meta-label">Is Hidden</span>
+                                <span class="tooltip-meta-value ${{meta.isHidden ? 'hidden-yes' : ''}}">${{meta.isHidden ? 'Yes' : 'No'}}</span>
+                            </div>
+                            <div class="tooltip-meta-item">
+                                <span class="tooltip-meta-label">Is Key</span>
+                                <span class="tooltip-meta-value ${{meta.isKey ? 'key-yes' : ''}}">${{meta.isKey ? 'Yes' : 'No'}}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }}
+            bodyEl.innerHTML = bodyHtml;
+
+            // Position tooltip
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            const tooltipWidth = 400;
+            const tooltipHeight = 300;
+
+            let left = x + 15;
+            let top = y + 15;
+
+            // Adjust if tooltip would go off screen
+            if (left + tooltipWidth > viewportWidth - 20) {{
+                left = x - tooltipWidth - 15;
+            }}
+            if (top + tooltipHeight > viewportHeight - 20) {{
+                top = viewportHeight - tooltipHeight - 20;
+            }}
+            if (left < 20) left = 20;
+            if (top < 20) top = 20;
+
+            tooltip.style.left = left + 'px';
+            tooltip.style.top = top + 'px';
+
+            // Show tooltip
+            tooltip.classList.add('visible');
+            activeTooltip = nodeKey;
+        }}
+
+        function hideNodeTooltip() {{
+            const tooltip = document.getElementById('node-tooltip');
+            if (tooltip) {{
+                tooltip.classList.remove('visible');
+            }}
+            activeTooltip = null;
+        }}
+
+        function addInfoIconsToNodes() {{
+            const svg = document.querySelector('.mermaid svg');
+            if (!svg) {{
+                console.log('SVG not found, retrying info icons...');
+                setTimeout(addInfoIconsToNodes, 500);
+                return;
+            }}
+
+            console.log('Adding info icons to nodes...');
+            const nodes = svg.querySelectorAll('g.node');
+
+            nodes.forEach((node, idx) => {{
+                // Skip if already has info icon
+                if (node.querySelector('.node-info-btn-wrapper')) return;
+
+                // Get node label to determine the key
+                const labelEl = node.querySelector('span.nodeLabel, foreignObject span, text');
+                const labelText = labelEl ? labelEl.textContent.trim() : '';
+                const nodeKey = getNodeKeyFromLabel(labelText);
+
+                if (!nodeKey || !nodeMetadata[nodeKey]) {{
+                    console.log('No metadata for node label:', labelText);
+                    return;
+                }}
+
+                // Get node bounding box for positioning
+                try {{
+                    const bbox = node.getBBox();
+                    const transform = node.getAttribute('transform') || '';
+                    const translateMatch = transform.match(/translate\s*\(\s*([^,\s]+)[\s,]+([^,\s\)]+)/);
+                    let tx = 0, ty = 0;
+                    if (translateMatch) {{
+                        tx = parseFloat(translateMatch[1]) || 0;
+                        ty = parseFloat(translateMatch[2]) || 0;
+                    }}
+
+                    // Create a foreignObject to hold the info button
+                    const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+                    fo.setAttribute('class', 'node-info-btn-wrapper');
+                    fo.setAttribute('x', (bbox.x + bbox.width - 12).toString());
+                    fo.setAttribute('y', (bbox.y - 12).toString());
+                    fo.setAttribute('width', '28');
+                    fo.setAttribute('height', '28');
+                    fo.style.overflow = 'visible';
+
+                    // Create the button
+                    const btn = document.createElement('div');
+                    btn.className = 'node-info-btn';
+                    btn.setAttribute('data-node-key', nodeKey);
+
+                    // Add click handler
+                    btn.addEventListener('click', (e) => {{
+                        e.stopPropagation();
+                        e.preventDefault();
+
+                        if (activeTooltip === nodeKey) {{
+                            hideNodeTooltip();
+                        }} else {{
+                            showNodeTooltip(nodeKey, e.clientX, e.clientY);
+                        }}
+                    }});
+
+                    fo.appendChild(btn);
+                    node.appendChild(fo);
+                }} catch (err) {{
+                    console.log('Error adding info icon to node:', err);
+                }}
+            }});
+
+            console.log('Info icons added to', nodes.length, 'nodes');
+        }}
+
+        // Close tooltip on escape key
+        document.addEventListener('keydown', (e) => {{
+            if (e.key === 'Escape' && activeTooltip) {{
+                hideNodeTooltip();
+            }}
+        }});
+
+        // Close tooltip when clicking outside
+        document.addEventListener('click', (e) => {{
+            const tooltip = document.getElementById('node-tooltip');
+            if (activeTooltip && tooltip && !tooltip.contains(e.target) && !e.target.closest('.node-info-btn')) {{
+                hideNodeTooltip();
+            }}
+        }});
+
+        // Initialize info icons after Mermaid renders
+        setTimeout(addInfoIconsToNodes, 2000);
 
         let sidebarOpen = false;
 
@@ -3182,8 +3922,8 @@ def generate_dependency_html(
             tables.forEach(table => {{
                 const data = groups[table];
                 const items = [
-                    ...data.measures.map(m => ({{ name: m, type: 'measure' }})),
-                    ...data.columns.map(c => ({{ name: c, type: 'column' }}))
+                    ...data.measures.map(m => ({{ name: m, type: 'measure', displayName: `${{table}}[${{m}}]` }})),
+                    ...data.columns.map(c => ({{ name: c, type: 'column', displayName: `${{table}}[${{c}}]` }}))
                 ].sort((a, b) => a.name.localeCompare(b.name));
 
                 html += `
@@ -3199,7 +3939,7 @@ def generate_dependency_html(
                             ${{items.map(item => `
                                 <div class="item ${{item.type}}" data-name="${{item.name.toLowerCase()}}" data-table="${{table.toLowerCase()}}">
                                     <span class="item-icon">${{item.type === 'measure' ? '●' : '◇'}}</span>
-                                    <span class="item-name">${{item.name}}</span>
+                                    <span class="item-name">${{item.displayName}}</span>
                                     <span style="color: var(--text-muted); font-size: 0.6875rem; margin-left: auto;">${{item.type}}</span>
                                 </div>
                             `).join('')}}
@@ -3249,7 +3989,7 @@ def generate_dependency_html(
                             ${{items.map(name => `
                                 <div class="item measure" data-name="${{name.toLowerCase()}}" data-table="${{table.toLowerCase()}}">
                                     <span class="item-icon">●</span>
-                                    <span class="item-name">${{name}}</span>
+                                    <span class="item-name">${{table}}[${{name}}]</span>
                                 </div>
                             `).join('')}}
                         </div>
@@ -3276,8 +4016,8 @@ def generate_dependency_html(
             mermaidCode += '    classDef downstream fill:#f59e0b,stroke:#fbbf24,stroke-width:2px,color:#fff\\n';
             mermaidCode += '    classDef column fill:#8b5cf6,stroke:#a78bfa,stroke-width:2px,color:#fff\\n';
 
-            // Root node
-            mermaidCode += `    ${{rootId}}["${{itemName}}"]:::root\\n`;
+            // Root node - show full Table[Name] format
+            mermaidCode += `    ${{rootId}}["${{itemTable}}[${{itemName}}]"]:::root\\n`;
 
             // Track node count
             let nodeCount = 1;
@@ -3292,7 +4032,8 @@ def generate_dependency_html(
                     const m = key.match(/^(.+)\[(.+)\]$/);
                     if (m) {{
                         const nodeId = sanitizeForMermaid(key);
-                        mermaidCode += `        ${{nodeId}}["${{m[2]}}"]:::upstream\\n`;
+                        // Show full Table[Name] format in node label
+                        mermaidCode += `        ${{nodeId}}["${{m[1]}}[${{m[2]}}]"]:::upstream\\n`;
                         nodeCount++;
                     }}
                 }});
@@ -3301,7 +4042,8 @@ def generate_dependency_html(
                     const m = key.match(/^(.+)\[(.+)\]$/);
                     if (m) {{
                         const nodeId = sanitizeForMermaid(key);
-                        mermaidCode += `        ${{nodeId}}["${{m[2]}}"]:::column\\n`;
+                        // Show full Table[Column] format in node label
+                        mermaidCode += `        ${{nodeId}}["${{m[1]}}[${{m[2]}}]"]:::column\\n`;
                         nodeCount++;
                     }}
                 }});
@@ -3330,7 +4072,8 @@ def generate_dependency_html(
                     const m = key.match(/^(.+)\[(.+)\]$/);
                     if (m) {{
                         const nodeId = sanitizeForMermaid(key);
-                        mermaidCode += `        ${{nodeId}}["${{m[2]}}"]:::downstream\\n`;
+                        // Show full Table[Name] format in node label
+                        mermaidCode += `        ${{nodeId}}["${{m[1]}}[${{m[2]}}]"]:::downstream\\n`;
                         nodeCount++;
                     }}
                 }});
@@ -3413,6 +4156,10 @@ def generate_dependency_html(
                     }}
                 }});
             }});
+
+            // Re-add info icons after diagram regeneration
+            hideNodeTooltip();
+            addInfoIconsToNodes();
         }}
 
         function setupSidebarSearch() {{

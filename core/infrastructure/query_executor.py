@@ -1066,7 +1066,8 @@ class OptimizedQueryExecutor:
                     top_n = limits.query.default_info_limit
                 except RuntimeError:
                     # Fallback to config if limits_manager not initialized yet
-                    top_n = config.get('query.default_info_limit', 100)
+                    # Use high default to ensure all measures/columns are fetched
+                    top_n = config.get('query.default_info_limit', 10000)
 
 # Prefer plain INFO.* for broad compatibility; optionally attempt selective projection
             inner = f"INFO.{function_name}()"
