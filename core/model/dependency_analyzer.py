@@ -102,16 +102,17 @@ class DependencyAnalyzer:
         }
 
     def clear_cache(self) -> Dict[str, Any]:
-        """Clear the DAX parse cache."""
+        """Clear the DAX parse cache and reference index."""
         cache_size = len(self._parse_cache)
         self._parse_cache.clear()
         self._parse_cache_timestamps.clear()
-        logger.info(f"Cleared DAX parse cache ({cache_size} entries)")
+        self._ref_index = None  # Force rebuild of reference index
+        logger.info(f"Cleared DAX parse cache ({cache_size} entries) and reference index")
 
         return {
             'success': True,
             'cleared_entries': cache_size,
-            'message': f'Cleared {cache_size} cached parse results'
+            'message': f'Cleared {cache_size} cached parse results and reference index'
         }
     
     def analyze_measure_dependencies(self, table: str, measure: str, include_diagram: bool = False) -> Dict:
@@ -769,6 +770,40 @@ class DependencyAnalyzer:
                         return
                 nodes_by_table[tbl].append((node_key, node_name, node_type))
 
+            # Build measure name lookup for resolving unqualified references
+            # Use multiple key formats for robust matching
+            measure_name_to_table = {}
+            measures_result = self.query_executor.execute_info_query("MEASURES")
+            if measures_result.get('success'):
+                for m in measures_result.get('rows', []):
+                    m_table = m.get('Table', '') or m.get('[Table]', '') or ''
+                    m_name = m.get('Name', '') or m.get('[Name]', '') or ''
+                    if m_table and m_name:
+                        # Store by multiple key formats for robust matching
+                        measure_name_to_table[m_name.lower()] = m_table
+                        measure_name_to_table[' '.join(m_name.lower().split())] = m_table  # normalized whitespace
+                        measure_name_to_table[m_name] = m_table  # exact match
+                logger.debug(f"Built measure lookup with {len(measure_name_to_table)} entries for {len(measures_result.get('rows', []))} measures")
+
+            def resolve_measure_table(dep_tbl: str, dep_name: str) -> str:
+                """Resolve table name for a measure, using lookup if needed."""
+                if dep_tbl:
+                    return dep_tbl
+                # Try multiple lookup strategies
+                if dep_name:
+                    # Try exact match first
+                    if dep_name in measure_name_to_table:
+                        return measure_name_to_table[dep_name]
+                    # Try lowercase
+                    if dep_name.lower() in measure_name_to_table:
+                        return measure_name_to_table[dep_name.lower()]
+                    # Try normalized (lowercase + collapsed whitespace)
+                    normalized = ' '.join(dep_name.lower().split())
+                    if normalized in measure_name_to_table:
+                        return measure_name_to_table[normalized]
+                    logger.warning(f"Could not resolve table for measure [{dep_name}]")
+                return 'Unknown'
+
             if direction == "upstream":
                 # Get what this measure depends on
                 def traverse_upstream(tbl: str, msr: str, current_depth: int):
@@ -786,11 +821,13 @@ class DependencyAnalyzer:
                     if deps_result.get('success'):
                         # Add measure dependencies
                         for dep_table, dep_name in deps_result.get('referenced_measures', []):
-                            if dep_table:
-                                dep_key = f"{dep_table}[{dep_name}]"
-                                add_node_to_table(dep_table, dep_key, dep_name, "measure")
+                            if dep_name:  # Only need name, table can be empty
+                                effective_table = resolve_measure_table(dep_table, dep_name)
+                                dep_key = f"{effective_table}[{dep_name}]"
+                                add_node_to_table(effective_table, dep_key, dep_name, "measure")
                                 edges.append((dep_key, key, ""))  # dependency -> measure
-                                traverse_upstream(dep_table, dep_name, current_depth + 1)
+                                if effective_table and effective_table != 'Unknown':  # Only recurse if we have a valid table
+                                    traverse_upstream(effective_table, dep_name, current_depth + 1)
 
                         # Add column dependencies
                         if include_columns:
@@ -1042,6 +1079,39 @@ class DependencyAnalyzer:
             def sanitize_label(name: str) -> str:
                 return name.replace('"', '\\"')
 
+            # Build measure name lookup for resolving unqualified references
+            # Use multiple key formats for robust matching
+            measure_name_to_table = {}
+            measures_result = self.query_executor.execute_info_query("MEASURES")
+            if measures_result.get('success'):
+                for m in measures_result.get('rows', []):
+                    m_table = m.get('Table', '') or m.get('[Table]', '') or ''
+                    m_name = m.get('Name', '') or m.get('[Name]', '') or ''
+                    if m_table and m_name:
+                        # Store by multiple key formats for robust matching
+                        measure_name_to_table[m_name.lower()] = m_table
+                        measure_name_to_table[' '.join(m_name.lower().split())] = m_table
+                        measure_name_to_table[m_name] = m_table
+                logger.debug(f"Impact mermaid: Built lookup with {len(measure_name_to_table)} entries")
+
+            def resolve_table(dep_tbl: str, dep_name: str) -> str:
+                """Resolve table name for a measure, using lookup if needed."""
+                if dep_tbl:
+                    return dep_tbl
+                if dep_name:
+                    # Try exact match first
+                    if dep_name in measure_name_to_table:
+                        return measure_name_to_table[dep_name]
+                    # Try lowercase
+                    if dep_name.lower() in measure_name_to_table:
+                        return measure_name_to_table[dep_name.lower()]
+                    # Try normalized
+                    normalized = ' '.join(dep_name.lower().split())
+                    if normalized in measure_name_to_table:
+                        return measure_name_to_table[normalized]
+                    logger.warning(f"Impact mermaid: Could not resolve table for [{dep_name}]")
+                return 'Unknown'
+
             # Collect upstream (measures AND columns)
             def collect_upstream(tbl: str, msr: str, depth: int):
                 if depth > 3:
@@ -1056,11 +1126,13 @@ class DependencyAnalyzer:
                 if deps.get('success'):
                     # Add referenced measures
                     for dep_tbl, dep_name in deps.get('referenced_measures', []):
-                        if dep_tbl:
-                            dep_key = f"{dep_tbl}[{dep_name}]"
+                        if dep_name:  # Only need name, table can be empty
+                            effective_tbl = resolve_table(dep_tbl, dep_name)
+                            dep_key = f"{effective_tbl}[{dep_name}]"
                             all_nodes.add(dep_key)
                             upstream_edges.append((dep_key, key))
-                            collect_upstream(dep_tbl, dep_name, depth + 1)
+                            if effective_tbl and effective_tbl != 'Unknown':  # Recurse if we have a valid table
+                                collect_upstream(effective_tbl, dep_name, depth + 1)
                     # Add referenced columns (only at depth 0 to avoid clutter)
                     if depth == 0:
                         for col_tbl, col_name in deps.get('referenced_columns', []):

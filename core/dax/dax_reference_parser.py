@@ -116,6 +116,13 @@ class DaxReferenceResult:
         }
 
 
+def _normalize_name(name: str) -> str:
+    """Normalize a name for lookup - lowercase and collapse whitespace."""
+    if not name:
+        return ''
+    return ' '.join(name.lower().split())
+
+
 class DaxReferenceIndex:
     """
     Index of known measures and columns for DAX reference resolution.
@@ -134,7 +141,8 @@ class DaxReferenceIndex:
             relationship_rows: Optional list of relationship dictionaries for relationship validation
         """
         self.measure_keys: Set[str] = set()
-        self.measure_names: Dict[str, Set[str]] = {}
+        self.measure_names: Dict[str, Set[str]] = {}  # normalized_name -> set of tables
+        self.measure_name_original: Dict[str, str] = {}  # normalized_name -> original name (for case preservation)
         self.column_keys: Set[str] = set()
         self.column_names: Dict[str, Set[str]] = {}  # For column name to table mapping
         self.table_names: Set[str] = set()
@@ -144,21 +152,27 @@ class DaxReferenceIndex:
 
         if measure_rows:
             for row in measure_rows:
-                table = str(row.get("Table") or "").strip()
-                name = str(row.get("Name") or "").strip()
+                # Try both bracketed and non-bracketed column names (DMV queries vary)
+                table = str(row.get("Table") or row.get("[Table]") or "").strip()
+                name = str(row.get("Name") or row.get("[Name]") or "").strip()
                 if table and name:
-                    key = f"{table.lower()}|{name.lower()}"
+                    normalized = _normalize_name(name)
+                    key = f"{table.lower()}|{normalized}"
                     self.measure_keys.add(key)
-                    self.measure_names.setdefault(name.lower(), set()).add(table)
+                    self.measure_names.setdefault(normalized, set()).add(table)
+                    self.measure_name_original[normalized] = name  # Keep original casing
                     self.table_names.add(table)
+                    logger.debug(f"Indexed measure: {table}[{name}] -> normalized: {normalized}")
 
         if column_rows:
             for row in column_rows:
-                table = str(row.get("Table") or "").strip()
-                name = str(row.get("Name") or "").strip()
+                # Try both bracketed and non-bracketed column names (DMV queries vary)
+                table = str(row.get("Table") or row.get("[Table]") or "").strip()
+                name = str(row.get("Name") or row.get("[Name]") or "").strip()
                 if table and name:
-                    self.column_keys.add(f"{table.lower()}|{name.lower()}")
-                    self.column_names.setdefault(name.lower(), set()).add(table)
+                    normalized = _normalize_name(name)
+                    self.column_keys.add(f"{table.lower()}|{normalized}")
+                    self.column_names.setdefault(normalized, set()).add(table)
                     self.table_names.add(table)
 
         if relationship_rows:
@@ -264,26 +278,36 @@ def parse_dax_references(
         if not obj:
             continue
         identifiers.add(obj)
-        key = f"{tbl.lower()}|{obj.lower()}"
+        normalized_obj = _normalize_name(obj)
+        key = f"{tbl.lower()}|{normalized_obj}"
         tables.add(tbl)
         if key in ref_idx.measure_keys:
             measures.add((tbl, obj))
         else:
             columns.add((tbl, obj))
 
-    # Parse unqualified references: [Measure]
+    # Parse unqualified references: [Measure] or [Column]
     for match in _UNQUALIFIED_TOKEN.finditer(cleaned):
         name = match.group(1).strip()
         if not name or name.startswith("@"):  # Skip parameters
             continue
         identifiers.add(name)
-        owners = ref_idx.measure_names.get(name.lower())
-        if owners:
-            for tbl in owners:
+        normalized_name = _normalize_name(name)
+        # First check if it's a known measure
+        measure_owners = ref_idx.measure_names.get(normalized_name)
+        if measure_owners:
+            for tbl in measure_owners:
                 measures.add((tbl, name))
         else:
-            # Unknown - assume measure with no table
-            measures.add(("", name))
+            # Not a measure - check if it's a known column
+            column_owners = ref_idx.column_names.get(normalized_name)
+            if column_owners:
+                for tbl in column_owners:
+                    columns.add((tbl, name))
+                    tables.add(tbl)
+            else:
+                # Unknown - assume measure with no table
+                measures.add(("", name))
 
     # Enhanced parsing when requested
     if enhanced:
@@ -461,4 +485,14 @@ __all__ = [
     "VariableDefinition",
     "parse_dax_references",
     "parse_dax_references_enhanced",
+    "normalize_dax_name",
 ]
+
+
+def normalize_dax_name(name: str) -> str:
+    """
+    Public alias for name normalization used in DAX reference lookups.
+    Normalizes: lowercase + collapse whitespace.
+    Use this when building lookups that need to match DAX references.
+    """
+    return _normalize_name(name)

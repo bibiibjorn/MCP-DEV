@@ -8,6 +8,7 @@ from server.registry import ToolDefinition
 from core.infrastructure.connection_state import connection_state
 from core.validation.error_handler import ErrorHandler
 from core.utilities.diagram_html_generator import generate_dependency_html
+from core.dax.dax_reference_parser import normalize_dax_name
 
 logger = logging.getLogger(__name__)
 
@@ -283,6 +284,52 @@ def handle_analyze_measure_dependencies(args: Dict[str, Any]) -> Dict[str, Any]:
 
     if not deps_result.get('success'):
         return deps_result
+
+    # Enrich referenced_measures with proper table names when they come back empty
+    # This happens when unqualified references like [MeasureName] are parsed
+    referenced_measures = deps_result.get('referenced_measures', [])
+    if referenced_measures:
+        # Check if any have empty table names
+        needs_lookup = any(not tbl for tbl, _ in referenced_measures)
+        if needs_lookup:
+            # Get all measures to build lookup
+            query_executor = connection_state.query_executor
+            if query_executor:
+                measures_result = query_executor.execute_info_query("MEASURES")
+                if measures_result.get('success'):
+                    measures_rows = measures_result.get('rows', [])
+                    # Build lookup by normalized measure name (using same normalization as DAX parser)
+                    measure_name_to_info = {}
+                    for m in measures_rows:
+                        m_table = m.get('Table', '') or ''
+                        m_name = m.get('Name', '') or ''
+                        m_folder = m.get('DisplayFolder', '') or ''
+                        if m_name:
+                            name_key = normalize_dax_name(m_name)
+                            # Only store if not already present (first match wins)
+                            if name_key not in measure_name_to_info:
+                                measure_name_to_info[name_key] = {'table': m_table, 'display_folder': m_folder}
+
+                    logger.debug(f"Built measure lookup with {len(measure_name_to_info)} entries")
+
+                    # Enrich the referenced measures
+                    enriched_measures = []
+                    for tbl, msr in referenced_measures:
+                        if not tbl and msr:
+                            # Look up by measure name
+                            name_key = normalize_dax_name(msr)
+                            if name_key in measure_name_to_info:
+                                info = measure_name_to_info[name_key]
+                                enriched_measures.append((info['table'] or 'Unknown', msr))
+                                logger.debug(f"Enriched measure [{msr}] -> {info['table']}[{msr}]")
+                            else:
+                                logger.warning(f"Could not find table for measure [{msr}] (normalized: {name_key})")
+                                enriched_measures.append(('Unknown', msr))
+                        else:
+                            enriched_measures.append((tbl, msr))
+
+                    # Update deps_result with enriched measures
+                    deps_result['referenced_measures'] = enriched_measures
 
     # Get "used by" analysis (what measures depend on THIS measure)
     usage_result = dependency_analyzer.find_measure_usage(table, measure)
