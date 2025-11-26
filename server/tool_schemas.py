@@ -1116,6 +1116,46 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
         ]
     },
 
+    'generate_pbip_dependency_diagram': {
+        "type": "object",
+        "properties": {
+            "pbip_folder_path": {
+                "type": "string",
+                "description": "Path to .SemanticModel folder or parent PBIP folder (auto-detects .SemanticModel). The tool will also look for .Report folder for visual dependencies."
+            },
+            "auto_open": {
+                "type": "boolean",
+                "description": "Automatically open the HTML diagram in browser (default: true)",
+                "default": True
+            },
+            "output_path": {
+                "type": "string",
+                "description": "Optional custom output path for the HTML file. If not specified, saves to exports/pbip_dependency_diagram.html"
+            }
+        },
+        "required": ["pbip_folder_path"],
+        "examples": [
+            {
+                "_description": "Generate dependency diagram for a PBIP project",
+                "pbip_folder_path": "C:/repos/MyProject/MyModel.SemanticModel"
+            },
+            {
+                "_description": "Generate diagram from parent folder (auto-detects .SemanticModel)",
+                "pbip_folder_path": "C:/repos/MyProject"
+            },
+            {
+                "_description": "Generate diagram without auto-opening browser",
+                "pbip_folder_path": "C:/repos/MyProject/MyModel.SemanticModel",
+                "auto_open": False
+            },
+            {
+                "_description": "Generate diagram with custom output path",
+                "pbip_folder_path": "C:/repos/MyProject",
+                "output_path": "C:/output/my_diagram.html"
+            }
+        ]
+    },
+
     # Token Usage Tracking (1 tool)
     'get_token_usage': {
         "type": "object",

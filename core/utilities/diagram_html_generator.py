@@ -134,6 +134,11 @@ def generate_dependency_html(
     downstream_ids_json = json.dumps(downstream_node_ids)
     root_id_json = json.dumps(root_node_id)
 
+    # Debug logging
+    logger.info(f"Root node ID: {root_node_id}")
+    logger.info(f"Upstream node IDs ({len(upstream_node_ids)}): {upstream_node_ids[:10]}...")  # First 10
+    logger.info(f"Downstream node IDs ({len(downstream_node_ids)}): {downstream_node_ids[:10]}...")  # First 10
+
     timestamp = datetime.now().strftime("%B %d, %Y at %H:%M")
 
     html_content = f'''<!DOCTYPE html>
@@ -552,7 +557,7 @@ def generate_dependency_html(
         /* Node click highlight styles */
         .mermaid svg g.node {{
             cursor: pointer;
-            transition: opacity 0.3s ease, filter 0.3s ease;
+            transition: opacity 0.3s ease, filter 0.3s ease, transform 0.2s ease;
         }}
 
         .mermaid svg g.node:hover {{
@@ -560,21 +565,28 @@ def generate_dependency_html(
         }}
 
         .mermaid svg.flow-highlight-active g.node {{
-            opacity: 0.2;
+            opacity: 0.15;
+            filter: grayscale(50%);
         }}
 
         .mermaid svg.flow-highlight-active g.node.flow-highlighted {{
             opacity: 1;
-            filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.8));
+            filter: drop-shadow(0 0 10px rgba(99, 102, 241, 0.9)) brightness(1.1);
         }}
 
         .mermaid svg.flow-highlight-active g.node.flow-selected {{
             opacity: 1;
-            filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.9));
+            filter: drop-shadow(0 0 16px rgba(255, 200, 50, 1)) drop-shadow(0 0 6px rgba(255, 255, 255, 1)) brightness(1.2);
+        }}
+
+        .mermaid svg.flow-highlight-active g.node.flow-selected rect,
+        .mermaid svg.flow-highlight-active g.node.flow-selected polygon {{
+            stroke: #ffc832 !important;
+            stroke-width: 3px !important;
         }}
 
         .mermaid svg.flow-highlight-active g.edgePath {{
-            opacity: 0.1;
+            opacity: 0.08;
         }}
 
         .mermaid svg.flow-highlight-active g.edgePath.flow-highlighted {{
@@ -582,12 +594,16 @@ def generate_dependency_html(
         }}
 
         .mermaid svg.flow-highlight-active g.edgePath.flow-highlighted path {{
-            stroke-width: 3px !important;
-            stroke: #6366f1 !important;
+            stroke-width: 4px !important;
+            stroke: #818cf8 !important;
+        }}
+
+        .mermaid svg.flow-highlight-active g.edgePath.flow-highlighted marker path {{
+            fill: #818cf8 !important;
         }}
 
         .mermaid svg.flow-highlight-active g.cluster {{
-            opacity: 0.3;
+            opacity: 0.2;
         }}
 
         .mermaid svg.flow-highlight-active g.cluster.flow-highlighted {{
@@ -1060,6 +1076,9 @@ def generate_dependency_html(
     </div>
 
     <script>
+        console.log('=== MCP-PowerBi-Finvision Dependency Diagram v2.0 ===');
+        console.log('Script loaded at:', new Date().toLocaleTimeString());
+
         mermaid.initialize({{
             startOnLoad: true,
             theme: 'dark',
@@ -1119,13 +1138,6 @@ def generate_dependency_html(
         function resetZoom() {{
             currentZoom = 1;
             applyZoom();
-            // Also reset viewBox to original if filter is 'all'
-            if (currentFilter === 'all') {{
-                const svg = document.querySelector('.mermaid svg');
-                if (svg && svg.dataset.originalViewBox) {{
-                    svg.setAttribute('viewBox', svg.dataset.originalViewBox);
-                }}
-            }}
         }}
 
         function applyZoom() {{
@@ -1157,11 +1169,20 @@ def generate_dependency_html(
         const downstreamNodeIds = {downstream_ids_json};
         const rootNodeId = {root_id_json};
 
+        console.log('Pre-computed node IDs:');
+        console.log('  Upstream:', upstreamNodeIds);
+        console.log('  Downstream:', downstreamNodeIds);
+        console.log('  Root:', rootNodeId);
+
         // Filter functionality for upstream/downstream view
         let currentFilter = 'all';
 
+        // Track which nodes are visible after filtering
+        let visibleSanitizedIds = new Set();
+
         function setFilter(filter) {{
             currentFilter = filter;
+            console.log('Setting filter to:', filter);
 
             // Update button states
             document.querySelectorAll('.btn-filter').forEach(btn => btn.classList.remove('active'));
@@ -1169,37 +1190,57 @@ def generate_dependency_html(
 
             // Get SVG elements
             const svg = document.querySelector('.mermaid svg');
-            if (!svg) return;
+            if (!svg) {{
+                console.error('SVG not found!');
+                return;
+            }}
 
             const allNodes = svg.querySelectorAll('g.node');
             const allEdges = svg.querySelectorAll('g.edgePath');
             const allClusters = svg.querySelectorAll('g.cluster');
 
-            // Helper to check if node ID matches any in a list
-            function nodeMatchesList(nodeId, idList) {{
-                // Mermaid prefixes node IDs with 'flowchart-' and adds suffixes
-                // Check if any of our IDs are contained in the node ID
-                return idList.some(id => nodeId.includes(id));
+            console.log('Found elements:', allNodes.length, 'nodes,', allEdges.length, 'edges,', allClusters.length, 'clusters');
+
+            // Reset visibility tracking
+            visibleSanitizedIds = new Set();
+
+            // Helper to extract sanitized ID from Mermaid node ID
+            function getSanitizedId(mermaidId) {{
+                const match = mermaidId.match(/flowchart-(.+)-\d+$/);
+                return match ? match[1] : mermaidId;
+            }}
+
+            // Helper to check if sanitized ID matches any in a list
+            function idMatchesList(sanitizedId, idList) {{
+                return idList.includes(sanitizedId);
             }}
 
             // Apply visibility to nodes
             allNodes.forEach(node => {{
-                const nodeId = node.id || '';
-                const isUpstream = nodeMatchesList(nodeId, upstreamNodeIds);
-                const isDownstream = nodeMatchesList(nodeId, downstreamNodeIds);
-                const isRoot = nodeId.includes(rootNodeId);
+                const mermaidId = node.id || '';
+                const sanitizedId = getSanitizedId(mermaidId);
+                const isUpstream = idMatchesList(sanitizedId, upstreamNodeIds);
+                const isDownstream = idMatchesList(sanitizedId, downstreamNodeIds);
+                const isRoot = sanitizedId === rootNodeId;
 
+                let shouldShow = false;
                 if (filter === 'all') {{
-                    node.style.display = '';
-                    node.style.opacity = '1';
+                    shouldShow = true;
                 }} else if (filter === 'upstream') {{
-                    node.style.display = (isUpstream || isRoot) ? '' : 'none';
-                    node.style.opacity = (isUpstream || isRoot) ? '1' : '0';
+                    shouldShow = isUpstream || isRoot;
                 }} else if (filter === 'downstream') {{
-                    node.style.display = (isDownstream || isRoot) ? '' : 'none';
-                    node.style.opacity = (isDownstream || isRoot) ? '1' : '0';
+                    shouldShow = isDownstream || isRoot;
+                }}
+
+                node.style.display = shouldShow ? '' : 'none';
+                node.style.opacity = shouldShow ? '1' : '0';
+
+                if (shouldShow) {{
+                    visibleSanitizedIds.add(sanitizedId);
                 }}
             }});
+
+            console.log('Visible nodes after filter:', [...visibleSanitizedIds]);
 
             // Apply visibility to clusters (subgraph boxes)
             allClusters.forEach(cluster => {{
@@ -1211,84 +1252,37 @@ def generate_dependency_html(
                 const isUpstreamCluster = clusterLabel.includes('dependencies') && !clusterLabel.includes('dependents');
                 const isDownstreamCluster = clusterLabel.includes('dependents');
 
+                let shouldShow = false;
                 if (filter === 'all') {{
-                    cluster.style.display = '';
-                    cluster.style.opacity = '1';
+                    shouldShow = true;
                 }} else if (filter === 'upstream') {{
-                    cluster.style.display = isDownstreamCluster ? 'none' : '';
-                    cluster.style.opacity = isDownstreamCluster ? '0' : '1';
+                    shouldShow = !isDownstreamCluster;
                 }} else if (filter === 'downstream') {{
-                    cluster.style.display = isUpstreamCluster ? 'none' : '';
-                    cluster.style.opacity = isUpstreamCluster ? '0' : '1';
+                    shouldShow = !isUpstreamCluster;
                 }}
+
+                cluster.style.display = shouldShow ? '' : 'none';
+                cluster.style.opacity = shouldShow ? '1' : '0';
             }});
 
-            // Build a map of visible node IDs for edge filtering
-            const visibleNodeIds = new Set();
-            allNodes.forEach(node => {{
-                if (node.style.display !== 'none') {{
-                    visibleNodeIds.add(node.id);
-                }}
-            }});
-
-            // Apply visibility to edges - hide if either endpoint is hidden
+            // Apply visibility to edges based on visible nodes
             allEdges.forEach(edge => {{
-                let shouldShow = filter === 'all';
+                const classList = Array.from(edge.classList || []);
+                let startNodeId = '';
+                let endNodeId = '';
 
-                if (filter !== 'all') {{
-                    // Check the edge's marker-end and marker-start to find connected nodes
-                    // Mermaid edges have class like 'LS-nodeId' and 'LE-nodeId' for start/end
-                    const classList = Array.from(edge.classList || []);
-                    let startNodeId = '';
-                    let endNodeId = '';
+                classList.forEach(cls => {{
+                    if (cls.startsWith('LS-')) startNodeId = cls.substring(3);
+                    if (cls.startsWith('LE-')) endNodeId = cls.substring(3);
+                }});
 
-                    classList.forEach(cls => {{
-                        if (cls.startsWith('LS-')) startNodeId = cls.substring(3);
-                        if (cls.startsWith('LE-')) endNodeId = cls.substring(3);
-                    }});
-
-                    // Also check data attributes
-                    const edgeStart = edge.getAttribute('data-start') || startNodeId;
-                    const edgeEnd = edge.getAttribute('data-end') || endNodeId;
-
-                    // Find actual connected nodes by checking which nodes have matching IDs
-                    let startsFromVisible = false;
-                    let endsAtVisible = false;
-
-                    allNodes.forEach(node => {{
-                        const nodeId = node.id || '';
-                        const isVisible = node.style.display !== 'none';
-
-                        // Check if this node matches the edge endpoints
-                        if (edgeStart && nodeId.includes(edgeStart)) {{
-                            startsFromVisible = isVisible;
-                        }}
-                        if (edgeEnd && nodeId.includes(edgeEnd)) {{
-                            endsAtVisible = isVisible;
-                        }}
-                    }});
-
-                    // Show edge only if both connected nodes are visible
-                    // If we couldn't determine endpoints, use ID-based matching as fallback
-                    if (edgeStart || edgeEnd) {{
-                        shouldShow = startsFromVisible && endsAtVisible;
-                    }} else {{
-                        // Fallback: check edge ID against node IDs
-                        const edgeId = edge.id || '';
-                        if (filter === 'upstream') {{
-                            const connectsToDownstream = downstreamNodeIds.some(id => edgeId.includes(id));
-                            shouldShow = !connectsToDownstream;
-                        }} else if (filter === 'downstream') {{
-                            const connectsToUpstream = upstreamNodeIds.some(id => edgeId.includes(id));
-                            shouldShow = !connectsToUpstream;
-                        }}
-                    }}
-                }}
+                // Edge is visible if both endpoints are visible
+                const shouldShow = filter === 'all' ||
+                    (visibleSanitizedIds.has(startNodeId) && visibleSanitizedIds.has(endNodeId));
 
                 edge.style.display = shouldShow ? '' : 'none';
                 edge.style.opacity = shouldShow ? '1' : '0';
 
-                // Also hide the edge path itself
                 const path = edge.querySelector('path');
                 if (path) {{
                     path.style.display = shouldShow ? '' : 'none';
@@ -1364,82 +1358,43 @@ def generate_dependency_html(
                 }}
             }}
 
-            // Adjust SVG viewBox to crop to visible content only
+            // Scroll to show visible content at top
             setTimeout(() => {{
-                // Store original viewBox if not already stored
-                if (!svg.dataset.originalViewBox) {{
-                    svg.dataset.originalViewBox = svg.getAttribute('viewBox') || '';
-                }}
-
-                if (filter === 'all') {{
-                    // Reset to original viewBox
-                    if (svg.dataset.originalViewBox) {{
-                        svg.setAttribute('viewBox', svg.dataset.originalViewBox);
-                    }}
-                }} else {{
-                    // Calculate bounding box of all visible elements
-                    let minX = Infinity, minY = Infinity;
-                    let maxX = -Infinity, maxY = -Infinity;
-
-                    // Get bounds of visible nodes
-                    allNodes.forEach(node => {{
-                        if (node.style.display !== 'none') {{
-                            try {{
-                                const bbox = node.getBBox();
-                                minX = Math.min(minX, bbox.x);
-                                minY = Math.min(minY, bbox.y);
-                                maxX = Math.max(maxX, bbox.x + bbox.width);
-                                maxY = Math.max(maxY, bbox.y + bbox.height);
-                            }} catch (e) {{ /* ignore */ }}
-                        }}
-                    }});
-
-                    // Get bounds of visible clusters
-                    allClusters.forEach(cluster => {{
-                        if (cluster.style.display !== 'none') {{
-                            try {{
-                                const bbox = cluster.getBBox();
-                                minX = Math.min(minX, bbox.x);
-                                minY = Math.min(minY, bbox.y);
-                                maxX = Math.max(maxX, bbox.x + bbox.width);
-                                maxY = Math.max(maxY, bbox.y + bbox.height);
-                            }} catch (e) {{ /* ignore */ }}
-                        }}
-                    }});
-
-                    // Get bounds of visible edges
-                    allEdges.forEach(edge => {{
-                        if (edge.style.display !== 'none') {{
-                            try {{
-                                const bbox = edge.getBBox();
-                                minX = Math.min(minX, bbox.x);
-                                minY = Math.min(minY, bbox.y);
-                                maxX = Math.max(maxX, bbox.x + bbox.width);
-                                maxY = Math.max(maxY, bbox.y + bbox.height);
-                            }} catch (e) {{ /* ignore */ }}
-                        }}
-                    }});
-
-                    // Only update viewBox if we found visible elements
-                    if (minX !== Infinity && minY !== Infinity) {{
-                        // Add padding around the visible area
-                        const padding = 50;
-                        const newX = minX - padding;
-                        const newY = minY - padding;
-                        const newWidth = (maxX - minX) + (padding * 2);
-                        const newHeight = (maxY - minY) + (padding * 2);
-
-                        svg.setAttribute('viewBox', `${{newX}} ${{newY}} ${{newWidth}} ${{newHeight}}`);
-                    }}
-                }}
-
-                // Scroll diagram container to top
                 const diagramContent = document.getElementById('diagram-content');
-                if (diagramContent) {{
+                if (!diagramContent) return;
+
+                // Find the first visible node or cluster and scroll to it
+                const svg = document.querySelector('.mermaid svg');
+                if (!svg) return;
+
+                let firstVisibleElement = null;
+                let minY = Infinity;
+
+                // Find topmost visible node
+                svg.querySelectorAll('g.node').forEach(node => {{
+                    if (node.style.display !== 'none') {{
+                        try {{
+                            const bbox = node.getBBox();
+                            if (bbox.y < minY) {{
+                                minY = bbox.y;
+                                firstVisibleElement = node;
+                            }}
+                        }} catch(e) {{}}
+                    }}
+                }});
+
+                // Scroll the first visible element into view
+                if (firstVisibleElement) {{
+                    firstVisibleElement.scrollIntoView({{
+                        behavior: 'smooth',
+                        block: 'start',
+                        inline: 'center'
+                    }});
+                }} else {{
                     diagramContent.scrollTop = 0;
                     diagramContent.scrollLeft = 0;
                 }}
-            }}, 150);
+            }}, 300);
         }}
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -1450,37 +1405,99 @@ def generate_dependency_html(
         let selectedNodeId = null;
         let edgeGraph = {{ incoming: {{}}, outgoing: {{}} }}; // Node relationships
 
+        // Map from Mermaid internal IDs to our sanitized node IDs
+        let nodeIdMap = {{}}; // mermaidInternalId -> sanitizedId
+        let sanitizedToMermaidMap = {{}}; // sanitizedId -> mermaidInternalId (for reverse lookup)
+
         // Build edge graph after Mermaid renders
         function buildEdgeGraph() {{
             const svg = document.querySelector('.mermaid svg');
             if (!svg) return;
 
             edgeGraph = {{ incoming: {{}}, outgoing: {{}} }};
+            nodeIdMap = {{}};
+            sanitizedToMermaidMap = {{}};
+
+            // First, build a map of all node IDs
+            svg.querySelectorAll('g.node').forEach(node => {{
+                const mermaidId = node.id || '';
+                // Extract the base sanitized ID (the part we defined in Mermaid code)
+                // Mermaid format: "flowchart-sanitizedId-123"
+                const match = mermaidId.match(/flowchart-(.+)-\d+$/);
+                if (match) {{
+                    const sanitizedId = match[1];
+                    nodeIdMap[mermaidId] = sanitizedId;
+                    sanitizedToMermaidMap[sanitizedId] = mermaidId;
+                    // Also map the sanitized ID to itself for edge matching
+                    nodeIdMap[sanitizedId] = sanitizedId;
+                }}
+            }});
+
+            console.log('Node ID map (first 5):', Object.fromEntries(Object.entries(nodeIdMap).slice(0, 5)));
+            console.log('Total nodes mapped:', Object.keys(nodeIdMap).length);
 
             // Parse edges from edgePath elements
-            svg.querySelectorAll('g.edgePath').forEach(edge => {{
+            // Try multiple methods to find edge connections
+            let edgesFound = 0;
+            svg.querySelectorAll('g.edgePath').forEach((edge, idx) => {{
                 const classList = Array.from(edge.classList || []);
                 let startNode = '';
                 let endNode = '';
 
-                // Mermaid uses LS-nodeId and LE-nodeId classes
+                // Method 1: Look for LS-/LE- classes (standard Mermaid format)
                 classList.forEach(cls => {{
                     if (cls.startsWith('LS-')) startNode = cls.substring(3);
                     if (cls.startsWith('LE-')) endNode = cls.substring(3);
                 }});
 
+                // Method 2: Try to extract from edge ID if classes don't work
+                if ((!startNode || !endNode) && edge.id) {{
+                    // Edge IDs might be in format like "L-NodeA-NodeB" or similar
+                    const edgeIdMatch = edge.id.match(/L-(.+?)-(.+)/);
+                    if (edgeIdMatch) {{
+                        startNode = startNode || edgeIdMatch[1];
+                        endNode = endNode || edgeIdMatch[2];
+                    }}
+                }}
+
+                // Method 3: Check the edge's data attributes
+                if (!startNode || !endNode) {{
+                    const dataStart = edge.getAttribute('data-start');
+                    const dataEnd = edge.getAttribute('data-end');
+                    if (dataStart) startNode = dataStart;
+                    if (dataEnd) endNode = dataEnd;
+                }}
+
+                // Debug: log first few edges
+                if (idx < 3) {{
+                    console.log(`Edge ${{idx}}: classes=[${{classList.join(', ')}}], id=${{edge.id}}, start=${{startNode}}, end=${{endNode}}`);
+                }}
+
                 if (startNode && endNode) {{
+                    edgesFound++;
                     // outgoing: startNode -> endNode (startNode is used BY endNode)
                     if (!edgeGraph.outgoing[startNode]) edgeGraph.outgoing[startNode] = [];
-                    edgeGraph.outgoing[startNode].push(endNode);
+                    if (!edgeGraph.outgoing[startNode].includes(endNode)) {{
+                        edgeGraph.outgoing[startNode].push(endNode);
+                    }}
 
                     // incoming: endNode <- startNode (endNode USES startNode)
                     if (!edgeGraph.incoming[endNode]) edgeGraph.incoming[endNode] = [];
-                    edgeGraph.incoming[endNode].push(startNode);
+                    if (!edgeGraph.incoming[endNode].includes(startNode)) {{
+                        edgeGraph.incoming[endNode].push(startNode);
+                    }}
                 }}
             }});
 
-            console.log('Edge graph built:', Object.keys(edgeGraph.outgoing).length, 'source nodes');
+            console.log('Total edges found:', edgesFound);
+            console.log('Edge graph outgoing nodes:', Object.keys(edgeGraph.outgoing).length);
+            console.log('Edge graph incoming nodes:', Object.keys(edgeGraph.incoming).length);
+
+            // Debug: Show sample of edge connections
+            const outgoingKeys = Object.keys(edgeGraph.outgoing);
+            if (outgoingKeys.length > 0) {{
+                console.log('Sample outgoing:', outgoingKeys[0], '->', edgeGraph.outgoing[outgoingKeys[0]]);
+            }}
         }}
 
         // Find all upstream nodes (what the node depends on - recursively)
@@ -1514,10 +1531,56 @@ def generate_dependency_html(
             const svg = document.querySelector('.mermaid svg');
             if (!svg) return;
 
-            // Find all connected nodes
+            console.log('========================================');
+            console.log('Highlighting flow for node:', nodeId);
+            console.log('Node exists in edge graph outgoing?', !!edgeGraph.outgoing[nodeId]);
+            console.log('Node exists in edge graph incoming?', !!edgeGraph.incoming[nodeId]);
+            console.log('Is root node?', nodeId === rootNodeId);
+            console.log('Is in upstream list?', upstreamNodeIds.includes(nodeId));
+            console.log('Is in downstream list?', downstreamNodeIds.includes(nodeId));
+
+            // Find all connected nodes (using sanitized IDs from edge graph)
+            let allFlowNodes = new Set();
+
+            // First try using the edge graph
             const upstreamNodes = findUpstream(nodeId, new Set());
             const downstreamNodes = findDownstream(nodeId, new Set());
-            const allFlowNodes = new Set([...upstreamNodes, ...downstreamNodes]);
+            allFlowNodes = new Set([...upstreamNodes, ...downstreamNodes]);
+
+            // If edge graph didn't find much, use category-based fallback
+            if (allFlowNodes.size <= 1) {{
+                console.log('Edge graph traversal found few nodes, using category-based approach');
+
+                // Determine which category the clicked node is in
+                if (nodeId === rootNodeId) {{
+                    // Root node: show all upstream and downstream
+                    upstreamNodeIds.forEach(id => allFlowNodes.add(id));
+                    downstreamNodeIds.forEach(id => allFlowNodes.add(id));
+                    allFlowNodes.add(rootNodeId);
+                    console.log('Root node clicked - showing all', allFlowNodes.size, 'connected nodes');
+                }} else if (upstreamNodeIds.includes(nodeId)) {{
+                    // Upstream node: show this node and the root
+                    allFlowNodes.add(nodeId);
+                    allFlowNodes.add(rootNodeId);
+                    console.log('Upstream node clicked - showing node + root');
+                }} else if (downstreamNodeIds.includes(nodeId)) {{
+                    // Downstream node: show this node and the root
+                    allFlowNodes.add(nodeId);
+                    allFlowNodes.add(rootNodeId);
+                    console.log('Downstream node clicked - showing node + root');
+                }} else {{
+                    // Unknown node, just highlight itself
+                    allFlowNodes.add(nodeId);
+                    console.log('Unknown node category - highlighting only self');
+                }}
+            }}
+
+            console.log('Upstream from traversal:', [...upstreamNodes]);
+            console.log('Downstream from traversal:', [...downstreamNodes]);
+            console.log('Final flow nodes count:', allFlowNodes.size);
+
+            // Also add the clicked node itself (in case traversal didn't add it)
+            allFlowNodes.add(nodeId);
 
             // Activate highlight mode
             svg.classList.add('flow-highlight-active');
@@ -1528,36 +1591,32 @@ def generate_dependency_html(
             document.getElementById('clear-selection-btn').style.display = '';
 
             // Highlight nodes
+            let highlightedCount = 0;
             svg.querySelectorAll('g.node').forEach(node => {{
                 node.classList.remove('flow-highlighted', 'flow-selected');
 
+                const mermaidId = node.id || '';
+                // Get the sanitized ID for this node
+                const sanitizedId = nodeIdMap[mermaidId] || '';
+
                 // Check if this node is in the flow
-                const nId = node.id || '';
-                let isInFlow = false;
-
-                allFlowNodes.forEach(flowId => {{
-                    if (nId.includes(flowId) || flowId.includes(nId.replace('flowchart-', '').split('-')[0])) {{
-                        isInFlow = true;
-                    }}
-                }});
-
-                // Also check by extracting the base node ID from mermaid's format
-                const baseId = nId.replace('flowchart-', '').split('-')[0];
-                if (allFlowNodes.has(baseId)) {{
-                    isInFlow = true;
-                }}
+                const isInFlow = allFlowNodes.has(sanitizedId);
 
                 if (isInFlow) {{
                     node.classList.add('flow-highlighted');
+                    highlightedCount++;
                 }}
 
                 // Mark the selected node specially
-                if (nId.includes(nodeId) || nodeId.includes(baseId)) {{
+                if (sanitizedId === nodeId) {{
                     node.classList.add('flow-selected');
+                    console.log('Selected node marked:', sanitizedId);
                 }}
             }});
+            console.log('Total nodes highlighted:', highlightedCount);
 
             // Highlight edges that connect flow nodes
+            let edgesHighlighted = 0;
             svg.querySelectorAll('g.edgePath').forEach(edge => {{
                 edge.classList.remove('flow-highlighted');
 
@@ -1576,8 +1635,10 @@ def generate_dependency_html(
 
                 if (startInFlow && endInFlow) {{
                     edge.classList.add('flow-highlighted');
+                    edgesHighlighted++;
                 }}
             }});
+            console.log('Total edges highlighted:', edgesHighlighted);
 
             // Highlight clusters containing flow nodes
             svg.querySelectorAll('g.cluster').forEach(cluster => {{
@@ -1589,6 +1650,18 @@ def generate_dependency_html(
                     cluster.classList.add('flow-highlighted');
                 }}
             }});
+
+            // Debug info if highlighting didn't work well
+            if (highlightedCount <= 1) {{
+                console.warn('WARNING: Only the clicked node was highlighted.');
+                console.log('Troubleshooting info:');
+                console.log('  - rootNodeId:', rootNodeId);
+                console.log('  - upstreamNodeIds count:', upstreamNodeIds.length);
+                console.log('  - downstreamNodeIds count:', downstreamNodeIds.length);
+                console.log('  - edgeGraph.outgoing keys:', Object.keys(edgeGraph.outgoing).slice(0, 5));
+                console.log('  - edgeGraph.incoming keys:', Object.keys(edgeGraph.incoming).slice(0, 5));
+            }}
+            console.log('========================================');
         }}
 
         // Clear all flow highlighting
@@ -1611,26 +1684,106 @@ def generate_dependency_html(
 
         // Extract clean node ID from Mermaid's internal ID format
         function extractNodeId(mermaidId) {{
-            // Mermaid uses format like "flowchart-NodeName-123"
-            if (!mermaidId) return '';
-            const parts = mermaidId.replace('flowchart-', '').split('-');
-            // Remove the trailing number suffix
-            if (parts.length > 1 && /^\d+$/.test(parts[parts.length - 1])) {{
-                parts.pop();
+            // Use the nodeIdMap for accurate mapping
+            if (nodeIdMap[mermaidId]) {{
+                return nodeIdMap[mermaidId];
             }}
-            return parts.join('-');
+            // Fallback: Mermaid uses format like "flowchart-NodeName-123"
+            if (!mermaidId) return '';
+            const match = mermaidId.match(/flowchart-(.+)-\d+$/);
+            if (match) {{
+                return match[1];
+            }}
+            return mermaidId;
+        }}
+
+        // Alternative edge detection: analyze path endpoints to match nodes
+        function buildEdgeGraphFromPaths() {{
+            const svg = document.querySelector('.mermaid svg');
+            if (!svg) return;
+
+            // Get all node bounding boxes for proximity matching
+            const nodeBounds = {{}};
+            svg.querySelectorAll('g.node').forEach(node => {{
+                const mermaidId = node.id || '';
+                const sanitizedId = nodeIdMap[mermaidId];
+                if (sanitizedId) {{
+                    try {{
+                        const bbox = node.getBBox();
+                        const transform = node.getAttribute('transform') || '';
+                        const match = transform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+                        let tx = 0, ty = 0;
+                        if (match) {{
+                            tx = parseFloat(match[1]) || 0;
+                            ty = parseFloat(match[2]) || 0;
+                        }}
+                        nodeBounds[sanitizedId] = {{
+                            x: bbox.x + tx,
+                            y: bbox.y + ty,
+                            width: bbox.width,
+                            height: bbox.height,
+                            cx: bbox.x + tx + bbox.width / 2,
+                            cy: bbox.y + ty + bbox.height / 2
+                        }};
+                    }} catch (e) {{}}
+                }}
+            }});
+
+            console.log('Node bounds computed for', Object.keys(nodeBounds).length, 'nodes');
         }}
 
         // Initialize click handlers after Mermaid renders
         function initializeClickHandlers() {{
             const svg = document.querySelector('.mermaid svg');
             if (!svg) {{
+                console.log('SVG not ready, retrying...');
                 setTimeout(initializeClickHandlers, 500);
                 return;
             }}
 
+            console.log('Initializing click handlers...');
+
             // Build the edge graph
             buildEdgeGraph();
+
+            // If edge graph is empty, try alternative method
+            if (Object.keys(edgeGraph.outgoing).length === 0 && Object.keys(edgeGraph.incoming).length === 0) {{
+                console.log('Primary edge detection found no edges, trying path analysis...');
+                buildEdgeGraphFromPaths();
+            }}
+
+            // Fallback: use the pre-computed upstream/downstream lists
+            if (Object.keys(edgeGraph.outgoing).length === 0) {{
+                console.log('Using pre-computed node lists as fallback for edge graph');
+                // Build edge graph from known node relationships
+                // Root connects to all upstream (root depends on them)
+                upstreamNodeIds.forEach(upId => {{
+                    if (!edgeGraph.outgoing[upId]) edgeGraph.outgoing[upId] = [];
+                    if (!edgeGraph.outgoing[upId].includes(rootNodeId)) {{
+                        edgeGraph.outgoing[upId].push(rootNodeId);
+                    }}
+                    if (!edgeGraph.incoming[rootNodeId]) edgeGraph.incoming[rootNodeId] = [];
+                    if (!edgeGraph.incoming[rootNodeId].includes(upId)) {{
+                        edgeGraph.incoming[rootNodeId].push(upId);
+                    }}
+                }});
+
+                // Root connects to all downstream (downstream depends on root)
+                downstreamNodeIds.forEach(downId => {{
+                    if (!edgeGraph.outgoing[rootNodeId]) edgeGraph.outgoing[rootNodeId] = [];
+                    if (!edgeGraph.outgoing[rootNodeId].includes(downId)) {{
+                        edgeGraph.outgoing[rootNodeId].push(downId);
+                    }}
+                    if (!edgeGraph.incoming[downId]) edgeGraph.incoming[downId] = [];
+                    if (!edgeGraph.incoming[downId].includes(rootNodeId)) {{
+                        edgeGraph.incoming[downId].push(rootNodeId);
+                    }}
+                }});
+
+                console.log('Fallback edge graph built:');
+                console.log('  Outgoing nodes:', Object.keys(edgeGraph.outgoing).length);
+                console.log('  Incoming nodes:', Object.keys(edgeGraph.incoming).length);
+            }}
 
             // Show hint briefly
             const hint = document.getElementById('click-hint');
@@ -1644,7 +1797,14 @@ def generate_dependency_html(
                 node.addEventListener('click', (e) => {{
                     e.stopPropagation();
 
-                    const nodeId = extractNodeId(node.id);
+                    const mermaidId = node.id;
+                    const nodeId = extractNodeId(mermaidId);
+
+                    console.log('--- Node Clicked ---');
+                    console.log('Mermaid ID:', mermaidId);
+                    console.log('Sanitized ID:', nodeId);
+                    console.log('Outgoing to:', edgeGraph.outgoing[nodeId] || 'none');
+                    console.log('Incoming from:', edgeGraph.incoming[nodeId] || 'none');
 
                     if (flowHighlightActive && selectedNodeId === nodeId) {{
                         // Clicking same node again clears highlight
@@ -1671,11 +1831,12 @@ def generate_dependency_html(
                 }}
             }});
 
-            console.log('Click handlers initialized');
+            console.log('Click handlers initialized successfully');
+            console.log('Total nodes with click handlers:', svg.querySelectorAll('g.node').length);
         }}
 
-        // Initialize after Mermaid renders (with delay)
-        setTimeout(initializeClickHandlers, 1000);
+        // Initialize after Mermaid renders (with longer delay to ensure complete rendering)
+        setTimeout(initializeClickHandlers, 1500);
 
         // ═══════════════════════════════════════════════════════════════════════
         // PANEL DATA
