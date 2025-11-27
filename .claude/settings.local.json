@@ -72,7 +72,14 @@
       "Bash(venv/Scripts/python:*)",
       "Bash(start \"\" \"c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\MCP-PowerBi-Finvision\\exports\\dependency_diagram.png\")",
       "Bash(start \"\" \"c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\MCP-PowerBi-Finvision\\exports\\pbip_dependency_diagram.html\")",
-      "Bash(start \"\" \"c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\MCP-PowerBi-Finvision\\exports\\dependency_diagram.html\")"
+      "Bash(start \"\" \"c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\MCP-PowerBi-Finvision\\exports\\dependency_diagram.html\")",
+      "Bash(cmd.exe /c \"for /f \"\"tokens=3 delims==\"\" %%a in (''findstr \"\"__version__\"\" src\\__version__.py'') do @echo %%a\")",
+      "Bash(findstr:*)",
+      "Bash(cmd.exe /c \"findstr __version__ src\\__version__.py\")",
+      "Bash(cmd.exe /c \"package.bat 2>&1\")",
+      "Bash(cmd.exe /c \"echo test && echo %CD%\")",
+      "Bash(powershell -Command \"cd ''c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\MCP-PowerBi-Finvision\\build''; cmd /c ''package.bat''\")",
+      "Bash(powershell:*)"
     ],
     "deny": [],
     "ask": []

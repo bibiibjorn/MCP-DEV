@@ -235,7 +235,7 @@ def generate_dependency_html(
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
         /* ═══════════════════════════════════════════════════════════════════════
            QUANTUM FLUX - 2025 DESIGN SYSTEM
@@ -322,7 +322,7 @@ def generate_dependency_html(
         }}
 
         body {{
-            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: var(--void);
             color: var(--text-primary);
             min-height: 100vh;
@@ -451,9 +451,9 @@ def generate_dependency_html(
         }}
 
         .brand-text h1 {{
-            font-family: 'Syne', sans-serif;
-            font-size: 1.25rem;
-            font-weight: 700;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 1.125rem;
+            font-weight: 600;
             letter-spacing: 0.02em;
             color: var(--text-primary);
         }}
@@ -539,10 +539,10 @@ def generate_dependency_html(
             display: inline-flex;
             align-items: center;
             gap: var(--space-sm);
-            font-size: 0.6875rem;
+            font-size: 0.75rem;
             font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 0.2em;
+            letter-spacing: 0.1em;
             color: var(--cyan);
             margin-bottom: var(--space-md);
             position: relative;
@@ -565,9 +565,9 @@ def generate_dependency_html(
         }}
 
         .hero-title {{
-            font-family: 'Syne', sans-serif;
-            font-size: clamp(1.75rem, 4vw, 2.75rem);
-            font-weight: 800;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: clamp(1.5rem, 3vw, 2.25rem);
+            font-weight: 700;
             margin-bottom: var(--space-sm);
             letter-spacing: -0.02em;
             line-height: 1.1;
@@ -642,9 +642,9 @@ def generate_dependency_html(
         }}
 
         .stat-value {{
-            font-family: 'Syne', sans-serif;
-            font-size: 2.5rem;
-            font-weight: 800;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 2rem;
+            font-weight: 700;
             color: var(--cyan);
             line-height: 1;
             margin-bottom: var(--space-xs);
@@ -667,10 +667,10 @@ def generate_dependency_html(
         .stat-card:nth-child(4):hover {{ box-shadow: var(--glow-magenta); }}
 
         .stat-label {{
-            font-size: 0.6875rem;
+            font-size: 0.8125rem;
             color: var(--text-tertiary);
             text-transform: uppercase;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.05em;
             font-weight: 500;
         }}
 
@@ -699,7 +699,7 @@ def generate_dependency_html(
             display: flex;
             align-items: center;
             gap: var(--space-sm);
-            font-family: 'Syne', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             font-weight: 600;
             font-size: 0.9375rem;
             color: var(--text-primary);
@@ -737,7 +737,7 @@ def generate_dependency_html(
             cursor: pointer;
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             border: none;
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             letter-spacing: 0.02em;
         }}
 
@@ -1029,7 +1029,7 @@ def generate_dependency_html(
             box-shadow: 0 0 12px rgba(0, 240, 255, 0.6);
             z-index: 100;
             transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             pointer-events: all;
         }}
 
@@ -1284,7 +1284,7 @@ def generate_dependency_html(
             display: flex;
             align-items: center;
             gap: var(--space-sm);
-            font-family: 'Syne', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             font-weight: 600;
             font-size: 0.875rem;
             color: var(--text-primary);
@@ -1334,7 +1334,7 @@ def generate_dependency_html(
             border-radius: var(--radius-sm);
             color: var(--text-primary);
             font-size: 0.75rem;
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             transition: all 0.2s;
         }}
 
@@ -1599,7 +1599,7 @@ def generate_dependency_html(
             gap: var(--space-xs);
             box-shadow: var(--glow-cyan);
             transition: all 0.2s;
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         }}
 
         .sidebar-toggle:hover {{
@@ -1631,15 +1631,15 @@ def generate_dependency_html(
             display: flex;
             align-items: center;
             gap: var(--space-sm);
-            font-family: 'Syne', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             font-size: 0.9375rem;
-            font-weight: 700;
+            font-weight: 600;
             color: var(--text-primary);
             margin-bottom: var(--space-xs);
         }}
 
         .sidebar-subtitle {{
-            font-size: 0.6875rem;
+            font-size: 0.75rem;
             color: var(--text-tertiary);
         }}
 
@@ -1656,7 +1656,7 @@ def generate_dependency_html(
             border-radius: var(--radius-sm);
             color: var(--text-primary);
             font-size: 0.75rem;
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         }}
 
         .sidebar-search-input::placeholder {{
@@ -1720,7 +1720,7 @@ def generate_dependency_html(
         }}
 
         .sidebar-category-name {{
-            font-family: 'Syne', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             font-size: 0.8125rem;
             font-weight: 600;
             color: var(--text-primary);
@@ -1729,7 +1729,7 @@ def generate_dependency_html(
         .sidebar-category-count {{
             background: var(--cyan);
             color: var(--void);
-            font-size: 0.625rem;
+            font-size: 0.6875rem;
             padding: 2px 8px;
             border-radius: 999px;
             font-weight: 700;
@@ -2118,7 +2118,7 @@ def generate_dependency_html(
                 edgeLabelBackground: '#0A0A12',
                 nodeTextColor: '#F0F4FF',
                 fontSize: '14px',
-                fontFamily: 'Outfit, sans-serif'
+                fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
             }},
             flowchart: {{
                 htmlLabels: true,

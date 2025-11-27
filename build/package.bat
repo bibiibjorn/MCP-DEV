@@ -8,7 +8,9 @@ echo ========================================
 echo.
 
 :: Read version from __version__.py
-for /f "tokens=3 delims==\"" %%a in ('findstr "__version__" src\__version__.py') do set VERSION=%%a
+for /f "tokens=2 delims==" %%a in ('findstr "__version__" src\__version__.py') do set VERSION=%%~a
+set VERSION=%VERSION: =%
+set VERSION=%VERSION:"=%
 set VERSION=%VERSION: =%
 echo Version: %VERSION%
 echo.
