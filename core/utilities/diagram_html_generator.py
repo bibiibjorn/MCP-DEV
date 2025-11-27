@@ -235,30 +235,80 @@ def generate_dependency_html(
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        /* ═══════════════════════════════════════════════════════════════════════
+           QUANTUM FLUX - 2025 DESIGN SYSTEM
+           Art Deco Geometry meets Holographic Cyberpunk
+           ═══════════════════════════════════════════════════════════════════════ */
         :root {{
-            --accent: #6366f1;
-            --accent-light: #818cf8;
-            --accent-glow: rgba(99, 102, 241, 0.4);
-            --accent-neon: rgba(99, 102, 241, 0.8);
-            --success: #10b981;
-            --warning: #f59e0b;
-            --bg-dark: #030303;
-            --bg-card: rgba(16, 16, 20, 0.85);
-            --bg-elevated: rgba(28, 28, 35, 0.7);
-            --border: rgba(99, 102, 241, 0.15);
-            --border-light: rgba(99, 102, 241, 0.08);
-            --border-glow: rgba(99, 102, 241, 0.3);
-            --text: #f8fafc;
-            --text-secondary: #94a3b8;
-            --text-muted: #64748b;
-            --gradient-1: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            --gradient-2: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            --gradient-3: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-            --gradient-cyber: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
-            --glow-soft: 0 0 40px rgba(99, 102, 241, 0.15);
-            --glow-strong: 0 0 60px rgba(99, 102, 241, 0.25);
+            /* Core Palette - Electric Dreams */
+            --cyan: #00F0FF;
+            --cyan-dim: #00B8C5;
+            --magenta: #FF00F5;
+            --magenta-dim: #C500BF;
+            --gold: #FFD93D;
+            --gold-dim: #C9A927;
+            --emerald: #00FF94;
+            --coral: #FF6B6B;
+
+            /* Backgrounds - Deep Void */
+            --void: #030308;
+            --obsidian: #0A0A12;
+            --slate: #12121C;
+            --carbon: #1A1A28;
+            --steel: #252536;
+
+            /* Glass Effects */
+            --glass-dark: rgba(10, 10, 18, 0.85);
+            --glass-medium: rgba(18, 18, 28, 0.75);
+            --glass-light: rgba(26, 26, 40, 0.65);
+            --glass-border: rgba(0, 240, 255, 0.12);
+            --glass-border-hover: rgba(0, 240, 255, 0.25);
+
+            /* Text Hierarchy */
+            --text-primary: #F0F4FF;
+            --text-secondary: #9BA3BF;
+            --text-tertiary: #5D6580;
+            --text-accent: var(--cyan);
+
+            /* Gradients - Holographic */
+            --holo-1: linear-gradient(135deg, var(--cyan) 0%, var(--magenta) 100%);
+            --holo-2: linear-gradient(135deg, var(--magenta) 0%, var(--gold) 100%);
+            --holo-3: linear-gradient(135deg, var(--emerald) 0%, var(--cyan) 100%);
+            --holo-shimmer: linear-gradient(90deg, var(--cyan), var(--magenta), var(--gold), var(--emerald), var(--cyan));
+
+            /* Shadows - Neon Glow */
+            --glow-cyan: 0 0 30px rgba(0, 240, 255, 0.3);
+            --glow-magenta: 0 0 30px rgba(255, 0, 245, 0.3);
+            --glow-gold: 0 0 30px rgba(255, 217, 61, 0.3);
+
+            /* Spacing */
+            --space-xs: 0.25rem;
+            --space-sm: 0.5rem;
+            --space-md: 1rem;
+            --space-lg: 1.5rem;
+            --space-xl: 2rem;
+            --space-2xl: 3rem;
+
+            /* Border Radius */
+            --radius-sm: 6px;
+            --radius-md: 12px;
+            --radius-lg: 20px;
+            --radius-xl: 28px;
+
+            /* Legacy compatibility */
+            --accent: var(--cyan);
+            --accent-light: var(--cyan-dim);
+            --accent-glow: rgba(0, 240, 255, 0.4);
+            --bg-dark: var(--void);
+            --bg-card: var(--glass-dark);
+            --bg-elevated: var(--glass-medium);
+            --border: var(--glass-border);
+            --border-light: rgba(0, 240, 255, 0.06);
+            --border-glow: var(--glass-border-hover);
+            --text: var(--text-primary);
+            --text-muted: var(--text-tertiary);
         }}
 
         * {{
@@ -272,300 +322,366 @@ def generate_dependency_html(
         }}
 
         body {{
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: var(--bg-dark);
-            color: var(--text);
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--void);
+            color: var(--text-primary);
             min-height: 100vh;
             line-height: 1.6;
             overflow-x: hidden;
         }}
 
-        /* Animated background with grid and aurora effect */
+        /* ═══════════════════════════════════════════════════════════════════════
+           QUANTUM FLUX BACKGROUND - Art Deco Grid with Aurora
+           ═══════════════════════════════════════════════════════════════════════ */
         .bg-pattern {{
             position: fixed;
             inset: 0;
             z-index: -1;
-            background:
-                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.2), transparent),
-                radial-gradient(ellipse 60% 40% at 80% 100%, rgba(139, 92, 246, 0.15), transparent),
-                radial-gradient(ellipse 50% 35% at 10% 60%, rgba(79, 172, 254, 0.1), transparent),
-                radial-gradient(circle at 30% 30%, rgba(236, 72, 153, 0.08), transparent 50%);
+            background: var(--void);
+            overflow: hidden;
         }}
 
+        /* Art Deco diagonal lines */
         .bg-pattern::before {{
             content: '';
             position: absolute;
             inset: 0;
             background-image:
-                linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
-            background-size: 60px 60px;
-            mask-image: radial-gradient(ellipse 80% 60% at 50% 50%, black, transparent);
+                repeating-linear-gradient(
+                    45deg,
+                    transparent,
+                    transparent 80px,
+                    rgba(0, 240, 255, 0.015) 80px,
+                    rgba(0, 240, 255, 0.015) 81px
+                ),
+                repeating-linear-gradient(
+                    -45deg,
+                    transparent,
+                    transparent 80px,
+                    rgba(255, 0, 245, 0.01) 80px,
+                    rgba(255, 0, 245, 0.01) 81px
+                );
+            mask-image: radial-gradient(ellipse 100% 80% at 50% 20%, black 30%, transparent 70%);
         }}
 
+        /* Aurora gradient orbs */
         .bg-pattern::after {{
             content: '';
             position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 400px;
-            background: linear-gradient(180deg, rgba(99, 102, 241, 0.08) 0%, transparent 100%);
+            inset: 0;
+            background:
+                radial-gradient(ellipse 60% 40% at 15% 10%, rgba(0, 240, 255, 0.12), transparent 50%),
+                radial-gradient(ellipse 50% 35% at 85% 15%, rgba(255, 0, 245, 0.08), transparent 50%),
+                radial-gradient(ellipse 70% 50% at 70% 90%, rgba(0, 255, 148, 0.06), transparent 50%),
+                radial-gradient(ellipse 40% 30% at 20% 80%, rgba(255, 217, 61, 0.05), transparent 50%);
+            animation: auroraShift 20s ease-in-out infinite alternate;
+        }}
+
+        @keyframes auroraShift {{
+            0% {{ opacity: 1; transform: scale(1); }}
+            100% {{ opacity: 0.7; transform: scale(1.1); }}
+        }}
+
+        /* Noise texture overlay for depth */
+        .noise-overlay {{
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            opacity: 0.03;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
             pointer-events: none;
         }}
 
         .container {{
-            max-width: 1600px;
+            max-width: 1700px;
             margin: 0 auto;
-            padding: 2rem;
+            padding: var(--space-xl);
             position: relative;
         }}
 
-        /* Header Section */
+        /* ═══════════════════════════════════════════════════════════════════════
+           HEADER - Minimal Top Bar
+           ═══════════════════════════════════════════════════════════════════════ */
         .header {{
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 2rem;
-            gap: 2rem;
+            align-items: center;
+            margin-bottom: var(--space-xl);
+            padding-bottom: var(--space-lg);
+            border-bottom: 1px solid var(--glass-border);
+            position: relative;
+        }}
+
+        .header::after {{
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            width: 120px;
+            height: 2px;
+            background: var(--holo-1);
         }}
 
         .brand {{
             display: flex;
             align-items: center;
-            gap: 1rem;
+            gap: var(--space-md);
         }}
 
         .brand-icon {{
-            width: 56px;
-            height: 56px;
-            background: var(--gradient-1);
-            border-radius: 16px;
+            width: 48px;
+            height: 48px;
+            background: var(--glass-dark);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-md);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.75rem;
-            box-shadow: 0 8px 32px rgba(99, 102, 241, 0.3);
-            animation: float 3s ease-in-out infinite;
+            font-size: 1.5rem;
+            position: relative;
+            overflow: hidden;
         }}
 
-        @keyframes float {{
-            0%, 100% {{ transform: translateY(0); }}
-            50% {{ transform: translateY(-4px); }}
+        .brand-icon::before {{
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: var(--holo-1);
+            opacity: 0.1;
         }}
 
         .brand-text h1 {{
-            font-size: 1.5rem;
+            font-family: 'Syne', sans-serif;
+            font-size: 1.25rem;
             font-weight: 700;
-            background: linear-gradient(135deg, #fff 0%, #a1a1aa 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            letter-spacing: 0.02em;
+            color: var(--text-primary);
         }}
 
         .brand-text span {{
-            font-size: 0.875rem;
-            color: var(--text-muted);
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
             font-weight: 400;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
         }}
 
         .timestamp {{
-            padding: 0.625rem 1rem;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            font-size: 0.8125rem;
-            color: var(--text-secondary);
-            font-family: 'JetBrains Mono', monospace;
+            padding: var(--space-sm) var(--space-md);
+            background: var(--glass-dark);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            font-family: 'Space Mono', monospace;
             backdrop-filter: blur(12px);
         }}
 
-        /* Hero Card - Cyberpunk Glass Effect */
+        /* ═══════════════════════════════════════════════════════════════════════
+           HERO CARD - Bold Art Deco Inspired
+           ═══════════════════════════════════════════════════════════════════════ */
         .hero-card {{
-            background: linear-gradient(135deg, rgba(16, 16, 24, 0.9) 0%, rgba(24, 24, 35, 0.85) 100%);
-            backdrop-filter: blur(24px) saturate(150%);
-            -webkit-backdrop-filter: blur(24px) saturate(150%);
-            border: 1px solid var(--border);
-            border-radius: 24px;
-            padding: 2.5rem;
-            margin-bottom: 1.5rem;
+            background: var(--glass-dark);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-xl);
+            padding: var(--space-2xl);
+            margin-bottom: var(--space-xl);
             position: relative;
             overflow: hidden;
-            box-shadow:
-                0 25px 50px -12px rgba(0, 0, 0, 0.4),
-                var(--glow-soft),
-                inset 0 1px 0 rgba(255, 255, 255, 0.05);
         }}
 
+        /* Decorative corner accents - Art Deco style */
         .hero-card::before {{
             content: '';
             position: absolute;
             top: 0;
             left: 0;
-            right: 0;
-            height: 2px;
-            background: linear-gradient(90deg, transparent 0%, var(--accent) 20%, var(--accent-light) 50%, var(--accent) 80%, transparent 100%);
-            animation: borderGlow 4s ease-in-out infinite;
+            width: 100px;
+            height: 100px;
+            background:
+                linear-gradient(135deg, var(--cyan) 0%, transparent 50%),
+                linear-gradient(45deg, transparent 50%, var(--glass-border) 50%);
+            opacity: 0.15;
+            clip-path: polygon(0 0, 100% 0, 0 100%);
         }}
 
         .hero-card::after {{
             content: '';
             position: absolute;
-            top: -50%;
-            right: -50%;
-            width: 100%;
-            height: 100%;
-            background: radial-gradient(circle, rgba(99, 102, 241, 0.08) 0%, transparent 60%);
-            pointer-events: none;
+            bottom: 0;
+            right: 0;
+            width: 150px;
+            height: 150px;
+            background: radial-gradient(circle at bottom right, var(--magenta), transparent 70%);
+            opacity: 0.08;
         }}
 
-        @keyframes borderGlow {{
-            0%, 100% {{ opacity: 0.6; }}
-            50% {{ opacity: 1; }}
+        /* Animated top border */
+        .hero-glow {{
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--holo-shimmer);
+            background-size: 400% 100%;
+            animation: shimmerFlow 8s linear infinite;
+        }}
+
+        @keyframes shimmerFlow {{
+            0% {{ background-position: 100% 0; }}
+            100% {{ background-position: -100% 0; }}
         }}
 
         .hero-label {{
             display: inline-flex;
             align-items: center;
-            gap: 0.5rem;
-            font-size: 0.75rem;
+            gap: var(--space-sm);
+            font-size: 0.6875rem;
             font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 0.1em;
-            color: var(--accent-light);
-            margin-bottom: 1rem;
+            letter-spacing: 0.2em;
+            color: var(--cyan);
+            margin-bottom: var(--space-md);
+            position: relative;
+            z-index: 1;
         }}
 
         .hero-label::before {{
             content: '';
-            width: 8px;
-            height: 8px;
-            background: var(--accent);
+            width: 6px;
+            height: 6px;
+            background: var(--cyan);
             border-radius: 50%;
-            animation: pulse 2s ease-in-out infinite;
+            box-shadow: 0 0 10px var(--cyan), 0 0 20px var(--cyan);
+            animation: pulseGlow 2s ease-in-out infinite;
         }}
 
-        @keyframes pulse {{
-            0%, 100% {{ opacity: 1; transform: scale(1); }}
-            50% {{ opacity: 0.5; transform: scale(1.2); }}
+        @keyframes pulseGlow {{
+            0%, 100% {{ opacity: 1; box-shadow: 0 0 10px var(--cyan), 0 0 20px var(--cyan); }}
+            50% {{ opacity: 0.6; box-shadow: 0 0 5px var(--cyan), 0 0 10px var(--cyan); }}
         }}
 
         .hero-title {{
-            font-size: 2.5rem;
+            font-family: 'Syne', sans-serif;
+            font-size: clamp(1.75rem, 4vw, 2.75rem);
             font-weight: 800;
-            font-family: 'JetBrains Mono', monospace;
-            margin-bottom: 0.5rem;
+            margin-bottom: var(--space-sm);
             letter-spacing: -0.02em;
+            line-height: 1.1;
+            position: relative;
+            z-index: 1;
         }}
 
         .hero-title .table-name {{
-            color: var(--accent-light);
+            background: var(--holo-1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }}
 
         .hero-title .measure-name {{
-            color: var(--text);
+            color: var(--text-primary);
         }}
 
         .hero-subtitle {{
-            color: var(--text-muted);
-            font-size: 1rem;
+            color: var(--text-tertiary);
+            font-size: 0.9375rem;
+            font-weight: 400;
+            position: relative;
+            z-index: 1;
         }}
 
-        /* Stats Row */
+        /* ═══════════════════════════════════════════════════════════════════════
+           STATS ROW - Geometric Cards
+           ═══════════════════════════════════════════════════════════════════════ */
         .stats-row {{
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 1rem;
-            margin-bottom: 1.5rem;
+            gap: var(--space-md);
+            margin-bottom: var(--space-xl);
         }}
 
         .stat-card {{
-            background: linear-gradient(135deg, rgba(16, 16, 24, 0.85) 0%, rgba(20, 20, 30, 0.8) 100%);
-            backdrop-filter: blur(20px) saturate(150%);
-            -webkit-backdrop-filter: blur(20px) saturate(150%);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 1.75rem 1.5rem;
+            background: var(--glass-dark);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-lg) var(--space-md);
             text-align: center;
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
             overflow: hidden;
-            box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.3);
         }}
 
+        /* Diagonal accent stripe */
         .stat-card::before {{
             content: '';
             position: absolute;
             top: 0;
-            left: 0;
             right: 0;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-        }}
-
-        .stat-card::after {{
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.1), transparent 60%);
-            opacity: 0;
-            transition: opacity 0.4s;
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, transparent 50%, var(--cyan) 50%);
+            opacity: 0.08;
+            transition: opacity 0.3s, transform 0.3s;
         }}
 
         .stat-card:hover {{
-            transform: translateY(-6px) scale(1.02);
-            border-color: var(--border-glow);
-            box-shadow:
-                0 25px 50px -15px rgba(0, 0, 0, 0.4),
-                0 0 40px rgba(99, 102, 241, 0.2);
+            border-color: var(--glass-border-hover);
+            transform: translateY(-4px);
+            box-shadow: var(--glow-cyan);
         }}
 
-        .stat-card:hover::after {{
-            opacity: 1;
+        .stat-card:hover::before {{
+            opacity: 0.15;
+            transform: scale(1.2);
         }}
 
         .stat-value {{
-            font-size: 2.25rem;
+            font-family: 'Syne', sans-serif;
+            font-size: 2.5rem;
             font-weight: 800;
-            font-family: 'JetBrains Mono', monospace;
-            background: var(--gradient-1);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            line-height: 1.2;
+            color: var(--cyan);
+            line-height: 1;
+            margin-bottom: var(--space-xs);
+            position: relative;
         }}
 
-        .stat-card:nth-child(2) .stat-value {{
-            background: var(--gradient-3);
-            -webkit-background-clip: text;
-            background-clip: text;
-        }}
+        .stat-card:nth-child(1) .stat-value {{ color: var(--cyan); }}
+        .stat-card:nth-child(1)::before {{ background: linear-gradient(135deg, transparent 50%, var(--cyan) 50%); }}
 
-        .stat-card:nth-child(3) .stat-value {{
-            background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
-            -webkit-background-clip: text;
-            background-clip: text;
-        }}
+        .stat-card:nth-child(2) .stat-value {{ color: var(--gold); }}
+        .stat-card:nth-child(2)::before {{ background: linear-gradient(135deg, transparent 50%, var(--gold) 50%); }}
+        .stat-card:nth-child(2):hover {{ box-shadow: var(--glow-gold); }}
 
-        .stat-card:nth-child(4) .stat-value {{
-            background: var(--gradient-2);
-            -webkit-background-clip: text;
-            background-clip: text;
-        }}
+        .stat-card:nth-child(3) .stat-value {{ color: var(--emerald); }}
+        .stat-card:nth-child(3)::before {{ background: linear-gradient(135deg, transparent 50%, var(--emerald) 50%); }}
+        .stat-card:nth-child(3):hover {{ box-shadow: 0 0 30px rgba(0, 255, 148, 0.3); }}
+
+        .stat-card:nth-child(4) .stat-value {{ color: var(--magenta); }}
+        .stat-card:nth-child(4)::before {{ background: linear-gradient(135deg, transparent 50%, var(--magenta) 50%); }}
+        .stat-card:nth-child(4):hover {{ box-shadow: var(--glow-magenta); }}
 
         .stat-label {{
-            font-size: 0.8125rem;
-            color: var(--text-muted);
-            margin-top: 0.5rem;
+            font-size: 0.6875rem;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
             font-weight: 500;
         }}
 
-        /* Diagram Container */
+        /* ═══════════════════════════════════════════════════════════════════════
+           DIAGRAM CONTAINER - Main Visualization Area
+           ═══════════════════════════════════════════════════════════════════════ */
         .diagram-wrapper {{
-            background: var(--bg-card);
-            backdrop-filter: blur(20px);
-            border: 1px solid var(--border);
-            border-radius: 24px;
+            background: var(--glass-dark);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-xl);
             overflow: hidden;
             position: relative;
         }}
@@ -574,125 +690,154 @@ def generate_dependency_html(
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 1.25rem 1.5rem;
-            border-bottom: 1px solid var(--border);
-            background: var(--bg-elevated);
+            padding: var(--space-md) var(--space-lg);
+            border-bottom: 1px solid var(--glass-border);
+            background: rgba(0, 0, 0, 0.3);
         }}
 
         .diagram-title {{
             display: flex;
             align-items: center;
-            gap: 0.75rem;
+            gap: var(--space-sm);
+            font-family: 'Syne', sans-serif;
             font-weight: 600;
-            font-size: 1rem;
+            font-size: 0.9375rem;
+            color: var(--text-primary);
         }}
 
         .diagram-title-icon {{
-            width: 32px;
-            height: 32px;
-            background: var(--gradient-1);
-            border-radius: 8px;
+            width: 28px;
+            height: 28px;
+            background: var(--glass-medium);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1rem;
+            font-size: 0.875rem;
         }}
 
+        /* ═══════════════════════════════════════════════════════════════════════
+           TOOLBAR & BUTTONS - Sleek Control Strip
+           ═══════════════════════════════════════════════════════════════════════ */
         .toolbar {{
             display: flex;
-            gap: 0.5rem;
+            gap: var(--space-sm);
+            align-items: center;
         }}
 
         .btn {{
             display: inline-flex;
             align-items: center;
-            gap: 0.5rem;
-            padding: 0.625rem 1rem;
-            font-size: 0.8125rem;
+            gap: var(--space-xs);
+            padding: var(--space-sm) var(--space-md);
+            font-size: 0.75rem;
             font-weight: 500;
-            border-radius: 10px;
+            border-radius: var(--radius-sm);
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             border: none;
-            font-family: inherit;
+            font-family: 'Outfit', sans-serif;
+            letter-spacing: 0.02em;
         }}
 
         .btn-ghost {{
             background: transparent;
             color: var(--text-secondary);
-            border: 1px solid var(--border);
+            border: 1px solid var(--glass-border);
         }}
 
         .btn-ghost:hover {{
-            background: var(--bg-elevated);
-            color: var(--text);
-            border-color: var(--border-light);
+            background: var(--glass-light);
+            color: var(--text-primary);
+            border-color: var(--glass-border-hover);
         }}
 
         .btn-primary {{
-            background: var(--accent);
-            color: white;
-            box-shadow: 0 4px 12px var(--accent-glow);
+            background: var(--cyan);
+            color: var(--void);
+            font-weight: 600;
+            box-shadow: 0 0 20px rgba(0, 240, 255, 0.3);
         }}
 
         .btn-primary:hover {{
-            background: var(--accent-light);
+            background: #33F3FF;
             transform: translateY(-1px);
-            box-shadow: 0 6px 20px var(--accent-glow);
+            box-shadow: 0 0 30px rgba(0, 240, 255, 0.5);
         }}
 
         .filter-group {{
             display: flex;
-            gap: 0.25rem;
-            background: var(--bg-dark);
-            padding: 0.25rem;
-            border-radius: 10px;
-            border: 1px solid var(--border);
+            gap: 2px;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 3px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--glass-border);
         }}
 
         .btn-filter {{
             background: transparent;
-            color: var(--text-muted);
+            color: var(--text-tertiary);
             border: none;
-            padding: 0.5rem 0.875rem;
-            font-size: 0.75rem;
+            padding: var(--space-sm) var(--space-md);
+            font-size: 0.6875rem;
             font-weight: 600;
-            border-radius: 8px;
+            border-radius: 4px;
             transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }}
 
         .btn-filter:hover {{
-            color: var(--text);
-            background: var(--bg-elevated);
+            color: var(--text-primary);
+            background: var(--glass-light);
         }}
 
         .btn-filter.active {{
-            background: var(--accent);
-            color: white;
-            box-shadow: 0 2px 8px var(--accent-glow);
+            background: var(--cyan);
+            color: var(--void);
+            box-shadow: 0 0 12px rgba(0, 240, 255, 0.4);
         }}
 
         .toolbar-divider {{
             width: 1px;
-            background: var(--border);
-            margin: 0 0.5rem;
+            height: 24px;
+            background: var(--glass-border);
+            margin: 0 var(--space-xs);
         }}
 
         .diagram-content {{
-            padding: 2rem;
-            min-height: 800px;
+            padding: var(--space-xl);
+            min-height: 700px;
             display: flex;
             justify-content: center;
             align-items: flex-start;
             background:
-                radial-gradient(ellipse at center, rgba(99, 102, 241, 0.03), transparent 70%),
-                linear-gradient(180deg, transparent, rgba(0,0,0,0.2));
+                radial-gradient(ellipse 80% 60% at 50% 30%, rgba(0, 240, 255, 0.02), transparent),
+                radial-gradient(ellipse 60% 50% at 80% 80%, rgba(255, 0, 245, 0.015), transparent),
+                linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.15));
             overflow: auto;
+            position: relative;
+        }}
+
+        /* Subtle grid overlay */
+        .diagram-content::before {{
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(var(--glass-border) 1px, transparent 1px),
+                linear-gradient(90deg, var(--glass-border) 1px, transparent 1px);
+            background-size: 40px 40px;
+            opacity: 0.3;
+            pointer-events: none;
         }}
 
         .mermaid {{
             width: 100%;
             min-width: 1200px;
+            position: relative;
+            z-index: 1;
         }}
 
         .mermaid svg {{
@@ -715,35 +860,48 @@ def generate_dependency_html(
 
         /* When flow highlight is active, hide non-highlighted items via JS-added class */
         .mermaid svg g.node.flow-hidden {{
-            opacity: 0 !important;
-            visibility: hidden !important;
+            opacity: 0.1 !important;
             pointer-events: none !important;
+            filter: grayscale(1) brightness(0.3);
         }}
 
         .mermaid svg g.node.flow-highlighted {{
             opacity: 1 !important;
             visibility: visible !important;
             pointer-events: auto !important;
-            filter: drop-shadow(0 0 10px rgba(99, 102, 241, 0.9)) brightness(1.1);
+            filter: drop-shadow(0 0 12px rgba(0, 240, 255, 0.8)) brightness(1.1);
         }}
 
         .mermaid svg g.node.flow-selected {{
             opacity: 1 !important;
             visibility: visible !important;
             pointer-events: auto !important;
-            filter: drop-shadow(0 0 16px rgba(255, 200, 50, 1)) drop-shadow(0 0 6px rgba(255, 255, 255, 1)) brightness(1.2);
+            filter: drop-shadow(0 0 20px rgba(0, 240, 255, 1)) drop-shadow(0 0 8px rgba(255, 255, 255, 0.8)) brightness(1.25);
+        }}
+
+        .mermaid svg g.edgePath.flow-hidden {{
+            opacity: 0.05 !important;
+            pointer-events: none !important;
+        }}
+
+        .mermaid svg g.edgePath.flow-highlighted path {{
+            stroke: var(--cyan) !important;
+            stroke-width: 3px !important;
+            filter: drop-shadow(0 0 6px rgba(0, 240, 255, 0.6));
+        }}
+
+        .mermaid svg g.cluster.flow-hidden {{
+            opacity: 0.15 !important;
+        }}
+
+        .mermaid svg g.cluster.flow-highlighted {{
+            opacity: 1 !important;
         }}
 
         .mermaid svg g.node.flow-selected rect,
         .mermaid svg g.node.flow-selected polygon {{
-            stroke: #ffc832 !important;
+            stroke: var(--cyan) !important;
             stroke-width: 3px !important;
-        }}
-
-        /* Hide non-highlighted edges via JS-added class */
-        .mermaid svg g.edgePath.flow-hidden {{
-            opacity: 0 !important;
-            visibility: hidden !important;
         }}
 
         .mermaid svg g.edgePath.flow-highlighted {{
@@ -751,33 +909,17 @@ def generate_dependency_html(
             visibility: visible !important;
         }}
 
-        .mermaid svg g.edgePath.flow-highlighted path {{
-            stroke-width: 4px !important;
-            stroke: #818cf8 !important;
-        }}
-
         .mermaid svg g.edgePath.flow-highlighted marker path {{
-            fill: #818cf8 !important;
+            fill: var(--cyan) !important;
         }}
 
-        /* Hide non-highlighted clusters via JS-added class */
-        .mermaid svg g.cluster.flow-hidden {{
-            opacity: 0 !important;
-            visibility: hidden !important;
-        }}
-
-        .mermaid svg g.cluster.flow-highlighted {{
-            opacity: 1 !important;
-            visibility: visible !important;
-        }}
-
-        /* Override Mermaid's default subgraph/cluster styling - remove yellow background */
+        /* Override Mermaid's default subgraph/cluster styling */
         .mermaid svg g.cluster rect {{
-            fill: rgba(30, 30, 40, 0.6) !important;
-            stroke: rgba(99, 102, 241, 0.4) !important;
-            stroke-width: 2px !important;
-            rx: 8px !important;
-            ry: 8px !important;
+            fill: rgba(0, 240, 255, 0.03) !important;
+            stroke: rgba(0, 240, 255, 0.2) !important;
+            stroke-width: 1px !important;
+            rx: 12px !important;
+            ry: 12px !important;
         }}
 
         .mermaid svg g.cluster text {{
@@ -820,68 +962,81 @@ def generate_dependency_html(
             opacity: 1;
         }}
 
-        /* Legend */
+        /* ═══════════════════════════════════════════════════════════════════════
+           LEGEND - Color Key Bar
+           ═══════════════════════════════════════════════════════════════════════ */
         .legend {{
             display: flex;
             justify-content: center;
-            gap: 2.5rem;
-            padding: 1.25rem;
-            border-top: 1px solid var(--border);
-            background: var(--bg-elevated);
+            gap: var(--space-xl);
+            padding: var(--space-md) var(--space-lg);
+            border-top: 1px solid var(--glass-border);
+            background: rgba(0, 0, 0, 0.3);
         }}
 
         .legend-item {{
             display: flex;
             align-items: center;
-            gap: 0.625rem;
-            font-size: 0.8125rem;
+            gap: var(--space-sm);
+            font-size: 0.6875rem;
             color: var(--text-secondary);
             font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }}
 
         .legend-dot {{
-            width: 12px;
-            height: 12px;
-            border-radius: 4px;
+            width: 10px;
+            height: 10px;
+            border-radius: 3px;
+            position: relative;
         }}
 
-        .legend-measure {{ background: linear-gradient(135deg, #e1f5fe, #b3e5fc); border: 2px solid #01579b; }}
-        .legend-column {{ background: linear-gradient(135deg, #f3e5f5, #e1bee7); border: 2px solid #7b1fa2; }}
-        .legend-table {{ background: linear-gradient(135deg, #fff3e0, #ffe0b2); border: 2px solid #e65100; }}
-        .legend-upstream {{ background: linear-gradient(135deg, #4CAF50, #81C784); border: 2px solid #388E3C; }}
-        .legend-downstream {{ background: linear-gradient(135deg, #FF9800, #FFB74D); border: 2px solid #F57C00; }}
-        .legend-root {{ background: linear-gradient(135deg, #2196F3, #64B5F6); border: 2px solid #1565C0; }}
+        .legend-dot::after {{
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 5px;
+            opacity: 0.3;
+        }}
+
+        .legend-measure {{ background: var(--cyan); box-shadow: 0 0 8px rgba(0, 240, 255, 0.5); }}
+        .legend-column {{ background: var(--magenta); box-shadow: 0 0 8px rgba(255, 0, 245, 0.5); }}
+        .legend-table {{ background: var(--gold); box-shadow: 0 0 8px rgba(255, 217, 61, 0.5); }}
+        .legend-upstream {{ background: var(--emerald); box-shadow: 0 0 8px rgba(0, 255, 148, 0.5); }}
+        .legend-downstream {{ background: var(--gold); box-shadow: 0 0 8px rgba(255, 217, 61, 0.5); }}
+        .legend-root {{ background: var(--cyan); box-shadow: 0 0 8px rgba(0, 240, 255, 0.5); }}
 
         /* ═══════════════════════════════════════════════════════════════════════
-           NODE INFO ICON & TOOLTIP - 2025 GLASS-MORPHISM STYLE
+           NODE INFO ICON & TOOLTIP - Quantum Flux Style
            ═══════════════════════════════════════════════════════════════════════ */
         .node-info-btn {{
             position: absolute;
             top: -8px;
             right: -8px;
-            width: 22px;
-            height: 22px;
+            width: 20px;
+            height: 20px;
             border-radius: 50%;
-            background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
-            border: 2px solid rgba(255, 255, 255, 0.9);
-            color: white;
-            font-size: 12px;
+            background: var(--cyan);
+            border: 2px solid var(--void);
+            color: var(--void);
+            font-size: 11px;
             font-weight: 700;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.5), 0 0 0 3px rgba(99, 102, 241, 0.2);
+            box-shadow: 0 0 12px rgba(0, 240, 255, 0.6);
             z-index: 100;
             transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-            font-family: 'Inter', sans-serif;
+            font-family: 'Outfit', sans-serif;
             pointer-events: all;
         }}
 
         .node-info-btn:hover {{
-            transform: scale(1.15);
-            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6), 0 0 0 5px rgba(99, 102, 241, 0.3);
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            transform: scale(1.2);
+            box-shadow: 0 0 20px rgba(0, 240, 255, 0.8);
+            background: #33F3FF;
         }}
 
         .node-info-btn::before {{
@@ -889,23 +1044,23 @@ def generate_dependency_html(
             font-style: italic;
         }}
 
-        /* Modern Glass-Morphism Tooltip */
+        /* Tooltip - Holographic Glass Effect */
         .node-tooltip {{
             position: fixed;
             z-index: 10000;
             max-width: 480px;
             min-width: 320px;
             padding: 0;
-            background: linear-gradient(135deg, rgba(15, 15, 25, 0.95) 0%, rgba(25, 25, 40, 0.98) 100%);
+            background: var(--glass-dark);
             backdrop-filter: blur(24px) saturate(180%);
             -webkit-backdrop-filter: blur(24px) saturate(180%);
-            border: 1px solid rgba(99, 102, 241, 0.3);
-            border-radius: 16px;
+            border: 1px solid var(--glass-border-hover);
+            border-radius: var(--radius-lg);
             box-shadow:
-                0 25px 50px -12px rgba(0, 0, 0, 0.5),
-                0 0 0 1px rgba(255, 255, 255, 0.05),
-                inset 0 1px 0 rgba(255, 255, 255, 0.1),
-                0 0 40px rgba(99, 102, 241, 0.15);
+                0 25px 50px -12px rgba(0, 0, 0, 0.6),
+                0 0 0 1px rgba(0, 240, 255, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.05),
+                var(--glow-cyan);
             opacity: 0;
             visibility: hidden;
             transform: translateY(8px) scale(0.96);
@@ -928,20 +1083,15 @@ def generate_dependency_html(
             left: 0;
             right: 0;
             height: 2px;
-            background: linear-gradient(90deg, #6366f1, #8b5cf6, #ec4899, #6366f1);
-            background-size: 200% 100%;
-            animation: shimmer 3s linear infinite;
-        }}
-
-        @keyframes shimmer {{
-            0% {{ background-position: 200% 0; }}
-            100% {{ background-position: -200% 0; }}
+            background: var(--holo-shimmer);
+            background-size: 400% 100%;
+            animation: shimmerFlow 8s linear infinite;
         }}
 
         .tooltip-header {{
-            padding: 16px 20px 12px;
-            background: linear-gradient(180deg, rgba(99, 102, 241, 0.15) 0%, transparent 100%);
-            border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+            padding: var(--space-md) var(--space-lg) var(--space-sm);
+            background: linear-gradient(180deg, rgba(0, 240, 255, 0.08) 0%, transparent 100%);
+            border-bottom: 1px solid var(--glass-border);
         }}
 
         .tooltip-type-badge {{
@@ -949,24 +1099,24 @@ def generate_dependency_html(
             align-items: center;
             gap: 6px;
             padding: 4px 10px;
-            border-radius: 6px;
-            font-size: 11px;
+            border-radius: var(--radius-sm);
+            font-size: 0.625rem;
             font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 8px;
+            letter-spacing: 0.1em;
+            margin-bottom: var(--space-sm);
         }}
 
         .tooltip-type-badge.measure {{
-            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(99, 102, 241, 0.2));
-            color: #93c5fd;
-            border: 1px solid rgba(59, 130, 246, 0.3);
+            background: rgba(0, 240, 255, 0.15);
+            color: var(--cyan);
+            border: 1px solid rgba(0, 240, 255, 0.3);
         }}
 
         .tooltip-type-badge.column {{
-            background: linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(139, 92, 246, 0.2));
-            color: #d8b4fe;
-            border: 1px solid rgba(168, 85, 247, 0.3);
+            background: rgba(255, 0, 245, 0.15);
+            color: var(--magenta);
+            border: 1px solid rgba(255, 0, 245, 0.3);
         }}
 
         .tooltip-type-badge svg {{
@@ -975,25 +1125,25 @@ def generate_dependency_html(
         }}
 
         .tooltip-title {{
-            font-size: 15px;
-            font-weight: 600;
-            color: #f1f5f9;
-            font-family: 'JetBrains Mono', monospace;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.9375rem;
+            font-weight: 700;
+            color: var(--text-primary);
             word-break: break-word;
         }}
 
         .tooltip-table {{
-            font-size: 12px;
-            color: #94a3b8;
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
             margin-top: 2px;
         }}
 
         .tooltip-body {{
-            padding: 16px 20px;
+            padding: var(--space-md) var(--space-lg);
         }}
 
         .tooltip-section {{
-            margin-bottom: 16px;
+            margin-bottom: var(--space-md);
         }}
 
         .tooltip-section:last-child {{
@@ -1001,12 +1151,12 @@ def generate_dependency_html(
         }}
 
         .tooltip-section-label {{
-            font-size: 10px;
+            font-size: 0.5625rem;
             font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 0.8px;
-            color: #64748b;
-            margin-bottom: 8px;
+            letter-spacing: 0.15em;
+            color: var(--text-tertiary);
+            margin-bottom: var(--space-sm);
             display: flex;
             align-items: center;
             gap: 6px;
@@ -1016,29 +1166,30 @@ def generate_dependency_html(
             content: '';
             width: 4px;
             height: 4px;
-            background: var(--accent);
+            background: var(--cyan);
             border-radius: 50%;
+            box-shadow: 0 0 6px var(--cyan);
         }}
 
         .tooltip-expression {{
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 12px;
-            line-height: 1.6;
-            color: #e2e8f0;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.6875rem;
+            line-height: 1.7;
+            color: var(--text-secondary);
             background: rgba(0, 0, 0, 0.4);
-            border: 1px solid rgba(99, 102, 241, 0.15);
-            border-radius: 8px;
-            padding: 12px 14px;
-            max-height: 200px;
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            padding: var(--space-sm) var(--space-md);
+            max-height: 180px;
             overflow-y: auto;
             white-space: pre-wrap;
             word-break: break-word;
             scrollbar-width: thin;
-            scrollbar-color: var(--accent) transparent;
+            scrollbar-color: var(--cyan) transparent;
         }}
 
         .tooltip-expression::-webkit-scrollbar {{
-            width: 6px;
+            width: 4px;
         }}
 
         .tooltip-expression::-webkit-scrollbar-track {{
@@ -1046,74 +1197,77 @@ def generate_dependency_html(
         }}
 
         .tooltip-expression::-webkit-scrollbar-thumb {{
-            background: var(--accent);
-            border-radius: 3px;
+            background: var(--cyan);
+            border-radius: 2px;
         }}
 
         .tooltip-meta-grid {{
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
+            gap: var(--space-sm);
         }}
 
         .tooltip-meta-item {{
             display: flex;
             flex-direction: column;
-            gap: 4px;
-            padding: 10px 12px;
+            gap: 2px;
+            padding: var(--space-sm);
             background: rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(99, 102, 241, 0.1);
-            border-radius: 8px;
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
         }}
 
         .tooltip-meta-label {{
-            font-size: 10px;
+            font-size: 0.5625rem;
             font-weight: 500;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: #64748b;
+            letter-spacing: 0.1em;
+            color: var(--text-tertiary);
         }}
 
         .tooltip-meta-value {{
-            font-size: 13px;
+            font-size: 0.8125rem;
             font-weight: 600;
-            color: #f1f5f9;
+            color: var(--text-primary);
         }}
 
         .tooltip-meta-value.data-type {{
-            color: #a5b4fc;
+            color: var(--cyan);
         }}
 
         .tooltip-meta-value.hidden-yes {{
-            color: #fbbf24;
+            color: var(--gold);
         }}
 
         .tooltip-meta-value.key-yes {{
-            color: #34d399;
+            color: var(--emerald);
         }}
 
         .tooltip-footer {{
-            padding: 12px 20px;
+            padding: var(--space-sm) var(--space-md);
             background: rgba(0, 0, 0, 0.3);
-            border-top: 1px solid rgba(99, 102, 241, 0.1);
-            font-size: 11px;
-            color: #64748b;
+            border-top: 1px solid var(--glass-border);
+            font-size: 0.625rem;
+            color: var(--text-tertiary);
             text-align: center;
+            letter-spacing: 0.05em;
         }}
 
-        /* Dependency Panels */
+        /* ═══════════════════════════════════════════════════════════════════════
+           DEPENDENCY PANELS - Dual Column Layout
+           ═══════════════════════════════════════════════════════════════════════ */
         .panels-container {{
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 1.5rem;
-            margin-bottom: 1.5rem;
+            gap: var(--space-lg);
+            margin-bottom: var(--space-xl);
         }}
 
         .panel {{
-            background: var(--bg-card);
-            backdrop-filter: blur(20px);
-            border: 1px solid var(--border);
-            border-radius: 16px;
+            background: var(--glass-dark);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
             overflow: hidden;
         }}
 
@@ -1121,73 +1275,77 @@ def generate_dependency_html(
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 1rem 1.25rem;
-            background: var(--bg-elevated);
-            border-bottom: 1px solid var(--border);
+            padding: var(--space-md) var(--space-lg);
+            background: rgba(0, 0, 0, 0.3);
+            border-bottom: 1px solid var(--glass-border);
         }}
 
         .panel-title {{
             display: flex;
             align-items: center;
-            gap: 0.75rem;
+            gap: var(--space-sm);
+            font-family: 'Syne', sans-serif;
             font-weight: 600;
-            font-size: 0.9375rem;
+            font-size: 0.875rem;
+            color: var(--text-primary);
         }}
 
         .panel-icon {{
-            width: 28px;
-            height: 28px;
-            border-radius: 8px;
+            width: 24px;
+            height: 24px;
+            border-radius: var(--radius-sm);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 0.875rem;
+            font-size: 0.75rem;
         }}
 
         .panel-icon.upstream {{
-            background: linear-gradient(135deg, #10b981, #34d399);
+            background: rgba(0, 255, 148, 0.15);
+            border: 1px solid rgba(0, 255, 148, 0.3);
         }}
 
         .panel-icon.downstream {{
-            background: linear-gradient(135deg, #f59e0b, #fbbf24);
+            background: rgba(255, 217, 61, 0.15);
+            border: 1px solid rgba(255, 217, 61, 0.3);
         }}
 
         .panel-count {{
-            background: var(--accent);
-            color: white;
-            font-size: 0.75rem;
-            padding: 0.25rem 0.625rem;
+            background: var(--cyan);
+            color: var(--void);
+            font-size: 0.6875rem;
+            padding: 3px 10px;
             border-radius: 999px;
-            font-weight: 600;
-            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            font-family: 'Space Mono', monospace;
         }}
 
         .panel-search {{
-            padding: 0.75rem 1rem;
-            border-bottom: 1px solid var(--border);
+            padding: var(--space-sm) var(--space-md);
+            border-bottom: 1px solid var(--glass-border);
         }}
 
         .search-input {{
             width: 100%;
-            padding: 0.625rem 1rem;
-            padding-left: 2.5rem;
-            background: var(--bg-dark);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            color: var(--text);
-            font-size: 0.8125rem;
-            font-family: inherit;
+            padding: var(--space-sm) var(--space-md);
+            padding-left: 2.25rem;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 0.75rem;
+            font-family: 'Outfit', sans-serif;
             transition: all 0.2s;
         }}
 
         .search-input:focus {{
             outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px var(--accent-glow);
+            border-color: var(--cyan);
+            box-shadow: 0 0 0 2px rgba(0, 240, 255, 0.15);
         }}
 
         .search-input::placeholder {{
-            color: var(--text-muted);
+            color: var(--text-tertiary);
         }}
 
         .search-wrapper {{
@@ -1195,24 +1353,25 @@ def generate_dependency_html(
         }}
 
         .search-wrapper::before {{
-            content: '🔍';
+            content: '⌕';
             position: absolute;
-            left: 0.75rem;
+            left: var(--space-sm);
             top: 50%;
             transform: translateY(-50%);
             font-size: 0.875rem;
+            color: var(--text-tertiary);
             pointer-events: none;
         }}
 
         .panel-content {{
-            max-height: 400px;
+            max-height: 350px;
             overflow-y: auto;
             scrollbar-width: thin;
-            scrollbar-color: var(--border) transparent;
+            scrollbar-color: var(--glass-border) transparent;
         }}
 
         .panel-content::-webkit-scrollbar {{
-            width: 6px;
+            width: 4px;
         }}
 
         .panel-content::-webkit-scrollbar-track {{
@@ -1220,16 +1379,16 @@ def generate_dependency_html(
         }}
 
         .panel-content::-webkit-scrollbar-thumb {{
-            background: var(--border);
-            border-radius: 3px;
+            background: var(--glass-border-hover);
+            border-radius: 2px;
         }}
 
         .panel-content::-webkit-scrollbar-thumb:hover {{
-            background: var(--text-muted);
+            background: var(--cyan);
         }}
 
         .table-group {{
-            border-bottom: 1px solid var(--border);
+            border-bottom: 1px solid var(--glass-border);
         }}
 
         .table-group:last-child {{
@@ -1240,40 +1399,41 @@ def generate_dependency_html(
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0.75rem 1rem;
-            background: rgba(99, 102, 241, 0.05);
+            padding: var(--space-sm) var(--space-md);
+            background: rgba(0, 240, 255, 0.03);
             cursor: pointer;
             transition: background 0.2s;
         }}
 
         .table-group-header:hover {{
-            background: rgba(99, 102, 241, 0.1);
+            background: rgba(0, 240, 255, 0.06);
         }}
 
         .table-group-name {{
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: var(--space-xs);
             font-weight: 500;
-            font-size: 0.875rem;
-            color: var(--accent-light);
+            font-size: 0.75rem;
+            color: var(--cyan);
         }}
 
         .table-group-name::before {{
-            content: '📁';
-            font-size: 0.75rem;
+            content: '◆';
+            font-size: 0.5rem;
+            opacity: 0.7;
         }}
 
         .table-group-count {{
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            background: var(--bg-elevated);
-            padding: 0.125rem 0.5rem;
+            font-size: 0.625rem;
+            color: var(--text-tertiary);
+            background: var(--glass-light);
+            padding: 2px 8px;
             border-radius: 999px;
         }}
 
         .table-group-items {{
-            padding: 0.25rem 0;
+            padding: var(--space-xs) 0;
         }}
 
         .table-group.collapsed .table-group-items {{
@@ -1282,7 +1442,8 @@ def generate_dependency_html(
 
         .table-group-header .chevron {{
             transition: transform 0.2s;
-            font-size: 0.75rem;
+            font-size: 0.625rem;
+            color: var(--text-tertiary);
         }}
 
         .table-group.collapsed .chevron {{
@@ -1292,48 +1453,49 @@ def generate_dependency_html(
         .item {{
             display: flex;
             align-items: center;
-            gap: 0.5rem;
-            padding: 0.5rem 1rem 0.5rem 2rem;
-            font-size: 0.8125rem;
+            gap: var(--space-sm);
+            padding: var(--space-xs) var(--space-md) var(--space-xs) var(--space-xl);
+            font-size: 0.6875rem;
             color: var(--text-secondary);
-            transition: all 0.2s;
+            transition: all 0.15s;
         }}
 
         .item:hover {{
-            background: var(--bg-elevated);
-            color: var(--text);
+            background: rgba(0, 240, 255, 0.05);
+            color: var(--text-primary);
         }}
 
         .item-icon {{
-            font-size: 0.625rem;
-            color: var(--accent);
+            font-size: 0.5rem;
+            color: var(--cyan);
         }}
 
         .item-name {{
-            font-family: 'JetBrains Mono', monospace;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.6875rem;
         }}
 
-        .item.measure .item-icon {{ color: #01579b; }}
-        .item.column .item-icon {{ color: #7b1fa2; }}
+        .item.measure .item-icon {{ color: var(--cyan); }}
+        .item.column .item-icon {{ color: var(--magenta); }}
 
         .empty-state {{
-            padding: 2rem;
+            padding: var(--space-xl);
             text-align: center;
-            color: var(--text-muted);
-            font-size: 0.875rem;
+            color: var(--text-tertiary);
+            font-size: 0.75rem;
         }}
 
         .empty-state-icon {{
-            font-size: 2rem;
-            margin-bottom: 0.5rem;
-            opacity: 0.5;
+            font-size: 1.5rem;
+            margin-bottom: var(--space-sm);
+            opacity: 0.4;
         }}
 
         .no-results {{
-            padding: 1.5rem;
+            padding: var(--space-lg);
             text-align: center;
-            color: var(--text-muted);
-            font-size: 0.8125rem;
+            color: var(--text-tertiary);
+            font-size: 0.75rem;
             display: none;
         }}
 
@@ -1344,50 +1506,55 @@ def generate_dependency_html(
             }}
         }}
 
-        /* Footer - Subtle Modern Design */
+        /* ═══════════════════════════════════════════════════════════════════════
+           FOOTER - Minimal Signature
+           ═══════════════════════════════════════════════════════════════════════ */
         .footer {{
             text-align: center;
-            padding: 2.5rem 2rem;
-            color: var(--text-muted);
-            font-size: 0.8125rem;
+            padding: var(--space-2xl) var(--space-xl);
+            color: var(--text-tertiary);
+            font-size: 0.75rem;
             position: relative;
-            margin-top: 2rem;
+            margin-top: var(--space-xl);
         }}
 
         .footer::before {{
             content: '';
             position: absolute;
             top: 0;
-            left: 10%;
-            right: 10%;
+            left: 20%;
+            right: 20%;
             height: 1px;
-            background: linear-gradient(90deg, transparent, var(--border), transparent);
+            background: linear-gradient(90deg, transparent, var(--glass-border), transparent);
         }}
 
         .footer strong {{
-            background: var(--gradient-cyber);
+            background: var(--holo-1);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
             font-weight: 700;
         }}
 
-        /* Responsive */
+        /* ═══════════════════════════════════════════════════════════════════════
+           RESPONSIVE BREAKPOINTS
+           ═══════════════════════════════════════════════════════════════════════ */
         @media (max-width: 900px) {{
             .stats-row {{ grid-template-columns: repeat(2, 1fr); }}
-            .header {{ flex-direction: column; }}
-            .hero-title {{ font-size: 1.75rem; }}
+            .header {{ flex-direction: column; gap: var(--space-md); align-items: flex-start; }}
+            .hero-title {{ font-size: 1.5rem; }}
         }}
 
         @media (max-width: 600px) {{
-            .container {{ padding: 1rem; }}
+            .container {{ padding: var(--space-md); }}
             .stats-row {{ grid-template-columns: 1fr; }}
             .toolbar {{ flex-wrap: wrap; }}
-            .legend {{ flex-direction: column; align-items: center; gap: 1rem; }}
+            .legend {{ flex-direction: column; align-items: center; gap: var(--space-md); }}
+            .filter-group {{ width: 100%; justify-content: center; }}
         }}
 
         /* ═══════════════════════════════════════════════════════════════════════
-           SIDEBAR STYLES (NEW)
+           SIDEBAR - Model Browser
            ═══════════════════════════════════════════════════════════════════════ */
         .app-wrapper {{
             display: flex;
@@ -1395,10 +1562,10 @@ def generate_dependency_html(
         }}
 
         .sidebar {{
-            width: 300px;
-            min-width: 300px;
-            background: rgba(13, 13, 20, 0.95);
-            border-right: 1px solid var(--border);
+            width: 320px;
+            min-width: 320px;
+            background: var(--obsidian);
+            border-right: 1px solid var(--glass-border);
             display: flex;
             flex-direction: column;
             position: fixed;
@@ -1407,7 +1574,7 @@ def generate_dependency_html(
             height: 100vh;
             z-index: 100;
             transform: translateX(-100%);
-            transition: transform 0.3s ease;
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }}
 
         .sidebar.visible {{
@@ -1416,153 +1583,162 @@ def generate_dependency_html(
 
         .sidebar-toggle {{
             position: fixed;
-            top: 1rem;
-            left: 1rem;
+            top: var(--space-md);
+            left: var(--space-md);
             z-index: 101;
-            background: var(--accent);
-            color: white;
+            background: var(--cyan);
+            color: var(--void);
             border: none;
-            padding: 0.75rem 1rem;
-            border-radius: 10px;
+            padding: var(--space-sm) var(--space-md);
+            border-radius: var(--radius-sm);
             cursor: pointer;
-            font-size: 0.875rem;
+            font-size: 0.75rem;
             font-weight: 600;
             display: flex;
             align-items: center;
-            gap: 0.5rem;
-            box-shadow: 0 4px 12px var(--accent-glow);
+            gap: var(--space-xs);
+            box-shadow: var(--glow-cyan);
             transition: all 0.2s;
+            font-family: 'Outfit', sans-serif;
         }}
 
         .sidebar-toggle:hover {{
-            background: var(--accent-light);
+            background: #33F3FF;
             transform: translateY(-2px);
+            box-shadow: 0 0 30px rgba(0, 240, 255, 0.5);
         }}
 
         .sidebar-toggle.sidebar-open {{
-            left: 310px;
+            left: 330px;
         }}
 
         .main-content {{
             flex: 1;
-            transition: margin-left 0.3s ease;
+            transition: margin-left 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }}
 
         .main-content.sidebar-open {{
-            margin-left: 300px;
+            margin-left: 320px;
         }}
 
         .sidebar-header {{
-            padding: 1.25rem;
-            border-bottom: 1px solid var(--border);
-            background: linear-gradient(180deg, rgba(99, 102, 241, 0.1) 0%, transparent 100%);
+            padding: var(--space-lg);
+            border-bottom: 1px solid var(--glass-border);
+            background: linear-gradient(180deg, rgba(0, 240, 255, 0.05) 0%, transparent 100%);
         }}
 
         .sidebar-title {{
             display: flex;
             align-items: center;
-            gap: 0.75rem;
-            font-size: 1rem;
-            font-weight: 600;
-            color: var(--text);
-            margin-bottom: 0.25rem;
+            gap: var(--space-sm);
+            font-family: 'Syne', sans-serif;
+            font-size: 0.9375rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: var(--space-xs);
         }}
 
         .sidebar-subtitle {{
-            font-size: 0.75rem;
-            color: var(--text-muted);
+            font-size: 0.6875rem;
+            color: var(--text-tertiary);
         }}
 
         .sidebar-search {{
-            padding: 0.75rem 1rem;
-            border-bottom: 1px solid var(--border);
+            padding: var(--space-sm) var(--space-md);
+            border-bottom: 1px solid var(--glass-border);
         }}
 
         .sidebar-search-input {{
             width: 100%;
-            padding: 0.5rem 0.75rem;
-            background: var(--bg-dark);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: var(--text);
-            font-size: 0.8125rem;
+            padding: var(--space-sm) var(--space-md);
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 0.75rem;
+            font-family: 'Outfit', sans-serif;
         }}
 
         .sidebar-search-input::placeholder {{
-            color: var(--text-muted);
+            color: var(--text-tertiary);
         }}
 
         .sidebar-search-input:focus {{
             outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px var(--accent-glow);
+            border-color: var(--cyan);
+            box-shadow: 0 0 0 2px rgba(0, 240, 255, 0.15);
         }}
 
         .sidebar-content {{
             flex: 1;
             overflow-y: auto;
             scrollbar-width: thin;
-            scrollbar-color: var(--border) transparent;
+            scrollbar-color: var(--glass-border) transparent;
         }}
 
         .sidebar-category {{
-            border-bottom: 1px solid var(--border);
+            border-bottom: 1px solid var(--glass-border);
         }}
 
         .sidebar-category-header {{
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0.875rem 1rem;
+            padding: var(--space-md);
             cursor: pointer;
             transition: background 0.2s;
         }}
 
         .sidebar-category-header:hover {{
-            background: rgba(99, 102, 241, 0.1);
+            background: rgba(0, 240, 255, 0.05);
         }}
 
         .sidebar-category-title {{
             display: flex;
             align-items: center;
-            gap: 0.625rem;
+            gap: var(--space-sm);
         }}
 
         .sidebar-category-icon {{
-            width: 28px;
-            height: 28px;
-            border-radius: 8px;
+            width: 26px;
+            height: 26px;
+            border-radius: var(--radius-sm);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 0.875rem;
+            font-size: 0.75rem;
         }}
 
         .sidebar-category-icon.measures {{
-            background: linear-gradient(135deg, #2196F3, #1976D2);
+            background: rgba(0, 240, 255, 0.15);
+            border: 1px solid rgba(0, 240, 255, 0.3);
         }}
 
         .sidebar-category-icon.columns {{
-            background: linear-gradient(135deg, #9C27B0, #7B1FA2);
+            background: rgba(255, 0, 245, 0.15);
+            border: 1px solid rgba(255, 0, 245, 0.3);
         }}
 
         .sidebar-category-name {{
-            font-size: 0.875rem;
+            font-family: 'Syne', sans-serif;
+            font-size: 0.8125rem;
             font-weight: 600;
+            color: var(--text-primary);
         }}
 
         .sidebar-category-count {{
-            background: var(--accent);
-            color: white;
-            font-size: 0.6875rem;
-            padding: 0.125rem 0.5rem;
+            background: var(--cyan);
+            color: var(--void);
+            font-size: 0.625rem;
+            padding: 2px 8px;
             border-radius: 999px;
-            font-weight: 600;
+            font-weight: 700;
+            font-family: 'Space Mono', monospace;
         }}
 
         .sidebar-category-chevron {{
-            color: var(--text-muted);
-            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            font-size: 0.625rem;
             transition: transform 0.2s;
         }}
 
@@ -1579,39 +1755,39 @@ def generate_dependency_html(
         }}
 
         .sidebar-table-group {{
-            border-top: 1px solid rgba(63, 63, 70, 0.3);
+            border-top: 1px solid rgba(0, 240, 255, 0.05);
         }}
 
         .sidebar-table-header {{
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0.5rem 1rem 0.5rem 1.25rem;
+            padding: var(--space-sm) var(--space-md) var(--space-sm) var(--space-lg);
             cursor: pointer;
-            background: rgba(99, 102, 241, 0.03);
+            background: rgba(0, 240, 255, 0.02);
             transition: background 0.2s;
         }}
 
         .sidebar-table-header:hover {{
-            background: rgba(99, 102, 241, 0.08);
+            background: rgba(0, 240, 255, 0.05);
         }}
 
         .sidebar-table-name {{
-            font-size: 0.75rem;
-            color: var(--accent-light);
+            font-size: 0.6875rem;
+            color: var(--cyan);
             font-weight: 500;
         }}
 
         .sidebar-table-count {{
-            font-size: 0.625rem;
-            color: var(--text-muted);
-            background: var(--bg-elevated);
-            padding: 0.125rem 0.375rem;
+            font-size: 0.5625rem;
+            color: var(--text-tertiary);
+            background: var(--glass-light);
+            padding: 2px 6px;
             border-radius: 999px;
         }}
 
         .sidebar-table-items {{
-            padding: 0.25rem 0;
+            padding: var(--space-xs) 0;
         }}
 
         .sidebar-table-group.collapsed .sidebar-table-items {{
@@ -1621,47 +1797,50 @@ def generate_dependency_html(
         .sidebar-item {{
             display: flex;
             align-items: center;
-            gap: 0.5rem;
-            padding: 0.375rem 1rem 0.375rem 2rem;
+            gap: var(--space-sm);
+            padding: var(--space-xs) var(--space-md) var(--space-xs) var(--space-xl);
             cursor: pointer;
             transition: all 0.15s;
         }}
 
         .sidebar-item:hover {{
-            background: rgba(99, 102, 241, 0.1);
+            background: rgba(0, 240, 255, 0.08);
         }}
 
         .sidebar-item.selected {{
-            background: var(--accent);
-            color: white;
+            background: var(--cyan);
+            color: var(--void);
         }}
 
         .sidebar-item.selected .sidebar-item-name {{
-            color: white;
+            color: var(--void);
         }}
 
         .sidebar-item-dot {{
-            width: 6px;
-            height: 6px;
+            width: 5px;
+            height: 5px;
             border-radius: 50%;
             flex-shrink: 0;
         }}
 
         .sidebar-item.measure .sidebar-item-dot {{
-            background: #2196F3;
+            background: var(--cyan);
+            box-shadow: 0 0 6px var(--cyan);
         }}
 
         .sidebar-item.column .sidebar-item-dot {{
-            background: #9C27B0;
+            background: var(--magenta);
+            box-shadow: 0 0 6px var(--magenta);
         }}
 
         .sidebar-item.selected .sidebar-item-dot {{
-            background: white;
+            background: var(--void);
+            box-shadow: none;
         }}
 
         .sidebar-item-name {{
-            font-size: 0.75rem;
-            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6875rem;
+            font-family: 'Space Mono', monospace;
             color: var(--text-secondary);
             white-space: nowrap;
             overflow: hidden;
@@ -1669,38 +1848,60 @@ def generate_dependency_html(
         }}
 
         @media (max-width: 900px) {{
-            .sidebar {{ width: 280px; min-width: 280px; }}
-            .main-content.sidebar-open {{ margin-left: 280px; }}
-            .sidebar-toggle.sidebar-open {{ left: 290px; }}
+            .sidebar {{ width: 300px; min-width: 300px; }}
+            .main-content.sidebar-open {{ margin-left: 300px; }}
+            .sidebar-toggle.sidebar-open {{ left: 310px; }}
         }}
 
         @media (max-width: 700px) {{
             .sidebar {{ width: 100%; }}
             .main-content.sidebar-open {{ margin-left: 0; }}
-            .sidebar-toggle.sidebar-open {{ left: auto; right: 1rem; }}
+            .sidebar-toggle.sidebar-open {{ left: auto; right: var(--space-md); }}
         }}
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           PAGE LOAD ANIMATIONS - Staggered Reveal
+           ═══════════════════════════════════════════════════════════════════════ */
+        @keyframes fadeInUp {{
+            from {{
+                opacity: 0;
+                transform: translateY(20px);
+            }}
+            to {{
+                opacity: 1;
+                transform: translateY(0);
+            }}
+        }}
+
+        .header {{ animation: fadeInUp 0.6s ease-out 0.1s both; }}
+        .hero-card {{ animation: fadeInUp 0.6s ease-out 0.2s both; }}
+        .stats-row {{ animation: fadeInUp 0.6s ease-out 0.3s both; }}
+        .panels-container {{ animation: fadeInUp 0.6s ease-out 0.4s both; }}
+        .diagram-wrapper {{ animation: fadeInUp 0.6s ease-out 0.5s both; }}
+        .footer {{ animation: fadeInUp 0.6s ease-out 0.6s both; }}
     </style>
 </head>
 <body>
     <div class="bg-pattern"></div>
+    <div class="noise-overlay"></div>
 
     <!-- Info Tooltip (positioned globally) -->
     <div class="node-tooltip" id="node-tooltip">
         <div class="tooltip-header">
             <div class="tooltip-type-badge" id="tooltip-type-badge">
-                <span id="tooltip-type-icon">📐</span>
+                <span id="tooltip-type-icon">⬡</span>
                 <span id="tooltip-type-text">Measure</span>
             </div>
             <div class="tooltip-title" id="tooltip-title"></div>
             <div class="tooltip-table" id="tooltip-table"></div>
         </div>
         <div class="tooltip-body" id="tooltip-body"></div>
-        <div class="tooltip-footer">Click info icon to view details • ESC to close</div>
+        <div class="tooltip-footer">ESC to close</div>
     </div>
 
     <!-- Sidebar Toggle Button (only if sidebar data available) -->
     <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" style="display: {'flex' if has_sidebar else 'none'};">
-        <span id="sidebar-toggle-icon">📂</span>
+        <span id="sidebar-toggle-icon">◧</span>
         <span id="sidebar-toggle-text">Model Browser</span>
     </button>
 
@@ -1708,25 +1909,25 @@ def generate_dependency_html(
     <aside class="sidebar" id="sidebar" style="display: {'flex' if has_sidebar else 'none'};">
         <div class="sidebar-header">
             <div class="sidebar-title">
-                <span>📊</span>
+                <span>◈</span>
                 <span>Model Browser</span>
             </div>
-            <div class="sidebar-subtitle">Click any item to analyze • {total_sidebar_measures} measures, {total_sidebar_columns} columns</div>
+            <div class="sidebar-subtitle">{total_sidebar_measures} measures · {total_sidebar_columns} columns</div>
         </div>
         <div class="sidebar-search">
-            <input type="text" class="sidebar-search-input" id="sidebar-search" placeholder="Search measures, columns...">
+            <input type="text" class="sidebar-search-input" id="sidebar-search" placeholder="Search...">
         </div>
         <div class="sidebar-content" id="sidebar-content">
             <!-- Measures Category -->
             <div class="sidebar-category" id="sidebar-measures">
                 <div class="sidebar-category-header" onclick="toggleSidebarCategory('measures')">
                     <div class="sidebar-category-title">
-                        <div class="sidebar-category-icon measures">📐</div>
+                        <div class="sidebar-category-icon measures">⬡</div>
                         <span class="sidebar-category-name">Measures</span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 0.5rem;">
                         <span class="sidebar-category-count">{total_sidebar_measures}</span>
-                        <span class="sidebar-category-chevron">▼</span>
+                        <span class="sidebar-category-chevron">▾</span>
                     </div>
                 </div>
                 <div class="sidebar-category-content" id="sidebar-measures-content">
@@ -1737,12 +1938,12 @@ def generate_dependency_html(
             <div class="sidebar-category collapsed" id="sidebar-columns">
                 <div class="sidebar-category-header" onclick="toggleSidebarCategory('columns')">
                     <div class="sidebar-category-title">
-                        <div class="sidebar-category-icon columns">📋</div>
+                        <div class="sidebar-category-icon columns">◇</div>
                         <span class="sidebar-category-name">Columns</span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 0.5rem;">
                         <span class="sidebar-category-count">{total_sidebar_columns}</span>
-                        <span class="sidebar-category-chevron">▼</span>
+                        <span class="sidebar-category-chevron">▾</span>
                     </div>
                 </div>
                 <div class="sidebar-category-content" id="sidebar-columns-content">
@@ -1758,7 +1959,7 @@ def generate_dependency_html(
         <!-- Header -->
         <header class="header">
             <div class="brand">
-                <div class="brand-icon">📊</div>
+                <div class="brand-icon">◈</div>
                 <div class="brand-text">
                     <h1>Dependency Analysis</h1>
                     <span>Power BI Model Explorer</span>
@@ -1769,11 +1970,12 @@ def generate_dependency_html(
 
         <!-- Hero Card -->
         <div class="hero-card">
+            <div class="hero-glow"></div>
             <div class="hero-label">Analyzing Measure</div>
             <h2 class="hero-title">
                 <span class="table-name">{measure_table}</span><span class="measure-name">[{measure_name}]</span>
             </h2>
-            <p class="hero-subtitle">Visualizing {direction} dependencies up to {depth} levels deep</p>
+            <p class="hero-subtitle">Visualizing {direction} dependencies up to {depth} levels</p>
         </div>
 
         <!-- Stats -->
@@ -1802,40 +2004,40 @@ def generate_dependency_html(
             <div class="panel" id="dependencies-panel">
                 <div class="panel-header">
                     <div class="panel-title">
-                        <div class="panel-icon upstream">⬆️</div>
-                        <span>Dependencies (Upstream)</span>
+                        <div class="panel-icon upstream">↑</div>
+                        <span>Dependencies</span>
                     </div>
                     <div class="panel-count" id="deps-count">{len(referenced_measures) + len(referenced_columns)}</div>
                 </div>
                 <div class="panel-search">
                     <div class="search-wrapper">
-                        <input type="text" class="search-input" id="deps-search" placeholder="Filter dependencies..." oninput="filterPanel('deps')">
+                        <input type="text" class="search-input" id="deps-search" placeholder="Filter..." oninput="filterPanel('deps')">
                     </div>
                 </div>
                 <div class="panel-content" id="deps-content">
                     <!-- Content populated by JavaScript -->
                 </div>
-                <div class="no-results" id="deps-no-results">No matching items found</div>
+                <div class="no-results" id="deps-no-results">No matching items</div>
             </div>
 
             <!-- Used By Panel (Downstream - what uses this measure) -->
             <div class="panel" id="used-by-panel">
                 <div class="panel-header">
                     <div class="panel-title">
-                        <div class="panel-icon downstream">⬇️</div>
-                        <span>Used By (Downstream)</span>
+                        <div class="panel-icon downstream">↓</div>
+                        <span>Used By</span>
                     </div>
                     <div class="panel-count" id="used-by-count">{len(used_by_measures)}</div>
                 </div>
                 <div class="panel-search">
                     <div class="search-wrapper">
-                        <input type="text" class="search-input" id="used-by-search" placeholder="Filter measures..." oninput="filterPanel('used-by')">
+                        <input type="text" class="search-input" id="used-by-search" placeholder="Filter..." oninput="filterPanel('used-by')">
                     </div>
                 </div>
                 <div class="panel-content" id="used-by-content">
                     <!-- Content populated by JavaScript -->
                 </div>
-                <div class="no-results" id="used-by-no-results">No matching items found</div>
+                <div class="no-results" id="used-by-no-results">No matching items</div>
             </div>
         </div>
 
@@ -1843,41 +2045,41 @@ def generate_dependency_html(
         <div class="diagram-wrapper">
             <div class="diagram-header">
                 <div class="diagram-title">
-                    <div class="diagram-title-icon">🔗</div>
+                    <div class="diagram-title-icon">◎</div>
                     <span>Dependency Flow</span>
                 </div>
                 <div class="toolbar">
                     <div class="filter-group">
                         <button class="btn btn-filter active" id="filter-all" onclick="setFilter('all')">All</button>
-                        <button class="btn btn-filter" id="filter-upstream" onclick="setFilter('upstream')">⬆ Upstream</button>
-                        <button class="btn btn-filter" id="filter-downstream" onclick="setFilter('downstream')">⬇ Downstream</button>
+                        <button class="btn btn-filter" id="filter-upstream" onclick="setFilter('upstream')">↑ Upstream</button>
+                        <button class="btn btn-filter" id="filter-downstream" onclick="setFilter('downstream')">↓ Downstream</button>
                     </div>
                     <div class="toolbar-divider"></div>
-                    <button class="btn btn-ghost" id="clear-selection-btn" onclick="clearFlowHighlight()" style="display: none;">✕ Clear Selection</button>
-                    <button class="btn btn-ghost" onclick="zoomIn()">🔍+ Zoom In</button>
-                    <button class="btn btn-ghost" onclick="zoomOut()">🔍- Zoom Out</button>
-                    <button class="btn btn-ghost" onclick="resetAll()">↺ Reset</button>
-                    <button class="btn btn-primary" onclick="downloadSVG()">💾 Download SVG</button>
+                    <button class="btn btn-ghost" id="clear-selection-btn" onclick="clearFlowHighlight()" style="display: none;">× Clear</button>
+                    <button class="btn btn-ghost" onclick="zoomIn()">+ Zoom</button>
+                    <button class="btn btn-ghost" onclick="zoomOut()">− Zoom</button>
+                    <button class="btn btn-ghost" onclick="resetAll()">⟲ Reset</button>
+                    <button class="btn btn-primary" onclick="downloadSVG()">↓ Export SVG</button>
                 </div>
             </div>
             <div class="diagram-content" id="diagram-content">
                 <pre class="mermaid" id="mermaid-diagram">
 {mermaid_code}
                 </pre>
-                <div class="click-hint" id="click-hint">Click any node to highlight its complete flow. Click again or press Escape to clear.</div>
+                <div class="click-hint" id="click-hint">Click any node to highlight flow · ESC to clear</div>
             </div>
             <div class="legend">
                 <div class="legend-item">
                     <div class="legend-dot legend-root"></div>
-                    <span>Target Measure</span>
+                    <span>Target</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-dot legend-upstream"></div>
-                    <span>Dependencies (Upstream)</span>
+                    <span>Upstream</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-dot legend-downstream"></div>
-                    <span>Used By (Downstream)</span>
+                    <span>Downstream</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-dot legend-column"></div>
@@ -1888,35 +2090,35 @@ def generate_dependency_html(
 
         <!-- Footer -->
         <footer class="footer">
-            Generated by <strong>MCP-PowerBi-Finvision</strong>
+            Generated by <strong>MCP-PowerBi-Finvision</strong> · Quantum Flux Design System
         </footer>
     </div>
     </div><!-- End main-content -->
 
     <script>
-        console.log('=== MCP-PowerBi-Finvision Dependency Diagram v2.0 ===');
+        console.log('=== MCP-PowerBi-Finvision Dependency Diagram v3.0 - Quantum Flux ===');
         console.log('Script loaded at:', new Date().toLocaleTimeString());
 
         mermaid.initialize({{
             startOnLoad: true,
             theme: 'dark',
             themeVariables: {{
-                primaryColor: '#6366f1',
-                primaryTextColor: '#fafafa',
-                primaryBorderColor: '#818cf8',
-                lineColor: '#64748b',
-                secondaryColor: '#18181b',
-                tertiaryColor: '#27272a',
-                background: '#09090b',
-                mainBkg: '#18181b',
-                nodeBorder: '#818cf8',
-                clusterBkg: 'rgba(99, 102, 241, 0.15)',
-                clusterBorder: '#6366f1',
-                titleColor: '#fafafa',
-                edgeLabelBackground: '#18181b',
-                nodeTextColor: '#fafafa',
-                fontSize: '16px',
-                fontFamily: 'Inter, sans-serif'
+                primaryColor: '#00F0FF',
+                primaryTextColor: '#F0F4FF',
+                primaryBorderColor: '#00B8C5',
+                lineColor: '#5D6580',
+                secondaryColor: '#0A0A12',
+                tertiaryColor: '#12121C',
+                background: '#030308',
+                mainBkg: '#0A0A12',
+                nodeBorder: '#00F0FF',
+                clusterBkg: 'rgba(0, 240, 255, 0.08)',
+                clusterBorder: '#00F0FF',
+                titleColor: '#F0F4FF',
+                edgeLabelBackground: '#0A0A12',
+                nodeTextColor: '#F0F4FF',
+                fontSize: '14px',
+                fontFamily: 'Outfit, sans-serif'
             }},
             flowchart: {{
                 htmlLabels: true,
@@ -2647,17 +2849,40 @@ def generate_dependency_html(
 
             console.log('========================================');
             console.log('Highlighting flow for clicked node');
+            console.log('Current filter:', currentFilter);
 
             // Get all node info for better matching
             const allNodeElements = Array.from(svg.querySelectorAll('g.node'));
-            const nodeInfoMap = new Map(); // mermaidId -> {{element, sanitizedId, label}}
+            const nodeInfoMap = new Map(); // mermaidId -> {{element, sanitizedId, label, isVisible}}
 
             allNodeElements.forEach(node => {{
                 const mermaidId = node.id || '';
                 const sanitizedId = nodeIdMap[mermaidId] || getSanitizedId(mermaidId);
                 const labelEl = node.querySelector('span.nodeLabel, foreignObject span, text');
                 const label = labelEl ? labelEl.textContent.trim() : '';
-                nodeInfoMap.set(mermaidId, {{ element: node, sanitizedId, label, mermaidId }});
+
+                // Check if node is visible under current filter
+                const isUpstreamNode = idMatchesList(sanitizedId, upstreamNodeIds);
+                const isDownstreamNode = idMatchesList(sanitizedId, downstreamNodeIds);
+                const isRootNode = sanitizedId === rootNodeId || idMatchesList(sanitizedId, [rootNodeId]);
+
+                let isVisibleInFilter = true;
+                if (currentFilter === 'upstream') {{
+                    isVisibleInFilter = isUpstreamNode || isRootNode;
+                }} else if (currentFilter === 'downstream') {{
+                    isVisibleInFilter = isDownstreamNode || isRootNode;
+                }}
+
+                nodeInfoMap.set(mermaidId, {{
+                    element: node,
+                    sanitizedId,
+                    label,
+                    mermaidId,
+                    isUpstream: isUpstreamNode,
+                    isDownstream: isDownstreamNode,
+                    isRoot: isRootNode,
+                    isVisibleInFilter
+                }});
             }});
 
             // Get clicked node info
@@ -2666,9 +2891,14 @@ def generate_dependency_html(
             const clickedSanitizedId = clickedInfo.sanitizedId || getSanitizedId(clickedMermaidId);
             const clickedLabel = clickedInfo.label || '';
 
-            console.log('Clicked node:', {{ mermaidId: clickedMermaidId, sanitizedId: clickedSanitizedId, label: clickedLabel }});
+            console.log('Clicked node:', {{
+                mermaidId: clickedMermaidId,
+                sanitizedId: clickedSanitizedId,
+                label: clickedLabel,
+                isVisibleInFilter: clickedInfo.isVisibleInFilter
+            }});
 
-            // Determine which nodes should be highlighted
+            // Determine which nodes should be highlighted (respecting current filter)
             let highlightedNodeElements = new Set();
             highlightedNodeElements.add(clickedNodeElement); // Always include clicked node
 
@@ -2678,8 +2908,11 @@ def generate_dependency_html(
 
             console.log('Edge graph traversal - upstream:', upstreamNodes.size, 'downstream:', downstreamNodes.size);
 
-            // Map traversal results to node elements
+            // Map traversal results to node elements - BUT respect current filter
             nodeInfoMap.forEach((info, mermaidId) => {{
+                // Only consider nodes visible in current filter
+                if (!info.isVisibleInFilter) return;
+
                 if (upstreamNodes.has(info.sanitizedId) || downstreamNodes.has(info.sanitizedId)) {{
                     highlightedNodeElements.add(info.element);
                 }}
@@ -2690,26 +2923,28 @@ def generate_dependency_html(
                 console.log('Using precomputed node lists as fallback');
 
                 // Check if clicked is root
-                const isRoot = idMatchesList(clickedSanitizedId, [rootNodeId]) || clickedLabel.includes(rootNodeId);
-                const isUpstream = idMatchesList(clickedSanitizedId, upstreamNodeIds);
-                const isDownstream = idMatchesList(clickedSanitizedId, downstreamNodeIds);
+                const isRoot = clickedInfo.isRoot;
+                const isUpstream = clickedInfo.isUpstream;
+                const isDownstream = clickedInfo.isDownstream;
 
                 console.log('Node category - isRoot:', isRoot, 'isUpstream:', isUpstream, 'isDownstream:', isDownstream);
 
                 if (isRoot) {{
-                    // Root: show all connected nodes
+                    // Root: show connected nodes that are visible in current filter
                     nodeInfoMap.forEach((info, mermaidId) => {{
-                        if (idMatchesList(info.sanitizedId, upstreamNodeIds) ||
-                            idMatchesList(info.sanitizedId, downstreamNodeIds) ||
-                            idMatchesList(info.sanitizedId, [rootNodeId])) {{
+                        if (!info.isVisibleInFilter) return;
+
+                        if (info.isUpstream || info.isDownstream || info.isRoot) {{
                             highlightedNodeElements.add(info.element);
                         }}
                     }});
                 }} else if (isUpstream) {{
-                    // Upstream node: show path to root
+                    // Upstream node: show path to root (only if visible in filter)
                     nodeInfoMap.forEach((info, mermaidId) => {{
+                        if (!info.isVisibleInFilter) return;
+
                         // Include root
-                        if (idMatchesList(info.sanitizedId, [rootNodeId])) {{
+                        if (info.isRoot) {{
                             highlightedNodeElements.add(info.element);
                         }}
                         // Include this node's dependencies (other upstream nodes it depends on)
@@ -2718,10 +2953,12 @@ def generate_dependency_html(
                         }}
                     }});
                 }} else if (isDownstream) {{
-                    // Downstream node: show path from root
+                    // Downstream node: show path from root (only if visible in filter)
                     nodeInfoMap.forEach((info, mermaidId) => {{
+                        if (!info.isVisibleInFilter) return;
+
                         // Include root
-                        if (idMatchesList(info.sanitizedId, [rootNodeId])) {{
+                        if (info.isRoot) {{
                             highlightedNodeElements.add(info.element);
                         }}
                         // Include nodes that this node leads to
@@ -2839,14 +3076,15 @@ def generate_dependency_html(
                     edge.style.opacity = '1';
                     edge.style.visibility = 'visible';
                     edge.style.pointerEvents = 'auto';
-                    // Style the path for emphasis
+                    // Style the path for emphasis - using new cyan color
                     const path = edge.querySelector('path');
                     if (path) {{
                         path.style.display = '';
                         path.style.opacity = '1';
                         path.style.visibility = 'visible';
                         path.style.strokeWidth = '4px';
-                        path.style.stroke = '#818cf8';
+                        path.style.stroke = '#00F0FF';
+                        path.style.filter = 'drop-shadow(0 0 6px rgba(0, 240, 255, 0.6))';
                     }}
                     // Also show any marker elements
                     edge.querySelectorAll('marker, [marker-end], [marker-start]').forEach(m => {{
@@ -3014,6 +3252,7 @@ def generate_dependency_html(
                     path.style.display = '';
                     path.style.strokeWidth = '';
                     path.style.stroke = '';
+                    path.style.filter = '';
                 }}
             }});
 
@@ -3043,6 +3282,12 @@ def generate_dependency_html(
             }}
 
             console.log('Flow highlight cleared - all elements reset to normal');
+
+            // IMPORTANT: Reapply current filter to restore visibility state
+            if (currentFilter !== 'all') {{
+                console.log('Reapplying filter:', currentFilter);
+                setFilter(currentFilter);
+            }}
         }}
 
         // Extract clean node ID from Mermaid's internal ID format
@@ -4011,10 +4256,10 @@ def generate_dependency_html(
             let mermaidCode = 'flowchart LR\\n';
 
             // Add styling classes
-            mermaidCode += '    classDef root fill:#6366f1,stroke:#818cf8,stroke-width:3px,color:#fff\\n';
-            mermaidCode += '    classDef upstream fill:#10b981,stroke:#34d399,stroke-width:2px,color:#fff\\n';
-            mermaidCode += '    classDef downstream fill:#f59e0b,stroke:#fbbf24,stroke-width:2px,color:#fff\\n';
-            mermaidCode += '    classDef column fill:#8b5cf6,stroke:#a78bfa,stroke-width:2px,color:#fff\\n';
+            mermaidCode += '    classDef root fill:#00F0FF,stroke:#00B8C5,stroke-width:3px,color:#030308\\n';
+            mermaidCode += '    classDef upstream fill:#00FF94,stroke:#00CC76,stroke-width:2px,color:#030308\\n';
+            mermaidCode += '    classDef downstream fill:#FFD93D,stroke:#C9A927,stroke-width:2px,color:#030308\\n';
+            mermaidCode += '    classDef column fill:#FF00F5,stroke:#C500BF,stroke-width:2px,color:#030308\\n';
 
             // Root node - show full Table[Name] format
             mermaidCode += `    ${{rootId}}["${{itemTable}}[${{itemName}}]"]:::root\\n`;

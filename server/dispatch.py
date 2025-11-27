@@ -31,11 +31,13 @@ class ToolDispatcher:
         '02_Batch_Operations': 'batch_operations',
         '02_Manage_Transactions': 'manage_transactions',
 
-        # 03 - DAX & Dependencies (4 tools)
+        # 03 - DAX & Dependencies (6 tools)
         '03_Run_DAX': 'run_dax',
         '03_Standard_DAX_Analysis': 'dax_intelligence',
         '03_Analyze_Measure_Dependencies': 'analyze_measure_dependencies',
         '03_Get_Measure_Impact': 'get_measure_impact',
+        '03_Usage_Analysis_Measures_Columns': 'column_usage_mapping',
+        '03_Export_All_DAX_Measures': 'export_dax_measures',
 
         # 04 - Data Sources (2 tools)
         '04_Get_Data_Sources': 'get_data_sources',

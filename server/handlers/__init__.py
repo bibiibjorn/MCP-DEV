@@ -7,6 +7,7 @@ from server.handlers.metadata_handler import register_metadata_handlers
 from server.handlers.query_handler import register_query_handlers
 from server.handlers.analysis_handler import register_analysis_handlers
 from server.handlers.dependencies_handler import register_dependencies_handlers
+from server.handlers.column_usage_handler import register_column_usage_handler, register_export_dax_measures_handler
 from server.handlers.export_handler import register_export_handlers
 from server.handlers.documentation_handler import register_documentation_handlers
 from server.handlers.comparison_handler import register_comparison_handlers
@@ -55,6 +56,8 @@ def register_all_handlers(registry):
     register_query_handlers(registry)
     register_analysis_handlers(registry)
     register_dependencies_handlers(registry)
+    register_column_usage_handler(registry)
+    register_export_dax_measures_handler(registry)
     register_export_handlers(registry)
     register_documentation_handlers(registry)
     register_comparison_handlers(registry)

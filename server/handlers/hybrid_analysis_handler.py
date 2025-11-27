@@ -139,22 +139,33 @@ def handle_export_hybrid_analysis(
 
         logger.info(f"Export completed successfully in {result['generation_time_seconds']}s")
 
-        # Return simplified response - just the essentials
+        # Return comprehensive response with full folder structure and data extraction details
         return {
             'success': True,
             'message': f"✓ Hybrid analysis exported successfully",
             'output_path': result['output_path'],
             'export_time_seconds': result['generation_time_seconds'],
+            'folder_structure': {
+                'tmdl_path': result['structure']['tmdl_path'],
+                'analysis_path': result['structure']['analysis_path'],
+                'sample_data_path': result['structure']['sample_data_path']
+            },
             'files_created': {
                 'tmdl_files': result['structure']['file_counts']['tmdl_files'],
                 'analysis_files': result['structure']['file_counts']['json_files'],
-                'sample_data_files': result['structure']['file_counts']['parquet_files']
+                'sample_data_files': result['structure']['file_counts']['parquet_files'],
+                'total_files': result['structure']['file_counts']['total']
             },
-            'statistics_summary': {
+            'statistics': {
                 'tables': result['statistics']['tables'],
                 'measures': result['statistics']['measures'],
+                'relationships': result['statistics']['relationships'],
+                'columns': result['statistics']['columns'],
+                'roles': result['statistics']['roles'],
                 'total_rows': result['statistics']['total_rows']
-            }
+            },
+            'data_extraction_summary': result.get('data_extraction_summary', {}),
+            'connection_status': result.get('connection_status', {})
         }
 
     except Exception as e:

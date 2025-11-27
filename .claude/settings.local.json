@@ -71,7 +71,8 @@
       "Bash(venv/Scripts/pip install:*)",
       "Bash(venv/Scripts/python:*)",
       "Bash(start \"\" \"c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\MCP-PowerBi-Finvision\\exports\\dependency_diagram.png\")",
-      "Bash(start \"\" \"c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\MCP-PowerBi-Finvision\\exports\\pbip_dependency_diagram.html\")"
+      "Bash(start \"\" \"c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\MCP-PowerBi-Finvision\\exports\\pbip_dependency_diagram.html\")",
+      "Bash(start \"\" \"c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\MCP-PowerBi-Finvision\\exports\\dependency_diagram.html\")"
     ],
     "deny": [],
     "ask": []

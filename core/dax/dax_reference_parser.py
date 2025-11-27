@@ -302,9 +302,14 @@ def parse_dax_references(
             # Not a measure - check if it's a known column
             column_owners = ref_idx.column_names.get(normalized_name)
             if column_owners:
-                for tbl in column_owners:
+                # Only add to columns if there's exactly ONE table with this column
+                # Otherwise it's ambiguous which table is being referenced
+                if len(column_owners) == 1:
+                    tbl = next(iter(column_owners))
                     columns.add((tbl, name))
                     tables.add(tbl)
+                # If multiple tables have this column, we can't determine which
+                # one is being used from just [ColumnName], so we don't mark any as used
             else:
                 # Unknown - assume measure with no table
                 measures.add(("", name))

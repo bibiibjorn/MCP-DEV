@@ -88,6 +88,14 @@
       "description": "[DAX] Measure usage impact"
     },
     {
+      "name": "column_usage_mapping",
+      "description": "[DAX] Usage analysis for measures and columns"
+    },
+    {
+      "name": "export_dax_measures",
+      "description": "[DAX] Export all DAX measures to CSV"
+    },
+    {
       "name": "get_data_sources",
       "description": "[Data Sources] List data sources"
     },
