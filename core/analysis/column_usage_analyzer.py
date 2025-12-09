@@ -56,6 +56,23 @@ class ColumnUsageResult:
         }
 
 
+def _normalize_column_key(table: str, column: str) -> str:
+    """
+    Normalize a column key for case-insensitive matching.
+
+    Strips whitespace and lowercases both table and column names to ensure
+    consistent matching between DMV results and DAX-parsed references.
+    """
+    return f"{table.strip().lower()}[{column.strip().lower()}]"
+
+
+def _make_display_key(table: str, column: str) -> str:
+    """
+    Create a display-friendly column key (preserves original case).
+    """
+    return f"{table.strip()}[{column.strip()}]"
+
+
 class ColumnUsageAnalyzer:
     """
     Analyzes column usage across measures in a Power BI model.
@@ -143,7 +160,8 @@ class ColumnUsageAnalyzer:
         result.total_measures_analyzed = len(all_measures)
         result.total_columns_analyzed = len(all_columns)
 
-        # Track relationship columns
+        # Track relationship columns (normalized for matching, display for output)
+        relationship_normalized: Set[str] = set()
         for rel in all_relationships:
             from_table = rel.get('FromTable', '') or rel.get('[FromTable]', '')
             from_col = rel.get('FromColumn', '') or rel.get('[FromColumn]', '')
@@ -151,21 +169,30 @@ class ColumnUsageAnalyzer:
             to_col = rel.get('ToColumn', '') or rel.get('[ToColumn]', '')
 
             if from_table and from_col:
-                result.relationship_columns.add(f"{from_table}[{from_col}]")
+                display_key = _make_display_key(from_table, from_col)
+                result.relationship_columns.add(display_key)
+                relationship_normalized.add(_normalize_column_key(from_table, from_col))
             if to_table and to_col:
-                result.relationship_columns.add(f"{to_table}[{to_col}]")
+                display_key = _make_display_key(to_table, to_col)
+                result.relationship_columns.add(display_key)
+                relationship_normalized.add(_normalize_column_key(to_table, to_col))
 
         result.columns_used_by_relationships = len(result.relationship_columns)
 
         # Initialize column_to_measures with all columns (even unused ones)
+        # Use normalized keys for matching, but store under display keys
         all_column_keys: Set[str] = set()
+        normalized_to_display: Dict[str, str] = {}  # Maps normalized key -> display key
+
         for col in all_columns:
             col_table = col.get('Table', '') or col.get('[Table]', '')
             col_name = col.get('Name', '') or col.get('[Name]', '')
             if col_table and col_name:
-                col_key = f"{col_table}[{col_name}]"
-                all_column_keys.add(col_key)
-                result.column_to_measures[col_key] = []
+                display_key = _make_display_key(col_table, col_name)
+                norm_key = _normalize_column_key(col_table, col_name)
+                all_column_keys.add(display_key)
+                normalized_to_display[norm_key] = display_key
+                result.column_to_measures[display_key] = []
 
         # Build measure_to_columns mapping
         # Also populate column_to_measures as we go
@@ -178,7 +205,7 @@ class ColumnUsageAnalyzer:
             if not m_table or not m_name:
                 continue
 
-            measure_key = f"{m_table}[{m_name}]"
+            measure_key = _make_display_key(m_table, m_name)
 
             # Parse DAX to find column references
             refs = parse_dax_references(m_expression, ref_index)
@@ -186,7 +213,7 @@ class ColumnUsageAnalyzer:
 
             # Store measure -> columns mapping
             result.measure_to_columns[measure_key] = [
-                {"table": col_table, "column": col_name}
+                {"table": col_table.strip(), "column": col_name.strip()}
                 for col_table, col_name in referenced_columns
             ]
 
@@ -202,17 +229,39 @@ class ColumnUsageAnalyzer:
                 measure_info["dax"] = m_expression
 
             for col_table, col_name in referenced_columns:
-                col_key = f"{col_table}[{col_name}]"
-                if col_key in result.column_to_measures:
-                    result.column_to_measures[col_key].append(measure_info)
+                # Use normalized key for lookup, store under display key
+                norm_key = _normalize_column_key(col_table, col_name)
+                if norm_key in normalized_to_display:
+                    # Found matching column from DMV - use its display key
+                    display_key = normalized_to_display[norm_key]
+                    result.column_to_measures[display_key].append(measure_info)
                 else:
-                    # Column might not be in COLUMNS DMV (e.g., calculated columns or parsing artifacts)
-                    result.column_to_measures[col_key] = [measure_info]
+                    # Column not in COLUMNS DMV (e.g., calculated columns or parsing artifacts)
+                    # Store under a display key derived from the parsed reference
+                    display_key = _make_display_key(col_table, col_name)
+                    if display_key in result.column_to_measures:
+                        result.column_to_measures[display_key].append(measure_info)
+                    else:
+                        result.column_to_measures[display_key] = [measure_info]
+                    # Also add to normalized mapping for future lookups
+                    normalized_to_display[norm_key] = display_key
 
         # Calculate statistics - a column is "used" if referenced by measures OR in a relationship
-        used_by_measures = set(k for k, v in result.column_to_measures.items() if v)
-        all_used_columns = used_by_measures | result.relationship_columns
-        result.columns_with_usage = len(all_used_columns & set(result.column_to_measures.keys()))
+        # Use normalized keys for comparison
+        used_by_measures_normalized = set()
+        for k, v in result.column_to_measures.items():
+            if v:  # Has measures
+                # Find the normalized key for this display key
+                for norm_k, disp_k in normalized_to_display.items():
+                    if disp_k == k:
+                        used_by_measures_normalized.add(norm_k)
+                        break
+        all_used_normalized = used_by_measures_normalized | relationship_normalized
+        # Count how many display keys correspond to used normalized keys
+        result.columns_with_usage = sum(
+            1 for norm_k in normalized_to_display.keys()
+            if norm_k in all_used_normalized
+        )
         result.columns_without_usage = result.total_columns_analyzed - result.columns_with_usage
 
         # Cache the result
@@ -466,6 +515,16 @@ class ColumnUsageAnalyzer:
 
         tables_lower = {t.lower() for t in tables} if tables else None
 
+        # Build normalized set of relationship columns for case-insensitive matching
+        relationship_normalized = {
+            _normalize_column_key(
+                rel_key.split('[')[0],
+                rel_key.split('[')[1].rstrip(']')
+            )
+            for rel_key in mapping.relationship_columns
+            if '[' in rel_key
+        }
+
         # Track ALL columns in scope for complete picture
         all_columns_in_scope: List[Dict[str, str]] = []
         used_by_measures: List[Dict[str, str]] = []
@@ -486,10 +545,13 @@ class ColumnUsageAnalyzer:
             col_info = {"table": col_table, "column": col_name}
             all_columns_in_scope.append(col_info)
 
+            # Use normalized key for relationship matching
+            norm_key = _normalize_column_key(col_table, col_name)
+
             if measures:
                 # Used by measures
                 used_by_measures.append(col_info)
-            elif col_key in mapping.relationship_columns:
+            elif norm_key in relationship_normalized:
                 # Used by relationship only (not in measures)
                 used_by_relationships_only.append(col_info)
             else:

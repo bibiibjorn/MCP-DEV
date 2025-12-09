@@ -79,7 +79,9 @@
       "Bash(cmd.exe /c \"package.bat 2>&1\")",
       "Bash(cmd.exe /c \"echo test && echo %CD%\")",
       "Bash(powershell -Command \"cd ''c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\MCP-PowerBi-Finvision\\build''; cmd /c ''package.bat''\")",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(mcpb --version:*)",
+      "Bash(mcpb validate:*)"
     ],
     "deny": [],
     "ask": []
