@@ -84,20 +84,46 @@ class PbirReportAnalyzer:
         return result
 
     def _parse_report_json(self, file_path: str) -> Dict[str, Any]:
-        """Parse report.json file."""
+        """Parse report.json file including report-level filters."""
         try:
             data = load_json(file_path)
+
+            # Extract report-level filters (filters on all pages)
+            report_filters = self._extract_report_filters(data)
 
             return {
                 "name": data.get("name", ""),
                 "description": data.get("description", ""),
                 "version": data.get("$schema", ""),
-                "config": data.get("config", {})
+                "config": data.get("config", {}),
+                "filters": report_filters
             }
 
         except Exception as e:
             self.logger.warning(f"Failed to parse report.json: {e}")
             return {}
+
+    def _extract_report_filters(self, report_data: Dict) -> List[Dict[str, Any]]:
+        """Extract report-level filters (filters on all pages) from report.json."""
+        filters = []
+
+        try:
+            filter_config = report_data.get("filterConfig", {})
+            report_filters = filter_config.get("filters", [])
+
+            for filt in report_filters:
+                filter_info = {
+                    "name": filt.get("name", ""),
+                    "field": self._extract_filter_field(filt.get("field", {})),
+                    "how_created": filt.get("howCreated", ""),
+                    "filter_level": "report"  # Mark as report-level filter
+                }
+                filters.append(filter_info)
+
+        except Exception as e:
+            self.logger.warning(f"Error extracting report filters: {e}")
+
+        return filters
 
     def _parse_pages(self, pages_path: str) -> List[Dict[str, Any]]:
         """Parse all page definitions."""
@@ -166,7 +192,8 @@ class PbirReportAnalyzer:
                 filter_info = {
                     "name": filt.get("name", ""),
                     "field": self._extract_filter_field(filt.get("field", {})),
-                    "how_created": filt.get("howCreated", "")
+                    "how_created": filt.get("howCreated", ""),
+                    "filter_level": "page"  # Mark as page-level filter
                 }
                 filters.append(filter_info)
 

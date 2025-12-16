@@ -81,7 +81,8 @@
       "Bash(powershell -Command \"cd ''c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\MCP-PowerBi-Finvision\\build''; cmd /c ''package.bat''\")",
       "Bash(powershell:*)",
       "Bash(mcpb --version:*)",
-      "Bash(mcpb validate:*)"
+      "Bash(mcpb validate:*)",
+      "Bash(start \"\" \"c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\exports\\filter_test\\Family_Office_-_Remodel_PBIP_Analysis_20251209_153438.html\")"
     ],
     "deny": [],
     "ask": []

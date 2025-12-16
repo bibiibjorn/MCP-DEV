@@ -1141,9 +1141,31 @@ class PbipHtmlGenerator:
                                                     </div>
                                                 </div>
 
+                                                <!-- Filter Pane Usage -->
+                                                <div v-if="getColumnFilterUsage(selectedTable.name, col.name).length > 0">
+                                                    <div class="font-medium text-gray-700 text-sm mb-2 flex items-center gap-1">
+                                                        <span>🔽</span>
+                                                        <span>Used in Filter Pane</span>
+                                                    </div>
+                                                    <div class="space-y-2">
+                                                        <div v-for="(filters, pageName) in groupFilterUsageByPage(selectedTable.name, col.name)" :key="pageName" class="border border-gray-100 rounded p-2">
+                                                            <div class="font-medium text-gray-800 text-sm mb-1 flex items-center gap-1">
+                                                                <span v-if="filters[0]?.filterLevel === 'report'">🌐</span>
+                                                                <span v-else>📄</span>
+                                                                <span>{{{{ pageName }}}}</span>
+                                                            </div>
+                                                            <div class="space-y-1 ml-5">
+                                                                <div v-for="(filter, idx) in filters" :key="idx" class="text-xs text-gray-600 flex items-center gap-2">
+                                                                    <span class="badge" :class="filter.filterLevel === 'report' ? 'badge-info' : 'badge-warning'" style="font-size: 10px; padding: 2px 6px;">{{{{ filter.filterLevel === 'report' ? 'Report Filter' : 'Page Filter' }}}}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
                                                 <!-- No Usage Message -->
-                                                <div v-if="getColumnVisualUsage(selectedTable.name, col.name).length === 0 && getColumnFieldParams(selectedTable.name, col.name).length === 0 && getColumnUsedByMeasures(selectedTable.name, col.name).length === 0" class="text-xs text-gray-500 italic">
-                                                    Not used in any measures, visuals, or field parameters
+                                                <div v-if="getColumnVisualUsage(selectedTable.name, col.name).length === 0 && getColumnFieldParams(selectedTable.name, col.name).length === 0 && getColumnUsedByMeasures(selectedTable.name, col.name).length === 0 && getColumnFilterUsage(selectedTable.name, col.name).length === 0" class="text-xs text-gray-500 italic">
+                                                    Not used in any measures, visuals, field parameters, or filters
                                                 </div>
                                             </div>
                                         </div>
@@ -1660,6 +1682,28 @@ class PbipHtmlGenerator:
                                     </div>
                                 </div>
                                 <div v-else class="text-gray-500 italic">Not used in any visuals</div>
+                            </div>
+
+                            <!-- Used In Filter Pane -->
+                            <div v-if="reportData" class="mt-6">
+                                <h3 class="text-lg font-semibold text-gray-900 mb-3">
+                                    Used In Filter Pane ({{{{ currentColumnDependencies.filterUsage?.length || 0 }}}})
+                                </h3>
+                                <div v-if="currentColumnDependencies.filterUsage?.length > 0" class="space-y-3">
+                                    <div v-for="(filters, pageName) in groupFilterUsageByPageForKey(currentColumnDependencies.filterUsage)" :key="pageName" class="border border-gray-200 rounded p-3">
+                                        <div class="font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                                            <span v-if="filters[0]?.filterLevel === 'report'">🌐</span>
+                                            <span v-else>📄</span>
+                                            <span>{{{{ pageName }}}}</span>
+                                        </div>
+                                        <div class="space-y-1 ml-6">
+                                            <div v-for="(filter, idx) in filters" :key="idx" class="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                                                <span class="badge" :class="filter.filterLevel === 'report' ? 'badge-info' : 'badge-warning'">{{{{ filter.filterLevel === 'report' ? 'Report Filter' : 'Page Filter' }}}}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-else class="text-gray-500 italic">Not used in any filters</div>
                             </div>
                         </div>
                         <div v-else class="stat-card">
@@ -3308,7 +3352,7 @@ class PbipHtmlGenerator:
 
                 currentColumnDependencies() {{
                     if (!this.selectedColumnKey) {{
-                        return {{ usedByMeasures: [], usedByFieldParams: [], visualUsage: [] }};
+                        return {{ usedByMeasures: [], usedByFieldParams: [], visualUsage: [], filterUsage: [] }};
                     }}
 
                     const deps = this.dependencies;
@@ -3317,8 +3361,9 @@ class PbipHtmlGenerator:
                     const usedByMeasures = deps.column_to_measure?.[key] || [];
                     const usedByFieldParams = deps.column_to_field_params?.[key] || [];
                     const visualUsage = this.findColumnInVisuals(key);
+                    const filterUsage = this.findColumnInFilters(key);
 
-                    return {{ usedByMeasures, usedByFieldParams, visualUsage }};
+                    return {{ usedByMeasures, usedByFieldParams, visualUsage, filterUsage }};
                 }},
 
                 filteredCommands() {{
@@ -5226,6 +5271,32 @@ class PbipHtmlGenerator:
                     return grouped;
                 }},
 
+                groupFilterUsageByPage(tableName, columnName) {{
+                    const usage = this.getColumnFilterUsage(tableName, columnName);
+                    const grouped = {{}};
+                    usage.forEach(filter => {{
+                        const pageName = filter.pageName || 'Unknown Page';
+                        if (!grouped[pageName]) {{
+                            grouped[pageName] = [];
+                        }}
+                        grouped[pageName].push(filter);
+                    }});
+                    return grouped;
+                }},
+
+                groupFilterUsageByPageForKey(filterUsage) {{
+                    // Group filter usage array by page name for display
+                    const grouped = {{}};
+                    (filterUsage || []).forEach(filter => {{
+                        const pageName = filter.pageName || 'Unknown Page';
+                        if (!grouped[pageName]) {{
+                            grouped[pageName] = [];
+                        }}
+                        grouped[pageName].push(filter);
+                    }});
+                    return grouped;
+                }},
+
                 // Helper for Measure Chains: Group visuals by page
                 groupVisualsByPage(visualUsage) {{
                     const grouped = {{}};
@@ -5526,6 +5597,84 @@ class PbipHtmlGenerator:
                             }}
                         }});
                     }});
+                    return usage;
+                }},
+
+                getColumnFilterUsage(tableName, columnName) {{
+                    // Get filter pane usage for a column (both page-level and report-level filters)
+                    if (!this.reportData) return [];
+                    const usage = [];
+
+                    // Check report-level filters (filters on all pages)
+                    const reportFilters = this.reportData.report?.filters || [];
+                    reportFilters.forEach(filter => {{
+                        const field = filter.field || {{}};
+                        if (field.type === 'Column' && field.table === tableName && field.name === columnName) {{
+                            usage.push({{
+                                pageName: 'All Pages (Report Filter)',
+                                filterLevel: 'report',
+                                filterName: field.name,
+                                filterType: 'Column'
+                            }});
+                        }}
+                    }});
+
+                    // Check page-level filters
+                    (this.reportData.pages || []).forEach(page => {{
+                        const pageFilters = page.filters || [];
+                        pageFilters.forEach(filter => {{
+                            const field = filter.field || {{}};
+                            if (field.type === 'Column' && field.table === tableName && field.name === columnName) {{
+                                usage.push({{
+                                    pageName: page.display_name || page.name,
+                                    filterLevel: 'page',
+                                    filterName: field.name,
+                                    filterType: 'Column'
+                                }});
+                            }}
+                        }});
+                    }});
+
+                    return usage;
+                }},
+
+                findColumnInFilters(columnKey) {{
+                    // Find all filter usages for a column key like "Table[Column]"
+                    if (!this.reportData) return [];
+                    const usage = [];
+                    const match = columnKey.match(/(.+?)\\[(.+?)\\]/);
+                    if (!match) return usage;
+
+                    const [, tableName, columnName] = match;
+
+                    // Check report-level filters
+                    const reportFilters = this.reportData.report?.filters || [];
+                    reportFilters.forEach(filter => {{
+                        const field = filter.field || {{}};
+                        if (field.type === 'Column' && field.table === tableName && field.name === columnName) {{
+                            usage.push({{
+                                pageName: 'All Pages (Report Filter)',
+                                filterLevel: 'report',
+                                filterName: field.name
+                            }});
+                        }}
+                    }});
+
+                    // Check page-level filters
+                    (this.reportData.pages || []).forEach(page => {{
+                        const pageFilters = page.filters || [];
+                        pageFilters.forEach(filter => {{
+                            const field = filter.field || {{}};
+                            if (field.type === 'Column' && field.table === tableName && field.name === columnName) {{
+                                usage.push({{
+                                    pageName: page.display_name || page.name,
+                                    filterLevel: 'page',
+                                    filterName: field.name
+                                }});
+                            }}
+                        }});
+                    }});
+
                     return usage;
                 }},
 
