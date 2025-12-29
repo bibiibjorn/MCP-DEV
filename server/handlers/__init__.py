@@ -12,6 +12,8 @@ from server.handlers.export_handler import register_export_handlers
 from server.handlers.documentation_handler import register_documentation_handlers
 from server.handlers.comparison_handler import register_comparison_handlers
 from server.handlers.pbip_handler import register_pbip_handlers
+from server.handlers.slicer_operations_handler import register_slicer_operations_handler
+from server.handlers.report_info_handler import register_report_info_handler
 from server.handlers.tmdl_handler import register_tmdl_operations_handler
 from server.handlers.dax_context_handler import register_dax_handlers
 from server.handlers.user_guide_handler import register_user_guide_handlers
@@ -62,6 +64,8 @@ def register_all_handlers(registry):
     register_documentation_handlers(registry)
     register_comparison_handlers(registry)
     register_pbip_handlers(registry)
+    register_slicer_operations_handler(registry)
+    register_report_info_handler(registry)
     register_tmdl_operations_handler(registry)
     register_dax_handlers(registry)
     register_user_guide_handlers(registry)

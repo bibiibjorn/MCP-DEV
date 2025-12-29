@@ -115,11 +115,17 @@ class PbipHtmlGenerator:
 
         return html_content
 
+
     def _get_head_section(self, escaped_repo_name: str) -> str:
         """Get HTML head with meta tags and CDN imports."""
         return f"""    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{escaped_repo_name} - PBIP Analysis</title>
+
+    <!-- Google Fonts: Fraunces (display), DM Sans (body), IBM Plex Mono (code) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 
     <!-- Vue 3, D3.js, and Dagre for graph layouts -->
     <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
@@ -129,91 +135,2246 @@ class PbipHtmlGenerator:
 """
 
     def _get_styles(self) -> str:
-        """Get all CSS styles."""
+        """Get all CSS styles for Warm Terracotta design."""
         return f"""    <style>
+        /* === WARM TERRACOTTA DESIGN SYSTEM === */
         :root {{
-            --primary: #5B7FFF;
-            --primary-dark: #4A6BEE;
-            --primary-light: #7D9AFF;
-            --success: #10b981;
-            --danger: #ef4444;
-            --warning: #f59e0b;
-            --bg-dark: #1e293b;
-            --text-dark: #0f172a;
-            --bg-light: #F5F7FF;
-            --accent: #FF6B9D;
+            /* Primary Warm Palette */
+            --terracotta: #C4A484;
+            --terracotta-dark: #A67B5B;
+            --clay: #E8DDD3;
+            --sand: #F5F1EB;
+            --cream: #FAF8F5;
+            --white: #FFFFFF;
+
+            /* Earth Tones */
+            --sienna: #9C6644;
+            --umber: #6B4423;
+            --olive: #606C38;
+            --sage: #8B9D77;
+
+            /* Text Colors */
+            --ink: #2D2418;
+            --charcoal: #4A4238;
+            --stone: #7A7267;
+            --pebble: #A9A196;
+
+            /* Accent Colors */
+            --coral: #E07A5F;
+            --rust: #BC6C25;
+            --ocean: #457B9D;
+
+            /* Status Colors */
+            --success: #606C38;
+            --warning: #BC6C25;
+            --danger: #9B2C2C;
+            --info: #457B9D;
+
+            /* Spacing */
+            --space-xs: 4px;
+            --space-sm: 8px;
+            --space-md: 16px;
+            --space-lg: 24px;
+            --space-xl: 32px;
+            --space-2xl: 48px;
+
+            /* Border Radius */
+            --radius-sm: 8px;
+            --radius-md: 16px;
+            --radius-lg: 24px;
+            --radius-full: 9999px;
+
+            /* Sidebar */
+            --sidebar-width: 280px;
+        }}
+
+        *, *::before, *::after {{
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
         }}
 
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background: linear-gradient(135deg, #F5F7FF 0%, #E8ECFF 100%);
+            font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--cream);
+            color: var(--ink);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
         }}
 
+        /* Subtle texture overlay */
+        body::before {{
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+            opacity: 0.02;
+            pointer-events: none;
+            z-index: -1;
+        }}
+
+        /* === DARK MODE === */
         .dark-mode {{
-            background: #0f172a;
-            color: #e2e8f0;
+            --cream: #1a1614;
+            --sand: #252220;
+            --clay: #332e2a;
+            --white: #2d2825;
+            --ink: #f5f1eb;
+            --charcoal: #e8ddd3;
+            --stone: #a9a196;
+            --pebble: #7a7267;
+            --terracotta: #d4b494;
+            --sienna: #bc8664;
         }}
 
-        .dark-mode .bg-white {{
-            background: #1e293b !important;
+        .dark-mode body {{
+            background: var(--cream);
         }}
 
-        .dark-mode .text-gray-900 {{
-            color: #f1f5f9 !important;
+        /* === LAYOUT === */
+        .app-layout {{
+            display: flex;
+            min-height: 100vh;
         }}
 
-        .dark-mode .text-gray-600,
-        .dark-mode .text-gray-500 {{
-            color: #cbd5e1 !important;
+        /* === SIDEBAR === */
+        .sidebar {{
+            width: var(--sidebar-width);
+            background: var(--white);
+            border-right: 1px solid var(--clay);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 100;
+            transition: transform 0.3s ease;
         }}
 
-        .dark-mode .border-gray-200,
-        .dark-mode .border-gray-300 {{
-            border-color: #475569 !important;
+        .sidebar__header {{
+            padding: var(--space-lg);
+            border-bottom: 1px solid var(--clay);
         }}
 
-        .dark-mode .bg-gray-50 {{
-            background: #334155 !important;
+        .sidebar__brand {{
+            display: flex;
+            align-items: center;
+            gap: var(--space-md);
         }}
 
-        .dark-mode .bg-gray-100 {{
-            background: #475569 !important;
+        .sidebar__logo {{
+            width: 44px;
+            height: 44px;
+            background: linear-gradient(135deg, var(--terracotta) 0%, var(--sienna) 100%);
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(156, 102, 68, 0.2);
+            flex-shrink: 0;
         }}
 
+        .sidebar__logo svg {{
+            width: 22px;
+            height: 22px;
+            color: var(--white);
+        }}
+
+        .sidebar__title {{
+            font-family: 'Fraunces', Georgia, serif;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--ink);
+            line-height: 1.3;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }}
+
+        .sidebar__subtitle {{
+            font-size: 12px;
+            color: var(--stone);
+            margin-top: 2px;
+        }}
+
+        .sidebar__nav {{
+            flex: 1;
+            overflow-y: auto;
+            padding: var(--space-md);
+        }}
+
+        .nav-section {{
+            margin-bottom: var(--space-lg);
+        }}
+
+        .nav-section__title {{
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--pebble);
+            padding: var(--space-sm) var(--space-md);
+            margin-bottom: var(--space-xs);
+        }}
+
+        .nav-item {{
+            display: flex;
+            align-items: center;
+            gap: var(--space-md);
+            padding: var(--space-md) var(--space-md);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+            background: transparent;
+            width: 100%;
+            text-align: left;
+            font-family: inherit;
+            font-size: 14px;
+            color: var(--charcoal);
+        }}
+
+        .nav-item:hover {{
+            background: var(--sand);
+            color: var(--ink);
+        }}
+
+        .nav-item.active {{
+            background: rgba(196, 164, 132, 0.15);
+            color: var(--sienna);
+            font-weight: 600;
+        }}
+
+        .nav-item.active::before {{
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 3px;
+            height: 24px;
+            background: var(--terracotta);
+            border-radius: 0 3px 3px 0;
+        }}
+
+        .nav-item__icon {{
+            width: 20px;
+            height: 20px;
+            color: var(--stone);
+            flex-shrink: 0;
+        }}
+
+        .nav-item.active .nav-item__icon {{
+            color: var(--sienna);
+        }}
+
+        .nav-item__text {{
+            flex: 1;
+        }}
+
+        .nav-item__badge {{
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 8px;
+            background: var(--sand);
+            border-radius: var(--radius-full);
+            color: var(--stone);
+        }}
+
+        .nav-item.active .nav-item__badge {{
+            background: rgba(196, 164, 132, 0.3);
+            color: var(--sienna);
+        }}
+
+        .nav-subitems {{
+            margin-left: 36px;
+            padding-left: var(--space-md);
+            border-left: 2px solid var(--clay);
+            margin-top: var(--space-xs);
+        }}
+
+        .nav-subitem {{
+            display: block;
+            padding: var(--space-sm) var(--space-md);
+            font-size: 13px;
+            color: var(--stone);
+            cursor: pointer;
+            border-radius: var(--radius-sm);
+            transition: all 0.15s ease;
+            border: none;
+            background: transparent;
+            width: 100%;
+            text-align: left;
+        }}
+
+        .nav-subitem:hover {{
+            color: var(--charcoal);
+            background: var(--sand);
+        }}
+
+        .nav-subitem.active {{
+            color: var(--sienna);
+            font-weight: 600;
+        }}
+
+        .sidebar__footer {{
+            padding: var(--space-md);
+            border-top: 1px solid var(--clay);
+            display: flex;
+            gap: var(--space-sm);
+        }}
+
+        /* === MAIN CONTENT === */
+        .main-wrapper {{
+            flex: 1;
+            margin-left: var(--sidebar-width);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }}
+
+        /* === HEADER === */
+        .header {{
+            padding: var(--space-lg) var(--space-2xl);
+            background: var(--white);
+            border-bottom: 1px solid var(--clay);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }}
+
+        .header__inner {{
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: var(--space-lg);
+        }}
+
+        .header__title {{
+            font-family: 'Fraunces', Georgia, serif;
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--ink);
+        }}
+
+        .header__actions {{
+            display: flex;
+            align-items: center;
+            gap: var(--space-md);
+        }}
+
+        .search-box {{
+            position: relative;
+        }}
+
+        .search-box__input {{
+            width: 280px;
+            padding: var(--space-md) var(--space-lg);
+            padding-left: 44px;
+            background: var(--sand);
+            border: 2px solid transparent;
+            border-radius: var(--radius-full);
+            font-family: inherit;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }}
+
+        .search-box__input:focus {{
+            outline: none;
+            border-color: var(--terracotta);
+            background: var(--white);
+            box-shadow: 0 4px 20px rgba(196, 164, 132, 0.15);
+        }}
+
+        .search-box__icon {{
+            position: absolute;
+            left: var(--space-lg);
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--stone);
+            width: 18px;
+            height: 18px;
+        }}
+
+        .btn-icon {{
+            width: 44px;
+            height: 44px;
+            border-radius: var(--radius-md);
+            border: none;
+            background: var(--sand);
+            color: var(--charcoal);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }}
+
+        .btn-icon:hover {{
+            background: var(--clay);
+            transform: translateY(-2px);
+        }}
+
+        .btn-icon svg {{
+            width: 20px;
+            height: 20px;
+        }}
+
+        /* === MAIN CONTENT AREA === */
+        .main-content {{
+            flex: 1;
+            padding: var(--space-2xl);
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }}
+
+        /* === HERO SECTION === */
+        .hero {{
+            display: grid;
+            grid-template-columns: 1fr 360px;
+            gap: var(--space-2xl);
+            margin-bottom: var(--space-2xl);
+        }}
+
+        .hero__content {{
+            padding-right: var(--space-xl);
+        }}
+
+        .hero__eyebrow {{
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-sm);
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--sienna);
+            margin-bottom: var(--space-lg);
+        }}
+
+        .hero__eyebrow::before {{
+            content: '';
+            width: 24px;
+            height: 2px;
+            background: var(--terracotta);
+            border-radius: 1px;
+        }}
+
+        .hero__title {{
+            font-family: 'Fraunces', Georgia, serif;
+            font-size: 42px;
+            font-weight: 600;
+            line-height: 1.15;
+            letter-spacing: -0.02em;
+            color: var(--ink);
+            margin-bottom: var(--space-md);
+        }}
+
+        .hero__description {{
+            font-size: 16px;
+            line-height: 1.7;
+            color: var(--stone);
+            max-width: 520px;
+        }}
+
+        .hero__stats {{
+            display: flex;
+            gap: var(--space-xl);
+            margin-top: var(--space-2xl);
+            padding-top: var(--space-xl);
+            border-top: 1px solid var(--clay);
+        }}
+
+        .hero-stat {{
+            text-align: left;
+        }}
+
+        .hero-stat__value {{
+            font-family: 'Fraunces', Georgia, serif;
+            font-size: 36px;
+            font-weight: 700;
+            color: var(--ink);
+            line-height: 1;
+        }}
+
+        .hero-stat__label {{
+            font-size: 13px;
+            color: var(--stone);
+            margin-top: var(--space-xs);
+        }}
+
+        /* === FEATURE CARD === */
+        .feature-card {{
+            background: linear-gradient(135deg, var(--terracotta) 0%, var(--sienna) 100%);
+            border-radius: var(--radius-lg);
+            padding: var(--space-xl);
+            color: var(--white);
+            position: relative;
+            overflow: hidden;
+        }}
+
+        .feature-card::before {{
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -30%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 50%);
+            pointer-events: none;
+        }}
+
+        .feature-card__label {{
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            opacity: 0.8;
+            margin-bottom: var(--space-md);
+        }}
+
+        .feature-card__title {{
+            font-family: 'Fraunces', Georgia, serif;
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: var(--space-md);
+        }}
+
+        .feature-card__value {{
+            font-family: 'Fraunces', Georgia, serif;
+            font-size: 56px;
+            font-weight: 700;
+            line-height: 1;
+            margin-bottom: var(--space-md);
+        }}
+
+        .feature-card__meta {{
+            font-size: 14px;
+            opacity: 0.9;
+        }}
+
+        /* === METRICS GRID === */
+        .metrics-grid {{
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: var(--space-lg);
+            margin-bottom: var(--space-2xl);
+        }}
+
+        .metric-card {{
+            background: var(--white);
+            border-radius: var(--radius-md);
+            padding: var(--space-xl);
+            border: 1px solid var(--clay);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }}
+
+        .metric-card::before {{
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--clay);
+            transition: background 0.3s ease;
+        }}
+
+        .metric-card:hover {{
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(45, 36, 24, 0.08);
+        }}
+
+        .metric-card:hover::before {{
+            background: var(--terracotta);
+        }}
+
+        .metric-card--coral::before {{ background: var(--coral); }}
+        .metric-card--sage::before {{ background: var(--sage); }}
+        .metric-card--ocean::before {{ background: var(--ocean); }}
+        .metric-card--rust::before {{ background: var(--rust); }}
+
+        .metric-card__icon {{
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: var(--space-lg);
+        }}
+
+        .metric-card--coral .metric-card__icon {{ background: rgba(224, 122, 95, 0.1); color: var(--coral); }}
+        .metric-card--sage .metric-card__icon {{ background: rgba(139, 157, 119, 0.1); color: var(--sage); }}
+        .metric-card--ocean .metric-card__icon {{ background: rgba(69, 123, 157, 0.1); color: var(--ocean); }}
+        .metric-card--rust .metric-card__icon {{ background: rgba(188, 108, 37, 0.1); color: var(--rust); }}
+
+        .metric-card__value {{
+            font-family: 'Fraunces', Georgia, serif;
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--ink);
+            line-height: 1;
+            margin-bottom: var(--space-sm);
+        }}
+
+        .metric-card__label {{
+            font-size: 14px;
+            color: var(--stone);
+        }}
+
+        /* Additional metric card color variants */
+        .metric-card--terracotta::before {{ background: var(--terracotta); }}
+        .metric-card--sienna::before {{ background: var(--sienna); }}
+        .metric-card--terracotta .metric-card__icon {{ background: rgba(196, 164, 132, 0.15); color: var(--terracotta-dark); }}
+        .metric-card--sienna .metric-card__icon {{ background: rgba(156, 102, 68, 0.15); color: var(--sienna); }}
+
+        .metric-card__icon svg {{
+            width: 24px;
+            height: 24px;
+        }}
+
+        /* === HERO SECTION === */
+        .hero-section {{
+            background: linear-gradient(135deg, var(--white) 0%, var(--sand) 100%);
+            border-radius: var(--radius-lg);
+            padding: var(--space-2xl);
+            margin-bottom: var(--space-2xl);
+            border: 1px solid var(--clay);
+            text-align: center;
+        }}
+
+        .hero-section__eyebrow {{
+            display: inline-block;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--sienna);
+            padding: var(--space-sm) var(--space-lg);
+            background: rgba(196, 164, 132, 0.15);
+            border-radius: var(--radius-full);
+            margin-bottom: var(--space-lg);
+        }}
+
+        .hero-section__title {{
+            font-family: 'Fraunces', Georgia, serif;
+            font-size: 36px;
+            font-weight: 700;
+            color: var(--ink);
+            margin-bottom: var(--space-md);
+            line-height: 1.2;
+        }}
+
+        .hero-section__subtitle {{
+            font-size: 16px;
+            color: var(--stone);
+            max-width: 600px;
+            margin: 0 auto;
+        }}
+
+        /* === INFO GRID === */
+        .info-grid {{
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: var(--space-lg);
+        }}
+
+        .info-item {{
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-xs);
+        }}
+
+        .info-item__label {{
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--stone);
+        }}
+
+        .info-item__value {{
+            font-size: 15px;
+            color: var(--ink);
+        }}
+
+        /* === INSIGHTS GRID === */
+        .insights-grid {{
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: var(--space-lg);
+        }}
+
+        .insight-card {{
+            display: flex;
+            gap: var(--space-lg);
+            padding: var(--space-lg);
+            background: var(--sand);
+            border-radius: var(--radius-md);
+            transition: all 0.2s ease;
+        }}
+
+        .insight-card:hover {{
+            background: var(--clay);
+            transform: translateY(-2px);
+        }}
+
+        .insight-card__icon {{
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }}
+
+        .insight-card__icon svg {{
+            width: 24px;
+            height: 24px;
+        }}
+
+        .insight-card__icon--terracotta {{ background: rgba(196, 164, 132, 0.2); color: var(--terracotta-dark); }}
+        .insight-card__icon--sienna {{ background: rgba(156, 102, 68, 0.2); color: var(--sienna); }}
+        .insight-card__icon--sage {{ background: rgba(139, 157, 119, 0.2); color: var(--olive); }}
+        .insight-card__icon--ocean {{ background: rgba(69, 123, 157, 0.2); color: var(--ocean); }}
+
+        .insight-card__content {{
+            flex: 1;
+        }}
+
+        .insight-card__title {{
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--stone);
+            margin-bottom: var(--space-xs);
+        }}
+
+        .insight-card__value {{
+            font-size: 15px;
+            color: var(--ink);
+            font-weight: 500;
+        }}
+
+        /* === ALERTS === */
+        .alert {{
+            display: flex;
+            gap: var(--space-lg);
+            padding: var(--space-lg);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--space-lg);
+            border-left: 4px solid;
+        }}
+
+        .alert--warning {{
+            background: rgba(188, 108, 37, 0.08);
+            border-left-color: var(--warning);
+        }}
+
+        .alert--success {{
+            background: rgba(96, 108, 56, 0.08);
+            border-left-color: var(--success);
+        }}
+
+        .alert--danger {{
+            background: rgba(155, 44, 44, 0.08);
+            border-left-color: var(--danger);
+        }}
+
+        .alert--info {{
+            background: rgba(69, 123, 157, 0.08);
+            border-left-color: var(--info);
+        }}
+
+        .alert__icon {{
+            width: 24px;
+            height: 24px;
+            flex-shrink: 0;
+        }}
+
+        .alert__icon svg {{
+            width: 24px;
+            height: 24px;
+        }}
+
+        .alert--warning .alert__icon {{ color: var(--warning); }}
+        .alert--success .alert__icon {{ color: var(--success); }}
+        .alert--danger .alert__icon {{ color: var(--danger); }}
+        .alert--info .alert__icon {{ color: var(--info); }}
+
+        .alert__content {{
+            flex: 1;
+        }}
+
+        .alert__title {{
+            font-weight: 600;
+            color: var(--ink);
+            margin-bottom: var(--space-sm);
+        }}
+
+        .alert__list {{
+            list-style: disc;
+            list-style-position: inside;
+            font-size: 14px;
+            color: var(--charcoal);
+        }}
+
+        .alert__list li {{
+            margin-bottom: var(--space-xs);
+        }}
+
+        /* === ENHANCED FEATURE CARD === */
+        .feature-card__header {{
+            display: flex;
+            gap: var(--space-lg);
+            align-items: flex-start;
+            margin-bottom: var(--space-xl);
+            position: relative;
+            z-index: 1;
+        }}
+
+        .feature-card__icon {{
+            width: 56px;
+            height: 56px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }}
+
+        .feature-card__icon svg {{
+            width: 28px;
+            height: 28px;
+        }}
+
+        .feature-card__titles {{
+            flex: 1;
+        }}
+
+        .feature-card__subtitle {{
+            font-size: 14px;
+            opacity: 0.9;
+            line-height: 1.5;
+        }}
+
+        .feature-card__body {{
+            position: relative;
+            z-index: 1;
+        }}
+
+        /* === HEALTH STATS === */
+        .health-stats {{
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: var(--space-lg);
+        }}
+
+        .health-stat {{
+            background: rgba(255, 255, 255, 0.15);
+            padding: var(--space-lg);
+            border-radius: var(--radius-md);
+        }}
+
+        .health-stat__label {{
+            font-size: 13px;
+            opacity: 0.85;
+            margin-bottom: var(--space-xs);
+        }}
+
+        .health-stat__value {{
+            font-size: 16px;
+            font-weight: 600;
+        }}
+
+        /* === CARD BODY === */
+        .card__body {{
+            padding-top: var(--space-md);
+        }}
+
+        /* === TAB CONTENT === */
+        .tab-content {{
+            animation: fadeIn 0.3s ease;
+        }}
+
+        .tab-content > * + * {{
+            margin-top: var(--space-xl);
+        }}
+
+        .tab-content .tab-header {{
+            margin-bottom: var(--space-lg);
+        }}
+
+        @keyframes fadeIn {{
+            from {{ opacity: 0; transform: translateY(8px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
+        }}
+
+        /* === TWO COLUMN GRID === */
+        .two-column-grid {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--space-xl);
+        }}
+
+        /* === METRICS STACK === */
+        .metrics-stack {{
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-md);
+        }}
+
+        .metrics-stack .metric-card {{
+            margin: 0;
+        }}
+
+        /* === BADGE VARIANTS === */
+        .badge-terracotta {{ background: rgba(196, 164, 132, 0.2); color: var(--sienna); }}
+
+        /* === CONTENT SUB-TABS === */
+        .subtabs {{
+            display: flex;
+            gap: var(--space-sm);
+            margin-bottom: var(--space-xl);
+            padding-bottom: var(--space-md);
+            border-bottom: 1px solid var(--clay);
+        }}
+
+        .subtab {{
+            padding: var(--space-md) var(--space-lg);
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--stone);
+            background: transparent;
+            border: none;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+        }}
+
+        .subtab:hover {{
+            background: var(--sand);
+            color: var(--charcoal);
+        }}
+
+        .subtab.active {{
+            background: rgba(196, 164, 132, 0.15);
+            color: var(--sienna);
+            font-weight: 600;
+        }}
+
+        .subtab__icon {{
+            width: 16px;
+            height: 16px;
+        }}
+
+        /* === CONTENT PANELS === */
+        .panel-grid {{
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: var(--space-xl);
+        }}
+
+        .panel {{
+            background: var(--white);
+            border: 1px solid var(--clay);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            min-width: 0;
+        }}
+
+        .panel__header {{
+            padding: var(--space-lg);
+            border-bottom: 1px solid var(--clay);
+            background: var(--sand);
+        }}
+
+        .panel__title {{
+            font-family: 'Fraunces', Georgia, serif;
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--ink);
+            margin-bottom: var(--space-sm);
+        }}
+
+        .panel__search {{
+            width: 100%;
+            padding: var(--space-md);
+            border: 1px solid var(--clay);
+            border-radius: var(--radius-sm);
+            font-family: inherit;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }}
+
+        .panel__search:focus {{
+            outline: none;
+            border-color: var(--terracotta);
+            box-shadow: 0 0 0 3px rgba(196, 164, 132, 0.15);
+        }}
+
+        .panel__body {{
+            padding: var(--space-md);
+            max-height: 600px;
+            overflow-y: auto;
+        }}
+
+        /* === TABLE ITEM === */
+        .table-item {{
+            padding: var(--space-md);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            border-left: 3px solid transparent;
+            margin-bottom: var(--space-sm);
+        }}
+
+        .table-item:hover {{
+            background: var(--sand);
+        }}
+
+        .table-item.active {{
+            background: rgba(196, 164, 132, 0.12);
+            border-left-color: var(--terracotta);
+        }}
+
+        .table-item__name {{
+            font-weight: 600;
+            color: var(--ink);
+            margin-bottom: var(--space-xs);
+        }}
+
+        .table-item__meta {{
+            font-size: 13px;
+            color: var(--stone);
+            margin-bottom: var(--space-sm);
+        }}
+
+        .table-item__badges {{
+            display: flex;
+            gap: var(--space-xs);
+            flex-wrap: wrap;
+        }}
+
+        /* === DETAIL PANEL === */
+        .detail-header {{
+            padding: var(--space-xl);
+            border-bottom: 1px solid var(--clay);
+            background: linear-gradient(135deg, var(--white) 0%, var(--sand) 100%);
+        }}
+
+        .detail-header__title {{
+            font-family: 'Fraunces', Georgia, serif;
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--ink);
+            margin-bottom: var(--space-sm);
+        }}
+
+        .detail-header__badges {{
+            display: flex;
+            gap: var(--space-sm);
+            margin-top: var(--space-md);
+        }}
+
+        .detail-stats {{
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: var(--space-md);
+            padding: var(--space-lg);
+            background: var(--sand);
+            border-bottom: 1px solid var(--clay);
+        }}
+
+        .detail-stat {{
+            text-align: center;
+        }}
+
+        .detail-stat__value {{
+            font-family: 'Fraunces', Georgia, serif;
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--ink);
+            line-height: 1;
+        }}
+
+        .detail-stat__label {{
+            font-size: 12px;
+            color: var(--stone);
+            margin-top: var(--space-xs);
+        }}
+
+        .detail-body {{
+            padding: var(--space-lg);
+        }}
+
+        /* === DETAIL SUB-TABS === */
+        .detail-tabs {{
+            display: flex;
+            gap: var(--space-sm);
+            margin-bottom: var(--space-lg);
+            flex-wrap: wrap;
+        }}
+
+        .detail-tab {{
+            padding: var(--space-sm) var(--space-lg);
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--stone);
+            background: var(--sand);
+            border: none;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }}
+
+        .detail-tab:hover {{
+            background: var(--clay);
+            color: var(--charcoal);
+        }}
+
+        .detail-tab.active {{
+            background: var(--terracotta);
+            color: var(--white);
+        }}
+
+        /* === COLUMN CARD === */
+        .column-card {{
+            background: var(--white);
+            border: 1px solid var(--clay);
+            border-radius: var(--radius-sm);
+            padding: var(--space-md);
+            transition: all 0.15s ease;
+        }}
+
+        .column-card:hover {{
+            border-color: var(--terracotta);
+        }}
+
+        .column-card__header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--space-sm);
+        }}
+
+        .column-card__name {{
+            font-weight: 600;
+            color: var(--ink);
+        }}
+
+        .column-card__badges {{
+            display: flex;
+            gap: var(--space-xs);
+        }}
+
+        .column-card__type {{
+            font-size: 12px;
+            color: var(--stone);
+        }}
+
+        .column-card__source {{
+            font-size: 11px;
+            color: var(--pebble);
+            margin-top: var(--space-xs);
+        }}
+
+        /* === MEASURE CARD === */
+        .measure-card {{
+            background: var(--white);
+            border: 1px solid var(--clay);
+            border-radius: var(--radius-md);
+            padding: var(--space-lg);
+            margin-bottom: var(--space-md);
+            transition: all 0.2s ease;
+        }}
+
+        .measure-card:hover {{
+            border-color: var(--terracotta);
+            box-shadow: 0 4px 16px rgba(45, 36, 24, 0.08);
+        }}
+
+        .measure-card__header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--space-md);
+        }}
+
+        .measure-card__title {{
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+        }}
+
+        .measure-card__name {{
+            font-weight: 600;
+            color: var(--ink);
+        }}
+
+        .measure-card__toggle {{
+            background: transparent;
+            border: none;
+            color: var(--sienna);
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            transition: color 0.2s;
+        }}
+
+        .measure-card__toggle:hover {{
+            color: var(--terracotta-dark);
+        }}
+
+        /* === RELATIONSHIP CARD === */
+        .relationship-card {{
+            background: var(--white);
+            border: 1px solid var(--clay);
+            border-radius: var(--radius-sm);
+            padding: var(--space-md);
+            margin-bottom: var(--space-sm);
+        }}
+
+        .relationship-card--incoming {{
+            border-left: 3px solid var(--sage);
+        }}
+
+        .relationship-card--outgoing {{
+            border-left: 3px solid var(--ocean);
+        }}
+
+        .relationship-card__header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--space-xs);
+        }}
+
+        .relationship-card__table {{
+            font-weight: 600;
+            color: var(--ink);
+        }}
+
+        .relationship-card__detail {{
+            font-size: 13px;
+            color: var(--stone);
+        }}
+
+        .relationship-card__columns {{
+            font-size: 13px;
+            color: var(--stone);
+        }}
+
+        .relationship-card__details {{
+            font-size: 13px;
+            color: var(--charcoal);
+            line-height: 1.6;
+        }}
+
+        .relationship-card__badges {{
+            display: flex;
+            gap: var(--space-sm);
+            margin-top: var(--space-sm);
+        }}
+
+        .relationship-card--fact-dim {{
+            border-left: 3px solid var(--ocean);
+            background: rgba(69, 123, 157, 0.05);
+        }}
+
+        .relationship-card--dim-dim {{
+            border-left: 3px solid var(--coral);
+            background: rgba(224, 122, 95, 0.05);
+        }}
+
+        .relationship-card--other {{
+            border-left: 3px solid var(--stone);
+            background: var(--sand);
+        }}
+
+        /* === COLUMNS GRID === */
+        .columns-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: var(--space-md);
+        }}
+
+        /* === MEASURES LIST === */
+        .measures-list {{
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-md);
+        }}
+
+        .measure-card__info {{
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            flex-wrap: wrap;
+        }}
+
+        /* === RELATIONSHIP SECTIONS === */
+        .relationships-section {{
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-xl);
+        }}
+
+        .relationship-group {{
+            margin-bottom: var(--space-lg);
+        }}
+
+        .relationship-group__title {{
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--charcoal);
+            margin-bottom: var(--space-md);
+        }}
+
+        .relationship-list {{
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm);
+        }}
+
+        .relationships-view {{
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-xl);
+        }}
+
+        .relationship-type-group {{
+            margin-bottom: var(--space-lg);
+        }}
+
+        .relationship-type-group__title {{
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--ink);
+            margin-bottom: var(--space-md);
+            padding-bottom: var(--space-sm);
+            border-bottom: 2px solid var(--clay);
+        }}
+
+        /* === USAGE STYLES === */
+        .usage-title {{
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--ink);
+            margin-bottom: var(--space-lg);
+        }}
+
+        .usage-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: var(--space-md);
+        }}
+
+        .usage-card {{
+            background: var(--white);
+            border: 1px solid var(--clay);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+        }}
+
+        .usage-card__header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--space-md);
+            background: var(--sand);
+            border-bottom: 1px solid var(--clay);
+        }}
+
+        .usage-card__name {{
+            font-weight: 600;
+            color: var(--ink);
+        }}
+
+        .usage-card__body {{
+            padding: var(--space-md);
+        }}
+
+        .usage-section {{
+            margin-bottom: var(--space-md);
+        }}
+
+        .usage-section__title {{
+            display: flex;
+            align-items: center;
+            gap: var(--space-xs);
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--charcoal);
+            margin-bottom: var(--space-sm);
+        }}
+
+        .usage-items {{
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-xs);
+            margin-left: var(--space-lg);
+        }}
+
+        .usage-item {{
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            font-size: 12px;
+            padding: var(--space-xs) var(--space-sm);
+            background: var(--cream);
+            border-radius: var(--radius-sm);
+            color: var(--charcoal);
+        }}
+
+        .usage-item--measure {{
+            background: rgba(69, 123, 157, 0.1);
+        }}
+
+        .usage-item--field-param {{
+            background: rgba(139, 157, 119, 0.1);
+        }}
+
+        .usage-pages {{
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm);
+        }}
+
+        .usage-page {{
+            padding: var(--space-sm);
+            background: var(--cream);
+            border-radius: var(--radius-sm);
+        }}
+
+        .usage-page__header {{
+            display: flex;
+            align-items: center;
+            gap: var(--space-xs);
+            font-weight: 500;
+            font-size: 13px;
+            color: var(--charcoal);
+            margin-bottom: var(--space-xs);
+        }}
+
+        .usage-page__count {{
+            font-size: 11px;
+            color: var(--stone);
+        }}
+
+        .usage-empty {{
+            font-size: 12px;
+            color: var(--stone);
+            font-style: italic;
+        }}
+
+        /* === DETAIL CONTENT === */
+        .detail-tabs-container {{
+            margin-top: var(--space-lg);
+        }}
+
+        .detail-content {{
+            padding-top: var(--space-md);
+            padding: var(--space-md);
+            overflow: auto;
+            max-height: 600px;
+        }}
+
+        /* === FOLDER/MEASURE BROWSER === */
+        .folder-group {{
+            margin-bottom: var(--space-sm);
+        }}
+
+        .folder-header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--space-sm) var(--space-md);
+            background: var(--sand);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }}
+
+        .folder-header:hover {{
+            background: var(--clay);
+        }}
+
+        .folder-header__info {{
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+        }}
+
+        .folder-header__icon {{
+            font-size: 14px;
+        }}
+
+        .folder-header__name {{
+            font-weight: 600;
+            color: var(--ink);
+        }}
+
+        .folder-header__count {{
+            font-size: 12px;
+            color: var(--stone);
+        }}
+
+        .folder-header__toggle {{
+            font-size: 10px;
+            color: var(--stone);
+            transition: transform 0.2s ease;
+        }}
+
+        .folder-content {{
+            margin-left: var(--space-lg);
+            margin-top: var(--space-xs);
+        }}
+
+        .measure-item {{
+            padding: var(--space-sm) var(--space-md);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }}
+
+        .measure-item:hover {{
+            background: var(--clay);
+        }}
+
+        .measure-item.active {{
+            background: var(--terracotta);
+            color: var(--white);
+        }}
+
+        .measure-item__name {{
+            font-size: 13px;
+            font-weight: 500;
+        }}
+
+        .measure-item__table {{
+            font-size: 11px;
+            color: var(--stone);
+        }}
+
+        .measure-item.active .measure-item__table {{
+            color: rgba(255, 255, 255, 0.8);
+        }}
+
+        /* === MEASURE DETAIL === */
+        .measure-detail {{
+            padding: var(--space-lg);
+        }}
+
+        .measure-detail__header {{
+            margin-bottom: var(--space-lg);
+        }}
+
+        .measure-detail__name {{
+            font-family: 'Fraunces', Georgia, serif;
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--ink);
+            margin-bottom: var(--space-sm);
+        }}
+
+        .measure-detail__badges {{
+            display: flex;
+            gap: var(--space-sm);
+            flex-wrap: wrap;
+        }}
+
+        /* === PANEL GRID FOR MEASURES === */
+        .panel-grid--measures {{
+            height: 600px;
+        }}
+
+        /* === SEARCH INPUT === */
+        .search-input {{
+            width: 100%;
+            padding: var(--space-sm) var(--space-md);
+            border: 1px solid var(--clay);
+            border-radius: var(--radius-sm);
+            margin-bottom: var(--space-md);
+            font-size: 14px;
+            background: var(--white);
+            transition: all 0.2s ease;
+        }}
+
+        .search-input:focus {{
+            outline: none;
+            border-color: var(--terracotta);
+            box-shadow: 0 0 0 3px rgba(196, 164, 132, 0.2);
+        }}
+
+        /* === EMPTY STATE MODIFIERS === */
+        .empty-state--centered {{
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 200px;
+        }}
+
+        .empty-state--small {{
+            padding: var(--space-md);
+            font-size: 13px;
+        }}
+
+        /* === BTN LINK === */
+        .btn-link {{
+            background: transparent;
+            border: none;
+            color: var(--sienna);
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            transition: color 0.2s;
+        }}
+
+        .btn-link:hover {{
+            color: var(--terracotta-dark);
+        }}
+
+        /* === BADGE MODIFIER === */
+        .badge--small {{
+            font-size: 10px;
+            padding: 2px 6px;
+        }}
+
+        /* === PAGE LIST (Report Tab) === */
+        .page-list {{
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm);
+        }}
+
+        .page-item {{
+            padding: var(--space-md);
+            border-left: 3px solid var(--clay);
+            background: var(--white);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }}
+
+        .page-item:hover {{
+            border-left-color: var(--terracotta);
+            background: var(--sand);
+        }}
+
+        .page-item.active {{
+            border-left-color: var(--terracotta);
+            background: var(--cream);
+        }}
+
+        .page-item__name {{
+            font-weight: 600;
+            color: var(--ink);
+            margin-bottom: var(--space-xs);
+        }}
+
+        .page-item__count {{
+            font-size: 12px;
+            color: var(--stone);
+        }}
+
+        /* === FILTERS SECTION === */
+        .filters-section {{
+            background: rgba(69, 123, 157, 0.1);
+            padding: var(--space-lg);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--space-lg);
+        }}
+
+        .filters-section__title {{
+            font-weight: 600;
+            color: var(--ink);
+            margin-bottom: var(--space-sm);
+        }}
+
+        .filters-section__badges {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-sm);
+        }}
+
+        /* === VISUAL GROUPS === */
+        .visual-groups {{
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-lg);
+        }}
+
+        .visual-group {{
+            margin-bottom: var(--space-md);
+        }}
+
+        .visual-group__header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--space-md);
+            background: var(--sand);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }}
+
+        .visual-group__header:hover {{
+            background: var(--clay);
+        }}
+
+        .visual-group__header.collapsed .visual-group__toggle {{
+            transform: rotate(-90deg);
+        }}
+
+        .visual-group__info {{
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+        }}
+
+        .visual-group__name {{
+            font-weight: 600;
+            color: var(--ink);
+        }}
+
+        .visual-group__count {{
+            font-size: 12px;
+            color: var(--stone);
+        }}
+
+        .visual-group__toggle {{
+            font-size: 10px;
+            color: var(--stone);
+            transition: transform 0.2s ease;
+        }}
+
+        .visual-group__items {{
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-md);
+            margin-top: var(--space-md);
+            padding-left: var(--space-md);
+        }}
+
+        /* === VISUAL CARD === */
+        .visual-card {{
+            background: var(--white);
+            border: 1px solid var(--clay);
+            border-radius: var(--radius-md);
+            padding: var(--space-lg);
+            transition: all 0.15s ease;
+        }}
+
+        .visual-card:hover {{
+            border-color: var(--terracotta);
+        }}
+
+        .visual-card__header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--space-md);
+        }}
+
+        .visual-card__name {{
+            font-weight: 600;
+            color: var(--ink);
+        }}
+
+        .visual-card__id {{
+            font-size: 11px;
+            color: var(--pebble);
+            font-family: 'IBM Plex Mono', monospace;
+        }}
+
+        .visual-card__section {{
+            margin-bottom: var(--space-sm);
+        }}
+
+        .visual-card__section-title {{
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--charcoal);
+            margin-bottom: var(--space-xs);
+        }}
+
+        .visual-card__badges {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-xs);
+        }}
+
+        /* === DEPENDENCY SUB-TABS === */
+        .dependency-tabs {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-lg);
+            padding-bottom: var(--space-md);
+            border-bottom: 1px solid var(--clay);
+            margin-bottom: var(--space-xl);
+        }}
+
+        .dependency-tab {{
+            padding: var(--space-sm) 0;
+            border: none;
+            background: transparent;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--stone);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s ease;
+        }}
+
+        .dependency-tab:hover {{
+            color: var(--charcoal);
+        }}
+
+        .dependency-tab.active {{
+            color: var(--sienna);
+            border-bottom-color: var(--terracotta);
+        }}
+
+        /* === DEPENDENCY LIST ITEM === */
+        .dep-list-item {{
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            padding: var(--space-sm) var(--space-md);
+            background: var(--sand);
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            color: var(--charcoal);
+        }}
+
+        /* === DEPENDENCY SECTION === */
+        .dependency-section {{
+            margin-bottom: var(--space-xl);
+        }}
+
+        .dependency-section__title {{
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--ink);
+            margin-bottom: var(--space-md);
+        }}
+
+        .dependency-list {{
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm);
+        }}
+
+        .dependency-groups {{
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-md);
+        }}
+
+        /* === DATA TABLE === */
+        .data-table {{
+            width: 100%;
+            border-collapse: collapse;
+        }}
+
+        .data-table th {{
+            text-align: left;
+            padding: var(--space-sm) var(--space-md);
+            background: var(--sand);
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--charcoal);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 2px solid var(--clay);
+        }}
+
+        .data-table td {{
+            padding: var(--space-sm) var(--space-md);
+            font-size: 13px;
+            color: var(--charcoal);
+            border-bottom: 1px solid var(--cream);
+        }}
+
+        .data-table tr:hover td {{
+            background: var(--cream);
+        }}
+
+        /* === CHAIN CARD === */
+        .chain-card {{
+            background: var(--white);
+            border: 1px solid var(--clay);
+            border-radius: var(--radius-md);
+            padding: var(--space-lg);
+            margin-bottom: var(--space-md);
+        }}
+
+        .chain-card:hover {{
+            border-color: var(--terracotta);
+        }}
+
+        .chain-card__header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--space-md);
+        }}
+
+        .chain-card__title {{
+            font-weight: 600;
+            color: var(--ink);
+        }}
+
+        .chain-card__depth {{
+            font-size: 12px;
+            color: var(--stone);
+        }}
+
+        .chain-card__measures {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-xs);
+        }}
+
+        /* === TABLE CONTAINER === */
+        .table-container {{
+            width: 100%;
+            overflow-x: auto;
+        }}
+
+        .table-container--scrollable {{
+            max-height: 600px;
+            overflow-y: auto;
+        }}
+
+        /* === SCROLLABLE CONTAINER === */
+        .scrollable {{
+            max-height: 500px;
+            overflow-y: auto;
+            padding-right: var(--space-sm);
+        }}
+
+        .scrollable::-webkit-scrollbar {{
+            width: 6px;
+        }}
+
+        .scrollable::-webkit-scrollbar-track {{
+            background: var(--sand);
+            border-radius: 3px;
+        }}
+
+        .scrollable::-webkit-scrollbar-thumb {{
+            background: var(--clay);
+            border-radius: 3px;
+        }}
+
+        .scrollable::-webkit-scrollbar-thumb:hover {{
+            background: var(--terracotta);
+        }}
+
+        /* === EMPTY STATE === */
+        .empty-state {{
+            text-align: center;
+            padding: var(--space-2xl);
+            color: var(--stone);
+        }}
+
+        .empty-state__icon {{
+            font-size: 48px;
+            margin-bottom: var(--space-lg);
+        }}
+
+        .empty-state__text {{
+            font-size: 15px;
+        }}
+
+        /* Legacy KPI Card (for compatibility) */
+        .kpi-card {{
+            background: var(--white);
+            border: 1px solid var(--clay);
+            padding: var(--space-xl);
+            border-radius: var(--radius-md);
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }}
+
+        .kpi-card::before {{
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--terracotta);
+        }}
+
+        .kpi-card:hover {{
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(45, 36, 24, 0.08);
+        }}
+
+        .kpi-card h3 {{
+            font-size: 13px;
+            font-weight: 600;
+            margin: 0 0 var(--space-sm) 0;
+            color: var(--stone);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }}
+
+        .kpi-card .value {{
+            font-family: 'Fraunces', Georgia, serif;
+            font-size: 36px;
+            font-weight: 700;
+            color: var(--ink);
+            margin: 0;
+        }}
+
+        /* === SECTION STYLES === */
+        .section {{
+            margin-bottom: var(--space-2xl);
+        }}
+
+        .section__header {{
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            margin-bottom: var(--space-xl);
+        }}
+
+        .section__title-group {{
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-xs);
+        }}
+
+        .section__eyebrow {{
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--sienna);
+        }}
+
+        .section__title {{
+            font-family: 'Fraunces', Georgia, serif;
+            font-size: 28px;
+            font-weight: 600;
+            color: var(--ink);
+        }}
+
+        /* === CARDS === */
+        .card {{
+            background: var(--white);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--clay);
+            padding: var(--space-xl);
+            transition: all 0.3s ease;
+        }}
+
+        .card:hover {{
+            border-color: var(--terracotta);
+            box-shadow: 0 8px 32px rgba(196, 164, 132, 0.15);
+        }}
+
+        .card__header {{
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: var(--space-md);
+        }}
+
+        .card__title {{
+            font-family: 'Fraunces', Georgia, serif;
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--ink);
+        }}
+
+        /* Legacy stat-card (for compatibility) */
+        .stat-card {{
+            background: var(--white);
+            border-radius: var(--radius-md);
+            padding: var(--space-xl);
+            border: 1px solid var(--clay);
+        }}
+
+        /* === TABLES === */
+        .data-table {{
+            width: 100%;
+            border-collapse: collapse;
+        }}
+
+        .data-table thead {{
+            background: var(--sand);
+            position: sticky;
+            top: 0;
+        }}
+
+        .data-table th {{
+            padding: var(--space-md) var(--space-lg);
+            text-align: left;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: var(--stone);
+            border-bottom: 1px solid var(--clay);
+        }}
+
+        .data-table td {{
+            padding: var(--space-md) var(--space-lg);
+            font-size: 14px;
+            color: var(--charcoal);
+            border-bottom: 1px solid var(--clay);
+        }}
+
+        .data-table tbody tr {{
+            transition: background 0.15s ease;
+        }}
+
+        .data-table tbody tr:hover {{
+            background: var(--sand);
+        }}
+
+        /* === BADGES === */
+        .badge {{
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: var(--radius-full);
+            font-size: 12px;
+            font-weight: 600;
+        }}
+
+        .badge-primary {{ background: rgba(196, 164, 132, 0.15); color: var(--sienna); }}
+        .badge-success {{ background: rgba(96, 108, 56, 0.15); color: var(--olive); }}
+        .badge-danger {{ background: rgba(155, 44, 44, 0.15); color: var(--danger); }}
+        .badge-warning {{ background: rgba(188, 108, 37, 0.15); color: var(--rust); }}
+        .badge-info {{ background: rgba(69, 123, 157, 0.15); color: var(--ocean); }}
+        .badge-gray {{ background: var(--sand); color: var(--stone); }}
+
+        .badge--dimension {{
+            background: rgba(139, 157, 119, 0.15);
+            color: var(--olive);
+        }}
+
+        .badge--fact {{
+            background: rgba(69, 123, 157, 0.15);
+            color: var(--ocean);
+        }}
+
+        /* === BUTTONS === */
+        .btn {{
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-sm);
+            padding: var(--space-md) var(--space-xl);
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: var(--radius-full);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }}
+
+        .btn--outline {{
+            background: transparent;
+            border: 2px solid var(--clay);
+            color: var(--charcoal);
+        }}
+
+        .btn--outline:hover {{
+            border-color: var(--terracotta);
+            color: var(--sienna);
+        }}
+
+        .btn--primary {{
+            background: var(--ink);
+            border: 2px solid var(--ink);
+            color: var(--white);
+        }}
+
+        .btn--primary:hover {{
+            background: var(--charcoal);
+            border-color: var(--charcoal);
+        }}
+
+        /* === LIST ITEMS === */
         .list-item {{
+            padding: var(--space-md);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
             transition: all 0.15s ease;
         }}
 
         .list-item:hover {{
-            background-color: #E8ECFF;
+            background: var(--sand);
             transform: translateX(4px);
         }}
 
         .list-item.selected {{
-            background: linear-gradient(90deg, #E8ECFF 0%, #D4DBFF 100%);
-            border-left: 4px solid var(--primary);
-            box-shadow: 0 2px 8px rgba(91, 127, 255, 0.15);
+            background: rgba(196, 164, 132, 0.15);
+            border-left: 3px solid var(--terracotta);
         }}
 
-        .dark-mode .list-item:hover {{
-            background-color: #334155 !important;
+        /* === FOLDER STRUCTURE === */
+        .folder-item {{
+            margin-bottom: var(--space-md);
         }}
 
-        .dark-mode .list-item.selected {{
-            background-color: #1e40af !important;
+        .folder-header {{
+            background: var(--sand);
+            padding: var(--space-md) var(--space-lg);
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            color: var(--charcoal);
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.15s ease;
         }}
 
-        /* Grouped list items */
+        .folder-header:hover {{
+            background: var(--clay);
+        }}
+
+        .folder-content {{
+            margin-left: var(--space-lg);
+            margin-top: var(--space-sm);
+            padding-left: var(--space-lg);
+            border-left: 2px solid var(--clay);
+        }}
+
+        /* === LIST GROUP === */
         .list-group-header {{
-            background: linear-gradient(90deg, #5B7FFF 0%, #7D9AFF 100%);
+            background: linear-gradient(90deg, var(--terracotta) 0%, var(--sienna) 100%);
             color: white;
-            padding: 0.75rem 1rem;
+            padding: var(--space-md) var(--space-lg);
             font-weight: 600;
             cursor: pointer;
-            border-radius: 0.375rem;
-            margin-bottom: 0.5rem;
+            border-radius: var(--radius-sm);
+            margin-bottom: var(--space-sm);
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -222,7 +2383,7 @@ class PbipHtmlGenerator:
 
         .list-group-header:hover {{
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(91, 127, 255, 0.3);
+            box-shadow: 0 4px 12px rgba(196, 164, 132, 0.3);
         }}
 
         .list-group-header .expand-icon {{
@@ -234,232 +2395,132 @@ class PbipHtmlGenerator:
         }}
 
         .list-group-items {{
-            margin-left: 1rem;
-            border-left: 2px solid #E8ECFF;
-            padding-left: 0.5rem;
+            margin-left: var(--space-lg);
+            border-left: 2px solid var(--clay);
+            padding-left: var(--space-md);
         }}
 
-        .dark-mode .list-group-items {{
-            border-left-color: #475569;
+        /* === CODE BLOCK === */
+        .code-block {{
+            background: var(--sand);
+            border: 1px solid var(--clay);
+            border-radius: var(--radius-sm);
+            padding: var(--space-lg);
+            font-family: 'IBM Plex Mono', 'Monaco', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            color: var(--charcoal);
         }}
 
-        /* Visual type icons */
+        /* === DAX SYNTAX HIGHLIGHTING === */
+        .dax-keyword {{ color: var(--ocean); font-weight: bold; }}
+        .dax-function {{ color: var(--sienna); font-weight: 600; }}
+        .dax-string {{ color: var(--olive); }}
+        .dax-number {{ color: var(--coral); }}
+        .dax-comment {{ color: var(--pebble); font-style: italic; }}
+        .dax-table {{ color: var(--ocean); }}
+        .dax-column {{ color: var(--rust); }}
+
+        .dark-mode .dax-keyword {{ color: #7eb8d6; }}
+        .dark-mode .dax-function {{ color: #d4b494; }}
+        .dark-mode .dax-string {{ color: #a8c686; }}
+        .dark-mode .dax-number {{ color: #e9a07a; }}
+        .dark-mode .dax-comment {{ color: #7a7267; }}
+        .dark-mode .dax-table {{ color: #7eb8d6; }}
+        .dark-mode .dax-column {{ color: #d4a056; }}
+
+        /* === VISUAL ICONS === */
         .visual-icon {{
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 2rem;
-            height: 2rem;
-            border-radius: 0.375rem;
-            font-size: 1.25rem;
-            margin-right: 0.5rem;
+            width: 32px;
+            height: 32px;
+            border-radius: var(--radius-sm);
+            font-size: 16px;
+            margin-right: var(--space-sm);
         }}
 
-        .visual-icon.slicer {{ background: #E8ECFF; }}
-        .visual-icon.table {{ background: #D1FAE5; }}
-        .visual-icon.card {{ background: #FEF3C7; }}
-        .visual-icon.chart {{ background: #FFE4E6; }}
-        .visual-icon.map {{ background: #E0E7FF; }}
-        .visual-icon.matrix {{ background: #FCE7F3; }}
+        .visual-icon.slicer {{ background: rgba(196, 164, 132, 0.15); }}
+        .visual-icon.table {{ background: rgba(139, 157, 119, 0.15); }}
+        .visual-icon.card {{ background: rgba(188, 108, 37, 0.15); }}
+        .visual-icon.chart {{ background: rgba(224, 122, 95, 0.15); }}
+        .visual-icon.map {{ background: rgba(69, 123, 157, 0.15); }}
+        .visual-icon.matrix {{ background: rgba(156, 102, 68, 0.15); }}
 
-        /* Folder structure */
-        .folder-item {{
-            margin-bottom: 0.75rem;
-        }}
-
-        .folder-header {{
-            background: #F1F5F9;
-            padding: 0.5rem 0.75rem;
-            border-radius: 0.375rem;
-            font-weight: 600;
-            color: #475569;
-            cursor: pointer;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            transition: all 0.15s ease;
-        }}
-
-        .folder-header:hover {{
-            background: #E2E8F0;
-        }}
-
-        .dark-mode .folder-header {{
-            background: #334155;
-            color: #CBD5E1;
-        }}
-
-        .dark-mode .folder-header:hover {{
-            background: #475569;
-        }}
-
-        .folder-content {{
-            margin-left: 1rem;
-            margin-top: 0.5rem;
-            padding-left: 0.75rem;
-            border-left: 2px solid #E2E8F0;
-        }}
-
-        .dark-mode .folder-content {{
-            border-left-color: #475569;
-        }}
-
-        /* DAX Syntax Highlighting */
-        .dax-keyword {{ color: #0066CC; font-weight: bold; }}
-        .dax-function {{ color: #7C3AED; font-weight: 600; }}
-        .dax-string {{ color: #059669; }}
-        .dax-number {{ color: #DC2626; }}
-        .dax-comment {{ color: #6B7280; font-style: italic; }}
-        .dax-table {{ color: #2563EB; }}
-        .dax-column {{ color: #EA580C; }}
-
-        .dark-mode .dax-keyword {{ color: #60A5FA; }}
-        .dark-mode .dax-function {{ color: #A78BFA; }}
-        .dark-mode .dax-string {{ color: #34D399; }}
-        .dark-mode .dax-number {{ color: #F87171; }}
-        .dark-mode .dax-comment {{ color: #9CA3AF; }}
-        .dark-mode .dax-table {{ color: #60A5FA; }}
-        .dark-mode .dax-column {{ color: #FB923C; }}
-
-        .badge {{
-            display: inline-block;
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }}
-
-        .badge-primary {{ background: #E8ECFF; color: #4A6BEE; }}
-        .badge-success {{ background: #d1fae5; color: #065f46; }}
-        .badge-danger {{ background: #fee2e2; color: #991b1b; }}
-        .badge-warning {{ background: #fef3c7; color: #92400e; }}
-        .badge-gray {{ background: #f1f5f9; color: #475569; }}
-
-        .scrollable {{
-            max-height: calc(100vh - 250px);
-            overflow-y: auto;
-        }}
-
-        .code-block {{
-            background: #f5f5f5;
-            border: 1px solid #e5e7eb;
-            border-radius: 0.5rem;
-            padding: 1rem;
-            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
-            font-size: 0.875rem;
-            overflow-x: auto;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }}
-
-        .dark-mode .code-block {{
-            background: #0f172a;
-            border: 1px solid #475569;
-            color: #e2e8f0;
-        }}
-
-        .stat-card {{
-            background: white;
-            border-radius: 0.5rem;
-            padding: 1.5rem;
-            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-        }}
-
-        .dark-mode .stat-card {{
-            background: #1e293b;
-            border: 1px solid #475569;
-        }}
-
-        .kpi-card {{
-            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-            color: white;
-            padding: 1.5rem;
-            border-radius: 0.5rem;
-            text-align: center;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }}
-
-        .kpi-card h3 {{
-            font-size: 0.875rem;
-            font-weight: 600;
-            margin: 0 0 0.5rem 0;
-            opacity: 0.9;
-        }}
-
-        .kpi-card .value {{
-            font-size: 2.5rem;
-            font-weight: bold;
-            margin: 0;
-        }}
-
+        /* === GRAPH CONTAINER === */
         #graph-container {{
-            border: 1px solid #e2e8f0;
-            border-radius: 0.5rem;
-            background: white;
+            border: 1px solid var(--clay);
+            border-radius: var(--radius-md);
+            background: var(--white);
             min-height: 600px;
             position: relative;
             overflow: hidden;
         }}
 
         #dependency-tree-container {{
-            border: 1px solid #e2e8f0;
-            border-radius: 0.5rem;
-            background: white;
+            border: 1px solid var(--clay);
+            border-radius: var(--radius-md);
+            background: var(--white);
             max-height: 600px;
             overflow-y: auto;
         }}
 
         .graph-controls {{
             display: flex;
-            gap: 0.5rem;
-            margin-bottom: 1rem;
+            gap: var(--space-sm);
+            margin-bottom: var(--space-lg);
             flex-wrap: wrap;
         }}
 
         .graph-control-btn {{
-            padding: 0.5rem 1rem;
-            border-radius: 0.5rem;
-            border: 2px solid #e2e8f0;
-            background: white;
+            padding: var(--space-sm) var(--space-lg);
+            border-radius: var(--radius-sm);
+            border: 2px solid var(--clay);
+            background: var(--white);
             cursor: pointer;
             font-weight: 600;
+            font-size: 13px;
             transition: all 0.2s;
         }}
 
         .graph-control-btn:hover {{
-            border-color: var(--primary);
-            background: #f0f4ff;
+            border-color: var(--terracotta);
+            background: rgba(196, 164, 132, 0.1);
         }}
 
         .graph-control-btn.active {{
-            border-color: var(--primary);
-            background: var(--primary);
-            color: white;
+            border-color: var(--terracotta);
+            background: var(--terracotta);
+            color: var(--white);
         }}
 
+        /* === TREE NODE === */
         .tree-node {{
             margin-left: 20px;
-            border-left: 2px solid #e2e8f0;
+            border-left: 2px solid var(--clay);
             padding-left: 12px;
         }}
 
         .tree-node-header {{
-            padding: 8px 12px;
-            margin: 4px 0;
-            border-radius: 6px;
+            padding: var(--space-sm) var(--space-md);
+            margin: var(--space-xs) 0;
+            border-radius: var(--radius-sm);
             cursor: pointer;
             transition: all 0.2s;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: var(--space-sm);
         }}
 
         .tree-node-header:hover {{
-            background: #f3f4f6;
+            background: var(--sand);
         }}
 
         .tree-node-header.expanded {{
-            background: #e8ecff;
+            background: rgba(196, 164, 132, 0.15);
             font-weight: 600;
         }}
 
@@ -474,29 +2535,30 @@ class PbipHtmlGenerator:
             transform: rotate(90deg);
         }}
 
+        /* === RELATIONSHIP LINKS === */
         .relationship-link {{
-            stroke: #94a3b8;
+            stroke: var(--pebble);
             stroke-width: 2px;
             fill: none;
         }}
 
         .relationship-link.active {{
-            stroke: #10b981;
+            stroke: var(--sage);
             stroke-width: 3px;
         }}
 
         .relationship-link.inactive {{
-            stroke: #ef4444;
+            stroke: var(--coral);
             stroke-width: 2px;
             stroke-dasharray: 5,5;
         }}
 
         .relationship-link.fact-to-dim {{
-            stroke: #3b82f6;
+            stroke: var(--ocean);
         }}
 
         .relationship-link.dim-to-dim {{
-            stroke: #8b5cf6;
+            stroke: var(--sienna);
         }}
 
         .graph-node {{
@@ -509,48 +2571,43 @@ class PbipHtmlGenerator:
         }}
 
         .graph-node.fact-table circle {{
-            fill: #3b82f6;
+            fill: var(--ocean);
         }}
 
         .graph-node.dim-table circle {{
-            fill: #10b981;
+            fill: var(--sage);
         }}
 
         .graph-node.other-table circle {{
-            fill: #94a3b8;
+            fill: var(--pebble);
         }}
 
         .graph-legend {{
             display: flex;
-            gap: 1rem;
-            margin-bottom: 1rem;
+            gap: var(--space-lg);
+            margin-bottom: var(--space-lg);
             flex-wrap: wrap;
-            font-size: 0.875rem;
+            font-size: 14px;
         }}
 
         .legend-item {{
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: var(--space-sm);
         }}
 
         .legend-color {{
             width: 20px;
             height: 20px;
-            border-radius: 4px;
-            border: 2px solid #1f2937;
+            border-radius: var(--radius-sm);
+            border: 2px solid var(--ink);
         }}
 
         .dark-mode #graph-container,
         .dark-mode #dependency-tree-container {{
-            background: #0f172a;
-            border-color: #475569;
+            background: var(--white);
+            border-color: var(--clay);
             min-height: 600px;
-        }}
-
-        .dark-mode #graph-container {{
-            background: #1e293b;
-            border-color: #475569;
         }}
 
         /* Vue.js cloak - hide uncompiled templates */
@@ -565,7 +2622,7 @@ class PbipHtmlGenerator:
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
+            background: rgba(45, 36, 24, 0.5);
             display: flex;
             align-items: flex-start;
             justify-content: center;
@@ -574,567 +2631,1921 @@ class PbipHtmlGenerator:
         }}
 
         .command-palette-content {{
-            background: white;
-            border-radius: 0.75rem;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            background: var(--white);
+            border-radius: var(--radius-lg);
+            box-shadow: 0 20px 50px rgba(45, 36, 24, 0.2);
             width: 90%;
             max-width: 600px;
             max-height: 70vh;
             overflow: hidden;
+            border: 1px solid var(--clay);
         }}
 
         .dark-mode .command-palette-content {{
-            background: #1e293b;
+            background: var(--white);
         }}
 
         /* Highlight flash animation */
         @keyframes highlight-flash {{
             0%, 100% {{ background-color: transparent; }}
-            50% {{ background-color: #fef3c7; }}
+            50% {{ background-color: rgba(196, 164, 132, 0.3); }}
         }}
 
         .highlight-flash {{
             animation: highlight-flash 2s ease-in-out;
         }}
 
-        /* v-cloak: Hide uncompiled Vue templates until Vue is ready */
-        [v-cloak] {{
-            display: none !important;
+        /* === SCROLLABLE === */
+        .scrollable {{
+            max-height: calc(100vh - 200px);
+            overflow-y: auto;
+        }}
+
+        /* === ANIMATIONS === */
+        @keyframes slideUp {{
+            from {{ opacity: 0; transform: translateY(24px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
+        }}
+
+        .animate-slide {{
+            animation: slideUp 0.6s ease forwards;
+        }}
+
+        .animate-slide:nth-child(1) {{ animation-delay: 0ms; }}
+        .animate-slide:nth-child(2) {{ animation-delay: 100ms; }}
+        .animate-slide:nth-child(3) {{ animation-delay: 200ms; }}
+        .animate-slide:nth-child(4) {{ animation-delay: 300ms; }}
+
+        /* === ADDITIONAL BADGE VARIANTS === */
+        .badge--ocean {{ background: rgba(69, 123, 157, 0.15); color: var(--ocean); }}
+        .badge--sage {{ background: rgba(139, 157, 119, 0.15); color: var(--sage); }}
+        .badge--terracotta {{ background: rgba(196, 164, 132, 0.2); color: var(--sienna); }}
+        .badge--purple {{ background: rgba(147, 112, 219, 0.15); color: #7c3aed; }}
+        .badge--neutral {{ background: var(--sand); color: var(--stone); }}
+
+        /* === STATUS BADGES === */
+        .status-badge {{
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: var(--radius-full);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }}
+
+        .status-badge--success {{
+            background: rgba(96, 108, 56, 0.15);
+            color: var(--olive);
+        }}
+
+        .status-badge--warning {{
+            background: rgba(188, 108, 37, 0.15);
+            color: var(--rust);
+        }}
+
+        .status-badge--error {{
+            background: rgba(155, 44, 44, 0.15);
+            color: var(--danger);
+        }}
+
+        /* === USAGE SCORE BADGE === */
+        .usage-score-badge {{
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: var(--radius-full);
+            font-size: 12px;
+            font-weight: 700;
+        }}
+
+        /* === CELL MODIFIERS === */
+        .cell--bold {{
+            font-weight: 600;
+            color: var(--ink);
+        }}
+
+        .cell--mono {{
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 12px;
+            color: var(--stone);
+        }}
+
+        .cell--center {{
+            text-align: center;
+        }}
+
+        /* === METRICS GRID VARIANTS === */
+        .metrics-grid--3 {{
+            grid-template-columns: repeat(3, 1fr);
+        }}
+
+        .metrics-grid--2 {{
+            grid-template-columns: repeat(2, 1fr);
+        }}
+
+        /* === PERSPECTIVE STYLES === */
+        .perspective-list {{
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-lg);
+        }}
+
+        .perspective-item {{
+            background: var(--sand);
+            border-radius: var(--radius-md);
+            padding: var(--space-lg);
+            transition: all 0.2s ease;
+        }}
+
+        .perspective-item:hover {{
+            background: var(--clay);
+        }}
+
+        .perspective-item__header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--space-md);
+        }}
+
+        .perspective-item__name {{
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--ink);
+        }}
+
+        .perspective-item__stats {{
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: var(--space-md);
+        }}
+
+        .perspective-stat {{
+            text-align: center;
+            padding: var(--space-md);
+            border-radius: var(--radius-sm);
+            background: var(--white);
+        }}
+
+        .perspective-stat--ocean {{ background: rgba(69, 123, 157, 0.1); }}
+        .perspective-stat--sage {{ background: rgba(139, 157, 119, 0.1); }}
+        .perspective-stat--purple {{ background: rgba(147, 112, 219, 0.1); }}
+        .perspective-stat--neutral {{ background: var(--sand); }}
+
+        .perspective-stat__label {{
+            display: block;
+            font-size: 12px;
+            color: var(--stone);
+            margin-bottom: var(--space-xs);
+        }}
+
+        .perspective-stat__value {{
+            display: block;
+            font-family: 'Fraunces', Georgia, serif;
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--ink);
+        }}
+
+        .perspective-stat--ocean .perspective-stat__value {{ color: var(--ocean); }}
+        .perspective-stat--sage .perspective-stat__value {{ color: var(--olive); }}
+        .perspective-stat--purple .perspective-stat__value {{ color: #7c3aed; }}
+
+        /* === COMMAND PALETTE STYLES === */
+        .command-palette__content {{
+            background: var(--white);
+            border-radius: var(--radius-lg);
+            box-shadow: 0 25px 50px -12px rgba(45, 36, 24, 0.25);
+            overflow: hidden;
+            max-width: 600px;
+            width: 100%;
+        }}
+
+        .command-palette__input-wrapper {{
+            padding: var(--space-lg);
+            border-bottom: 1px solid var(--clay);
+        }}
+
+        .command-palette__input {{
+            width: 100%;
+            padding: var(--space-md);
+            border: none;
+            background: transparent;
+            font-family: inherit;
+            font-size: 16px;
+            color: var(--ink);
+        }}
+
+        .command-palette__input:focus {{
+            outline: none;
+        }}
+
+        .command-palette__input::placeholder {{
+            color: var(--pebble);
+        }}
+
+        .command-palette__results {{
+            max-height: 400px;
+            overflow-y: auto;
+            padding: var(--space-sm);
+        }}
+
+        .command-palette__item {{
+            padding: var(--space-md) var(--space-lg);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }}
+
+        .command-palette__item:hover {{
+            background: var(--sand);
+        }}
+
+        .command-palette__item-name {{
+            font-weight: 600;
+            color: var(--ink);
+            margin-bottom: var(--space-xs);
+        }}
+
+        .command-palette__item-desc {{
+            font-size: 13px;
+            color: var(--stone);
+        }}
+
+        /* === PANEL LAYOUT === */
+        .panel-left {{
+            min-width: 0;
+        }}
+
+        .panel-right {{
+            min-width: 0;
+        }}
+
+        /* === CHAIN MEASURE ITEM === */
+        .chain-measure-item {{
+            padding: var(--space-md);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            border-left: 3px solid transparent;
+            margin-bottom: var(--space-sm);
+            background: var(--white);
+        }}
+
+        .chain-measure-item:hover {{
+            background: var(--sand);
+            border-left-color: var(--clay);
+        }}
+
+        .chain-measure-item.active {{
+            background: rgba(196, 164, 132, 0.15);
+            border-left-color: var(--terracotta);
+            box-shadow: 0 2px 8px rgba(196, 164, 132, 0.2);
+        }}
+
+        .chain-measure-item__name {{
+            font-weight: 600;
+            color: var(--ink);
+            margin-bottom: 2px;
+        }}
+
+        .chain-measure-item__table {{
+            font-size: 12px;
+            color: var(--stone);
+            margin-bottom: var(--space-sm);
+        }}
+
+        .chain-measure-item__badges {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-xs);
+        }}
+
+        /* === VISUAL SELECT ITEM === */
+        .visual-select-item {{
+            padding: var(--space-md);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            border-left: 3px solid transparent;
+            margin-bottom: var(--space-sm);
+            background: var(--white);
+            border: 1px solid var(--clay);
+        }}
+
+        .visual-select-item:hover {{
+            background: var(--sand);
+            border-left-color: var(--terracotta);
+        }}
+
+        .visual-select-item.active {{
+            background: rgba(196, 164, 132, 0.15);
+            border-left-color: var(--terracotta);
+            border-color: var(--terracotta);
+            box-shadow: 0 2px 8px rgba(196, 164, 132, 0.2);
+        }}
+
+        .visual-select-item__name {{
+            font-weight: 600;
+            color: var(--ink);
+            margin-top: var(--space-sm);
+            margin-bottom: 2px;
+        }}
+
+        .visual-select-item__meta {{
+            font-size: 12px;
+            color: var(--stone);
+        }}
+
+        /* === CHAIN SELECTED MEASURE === */
+        .chain-selected-measure {{
+            text-align: center;
+            padding: var(--space-lg);
+            background: linear-gradient(135deg, rgba(196, 164, 132, 0.15) 0%, rgba(156, 102, 68, 0.1) 100%);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--space-xl);
+            border: 2px solid var(--terracotta);
+        }}
+
+        .chain-selected-measure__label {{
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--sienna);
+            margin-bottom: var(--space-sm);
+        }}
+
+        .chain-selected-measure__name {{
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--ink);
+            word-break: break-all;
+        }}
+
+        /* === CHAIN SECTIONS === */
+        .chain-sections {{
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-lg);
+        }}
+
+        .chain-section {{
+            background: var(--sand);
+            border-radius: var(--radius-sm);
+            padding: var(--space-lg);
+        }}
+
+        .chain-section__header {{
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            margin-bottom: var(--space-md);
+            padding-bottom: var(--space-sm);
+            border-bottom: 1px solid var(--clay);
+        }}
+
+        .chain-section__header--upward {{
+            color: var(--ocean);
+        }}
+
+        .chain-section__header--downward {{
+            color: var(--olive);
+        }}
+
+        .chain-section__header--muted {{
+            color: var(--stone);
+        }}
+
+        .chain-section__title {{
+            font-weight: 600;
+            font-size: 13px;
+        }}
+
+        .chain-section__count {{
+            font-size: 12px;
+            color: var(--stone);
+        }}
+
+        /* === CHAIN TREE === */
+        .chain-tree {{
+            padding-left: var(--space-md);
+            border-left: 2px solid var(--clay);
+        }}
+
+        .chain-tree--nested {{
+            margin-left: var(--space-lg);
+            margin-top: var(--space-sm);
+        }}
+
+        .chain-tree--upward {{
+            border-left-color: var(--ocean);
+        }}
+
+        .chain-node {{
+            margin-bottom: var(--space-sm);
+        }}
+
+        .chain-node__item {{
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            padding: var(--space-sm) var(--space-md);
+            background: var(--white);
+            border-radius: var(--radius-sm);
+            transition: background 0.15s ease;
+        }}
+
+        .chain-node__item:hover {{
+            background: var(--clay);
+        }}
+
+        .chain-node__item--level1 {{
+            border-left: 3px solid var(--ocean);
+        }}
+
+        .chain-node__item--level2 {{
+            border-left: 3px solid rgba(69, 123, 157, 0.6);
+        }}
+
+        .chain-node__item--level3 {{
+            border-left: 3px solid rgba(69, 123, 157, 0.3);
+        }}
+
+        .chain-node__arrow {{
+            color: var(--stone);
+            font-size: 12px;
+        }}
+
+        .chain-node__name {{
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 13px;
+            color: var(--ink);
+        }}
+
+        .chain-node__more {{
+            font-size: 12px;
+            color: var(--stone);
+            font-style: italic;
+            padding-left: var(--space-xl);
+            margin-top: var(--space-xs);
+        }}
+
+        /* === CHAIN DIVIDER === */
+        .chain-divider {{
+            height: 1px;
+            background: var(--clay);
+            margin: var(--space-md) 0;
+        }}
+
+        /* === CHAIN DEPS GRID === */
+        .chain-deps-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: var(--space-sm);
+        }}
+
+        .chain-dep-item {{
+            padding: var(--space-sm) var(--space-md);
+            background: var(--white);
+            border-radius: var(--radius-sm);
+            border-left: 3px solid var(--olive);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 13px;
+            color: var(--ink);
+        }}
+
+        /* === CHAIN BASE MEASURE === */
+        .chain-base-measure {{
+            text-align: center;
+            padding: var(--space-lg);
+            background: rgba(96, 108, 56, 0.1);
+            border-radius: var(--radius-sm);
+            border: 1px dashed var(--olive);
+        }}
+
+        .chain-base-measure__icon {{
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--olive);
+            margin-bottom: var(--space-xs);
+        }}
+
+        .chain-base-measure__text {{
+            font-size: 13px;
+            color: var(--stone);
+        }}
+
+        .chain-empty {{
+            padding: var(--space-md);
+            text-align: center;
+            color: var(--stone);
+            font-style: italic;
+        }}
+
+        /* === VISUAL TRACE === */
+        .visual-trace-header {{
+            padding: var(--space-lg);
+            background: linear-gradient(135deg, var(--sand) 0%, var(--clay) 100%);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--space-xl);
+        }}
+
+        .visual-trace-header__name {{
+            font-family: 'Fraunces', Georgia, serif;
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--ink);
+            display: block;
+            margin-top: var(--space-sm);
+        }}
+
+        .visual-trace-header__page {{
+            font-size: 13px;
+            color: var(--stone);
+            margin-top: var(--space-xs);
+        }}
+
+        .trace-sections {{
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-lg);
+        }}
+
+        .trace-section {{
+            background: var(--sand);
+            border-radius: var(--radius-sm);
+            padding: var(--space-lg);
+        }}
+
+        .trace-section__header {{
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            margin-bottom: var(--space-md);
+            padding-bottom: var(--space-sm);
+            border-bottom: 1px solid var(--clay);
+        }}
+
+        .trace-section__header--visual {{
+            color: var(--sienna);
+        }}
+
+        .trace-section__title {{
+            font-weight: 600;
+            font-size: 13px;
+        }}
+
+        .trace-section__count {{
+            font-size: 12px;
+            color: var(--stone);
+        }}
+
+        .trace-tree {{
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-md);
+        }}
+
+        .trace-measure {{
+            padding: var(--space-md);
+            background: var(--white);
+            border-radius: var(--radius-sm);
+            border-left: 3px solid var(--terracotta);
+        }}
+
+        .trace-measure__name {{
+            font-weight: 600;
+            color: var(--ink);
+        }}
+
+        .trace-measure__table {{
+            font-size: 12px;
+            color: var(--stone);
+        }}
+
+        .trace-deps {{
+            margin-top: var(--space-md);
+            padding-top: var(--space-md);
+            border-top: 1px dashed var(--clay);
+        }}
+
+        .trace-deps__header {{
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--stone);
+            margin-bottom: var(--space-sm);
+        }}
+
+        .trace-deps__list {{
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm);
+            padding-left: var(--space-md);
+        }}
+
+        .trace-dep {{
+            padding: var(--space-sm);
+            background: var(--sand);
+            border-radius: var(--radius-sm);
+            border-left: 2px solid var(--ocean);
+        }}
+
+        .trace-dep__name {{
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--ink);
+        }}
+
+        .trace-dep__table {{
+            font-size: 11px;
+            color: var(--stone);
+        }}
+
+        .trace-base-deps {{
+            margin-top: var(--space-sm);
+            padding-left: var(--space-md);
+        }}
+
+        .trace-base-measure {{
+            padding: var(--space-xs) var(--space-sm);
+            background: rgba(96, 108, 56, 0.1);
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            color: var(--olive);
+            margin-top: var(--space-xs);
+        }}
+
+        .trace-summary {{
+            margin-top: var(--space-xl);
+            padding: var(--space-lg);
+            background: var(--sand);
+            border-radius: var(--radius-sm);
+        }}
+
+        /* === FORM STYLES === */
+        .form-group {{
+            margin-bottom: var(--space-lg);
+        }}
+
+        .form-label {{
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--stone);
+            margin-bottom: var(--space-sm);
+        }}
+
+        .form-select {{
+            width: 100%;
+            padding: var(--space-md);
+            border: 1px solid var(--clay);
+            border-radius: var(--radius-sm);
+            font-family: inherit;
+            font-size: 14px;
+            background: var(--white);
+            color: var(--ink);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }}
+
+        .form-select:focus {{
+            outline: none;
+            border-color: var(--terracotta);
+            box-shadow: 0 0 0 3px rgba(196, 164, 132, 0.15);
+        }}
+
+        /* === DISTRIBUTION LIST (for Data Quality) === */
+        .distribution-list {{
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm);
+        }}
+
+        .distribution-item {{
+            display: flex;
+            align-items: center;
+            gap: var(--space-md);
+            padding: var(--space-sm) var(--space-md);
+            background: var(--white);
+            border-radius: var(--radius-sm);
+        }}
+
+        .distribution-item__type {{
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--ink);
+            min-width: 120px;
+        }}
+
+        .distribution-item__bar {{
+            flex: 1;
+            height: 8px;
+            background: var(--clay);
+            border-radius: var(--radius-full);
+            overflow: hidden;
+        }}
+
+        .distribution-item__fill {{
+            height: 100%;
+            background: linear-gradient(90deg, var(--terracotta) 0%, var(--sienna) 100%);
+            border-radius: var(--radius-full);
+            transition: width 0.3s ease;
+        }}
+
+        .distribution-item__count {{
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--charcoal);
+            min-width: 50px;
+            text-align: right;
+        }}
+
+        .distribution-item__percent {{
+            font-size: 12px;
+            color: var(--stone);
+            min-width: 45px;
+            text-align: right;
+        }}
+
+        /* === GROUP HEADER (Code Quality collapsible groups) === */
+        .group-header {{
+            cursor: pointer;
+            background: var(--sand);
+        }}
+
+        .group-header:hover {{
+            background: var(--clay);
+        }}
+
+        .group-header td {{
+            padding: var(--space-md) !important;
+        }}
+
+        .group-header__content {{
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+        }}
+
+        .group-header__icon {{
+            font-size: 12px;
+            color: var(--charcoal);
+            width: 16px;
+        }}
+
+        .group-header__title {{
+            font-weight: 600;
+            color: var(--ink);
+            text-transform: capitalize;
+        }}
+
+        .group-header__count {{
+            font-size: 13px;
+            color: var(--stone);
+            margin-left: auto;
+        }}
+
+        /* === CELL MODIFIERS === */
+        .cell--bold {{
+            font-weight: 600;
+            color: var(--ink);
+        }}
+
+        .cell--mono {{
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 13px;
+        }}
+
+        .cell--center {{
+            text-align: center;
+        }}
+
+        .cell-primary {{
+            font-weight: 600;
+            color: var(--charcoal);
+        }}
+
+        .cell-link {{
+            color: var(--terracotta-dark);
+            text-decoration: none;
+            cursor: pointer;
+            background: none;
+            border: none;
+            padding: 0;
+            font-size: inherit;
+            font-family: inherit;
+        }}
+
+        .cell-link:hover {{
+            color: var(--sienna);
+            text-decoration: underline;
+        }}
+
+        /* === SEVERITY & COMPLEXITY BADGES === */
+        .severity-badge {{
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: var(--radius-full);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }}
+
+        .severity-badge--warning {{
+            background: rgba(224, 122, 95, 0.15);
+            color: var(--coral);
+        }}
+
+        .severity-badge--info {{
+            background: rgba(69, 123, 157, 0.15);
+            color: var(--ocean);
+        }}
+
+        .severity-badge--error {{
+            background: rgba(188, 108, 37, 0.15);
+            color: var(--rust);
+        }}
+
+        .complexity-badge {{
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: var(--radius-full);
+            font-size: 12px;
+            font-weight: 600;
+        }}
+
+        .complexity-badge--low {{
+            background: rgba(139, 157, 119, 0.2);
+            color: var(--sage);
+        }}
+
+        .complexity-badge--medium {{
+            background: rgba(196, 164, 132, 0.2);
+            color: var(--terracotta-dark);
+        }}
+
+        .complexity-badge--high {{
+            background: rgba(224, 122, 95, 0.2);
+            color: var(--coral);
+        }}
+
+        .complexity-badge--very-high {{
+            background: rgba(188, 108, 37, 0.2);
+            color: var(--rust);
+        }}
+
+        /* === USAGE SCORE BADGE === */
+        .usage-score-badge {{
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: var(--radius-full);
+            font-size: 12px;
+            font-weight: 600;
+        }}
+
+        .usage-score-badge--none {{
+            background: var(--clay);
+            color: var(--stone);
+        }}
+
+        .usage-score-badge--low {{
+            background: rgba(139, 157, 119, 0.2);
+            color: var(--sage);
+        }}
+
+        .usage-score-badge--medium {{
+            background: rgba(69, 123, 157, 0.2);
+            color: var(--ocean);
+        }}
+
+        .usage-score-badge--high {{
+            background: rgba(196, 164, 132, 0.3);
+            color: var(--sienna);
+        }}
+
+        /* === CODE QUALITY TAB STYLES === */
+        .issue-type-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: var(--space-md);
+        }}
+
+        .issue-type-card {{
+            display: flex;
+            align-items: center;
+            gap: var(--space-md);
+            padding: var(--space-md);
+            background: var(--cream);
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }}
+
+        .issue-type-card:hover {{
+            background: var(--sand);
+            border-color: var(--terracotta);
+            transform: translateY(-2px);
+        }}
+
+        .issue-type-card__icon {{
+            font-size: 24px;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(196, 164, 132, 0.15);
+            border-radius: var(--radius-sm);
+        }}
+
+        .issue-type-card__content {{
+            flex: 1;
+        }}
+
+        .issue-type-card__name {{
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--charcoal);
+        }}
+
+        .issue-type-card__count {{
+            font-size: 11px;
+            color: var(--stone);
+        }}
+
+        .issue-type-badge {{
+            display: inline-block;
+            padding: 2px 8px;
+            background: rgba(196, 164, 132, 0.15);
+            color: var(--sienna);
+            border-radius: var(--radius-full);
+            font-size: 11px;
+            font-weight: 500;
+        }}
+
+        .sort-indicator {{
+            font-size: 10px;
+            margin-left: 4px;
+            color: var(--terracotta);
+        }}
+
+        .cell--wrap {{
+            word-wrap: break-word;
+            max-width: 250px;
+        }}
+
+        .cell--muted {{
+            color: var(--stone);
+            font-size: 12px;
+        }}
+
+        .text-muted {{
+            color: var(--stone);
+        }}
+
+        /* === LINEAGE TAB STYLES === */
+        .stat-card {{
+            display: flex;
+            align-items: center;
+            gap: var(--space-md);
+            padding: var(--space-lg);
+            background: var(--white);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--clay);
+            transition: all 0.2s ease;
+        }}
+
+        .stat-card--clickable {{
+            cursor: pointer;
+        }}
+
+        .stat-card--clickable:hover {{
+            border-color: var(--terracotta);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            transform: translateY(-2px);
+        }}
+
+        .stat-card__icon {{
+            font-size: 24px;
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: var(--radius-md);
+        }}
+
+        .stat-card__icon--coral {{
+            background: rgba(224, 122, 95, 0.15);
+        }}
+
+        .stat-card__icon--ocean {{
+            background: rgba(69, 123, 157, 0.15);
+        }}
+
+        .stat-card__icon--sage {{
+            background: rgba(139, 157, 119, 0.15);
+        }}
+
+        .stat-card__content {{
+            flex: 1;
+        }}
+
+        .stat-card__title {{
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--charcoal);
+            margin-bottom: 2px;
+        }}
+
+        .stat-card__desc {{
+            font-size: 12px;
+            color: var(--stone);
+        }}
+
+        .stat-card__count {{
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--sienna);
+        }}
+
+        .usage-badge {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 28px;
+            padding: 2px 8px;
+            border-radius: var(--radius-full);
+            font-size: 12px;
+            font-weight: 600;
+        }}
+
+        .usage-badge--ocean {{
+            background: rgba(69, 123, 157, 0.15);
+            color: var(--ocean);
+        }}
+
+        .usage-badge--sage {{
+            background: rgba(139, 157, 119, 0.15);
+            color: var(--sage);
+        }}
+
+        .usage-badge--terracotta {{
+            background: rgba(196, 164, 132, 0.2);
+            color: var(--sienna);
+        }}
+
+        .usage-badge--zero {{
+            background: var(--clay);
+            color: var(--stone);
+        }}
+
+        .column-name {{
+            font-family: var(--font-mono);
+            font-size: 13px;
+        }}
+
+        .row--warning {{
+            background: rgba(224, 122, 95, 0.05);
+        }}
+
+        .row--warning:hover {{
+            background: rgba(224, 122, 95, 0.1) !important;
+        }}
+
+        .card__badge {{
+            background: var(--clay);
+            color: var(--stone);
+            padding: 4px 12px;
+            border-radius: var(--radius-full);
+            font-size: 12px;
+            font-weight: 500;
+        }}
+
+        .data-table--hover tbody tr:hover {{
+            background: rgba(196, 164, 132, 0.08);
+        }}
+
+        .data-row {{
+            transition: background 0.15s ease;
+        }}
+
+        /* === EMPTY STATE === */
+        .empty-state {{
+            text-align: center;
+            padding: var(--space-2xl);
+            color: var(--stone);
+        }}
+
+        .empty-state--compact {{
+            padding: var(--space-lg);
+        }}
+
+        .empty-state__icon {{
+            font-size: 48px;
+            margin-bottom: var(--space-md);
+        }}
+
+        .empty-state__title {{
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--charcoal);
+            margin-bottom: var(--space-sm);
+        }}
+
+        .empty-state__text {{
+            font-size: 14px;
+            color: var(--stone);
+        }}
+
+        /* === FILTER ROW === */
+        .filter-row {{
+            display: flex;
+            gap: var(--space-md);
+            align-items: center;
+        }}
+
+        .search-input--full {{
+            flex: 1;
+        }}
+
+        /* === RESPONSIVE === */
+        @media (max-width: 1200px) {{
+            .hero {{
+                grid-template-columns: 1fr;
+            }}
+
+            .metrics-grid {{
+                grid-template-columns: repeat(2, 1fr);
+            }}
+        }}
+
+        @media (max-width: 768px) {{
+            :root {{
+                --sidebar-width: 0px;
+            }}
+
+            .sidebar {{
+                transform: translateX(-100%);
+            }}
+
+            .sidebar.open {{
+                transform: translateX(0);
+            }}
+
+            .main-wrapper {{
+                margin-left: 0;
+            }}
+
+            .hero__title {{
+                font-size: 28px;
+            }}
+
+            .metrics-grid {{
+                grid-template-columns: 1fr;
+            }}
         }}
     </style>
 """
 
     def _get_body_content(self) -> str:
-        """Get the Vue app container and HTML structure."""
-        return f"""    <div id="app" v-cloak>
-        <!-- Header -->
-        <div class="shadow-sm border-b" style="background: linear-gradient(135deg, #5B7FFF 0%, #7D9AFF 100%); border: none;">
-            <div class="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-                <div class="flex justify-between items-center flex-wrap gap-4">
-                    <div>
-                        <h1 class="text-3xl font-bold text-white">{{{{ repositoryName }}}} - PBIP Analysis</h1>
-                        <p class="text-sm mt-1 text-white opacity-90">
-                            {{{{ statistics.total_tables }}}} tables ·
-                            {{{{ statistics.total_measures }}}} measures ·
-                            {{{{ statistics.total_relationships }}}} relationships
-                            <span v-if="reportData"> · {{{{ statistics.total_pages }}}} pages · {{{{ statistics.total_visuals }}}} visuals</span>
-                        </p>
-                    </div>
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <input
-                            v-model="searchQuery"
-                            type="text"
-                            placeholder="Search... (press / to focus)"
-                            class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-64"
-                            @keydown.slash.prevent="$event.target.focus()"
-                        />
-                        <button
-                            @click="exportToCSV"
-                            class="px-3 py-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded-lg transition text-sm"
-                            title="Export to CSV"
-                        >
-                            📄 CSV
-                        </button>
-                        <button
-                            @click="exportToJSON"
-                            class="px-3 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition text-sm"
-                            title="Export to JSON"
-                        >
-                            📦 JSON
-                        </button>
-                        <button
-                            @click="showCommandPalette = true"
-                            class="px-3 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition text-sm"
-                            title="Command Palette (Ctrl/Cmd+K)"
-                        >
-                            ⌘
-                        </button>
-                        <button
-                            @click="toggleDarkMode"
-                            class="px-4 py-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded-lg transition"
-                            title="Toggle Dark Mode"
-                        >
-                            {{{{ darkMode ? '☀️' : '🌙' }}}}
-                        </button>
+        """Get HTML body content with Vue 3 template."""
+        return f"""<div id="app" v-cloak :class="{{ 'dark-mode': darkMode }}">
+        <div class="app-layout">
+            <!-- Sidebar Navigation -->
+            <aside class="sidebar">
+                <div class="sidebar__header">
+                    <div class="sidebar__brand">
+                        <div class="sidebar__logo">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                                <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                                <line x1="12" y1="22.08" x2="12" y2="12"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h1 class="sidebar__title">{{{{ repositoryName }}}}</h1>
+                            <p class="sidebar__subtitle">PBIP Analysis</p>
+                        </div>
                     </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- Tabs -->
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-            <div class="border-b border-gray-200">
-                <nav class="-mb-px flex flex-wrap gap-x-8 gap-y-2">
-                    <button
-                        @click="activeTab = 'summary'"
-                        :class="tabClass('summary')"
-                        class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition"
-                    >
-                        📊 Summary
-                    </button>
-                    <button
-                        @click="activeTab = 'model'"
-                        :class="tabClass('model')"
-                        class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition"
-                    >
-                        🗂️ Model ({{{{ modelData.tables?.length || 0 }}}})
-                    </button>
-                    <button
-                        v-if="reportData"
-                        @click="activeTab = 'report'"
-                        :class="tabClass('report')"
-                        class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition"
-                    >
-                        📄 Report ({{{{ reportData.pages?.length || 0 }}}})
-                    </button>
-                    <button
-                        @click="activeTab = 'dependencies'"
-                        :class="tabClass('dependencies')"
-                        class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition"
-                    >
-                        🔀 Dependencies
-                    </button>
-                    <button
-                        @click="activeTab = 'usage'"
-                        :class="tabClass('usage')"
-                        class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition"
-                    >
-                        📈 Usage
-                    </button>
-                    <button
-                        v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.bpa"
-                        @click="activeTab = 'best-practices'"
-                        :class="tabClass('best-practices')"
-                        class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition"
-                    >
-                        ✨ Best Practices ({{{{ bpaViolationsCount }}}})
-                    </button>
-                    <button
-                        v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.data_types"
-                        @click="activeTab = 'data-quality'"
-                        :class="tabClass('data-quality')"
-                        class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition"
-                    >
-                        🔍 Data Quality ({{{{ dataQualityIssuesCount }}}})
-                    </button>
-                    <button
-                        v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.dax_quality"
-                        @click="activeTab = 'code-quality'"
-                        :class="tabClass('code-quality')"
-                        class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition"
-                    >
-                        💎 Code Quality ({{{{ daxQualityIssuesCount }}}})
-                    </button>
-                    <button
-                        v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.column_lineage"
-                        @click="activeTab = 'lineage'"
-                        :class="tabClass('lineage')"
-                        class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition"
-                    >
-                        🔗 Lineage ({{{{ Object.keys(columnLineage).length }}}})
-                    </button>
-                    <button
-                        v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.perspectives && enhancedData.analyses.perspectives.has_perspectives"
-                        @click="activeTab = 'perspectives'"
-                        :class="tabClass('perspectives')"
-                        class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition"
-                    >
-                        👁️ Perspectives ({{{{ perspectivesCount }}}})
-                    </button>
+                <nav class="sidebar__nav">
+                    <div class="nav-section">
+                        <div class="nav-section__title">Overview</div>
+                        <button
+                            @click="activeTab = 'summary'"
+                            :class="['nav-item', {{ active: activeTab === 'summary' }}]"
+                        >
+                            <svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="3" width="7" height="7"/>
+                                <rect x="14" y="3" width="7" height="7"/>
+                                <rect x="14" y="14" width="7" height="7"/>
+                                <rect x="3" y="14" width="7" height="7"/>
+                            </svg>
+                            <span class="nav-item__text">Summary</span>
+                        </button>
+                    </div>
+
+                    <div class="nav-section">
+                        <div class="nav-section__title">Model</div>
+                        <button
+                            @click="activeTab = 'model'"
+                            :class="['nav-item', {{ active: activeTab === 'model' }}]"
+                        >
+                            <svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                            </svg>
+                            <span class="nav-item__text">Model</span>
+                            <span class="nav-item__badge">{{{{ modelData.tables?.length || 0 }}}}</span>
+                        </button>
+                        <div v-show="activeTab === 'model'" class="nav-subitems">
+                            <button @click="modelSubTab = 'tables'" :class="['nav-subitem', {{ active: modelSubTab === 'tables' }}]">Tables</button>
+                            <button @click="modelSubTab = 'measures'" :class="['nav-subitem', {{ active: modelSubTab === 'measures' }}]">Measures</button>
+                            <button @click="modelSubTab = 'relationships'" :class="['nav-subitem', {{ active: modelSubTab === 'relationships' }}]">Relationships</button>
+                        </div>
+
+                        <button
+                            v-if="reportData"
+                            @click="activeTab = 'report'"
+                            :class="['nav-item', {{ active: activeTab === 'report' }}]"
+                        >
+                            <svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                            </svg>
+                            <span class="nav-item__text">Report</span>
+                            <span class="nav-item__badge">{{{{ reportData.pages?.length || 0 }}}}</span>
+                        </button>
+                    </div>
+
+                    <div class="nav-section">
+                        <div class="nav-section__title">Analysis</div>
+                        <button
+                            @click="activeTab = 'dependencies'"
+                            :class="['nav-item', {{ active: activeTab === 'dependencies' }}]"
+                        >
+                            <svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="18" cy="5" r="3"/>
+                                <circle cx="6" cy="12" r="3"/>
+                                <circle cx="18" cy="19" r="3"/>
+                                <path d="m8.59 13.51 6.83 3.98M15.41 6.51l-6.82 3.98"/>
+                            </svg>
+                            <span class="nav-item__text">Dependencies</span>
+                        </button>
+                        <div v-show="activeTab === 'dependencies'" class="nav-subitems">
+                            <button @click="dependencySubTab = 'measures'" :class="['nav-subitem', {{ active: dependencySubTab === 'measures' }}]">Measures</button>
+                            <button @click="dependencySubTab = 'columns'" :class="['nav-subitem', {{ active: dependencySubTab === 'columns' }}]">Columns</button>
+                            <button @click="dependencySubTab = 'chains'" :class="['nav-subitem', {{ active: dependencySubTab === 'chains' }}]">Chains</button>
+                            <button @click="dependencySubTab = 'visuals'" :class="['nav-subitem', {{ active: dependencySubTab === 'visuals' }}]">Visuals</button>
+                        </div>
+
+                        <button
+                            @click="activeTab = 'usage'"
+                            :class="['nav-item', {{ active: activeTab === 'usage' }}]"
+                        >
+                            <svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M3 3v18h18"/>
+                                <path d="M18 17V9"/>
+                                <path d="M13 17V5"/>
+                                <path d="M8 17v-3"/>
+                            </svg>
+                            <span class="nav-item__text">Usage</span>
+                        </button>
+                    </div>
+
+                    <div class="nav-section" v-if="enhancedData?.analyses">
+                        <div class="nav-section__title">Quality</div>
+                        <button
+                            v-if="enhancedData?.analyses?.bpa"
+                            @click="activeTab = 'best-practices'"
+                            :class="['nav-item', {{ active: activeTab === 'best-practices' }}]"
+                        >
+                            <svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/>
+                                <path d="m9 12 2 2 4-4"/>
+                            </svg>
+                            <span class="nav-item__text">Best Practices</span>
+                            <span class="nav-item__badge">{{{{ bpaViolationsCount }}}}</span>
+                        </button>
+
+                        <button
+                            v-if="enhancedData?.analyses?.data_types"
+                            @click="activeTab = 'data-quality'"
+                            :class="['nav-item', {{ active: activeTab === 'data-quality' }}]"
+                        >
+                            <svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"/>
+                                <path d="m21 21-4.35-4.35"/>
+                            </svg>
+                            <span class="nav-item__text">Data Quality</span>
+                            <span class="nav-item__badge">{{{{ dataQualityIssuesCount }}}}</span>
+                        </button>
+
+                        <button
+                            v-if="hasCodeQualityData"
+                            @click="activeTab = 'code-quality'"
+                            :class="['nav-item', {{ active: activeTab === 'code-quality' }}]"
+                        >
+                            <svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="16 18 22 12 16 6"/>
+                                <polyline points="8 6 2 12 8 18"/>
+                            </svg>
+                            <span class="nav-item__text">Code Quality</span>
+                            <span class="nav-item__badge">{{{{ daxQualityIssuesCount }}}}</span>
+                        </button>
+
+                        <button
+                            v-if="hasLineageData"
+                            @click="activeTab = 'lineage'"
+                            :class="['nav-item', {{ active: activeTab === 'lineage' }}]"
+                        >
+                            <svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
+                            </svg>
+                            <span class="nav-item__text">Lineage</span>
+                            <span class="nav-item__badge">{{{{ lineageColumnList.length }}}}</span>
+                        </button>
+
+                        <button
+                            v-if="enhancedData?.analyses?.perspectives?.has_perspectives"
+                            @click="activeTab = 'perspectives'"
+                            :class="['nav-item', {{ active: activeTab === 'perspectives' }}]"
+                        >
+                            <svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                            <span class="nav-item__text">Perspectives</span>
+                            <span class="nav-item__badge">{{{{ perspectivesCount }}}}</span>
+                        </button>
+                    </div>
                 </nav>
-            </div>
-        </div>
 
-        <!-- Content -->
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 pb-12">
+                <div class="sidebar__footer">
+                    <button @click="toggleDarkMode" class="btn-icon" title="Toggle Dark Mode">
+                        <svg v-if="!darkMode" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                        </svg>
+                        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="5"/>
+                            <line x1="12" y1="1" x2="12" y2="3"/>
+                            <line x1="12" y1="21" x2="12" y2="23"/>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                            <line x1="1" y1="12" x2="3" y2="12"/>
+                            <line x1="21" y1="12" x2="23" y2="12"/>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                        </svg>
+                    </button>
+                    <button @click="showCommandPalette = true" class="btn-icon" title="Command Palette (Ctrl/Cmd+K)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z"/>
+                        </svg>
+                    </button>
+                </div>
+            </aside>
+
+            <!-- Main Content Wrapper -->
+            <div class="main-wrapper">
+                <!-- Header -->
+                <header class="header">
+                    <div class="header__inner">
+                        <h2 class="header__title">
+                            <span v-if="activeTab === 'summary'">Dashboard Overview</span>
+                            <span v-else-if="activeTab === 'model'">Model Explorer</span>
+                            <span v-else-if="activeTab === 'report'">Report Analysis</span>
+                            <span v-else-if="activeTab === 'dependencies'">Dependency Analysis</span>
+                            <span v-else-if="activeTab === 'usage'">Usage Analytics</span>
+                            <span v-else-if="activeTab === 'best-practices'">Best Practices</span>
+                            <span v-else-if="activeTab === 'data-quality'">Data Quality</span>
+                            <span v-else-if="activeTab === 'code-quality'">Code Quality</span>
+                            <span v-else-if="activeTab === 'lineage'">Column Lineage</span>
+                            <span v-else-if="activeTab === 'perspectives'">Perspectives</span>
+                        </h2>
+                        <div class="header__actions">
+                            <div class="search-box">
+                                <svg class="search-box__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="11" cy="11" r="8"/>
+                                    <path d="m21 21-4.35-4.35"/>
+                                </svg>
+                                <input
+                                    v-model="searchQuery"
+                                    type="text"
+                                    placeholder="Search tables, measures..."
+                                    class="search-box__input"
+                                    @keydown.slash.prevent="$event.target.focus()"
+                                />
+                            </div>
+                            <button @click="exportToCSV" class="btn-icon" title="Export CSV">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                    <polyline points="7 10 12 15 17 10"/>
+                                    <line x1="12" y1="15" x2="12" y2="3"/>
+                                </svg>
+                            </button>
+                            <button @click="exportToJSON" class="btn-icon" title="Export JSON">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                    <polyline points="14 2 14 8 20 8"/>
+                                    <line x1="16" y1="13" x2="8" y2="13"/>
+                                    <line x1="16" y1="17" x2="8" y2="17"/>
+                                    <polyline points="10 9 9 9 8 9"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </header>
+
+                <!-- Main Content -->
+                <main class="main-content">
             <!-- Summary Tab -->
-            <div v-show="activeTab === 'summary'">
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-                    <div class="kpi-card">
-                        <h3>Tables</h3>
-                        <div class="value">{{{{ statistics.total_tables }}}}</div>
+            <div v-show="activeTab === 'summary'" class="tab-content">
+                <!-- Hero Section -->
+                <div class="hero-section">
+                    <div class="hero-section__eyebrow">PBIP Analysis Report</div>
+                    <h1 class="hero-section__title">{{{{ repositoryName }}}}</h1>
+                    <p class="hero-section__subtitle">Comprehensive model analysis with {{{{ statistics.total_tables }}}} tables and {{{{ statistics.total_measures }}}} measures</p>
+                </div>
+
+                <!-- KPI Metrics Grid -->
+                <div class="metrics-grid">
+                    <div class="metric-card metric-card--terracotta">
+                        <div class="metric-card__icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M3 3h18v18H3zM21 9H3M9 21V9"/>
+                            </svg>
+                        </div>
+                        <div class="metric-card__value">{{{{ statistics.total_tables }}}}</div>
+                        <div class="metric-card__label">Tables</div>
                     </div>
-                    <div class="kpi-card">
-                        <h3>Measures</h3>
-                        <div class="value">{{{{ statistics.total_measures }}}}</div>
+                    <div class="metric-card metric-card--sienna">
+                        <div class="metric-card__icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+                                <line x1="4" y1="22" x2="4" y2="15"/>
+                            </svg>
+                        </div>
+                        <div class="metric-card__value">{{{{ statistics.total_measures }}}}</div>
+                        <div class="metric-card__label">Measures</div>
                     </div>
-                    <div class="kpi-card">
-                        <h3>Columns</h3>
-                        <div class="value">{{{{ statistics.total_columns }}}}</div>
+                    <div class="metric-card metric-card--sage">
+                        <div class="metric-card__icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                            </svg>
+                        </div>
+                        <div class="metric-card__value">{{{{ statistics.total_columns }}}}</div>
+                        <div class="metric-card__label">Columns</div>
                     </div>
-                    <div class="kpi-card">
-                        <h3>Relationships</h3>
-                        <div class="value">{{{{ statistics.total_relationships }}}}</div>
+                    <div class="metric-card metric-card--ocean">
+                        <div class="metric-card__icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="18" cy="5" r="3"/>
+                                <circle cx="6" cy="12" r="3"/>
+                                <circle cx="18" cy="19" r="3"/>
+                                <path d="m8.59 13.51 6.83 3.98M15.41 6.51l-6.82 3.98"/>
+                            </svg>
+                        </div>
+                        <div class="metric-card__value">{{{{ statistics.total_relationships }}}}</div>
+                        <div class="metric-card__label">Relationships</div>
                     </div>
                 </div>
 
-                <!-- Model Information -->
-                <div class="stat-card mb-6">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-4">Model Information</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                        <div>
-                            <span class="font-semibold text-gray-700">Repository Path:</span>
-                            <span class="text-gray-600 ml-2">{{{{ modelData.model_folder || 'Unknown' }}}}</span>
-                        </div>
-                        <div>
-                            <span class="font-semibold text-gray-700">Model Type:</span>
-                            <span class="text-gray-600 ml-2">Power BI Semantic Model (PBIP Format)</span>
-                        </div>
-                        <div>
-                            <span class="font-semibold text-gray-700">Architecture:</span>
-                            <span class="badge badge-primary ml-2">{{{{ modelArchitecture }}}}</span>
-                        </div>
-                        <div>
-                            <span class="font-semibold text-gray-700">Expressions:</span>
-                            <span class="text-gray-600 ml-2">{{{{ modelData.expressions?.length || 0 }}}} M/Power Query expressions</span>
+                <!-- Model Information Card -->
+                <div class="card">
+                    <div class="card__header">
+                        <h2 class="card__title">Model Information</h2>
+                    </div>
+                    <div class="card__body">
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <span class="info-item__label">Repository Path</span>
+                                <span class="info-item__value">{{{{ modelData.model_folder || 'Unknown' }}}}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-item__label">Model Type</span>
+                                <span class="info-item__value">Power BI Semantic Model (PBIP Format)</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-item__label">Architecture</span>
+                                <span class="badge badge-terracotta">{{{{ modelArchitecture }}}}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-item__label">Expressions</span>
+                                <span class="info-item__value">{{{{ modelData.expressions?.length || 0 }}}} M/Power Query expressions</span>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Key Insights -->
-                <div class="stat-card mb-6">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-4">📊 Key Insights</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <div>
-                            <h3 class="text-sm font-semibold text-gray-600 mb-2">Table Distribution</h3>
-                            <p class="text-sm text-gray-700">
-                                <strong>{{{{ tableDistribution.fact }}}}%</strong> fact ·
-                                <strong>{{{{ tableDistribution.dimension }}}}%</strong> dimension
-                            </p>
-                        </div>
-                        <div>
-                            <h3 class="text-sm font-semibold text-gray-600 mb-2">Model Density</h3>
-                            <p class="text-sm text-gray-700">
-                                Avg <strong>{{{{ avgColumnsPerTable }}}}</strong> columns/table<br>
-                                Avg <strong>{{{{ avgMeasuresPerTable }}}}</strong> measures/table
-                            </p>
-                        </div>
-                        <div>
-                            <h3 class="text-sm font-semibold text-gray-600 mb-2">Measure Coverage</h3>
-                            <p class="text-sm text-gray-700">
-                                <strong>{{{{ measureToColumnRatio }}}}:1</strong> measure/column ratio<br>
-                                <strong>{{{{ measuresUsedPct }}}}%</strong> measures in use
-                            </p>
-                        </div>
-                        <div>
-                            <h3 class="text-sm font-semibold text-gray-600 mb-2">Data Quality</h3>
-                            <p class="text-sm text-gray-700">
-                                <strong>{{{{ columnsUsedPct }}}}%</strong> columns referenced<br>
-                                <strong>{{{{ statistics.total_relationships }}}}</strong> active relationships
-                            </p>
+                <div class="card">
+                    <div class="card__header">
+                        <h2 class="card__title">Key Insights</h2>
+                    </div>
+                    <div class="card__body">
+                        <div class="insights-grid">
+                            <div class="insight-card">
+                                <div class="insight-card__icon insight-card__icon--terracotta">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <circle cx="12" cy="12" r="10"/>
+                                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                                    </svg>
+                                </div>
+                                <div class="insight-card__content">
+                                    <h3 class="insight-card__title">Table Distribution</h3>
+                                    <p class="insight-card__value">{{{{ tableDistribution.fact }}}}% fact · {{{{ tableDistribution.dimension }}}}% dimension</p>
+                                </div>
+                            </div>
+                            <div class="insight-card">
+                                <div class="insight-card__icon insight-card__icon--sienna">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                                        <line x1="3" y1="9" x2="21" y2="9"/>
+                                        <line x1="9" y1="21" x2="9" y2="9"/>
+                                    </svg>
+                                </div>
+                                <div class="insight-card__content">
+                                    <h3 class="insight-card__title">Model Density</h3>
+                                    <p class="insight-card__value">{{{{ avgColumnsPerTable }}}} cols/table · {{{{ avgMeasuresPerTable }}}} measures/table</p>
+                                </div>
+                            </div>
+                            <div class="insight-card">
+                                <div class="insight-card__icon insight-card__icon--sage">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M3 3v18h18"/>
+                                        <path d="M18 17V9"/>
+                                        <path d="M13 17V5"/>
+                                        <path d="M8 17v-3"/>
+                                    </svg>
+                                </div>
+                                <div class="insight-card__content">
+                                    <h3 class="insight-card__title">Measure Coverage</h3>
+                                    <p class="insight-card__value">{{{{ measureToColumnRatio }}}}:1 ratio · {{{{ measuresUsedPct }}}}% in use</p>
+                                </div>
+                            </div>
+                            <div class="insight-card">
+                                <div class="insight-card__icon insight-card__icon--ocean">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/>
+                                        <path d="m9 12 2 2 4-4"/>
+                                    </svg>
+                                </div>
+                                <div class="insight-card__content">
+                                    <h3 class="insight-card__title">Data Quality</h3>
+                                    <p class="insight-card__value">{{{{ columnsUsedPct }}}}% columns referenced · {{{{ statistics.total_relationships }}}} relationships</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Issues & Recommendations -->
-                <div v-if="issues.length > 0" class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded">
-                    <h3 class="text-lg font-semibold text-yellow-800 mb-2">⚠️ Attention Required</h3>
-                    <ul class="list-disc list-inside space-y-1 text-sm text-yellow-700">
-                        <li v-for="issue in issues" :key="issue">{{{{ issue }}}}</li>
-                    </ul>
+                <div v-if="issues.length > 0" class="alert alert--warning">
+                    <div class="alert__icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                            <line x1="12" y1="9" x2="12" y2="13"/>
+                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                    </div>
+                    <div class="alert__content">
+                        <h3 class="alert__title">Attention Required</h3>
+                        <ul class="alert__list">
+                            <li v-for="issue in issues" :key="issue">{{{{ issue }}}}</li>
+                        </ul>
+                    </div>
                 </div>
 
-                <div v-if="recommendations.length > 0" class="bg-green-50 border-l-4 border-green-400 p-4 mb-6 rounded">
-                    <h3 class="text-lg font-semibold text-green-800 mb-2">💡 Recommendations</h3>
-                    <ul class="list-disc list-inside space-y-1 text-sm text-green-700">
-                        <li v-for="rec in recommendations" :key="rec">{{{{ rec }}}}</li>
-                    </ul>
+                <div v-if="recommendations.length > 0" class="alert alert--success">
+                    <div class="alert__icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                            <line x1="9" y1="9" x2="9.01" y2="9"/>
+                            <line x1="15" y1="9" x2="15.01" y2="9"/>
+                        </svg>
+                    </div>
+                    <div class="alert__content">
+                        <h3 class="alert__title">Recommendations</h3>
+                        <ul class="alert__list">
+                            <li v-for="rec in recommendations" :key="rec">{{{{ rec }}}}</li>
+                        </ul>
+                    </div>
                 </div>
 
-                <!-- Model Health -->
-                <div class="stat-card">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-4">🏥 Model Health Summary</h2>
-                    <p class="text-gray-700 mb-4">{{{{ healthSummary }}}}</p>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div class="bg-gray-50 p-4 rounded">
-                            <strong>Unused Objects:</strong> {{{{ statistics.unused_measures }}}} measures, {{{{ statistics.unused_columns }}}} columns
+                <!-- Model Health Summary -->
+                <div class="feature-card">
+                    <div class="feature-card__header">
+                        <div class="feature-card__icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                            </svg>
                         </div>
-                        <div class="bg-gray-50 p-4 rounded">
-                            <strong>Model Complexity:</strong> {{{{ modelComplexity }}}}
+                        <div class="feature-card__titles">
+                            <h2 class="feature-card__title">Model Health Summary</h2>
+                            <p class="feature-card__subtitle">{{{{ healthSummary }}}}</p>
+                        </div>
+                    </div>
+                    <div class="feature-card__body">
+                        <div class="health-stats">
+                            <div class="health-stat">
+                                <div class="health-stat__label">Unused Objects</div>
+                                <div class="health-stat__value">{{{{ statistics.unused_measures }}}} measures · {{{{ statistics.unused_columns }}}} columns</div>
+                            </div>
+                            <div class="health-stat">
+                                <div class="health-stat__label">Model Complexity</div>
+                                <div class="health-stat__value">{{{{ modelComplexity }}}}</div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
             <!-- Model Tab -->
-            <div v-show="activeTab === 'model'">
+            <div v-show="activeTab === 'model'" class="tab-content">
                 <!-- Model Sub-Tabs -->
-                <div class="mb-6 border-b border-gray-200">
-                    <nav class="-mb-px flex flex-wrap gap-x-8 gap-y-2">
-                        <button
-                            @click="modelSubTab = 'tables'"
-                            :class="[
-                                'whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition',
-                                modelSubTab === 'tables' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                            ]"
-                        >
-                            📊 Tables
-                        </button>
-                        <button
-                            @click="modelSubTab = 'measures'"
-                            :class="[
-                                'whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition',
-                                modelSubTab === 'measures' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                            ]"
-                        >
-                            📐 Measures
-                        </button>
-                        <button
-                            @click="modelSubTab = 'relationships'"
-                            :class="[
-                                'whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition',
-                                modelSubTab === 'relationships' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                            ]"
-                        >
-                            🔗 Relationships
-                        </button>
-                    </nav>
+                <div class="subtabs">
+                    <button
+                        @click="modelSubTab = 'tables'"
+                        :class="['subtab', modelSubTab === 'tables' ? 'active' : '']"
+                    >
+                        <svg class="subtab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 3h18v18H3zM21 9H3M9 21V9"/>
+                        </svg>
+                        Tables
+                    </button>
+                    <button
+                        @click="modelSubTab = 'measures'"
+                        :class="['subtab', modelSubTab === 'measures' ? 'active' : '']"
+                    >
+                        <svg class="subtab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+                            <line x1="4" y1="22" x2="4" y2="15"/>
+                        </svg>
+                        Measures
+                    </button>
+                    <button
+                        @click="modelSubTab = 'relationships'"
+                        :class="['subtab', modelSubTab === 'relationships' ? 'active' : '']"
+                    >
+                        <svg class="subtab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="18" cy="5" r="3"/>
+                            <circle cx="6" cy="12" r="3"/>
+                            <circle cx="18" cy="19" r="3"/>
+                            <path d="m8.59 13.51 6.83 3.98M15.41 6.51l-6.82 3.98"/>
+                        </svg>
+                        Relationships
+                    </button>
                 </div>
 
                 <!-- Tables View -->
-                <div v-show="modelSubTab === 'tables'" class="grid grid-cols-12 gap-6">
-                    <!-- Left Sidebar: Tables List -->
-                    <div class="col-span-12 md:col-span-4">
-                        <div class="stat-card">
-                            <h3 class="text-xl font-bold text-gray-900 mb-4">Tables ({{{{ filteredTables.length }}}})</h3>
+                <div v-show="modelSubTab === 'tables'" class="panel-grid">
+                    <!-- Left Panel: Tables List -->
+                    <div class="panel">
+                        <div class="panel__header">
+                            <h3 class="panel__title">Tables ({{{{ filteredTables.length }}}})</h3>
                             <input
                                 v-model="modelSearchQuery"
                                 type="search"
                                 placeholder="Search tables..."
-                                class="w-full px-3 py-2 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-blue-500"
+                                class="panel__search"
                             />
-                            <div class="scrollable space-y-2">
-                                <div
-                                    v-for="table in filteredTables"
-                                    v-memo="[table, selectedTable?.name === table.name]"
-                                    :key="table.name"
-                                    @click="selectedTable = table"
-                                    :class="['list-item border-l-4 p-3 cursor-pointer rounded', selectedTable?.name === table.name ? 'selected' : 'border-gray-300']"
-                                >
-                                    <div class="flex items-center gap-2 mb-1">
-                                        <div class="font-semibold text-gray-900">{{{{ table.name }}}}</div>
-                                    </div>
-                                    <div class="text-sm text-gray-600">
-                                        {{{{ table.columns?.length || 0 }}}} columns · {{{{ table.measures?.length || 0 }}}} measures
-                                    </div>
-                                    <div class="flex gap-1 mt-1">
-                                        <span :class="['badge text-xs', getTableType(table.name) === 'DIMENSION' ? 'badge-success' : getTableType(table.name) === 'FACT' ? 'badge-danger' : 'badge-gray']">
-                                            {{{{ getTableType(table.name).toLowerCase() }}}}
-                                        </span>
-                                        <span :class="['badge text-xs', getComplexityBadge(table)]">
-                                            {{{{ getTableComplexity(table).replace('Complexity: ', '').toLowerCase() }}}}
-                                        </span>
-                                    </div>
+                        </div>
+                        <div class="panel__body">
+                            <div
+                                v-for="table in filteredTables"
+                                :key="table.name"
+                                @click="selectedTable = table"
+                                :class="['table-item', selectedTable?.name === table.name ? 'active' : '']"
+                            >
+                                <div class="table-item__name">{{{{ table.name }}}}</div>
+                                <div class="table-item__meta">
+                                    {{{{ table.columns?.length || 0 }}}} columns · {{{{ table.measures?.length || 0 }}}} measures
+                                </div>
+                                <div class="table-item__badges">
+                                    <span :class="['badge', getTableType(table.name) === 'DIMENSION' ? 'badge-success' : getTableType(table.name) === 'FACT' ? 'badge-info' : 'badge-gray']">
+                                        {{{{ getTableType(table.name).toLowerCase() }}}}
+                                    </span>
+                                    <span :class="['badge', getComplexityBadge(table)]">
+                                        {{{{ getTableComplexity(table).replace('Complexity: ', '').toLowerCase() }}}}
+                                    </span>
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     <!-- Right Panel: Table Details -->
-                    <div class="col-span-12 md:col-span-8">
-                        <div v-if="selectedTable" class="stat-card">
-                            <div class="flex justify-between items-start mb-4">
-                                <div>
-                                    <h2 class="text-2xl font-bold text-gray-900">{{{{ selectedTable.name }}}}</h2>
-                                    <div class="flex gap-2 mt-2">
-                                        <span :class="['badge', selectedTable.name.toLowerCase().startsWith('f ') ? 'badge-danger' : selectedTable.name.toLowerCase().startsWith('d ') ? 'badge-primary' : 'badge-gray']">
-                                            {{{{ getTableType(selectedTable.name) }}}}
-                                        </span>
-                                        <span :class="['badge', getComplexityBadge(selectedTable)]">
-                                            {{{{ getTableComplexity(selectedTable) }}}}
-                                        </span>
-                                    </div>
+                    <div class="panel">
+                        <div v-if="selectedTable">
+                            <div class="detail-header">
+                                <h2 class="detail-header__title">{{{{ selectedTable.name }}}}</h2>
+                                <div class="detail-header__badges">
+                                    <span :class="['badge', selectedTable.name.toLowerCase().startsWith('f ') ? 'badge-info' : selectedTable.name.toLowerCase().startsWith('d ') ? 'badge-success' : 'badge-gray']">
+                                        {{{{ getTableType(selectedTable.name) }}}}
+                                    </span>
+                                    <span :class="['badge', getComplexityBadge(selectedTable)]">
+                                        {{{{ getTableComplexity(selectedTable) }}}}
+                                    </span>
                                 </div>
                             </div>
 
                             <!-- Table Statistics -->
-                            <div class="grid grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded">
-                                <div>
-                                    <div class="text-sm text-gray-600">Columns</div>
-                                    <div class="text-2xl font-bold text-gray-900">{{{{ selectedTable.columns?.length || 0 }}}}</div>
+                            <div class="detail-stats">
+                                <div class="detail-stat">
+                                    <div class="detail-stat__value">{{{{ selectedTable.columns?.length || 0 }}}}</div>
+                                    <div class="detail-stat__label">Columns</div>
                                 </div>
-                                <div>
-                                    <div class="text-sm text-gray-600">Measures</div>
-                                    <div class="text-2xl font-bold text-gray-900">{{{{ selectedTable.measures?.length || 0 }}}}</div>
+                                <div class="detail-stat">
+                                    <div class="detail-stat__value">{{{{ selectedTable.measures?.length || 0 }}}}</div>
+                                    <div class="detail-stat__label">Measures</div>
                                 </div>
-                                <div>
-                                    <div class="text-sm text-gray-600">Relationships</div>
-                                    <div class="text-2xl font-bold text-gray-900">{{{{ getTableRelationshipCount(selectedTable.name) }}}}</div>
+                                <div class="detail-stat">
+                                    <div class="detail-stat__value">{{{{ getTableRelationshipCount(selectedTable.name) }}}}</div>
+                                    <div class="detail-stat__label">Relationships</div>
                                 </div>
-                                <div>
-                                    <div class="text-sm text-gray-600">Usage</div>
-                                    <div class="text-2xl font-bold text-gray-900">{{{{ getTableUsageCount(selectedTable.name) }}}}</div>
+                                <div class="detail-stat">
+                                    <div class="detail-stat__value">{{{{ getTableUsageCount(selectedTable.name) }}}}</div>
+                                    <div class="detail-stat__label">Usage</div>
                                 </div>
                             </div>
 
-                            <div class="mb-6">
-                                <div class="flex gap-2 mb-4 flex-wrap">
+                            <div class="detail-tabs-container">
+                                <div class="detail-tabs">
                                     <button
                                         @click="modelDetailTab = 'columns'"
-                                        :class="['px-4 py-2 rounded-lg font-medium transition text-sm', modelDetailTab === 'columns' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700']"
+                                        :class="['detail-tab', modelDetailTab === 'columns' ? 'active' : '']"
                                     >
                                         Columns ({{{{ selectedTable.columns?.length || 0 }}}})
                                     </button>
                                     <button
                                         @click="modelDetailTab = 'measures'"
-                                        :class="['px-4 py-2 rounded-lg font-medium transition text-sm', modelDetailTab === 'measures' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700']"
+                                        :class="['detail-tab', modelDetailTab === 'measures' ? 'active' : '']"
                                     >
                                         Measures ({{{{ selectedTable.measures?.length || 0 }}}})
                                     </button>
                                     <button
                                         @click="modelDetailTab = 'relationships'"
-                                        :class="['px-4 py-2 rounded-lg font-medium transition text-sm', modelDetailTab === 'relationships' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700']"
+                                        :class="['detail-tab', modelDetailTab === 'relationships' ? 'active' : '']"
                                     >
                                         Relationships ({{{{ getTableRelationshipCount(selectedTable.name) }}}})
                                     </button>
                                     <button
                                         @click="modelDetailTab = 'usage'"
-                                        :class="['px-4 py-2 rounded-lg font-medium transition text-sm', modelDetailTab === 'usage' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700']"
+                                        :class="['detail-tab', modelDetailTab === 'usage' ? 'active' : '']"
                                     >
                                         Usage ({{{{ getTableUsageCount(selectedTable.name) }}}})
                                     </button>
                                 </div>
 
                                 <!-- Columns -->
-                                <div v-show="modelDetailTab === 'columns'">
-                                    <div v-if="selectedTable.columns?.length > 0" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div v-for="col in selectedTable.columns" :key="col.name" class="border border-gray-200 rounded p-3">
-                                            <div class="font-semibold text-gray-900 mb-1 flex items-center gap-2">
-                                                <span>{{{{ col.name }}}}</span>
-                                                <span v-if="isColumnInRelationship(selectedTable.name, col.name)" class="badge badge-info flex items-center gap-1">
-                                                    <svg class="lucide-key-round w-3 h-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18v3c0 .6.4 1 1 1h4v-3h3v-3h2l1.4-1.4a6.5 6.5 0 1 0-4-4Z"></path><circle cx="16.5" cy="7.5" r=".5"></circle></svg>
+                                <div v-show="modelDetailTab === 'columns'" class="detail-content">
+                                    <div v-if="selectedTable.columns?.length > 0" class="columns-grid">
+                                        <div v-for="col in selectedTable.columns" :key="col.name" class="column-card">
+                                            <div class="column-card__header">
+                                                <span class="column-card__name">{{{{ col.name }}}}</span>
+                                                <span v-if="isColumnInRelationship(selectedTable.name, col.name)" class="badge badge-info">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18v3c0 .6.4 1 1 1h4v-3h3v-3h2l1.4-1.4a6.5 6.5 0 1 0-4-4Z"></path><circle cx="16.5" cy="7.5" r=".5"></circle></svg>
                                                     Key
                                                 </span>
-                                                <span v-if="col.is_hidden" class="badge badge-warning flex items-center gap-1">
-                                                    <svg class="lucide-eye-off w-3 h-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path><line x1="2" x2="22" y1="2" y2="22"></line></svg>
+                                                <span v-if="col.is_hidden" class="badge badge-warning">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path><line x1="2" x2="22" y1="2" y2="22"></line></svg>
                                                     Hidden
                                                 </span>
                                             </div>
-                                            <div class="text-sm text-gray-600">
+                                            <div class="column-card__type">
                                                 <span class="badge badge-gray">{{{{ col.data_type }}}}</span>
                                             </div>
-                                            <div class="text-xs text-gray-500 mt-1">
+                                            <div class="column-card__source">
                                                 Source: {{{{ col.source_column || '-' }}}}
                                             </div>
                                         </div>
                                     </div>
-                                    <div v-else class="text-gray-500 italic">No columns in this table</div>
+                                    <div v-else class="empty-state">No columns in this table</div>
                                 </div>
 
                                 <!-- Measures -->
-                                <div v-show="modelDetailTab === 'measures'">
-                                    <div v-if="selectedTable.measures?.length > 0" class="space-y-4">
-                                        <div v-for="measure in selectedTable.measures" :key="measure.name" class="border border-gray-200 rounded p-4" :data-measure="measure.name">
-                                            <div class="flex items-center justify-between gap-2 mb-2">
-                                                <div class="flex items-center gap-2">
-                                                    <div class="font-semibold text-gray-900">{{{{ measure.name }}}}</div>
-                                                    <span class="badge badge-primary text-xs">m Measure</span>
-                                                    <span v-if="measure.display_folder" class="badge badge-warning text-xs">📁 {{{{ measure.display_folder }}}}</span>
-                                                    <span v-if="measure.is_hidden" class="badge badge-gray text-xs">Hidden</span>
+                                <div v-show="modelDetailTab === 'measures'" class="detail-content">
+                                    <div v-if="selectedTable.measures?.length > 0" class="measures-list">
+                                        <div v-for="measure in selectedTable.measures" :key="measure.name" class="measure-card" :data-measure="measure.name">
+                                            <div class="measure-card__header">
+                                                <div class="measure-card__info">
+                                                    <div class="measure-card__name">{{{{ measure.name }}}}</div>
+                                                    <span class="badge badge-primary">m Measure</span>
+                                                    <span v-if="measure.display_folder" class="badge badge-warning">📁 {{{{ measure.display_folder }}}}</span>
+                                                    <span v-if="measure.is_hidden" class="badge badge-gray">Hidden</span>
                                                 </div>
                                                 <button
                                                     v-if="measure.expression"
                                                     @click="toggleMeasureExpansion(measure.name)"
-                                                    class="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                                    class="btn-link"
                                                 >
                                                     {{{{ expandedMeasures[measure.name] ? 'Hide DAX' : 'Show DAX' }}}}
                                                 </button>
                                             </div>
-                                            <div v-if="measure.expression && expandedMeasures[measure.name]" class="code-block mt-2" v-html="highlightDAX(measure.expression)"></div>
+                                            <div v-if="measure.expression && expandedMeasures[measure.name]" class="code-block" v-html="highlightDAX(measure.expression)"></div>
                                         </div>
                                     </div>
-                                    <div v-else class="text-gray-500 italic">No measures in this table</div>
+                                    <div v-else class="empty-state">No measures in this table</div>
                                 </div>
 
                                 <!-- Relationships -->
-                                <div v-show="modelDetailTab === 'relationships'">
-                                    <div v-if="getTableRelationships(selectedTable.name).length > 0">
-                                        <div class="mb-4">
-                                            <h4 class="font-semibold text-gray-900 mb-2">Incoming ({{{{ getTableRelationships(selectedTable.name).filter(r => r.to_table === selectedTable.name).length }}}})</h4>
-                                            <div class="space-y-2">
-                                                <div v-for="rel in getTableRelationships(selectedTable.name).filter(r => r.to_table === selectedTable.name)" :key="rel.name" class="border border-gray-200 rounded p-3 bg-green-50">
-                                                    <div class="flex items-center justify-between mb-1">
-                                                        <span class="font-semibold text-sm">{{{{ rel.from_table }}}}</span>
-                                                        <span class="badge badge-success text-xs">Active</span>
+                                <div v-show="modelDetailTab === 'relationships'" class="detail-content">
+                                    <div v-if="getTableRelationships(selectedTable.name).length > 0" class="relationships-section">
+                                        <div class="relationship-group">
+                                            <h4 class="relationship-group__title">Incoming ({{{{ getTableRelationships(selectedTable.name).filter(r => r.to_table === selectedTable.name).length }}}})</h4>
+                                            <div class="relationship-list">
+                                                <div v-for="rel in getTableRelationships(selectedTable.name).filter(r => r.to_table === selectedTable.name)" :key="rel.name" class="relationship-card relationship-card--incoming">
+                                                    <div class="relationship-card__header">
+                                                        <span class="relationship-card__table">{{{{ rel.from_table }}}}</span>
+                                                        <span class="badge badge-success">Active</span>
                                                     </div>
-                                                    <div class="text-sm text-gray-600">
+                                                    <div class="relationship-card__columns">
                                                         [{{{{ rel.from_column_name }}}}] → [{{{{ rel.to_column_name }}}}]
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
-                                        <div>
-                                            <h4 class="font-semibold text-gray-900 mb-2">Outgoing ({{{{ getTableRelationships(selectedTable.name).filter(r => r.from_table === selectedTable.name).length }}}})</h4>
-                                            <div class="space-y-2">
-                                                <div v-for="rel in getTableRelationships(selectedTable.name).filter(r => r.from_table === selectedTable.name)" :key="rel.name" class="border border-gray-200 rounded p-3 bg-blue-50">
-                                                    <div class="flex items-center justify-between mb-1">
-                                                        <span class="font-semibold text-sm">{{{{ rel.to_table }}}}</span>
-                                                        <span class="badge badge-success text-xs">Active</span>
+                                        <div class="relationship-group">
+                                            <h4 class="relationship-group__title">Outgoing ({{{{ getTableRelationships(selectedTable.name).filter(r => r.from_table === selectedTable.name).length }}}})</h4>
+                                            <div class="relationship-list">
+                                                <div v-for="rel in getTableRelationships(selectedTable.name).filter(r => r.from_table === selectedTable.name)" :key="rel.name" class="relationship-card relationship-card--outgoing">
+                                                    <div class="relationship-card__header">
+                                                        <span class="relationship-card__table">{{{{ rel.to_table }}}}</span>
+                                                        <span class="badge badge-success">Active</span>
                                                     </div>
-                                                    <div class="text-sm text-gray-600">
+                                                    <div class="relationship-card__columns">
                                                         [{{{{ rel.from_column_name }}}}] → [{{{{ rel.to_column_name }}}}]
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
-                                    <div v-else class="text-gray-500 italic">No relationships for this table</div>
+                                    <div v-else class="empty-state">No relationships for this table</div>
                                 </div>
 
                                 <!-- Usage -->
-                                <div v-show="modelDetailTab === 'usage'">
-                                    <h3 class="font-semibold text-gray-900 mb-3">Column Usage by Page</h3>
-                                    <div v-if="selectedTable.columns?.length > 0" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div v-for="col in selectedTable.columns" :key="col.name" class="border border-gray-200 rounded">
-                                            <div class="font-semibold text-gray-900 p-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-                                                <span>{{{{ col.name }}}}</span>
-                                                <span class="badge badge-gray text-xs">{{{{ getColumnVisualUsage(selectedTable.name, col.name).length }}}} visual(s)</span>
+                                <div v-show="modelDetailTab === 'usage'" class="detail-content">
+                                    <h3 class="usage-title">Column Usage by Page</h3>
+                                    <div v-if="selectedTable.columns?.length > 0" class="usage-grid">
+                                        <div v-for="col in selectedTable.columns" :key="col.name" class="usage-card">
+                                            <div class="usage-card__header">
+                                                <span class="usage-card__name">{{{{ col.name }}}}</span>
+                                                <span class="badge badge-gray">{{{{ getColumnVisualUsage(selectedTable.name, col.name).length }}}} visual(s)</span>
                                             </div>
-                                            <div class="p-3 space-y-3">
+                                            <div class="usage-card__body">
                                                 <!-- Measure Usage -->
-                                                <div v-if="getColumnUsedByMeasures(selectedTable.name, col.name).length > 0">
-                                                    <div class="font-medium text-gray-700 text-sm mb-2 flex items-center gap-1">
+                                                <div v-if="getColumnUsedByMeasures(selectedTable.name, col.name).length > 0" class="usage-section">
+                                                    <div class="usage-section__title">
                                                         <span>📐</span>
                                                         <span>Used in Measures</span>
                                                     </div>
-                                                    <div class="space-y-1 ml-5">
-                                                        <div v-for="measure in getColumnUsedByMeasures(selectedTable.name, col.name)" :key="measure" class="text-xs p-2 bg-blue-50 border border-blue-200 rounded flex items-center gap-2">
-                                                            <span class="badge badge-primary" style="font-size: 10px; padding: 2px 6px;">Measure</span>
-                                                            <span class="text-gray-700">{{{{ measure }}}}</span>
+                                                    <div class="usage-items">
+                                                        <div v-for="measure in getColumnUsedByMeasures(selectedTable.name, col.name)" :key="measure" class="usage-item usage-item--measure">
+                                                            <span class="badge badge-primary badge--small">Measure</span>
+                                                            <span>{{{{ measure }}}}</span>
                                                         </div>
                                                     </div>
                                                 </div>
 
                                                 <!-- Field Parameter Usage -->
-                                                <div v-if="getColumnFieldParams(selectedTable.name, col.name).length > 0">
-                                                    <div class="font-medium text-gray-700 text-sm mb-2 flex items-center gap-1">
+                                                <div v-if="getColumnFieldParams(selectedTable.name, col.name).length > 0" class="usage-section">
+                                                    <div class="usage-section__title">
                                                         <span>📊</span>
                                                         <span>Used in Field Parameters</span>
                                                     </div>
-                                                    <div class="space-y-1 ml-5">
-                                                        <div v-for="fp in getColumnFieldParams(selectedTable.name, col.name)" :key="fp" class="text-xs p-2 bg-green-50 border border-green-200 rounded flex items-center gap-2">
-                                                            <span class="badge badge-success" style="font-size: 10px; padding: 2px 6px;">Field Param</span>
-                                                            <span class="text-gray-700">{{{{ fp }}}}</span>
+                                                    <div class="usage-items">
+                                                        <div v-for="fp in getColumnFieldParams(selectedTable.name, col.name)" :key="fp" class="usage-item usage-item--field-param">
+                                                            <span class="badge badge-success badge--small">Field Param</span>
+                                                            <span>{{{{ fp }}}}</span>
                                                         </div>
                                                     </div>
                                                 </div>
 
                                                 <!-- Visual Usage -->
-                                                <div v-if="getColumnVisualUsage(selectedTable.name, col.name).length > 0">
-                                                    <div class="font-medium text-gray-700 text-sm mb-2 flex items-center gap-1">
+                                                <div v-if="getColumnVisualUsage(selectedTable.name, col.name).length > 0" class="usage-section">
+                                                    <div class="usage-section__title">
                                                         <span>📈</span>
                                                         <span>Used in Visuals</span>
                                                     </div>
-                                                    <div class="space-y-2">
-                                                        <div v-for="(visuals, pageName) in groupColumnUsageByPage(selectedTable.name, col.name)" :key="pageName" class="border border-gray-100 rounded p-2">
-                                                            <div class="font-medium text-gray-800 text-sm mb-1 flex items-center gap-1">
+                                                    <div class="usage-pages">
+                                                        <div v-for="(visuals, pageName) in groupColumnUsageByPage(selectedTable.name, col.name)" :key="pageName" class="usage-page">
+                                                            <div class="usage-page__header">
                                                                 <span>📄</span>
                                                                 <span>{{{{ pageName }}}}</span>
-                                                                <span class="text-xs text-gray-500">({{{{ visuals.length }}}})</span>
+                                                                <span class="usage-page__count">({{{{ visuals.length }}}})</span>
                                                             </div>
-                                                            <div class="space-y-1 ml-5">
-                                                                <div v-for="usage in visuals" :key="usage.visualId" class="text-xs text-gray-600 flex items-center gap-2">
-                                                                    <span class="badge badge-primary" style="font-size: 10px; padding: 2px 6px;">{{{{ usage.visualType }}}}</span>
+                                                            <div class="usage-items">
+                                                                <div v-for="usage in visuals" :key="usage.visualId" class="usage-item">
+                                                                    <span class="badge badge-primary badge--small">{{{{ usage.visualType }}}}</span>
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -1142,21 +4553,21 @@ class PbipHtmlGenerator:
                                                 </div>
 
                                                 <!-- Filter Pane Usage -->
-                                                <div v-if="getColumnFilterUsage(selectedTable.name, col.name).length > 0">
-                                                    <div class="font-medium text-gray-700 text-sm mb-2 flex items-center gap-1">
+                                                <div v-if="getColumnFilterUsage(selectedTable.name, col.name).length > 0" class="usage-section">
+                                                    <div class="usage-section__title">
                                                         <span>🔽</span>
                                                         <span>Used in Filter Pane</span>
                                                     </div>
-                                                    <div class="space-y-2">
-                                                        <div v-for="(filters, pageName) in groupFilterUsageByPage(selectedTable.name, col.name)" :key="pageName" class="border border-gray-100 rounded p-2">
-                                                            <div class="font-medium text-gray-800 text-sm mb-1 flex items-center gap-1">
+                                                    <div class="usage-pages">
+                                                        <div v-for="(filters, pageName) in groupFilterUsageByPage(selectedTable.name, col.name)" :key="pageName" class="usage-page">
+                                                            <div class="usage-page__header">
                                                                 <span v-if="filters[0]?.filterLevel === 'report'">🌐</span>
                                                                 <span v-else>📄</span>
                                                                 <span>{{{{ pageName }}}}</span>
                                                             </div>
-                                                            <div class="space-y-1 ml-5">
-                                                                <div v-for="(filter, idx) in filters" :key="idx" class="text-xs text-gray-600 flex items-center gap-2">
-                                                                    <span class="badge" :class="filter.filterLevel === 'report' ? 'badge-info' : 'badge-warning'" style="font-size: 10px; padding: 2px 6px;">{{{{ filter.filterLevel === 'report' ? 'Report Filter' : 'Page Filter' }}}}</span>
+                                                            <div class="usage-items">
+                                                                <div v-for="(filter, idx) in filters" :key="idx" class="usage-item">
+                                                                    <span class="badge badge--small" :class="filter.filterLevel === 'report' ? 'badge-info' : 'badge-warning'">{{{{ filter.filterLevel === 'report' ? 'Report Filter' : 'Page Filter' }}}}</span>
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -1164,64 +4575,66 @@ class PbipHtmlGenerator:
                                                 </div>
 
                                                 <!-- No Usage Message -->
-                                                <div v-if="getColumnVisualUsage(selectedTable.name, col.name).length === 0 && getColumnFieldParams(selectedTable.name, col.name).length === 0 && getColumnUsedByMeasures(selectedTable.name, col.name).length === 0 && getColumnFilterUsage(selectedTable.name, col.name).length === 0" class="text-xs text-gray-500 italic">
+                                                <div v-if="getColumnVisualUsage(selectedTable.name, col.name).length === 0 && getColumnFieldParams(selectedTable.name, col.name).length === 0 && getColumnUsedByMeasures(selectedTable.name, col.name).length === 0 && getColumnFilterUsage(selectedTable.name, col.name).length === 0" class="usage-empty">
                                                     Not used in any measures, visuals, field parameters, or filters
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
-                                    <div v-else class="text-gray-500 italic">No columns in this table</div>
+                                    <div v-else class="empty-state">No columns in this table</div>
                                 </div>
                             </div>
                         </div>
-                        <div v-else class="stat-card">
-                            <p class="text-gray-500 italic">Select a table from the left to view details</p>
+                        <div v-else class="card">
+                            <p class="empty-state">Select a table from the left to view details</p>
                         </div>
                     </div>
                 </div>
 
                 <!-- Measures View -->
                 <div v-show="modelSubTab === 'measures'">
-                    <div class="stat-card">
-                        <h2 class="text-2xl font-bold text-gray-900 mb-4">All Measures by Folder</h2>
-                        <div class="grid grid-cols-12 gap-4" style="height: 600px;">
+                    <div class="card">
+                        <div class="card__header">
+                            <h2 class="card__title">All Measures by Folder</h2>
+                        </div>
+                        <div class="panel-grid panel-grid--measures">
                             <!-- Left: Folder list -->
-                            <div class="col-span-4 overflow-y-auto border-r pr-4">
+                            <div class="panel-left scrollable">
                                 <input
                                     v-model="measuresSearchQuery"
                                     type="search"
                                     placeholder="Search measures..."
-                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-blue-500"
+                                    class="search-input"
                                 />
-                                <div v-for="(folder, folderName) in measuresByFolder" :key="folderName" class="mb-2">
-                                    <div class="folder-header cursor-pointer" @click="toggleFolder(folderName)">
-                                        <div>
-                                            <span class="mr-2">📁</span>
-                                            <strong>{{{{ folderName || 'No Folder' }}}}</strong>
-                                            <span class="ml-2 text-sm opacity-75">({{{{ folder.length }}}})</span>
+                                <div v-for="(folder, folderName) in measuresByFolder" :key="folderName" class="folder-group">
+                                    <div class="folder-header" @click="toggleFolder(folderName)">
+                                        <div class="folder-header__info">
+                                            <span class="folder-header__icon">📁</span>
+                                            <span class="folder-header__name">{{{{ folderName || 'No Folder' }}}}</span>
+                                            <span class="folder-header__count">({{{{ folder.length }}}})</span>
                                         </div>
-                                        <span class="expand-icon">▼</span>
+                                        <span class="folder-header__toggle">▼</span>
                                     </div>
-                                    <div v-show="!collapsedFolders[folderName]" class="ml-6 mt-2 space-y-1">
+                                    <div v-show="!collapsedFolders[folderName]" class="folder-content">
                                         <div
                                             v-for="measure in folder"
                                             :key="measure.key"
                                             @click="selectedMeasure = measure"
-                                            :class="['p-2 rounded cursor-pointer hover:bg-blue-50', selectedMeasure?.key === measure.key ? 'bg-blue-100 font-semibold' : '']"
+                                            :class="['measure-item', selectedMeasure?.key === measure.key ? 'active' : '']"
                                         >
-                                            <div class="text-sm">{{{{ measure.name }}}}</div>
-                                            <div class="text-xs text-gray-500">{{{{ measure.table }}}}</div>
+                                            <div class="measure-item__name">{{{{ measure.name }}}}</div>
+                                            <div class="measure-item__table">{{{{ measure.table }}}}</div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
                             <!-- Right: DAX viewer -->
-                            <div class="col-span-8 overflow-y-auto">
-                                <div v-if="selectedMeasure">
-                                    <div class="mb-4">
-                                        <h3 class="text-xl font-bold text-gray-900 mb-2">{{{{ selectedMeasure.name }}}}</h3>
-                                        <div class="flex gap-2 mb-2">
+                            <div class="panel-right scrollable">
+                                <div v-if="selectedMeasure" class="measure-detail">
+                                    <div class="measure-detail__header">
+                                        <h3 class="measure-detail__name">{{{{ selectedMeasure.name }}}}</h3>
+                                        <div class="measure-detail__badges">
                                             <span class="badge badge-primary">{{{{ selectedMeasure.table }}}}</span>
                                             <span v-if="selectedMeasure.is_hidden" class="badge badge-warning">Hidden</span>
                                             <span v-if="selectedMeasure.displayFolder" class="badge badge-gray">{{{{ selectedMeasure.displayFolder }}}}</span>
@@ -1229,7 +4642,7 @@ class PbipHtmlGenerator:
                                     </div>
                                     <div class="code-block" v-if="selectedMeasure.expression" v-html="highlightDAX(selectedMeasure.expression)"></div>
                                 </div>
-                                <div v-else class="text-center text-gray-500 mt-20">
+                                <div v-else class="empty-state empty-state--centered">
                                     <p>Select a measure from the left to view its DAX code</p>
                                 </div>
                             </div>
@@ -1239,109 +4652,113 @@ class PbipHtmlGenerator:
 
                 <!-- Relationships View -->
                 <div v-show="modelSubTab === 'relationships'">
-                    <div class="stat-card">
-                        <h2 class="text-2xl font-bold text-gray-900 mb-4">Relationships ({{{{ sortedRelationships.length }}}})</h2>
+                    <div class="card">
+                        <div class="card__header">
+                            <h2 class="card__title">Relationships ({{{{ sortedRelationships.length }}}})</h2>
+                        </div>
 
                         <!-- List View -->
-                        <div v-if="sortedRelationships.length > 0" class="space-y-4">
+                        <div v-if="sortedRelationships.length > 0" class="relationships-view">
                             <!-- Group by Type -->
-                            <div class="mb-4">
-                                <h3 class="text-lg font-semibold text-gray-900 mb-2">Fact-to-Dimension Relationships</h3>
-                                <div class="space-y-2">
-                                    <div v-for="(rel, idx) in factToDimRelationships" :key="'f2d-' + idx" class="border border-blue-200 rounded p-3 bg-blue-50">
-                                        <div class="flex items-center justify-between mb-2">
-                                            <div class="font-semibold text-gray-900">
+                            <div class="relationship-type-group">
+                                <h3 class="relationship-type-group__title">Fact-to-Dimension Relationships</h3>
+                                <div class="relationship-list">
+                                    <div v-for="(rel, idx) in factToDimRelationships" :key="'f2d-' + idx" class="relationship-card relationship-card--fact-dim">
+                                        <div class="relationship-card__header">
+                                            <div class="relationship-card__table">
                                                 {{{{ rel.from_table }}}} → {{{{ rel.to_table }}}}
                                             </div>
                                             <span :class="['badge', rel.is_active !== false ? 'badge-success' : 'badge-gray']">
                                                 {{{{ rel.is_active !== false ? 'Active' : 'Inactive' }}}}
                                             </span>
                                         </div>
-                                        <div class="text-sm text-gray-600">
+                                        <div class="relationship-card__details">
                                             <div><strong>From:</strong> {{{{ rel.from_table }}}}[{{{{ rel.from_column }}}}]</div>
                                             <div><strong>To:</strong> {{{{ rel.to_table }}}}[{{{{ rel.to_column }}}}]</div>
-                                            <div class="mt-2">
-                                                <span class="badge badge-primary mr-2">{{{{ formatCardinality(rel) }}}}</span>
+                                            <div class="relationship-card__badges">
+                                                <span class="badge badge-primary">{{{{ formatCardinality(rel) }}}}</span>
                                                 <span class="badge badge-gray">{{{{ formatCrossFilterDirection(rel) }}}}</span>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                                <div v-if="factToDimRelationships.length === 0" class="text-gray-500 italic text-sm">No fact-to-dimension relationships</div>
+                                <div v-if="factToDimRelationships.length === 0" class="empty-state empty-state--small">No fact-to-dimension relationships</div>
                             </div>
 
-                            <div>
-                                <h3 class="text-lg font-semibold text-gray-900 mb-2">Dimension-to-Dimension Relationships</h3>
-                                <div class="space-y-2">
-                                    <div v-for="(rel, idx) in dimToDimRelationships" :key="'d2d-' + idx" class="border border-purple-200 rounded p-3 bg-purple-50">
-                                        <div class="flex items-center justify-between mb-2">
-                                            <div class="font-semibold text-gray-900">
+                            <div class="relationship-type-group">
+                                <h3 class="relationship-type-group__title">Dimension-to-Dimension Relationships</h3>
+                                <div class="relationship-list">
+                                    <div v-for="(rel, idx) in dimToDimRelationships" :key="'d2d-' + idx" class="relationship-card relationship-card--dim-dim">
+                                        <div class="relationship-card__header">
+                                            <div class="relationship-card__table">
                                                 {{{{ rel.from_table }}}} → {{{{ rel.to_table }}}}
                                             </div>
                                             <span :class="['badge', rel.is_active !== false ? 'badge-success' : 'badge-gray']">
                                                 {{{{ rel.is_active !== false ? 'Active' : 'Inactive' }}}}
                                             </span>
                                         </div>
-                                        <div class="text-sm text-gray-600">
+                                        <div class="relationship-card__details">
                                             <div><strong>From:</strong> {{{{ rel.from_table }}}}[{{{{ rel.from_column }}}}]</div>
                                             <div><strong>To:</strong> {{{{ rel.to_table }}}}[{{{{ rel.to_column }}}}]</div>
-                                            <div class="mt-2">
-                                                <span class="badge badge-primary mr-2">{{{{ formatCardinality(rel) }}}}</span>
+                                            <div class="relationship-card__badges">
+                                                <span class="badge badge-primary">{{{{ formatCardinality(rel) }}}}</span>
                                                 <span class="badge badge-gray">{{{{ formatCrossFilterDirection(rel) }}}}</span>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                                <div v-if="dimToDimRelationships.length === 0" class="text-gray-500 italic text-sm">No dimension-to-dimension relationships</div>
+                                <div v-if="dimToDimRelationships.length === 0" class="empty-state empty-state--small">No dimension-to-dimension relationships</div>
                             </div>
 
-                            <div>
-                                <h3 class="text-lg font-semibold text-gray-900 mb-2">Other Relationships</h3>
-                                <div class="space-y-2">
-                                    <div v-for="(rel, idx) in otherRelationships" :key="'other-' + idx" class="border border-gray-200 rounded p-3 bg-gray-50">
-                                        <div class="flex items-center justify-between mb-2">
-                                            <div class="font-semibold text-gray-900">
+                            <div class="relationship-type-group">
+                                <h3 class="relationship-type-group__title">Other Relationships</h3>
+                                <div class="relationship-list">
+                                    <div v-for="(rel, idx) in otherRelationships" :key="'other-' + idx" class="relationship-card relationship-card--other">
+                                        <div class="relationship-card__header">
+                                            <div class="relationship-card__table">
                                                 {{{{ rel.from_table }}}} → {{{{ rel.to_table }}}}
                                             </div>
                                             <span :class="['badge', rel.is_active !== false ? 'badge-success' : 'badge-gray']">
                                                 {{{{ rel.is_active !== false ? 'Active' : 'Inactive' }}}}
                                             </span>
                                         </div>
-                                        <div class="text-sm text-gray-600">
+                                        <div class="relationship-card__details">
                                             <div><strong>From:</strong> {{{{ rel.from_table }}}}[{{{{ rel.from_column }}}}]</div>
                                             <div><strong>To:</strong> {{{{ rel.to_table }}}}[{{{{ rel.to_column }}}}]</div>
-                                            <div class="mt-2">
-                                                <span class="badge badge-primary mr-2">{{{{ formatCardinality(rel) }}}}</span>
+                                            <div class="relationship-card__badges">
+                                                <span class="badge badge-primary">{{{{ formatCardinality(rel) }}}}</span>
                                                 <span class="badge badge-gray">{{{{ formatCrossFilterDirection(rel) }}}}</span>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                                <div v-if="otherRelationships.length === 0" class="text-gray-500 italic text-sm">No other relationships</div>
+                                <div v-if="otherRelationships.length === 0" class="empty-state empty-state--small">No other relationships</div>
                             </div>
                         </div>
 
-                        <div v-else class="text-gray-500 italic">No relationships found in model</div>
+                        <div v-else class="empty-state">No relationships found in model</div>
                     </div>
                 </div>
             </div>
 
             <!-- Report Tab -->
-            <div v-show="activeTab === 'report'" v-if="reportData">
-                <div class="grid grid-cols-12 gap-6">
+            <div v-show="activeTab === 'report'" class="tab-content">
+                <div class="panel-grid">
                     <!-- Left Sidebar: Pages List -->
-                    <div class="col-span-12 md:col-span-3">
-                        <div class="stat-card">
-                            <h3 class="text-xl font-bold text-gray-900 mb-4">Pages ({{{{ reportData.pages?.length || 0 }}}})</h3>
-                            <div class="space-y-2">
+                    <div class="panel-left">
+                        <div class="card">
+                            <div class="card__header">
+                                <h3 class="card__title">Pages ({{{{ reportData.pages?.length || 0 }}}})</h3>
+                            </div>
+                            <div class="page-list scrollable">
                                 <div
                                     v-for="(page, idx) in sortedPages"
                                     :key="idx"
                                     @click="selectedPage = page"
-                                    :class="['list-item border-l-4 p-3 cursor-pointer rounded', selectedPage === page ? 'selected' : 'border-gray-300']"
+                                    :class="['page-item', selectedPage === page ? 'active' : '']"
                                 >
-                                    <div class="font-semibold text-gray-900">{{{{ page.display_name || page.name }}}}</div>
-                                    <div class="text-sm text-gray-600">
+                                    <div class="page-item__name">{{{{ page.display_name || page.name }}}}</div>
+                                    <div class="page-item__count">
                                         {{{{ getVisibleVisualCount(page.visuals) }}}} visuals
                                     </div>
                                 </div>
@@ -1350,14 +4767,16 @@ class PbipHtmlGenerator:
                     </div>
 
                     <!-- Right Panel: Page Details -->
-                    <div class="col-span-12 md:col-span-9">
-                        <div v-if="selectedPage" class="stat-card">
-                            <h2 class="text-2xl font-bold text-gray-900 mb-4">{{{{ selectedPage.display_name || selectedPage.name }}}}</h2>
+                    <div class="panel-right">
+                        <div v-if="selectedPage" class="card">
+                            <div class="card__header">
+                                <h2 class="card__title">{{{{ selectedPage.display_name || selectedPage.name }}}}</h2>
+                            </div>
 
                             <!-- Page Filters -->
-                            <div v-if="selectedPage.filters?.length > 0" class="bg-blue-50 p-4 rounded mb-4">
-                                <h3 class="font-semibold text-gray-900 mb-2">Page Filters</h3>
-                                <div class="flex flex-wrap gap-2">
+                            <div v-if="selectedPage.filters?.length > 0" class="filters-section">
+                                <h3 class="filters-section__title">Page Filters</h3>
+                                <div class="filters-section__badges">
                                     <span v-for="(filter, idx) in selectedPage.filters" :key="idx" class="badge badge-primary">
                                         {{{{ filter.field?.table }}}}[{{{{ filter.field?.name }}}}]
                                     </span>
@@ -1365,29 +4784,29 @@ class PbipHtmlGenerator:
                             </div>
 
                             <!-- Visuals Grouped by Type -->
-                            <div class="space-y-4">
-                                <div v-for="(group, visualType) in visualsByType(selectedPage.visuals)" :key="visualType">
-                                    <div class="list-group-header" :class="{{collapsed: collapsedVisualGroups[visualType]}}" @click="toggleVisualGroup(visualType)">
-                                        <div class="flex items-center">
+                            <div class="visual-groups">
+                                <div v-for="(group, visualType) in visualsByType(selectedPage.visuals)" :key="visualType" class="visual-group">
+                                    <div class="visual-group__header" :class="{{collapsed: collapsedVisualGroups[visualType]}}" @click="toggleVisualGroup(visualType)">
+                                        <div class="visual-group__info">
                                             <span :class="getVisualIcon(visualType)" v-html="getVisualEmoji(visualType)"></span>
-                                            <strong class="ml-2">{{{{ visualType }}}}</strong>
-                                            <span class="ml-2 text-sm opacity-90">({{{{ group.length }}}})</span>
+                                            <span class="visual-group__name">{{{{ visualType }}}}</span>
+                                            <span class="visual-group__count">({{{{ group.length }}}})</span>
                                         </div>
-                                        <span class="expand-icon">▼</span>
+                                        <span class="visual-group__toggle">▼</span>
                                     </div>
-                                    <div v-show="!collapsedVisualGroups[visualType]" class="list-group-items space-y-3 mt-2">
-                                        <div v-for="(visual, idx) in group" :key="idx" class="border border-gray-200 rounded p-4 bg-white">
-                                            <div class="flex justify-between items-center mb-3">
-                                                <div class="font-semibold text-gray-900">
+                                    <div v-show="!collapsedVisualGroups[visualType]" class="visual-group__items">
+                                        <div v-for="(visual, idx) in group" :key="idx" class="visual-card">
+                                            <div class="visual-card__header">
+                                                <div class="visual-card__name">
                                                     {{{{ visual.visual_name || visual.title || `${{visualType}} ${{idx + 1}}` }}}}
                                                 </div>
-                                                <div class="text-xs text-gray-500">{{{{ visual.id?.substring(0, 8) }}}}...</div>
+                                                <div class="visual-card__id">{{{{ visual.id?.substring(0, 8) }}}}...</div>
                                             </div>
 
                                             <!-- Measures -->
-                                            <div v-if="visual.fields?.measures?.length > 0" class="mb-2">
-                                                <div class="text-sm font-semibold text-gray-700 mb-1">Measures ({{{{ visual.fields.measures.length }}}})</div>
-                                                <div class="flex flex-wrap gap-2">
+                                            <div v-if="visual.fields?.measures?.length > 0" class="visual-card__section">
+                                                <div class="visual-card__section-title">Measures ({{{{ visual.fields.measures.length }}}})</div>
+                                                <div class="visual-card__badges">
                                                     <span v-for="(m, midx) in visual.fields.measures" :key="midx" class="badge badge-success">
                                                         {{{{ m.table }}}}[{{{{ m.measure }}}}]
                                                     </span>
@@ -1395,9 +4814,9 @@ class PbipHtmlGenerator:
                                             </div>
 
                                             <!-- Columns -->
-                                            <div v-if="visual.fields?.columns?.length > 0">
-                                                <div class="text-sm font-semibold text-gray-700 mb-1">Columns ({{{{ visual.fields.columns.length }}}})</div>
-                                                <div class="flex flex-wrap gap-2">
+                                            <div v-if="visual.fields?.columns?.length > 0" class="visual-card__section">
+                                                <div class="visual-card__section-title">Columns ({{{{ visual.fields.columns.length }}}})</div>
+                                                <div class="visual-card__badges">
                                                     <span v-for="(c, cidx) in visual.fields.columns" :key="cidx" class="badge badge-primary">
                                                         {{{{ c.table }}}}[{{{{ c.column }}}}]
                                                     </span>
@@ -1408,8 +4827,8 @@ class PbipHtmlGenerator:
                                 </div>
                             </div>
                         </div>
-                        <div v-else class="stat-card">
-                            <p class="text-gray-500 italic">Select a page from the left to view visuals</p>
+                        <div v-else class="card">
+                            <p class="empty-state">Select a page from the left to view visuals</p>
                         </div>
                     </div>
                 </div>
@@ -1418,88 +4837,67 @@ class PbipHtmlGenerator:
             <!-- Dependencies Tab -->
             <div v-show="activeTab === 'dependencies'">
                 <!-- Dependency Sub-Tabs -->
-                <div class="mb-6 border-b border-gray-200">
-                    <nav class="-mb-px flex flex-wrap gap-x-8 gap-y-2">
-                        <button
-                            @click="dependencySubTab = 'measures'"
-                            :class="[
-                                'whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition',
-                                dependencySubTab === 'measures' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                            ]"
-                        >
-                            📐 Measures
-                        </button>
-                        <button
-                            @click="dependencySubTab = 'columns'"
-                            :class="[
-                                'whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition',
-                                dependencySubTab === 'columns' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                            ]"
-                        >
-                            📊 Columns
-                        </button>
-                        <button
-                            @click="dependencySubTab = 'chains'"
-                            :class="[
-                                'whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition',
-                                dependencySubTab === 'chains' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                            ]"
-                        >
-                            🔗 Measure Chains
-                        </button>
-                        <button
-                            @click="dependencySubTab = 'visuals'"
-                            :class="[
-                                'whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition',
-                                dependencySubTab === 'visuals' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                            ]"
-                        >
-                            📈 Visuals
-                        </button>
-                        <button
-                            @click="dependencySubTab = 'graph'; $nextTick(() => renderMeasureLineage())"
-                            :class="[
-                                'whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition',
-                                dependencySubTab === 'graph' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                            ]"
-                        >
-                            🕸️ Dependency Graph
-                        </button>
-                    </nav>
+                <div class="dependency-tabs">
+                    <button
+                        @click="dependencySubTab = 'measures'"
+                        :class="['dependency-tab', dependencySubTab === 'measures' ? 'active' : '']"
+                    >
+                        📐 Measures
+                    </button>
+                    <button
+                        @click="dependencySubTab = 'columns'"
+                        :class="['dependency-tab', dependencySubTab === 'columns' ? 'active' : '']"
+                    >
+                        📊 Columns
+                    </button>
+                    <button
+                        @click="dependencySubTab = 'chains'"
+                        :class="['dependency-tab', dependencySubTab === 'chains' ? 'active' : '']"
+                    >
+                        🔗 Measure Chains
+                    </button>
+                    <button
+                        @click="dependencySubTab = 'visuals'"
+                        :class="['dependency-tab', dependencySubTab === 'visuals' ? 'active' : '']"
+                    >
+                        📈 Visuals
+                    </button>
                 </div>
 
                 <!-- Measures Dependencies -->
-                <div v-show="dependencySubTab === 'measures'" class="grid grid-cols-12 gap-6">
+                <div v-show="dependencySubTab === 'measures'" class="panel-grid">
                     <!-- Left: Search & Select -->
-                    <div class="col-span-12 md:col-span-4">
-                        <div class="stat-card">
-                            <h3 class="text-xl font-bold text-gray-900 mb-4">Select Measure</h3>
+                    <div class="panel-left">
+                        <div class="card">
+                            <div class="card__header">
+                                <h3 class="card__title">Select Measure</h3>
+                            </div>
                             <input
                                 v-model="dependencySearchQuery"
                                 type="search"
                                 placeholder="Search measures..."
-                                class="w-full px-3 py-2 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-blue-500"
+                                class="search-input"
                             />
 
-                            <div class="scrollable space-y-2">
-                                <div v-for="(folder, folderName) in measuresForDependencyByFolder" :key="folderName" class="mb-3">
-                                    <div class="folder-header text-xs" @click="toggleDependencyFolder(folderName)">
-                                        <div>
-                                            <span class="mr-1">📁</span>
-                                            <strong>{{{{ folderName || 'No Folder' }}}}</strong>
-                                            <span class="ml-1 opacity-75">({{{{ folder.length }}}})</span>
+                            <div class="scrollable">
+                                <div v-for="(folder, folderName) in measuresForDependencyByFolder" :key="folderName" class="folder-group">
+                                    <div class="folder-header" @click="toggleDependencyFolder(folderName)">
+                                        <div class="folder-header__info">
+                                            <span class="folder-header__icon">📁</span>
+                                            <span class="folder-header__name">{{{{ folderName || 'No Folder' }}}}</span>
+                                            <span class="folder-header__count">({{{{ folder.length }}}})</span>
                                         </div>
-                                        <span class="expand-icon text-xs">▼</span>
+                                        <span class="folder-header__toggle">▼</span>
                                     </div>
-                                    <div v-show="!collapsedDependencyFolders[folderName]" class="mt-1 space-y-1">
+                                    <div v-show="!collapsedDependencyFolders[folderName]" class="folder-content">
                                         <div
                                             v-for="measure in folder"
                                             :key="measure.key"
                                             @click="selectDependencyObject(measure.key)"
-                                            :class="['list-item border-l-4 p-2 cursor-pointer rounded text-sm', selectedDependencyKey === measure.key ? 'selected' : 'border-gray-300']"
+                                            :class="['measure-item', selectedDependencyKey === measure.key ? 'active' : '']"
                                         >
-                                            <div class="font-semibold text-gray-900">{{{{ measure.name }}}}</div>
-                                            <div class="text-xs text-gray-600">{{{{ measure.table }}}}</div>
+                                            <div class="measure-item__name">{{{{ measure.name }}}}</div>
+                                            <div class="measure-item__table">{{{{ measure.table }}}}</div>
                                         </div>
                                     </div>
                                 </div>
@@ -1508,110 +4906,114 @@ class PbipHtmlGenerator:
                     </div>
 
                     <!-- Right: Dependency Details -->
-                    <div class="col-span-12 md:col-span-8">
-                        <div v-if="selectedDependencyKey" class="stat-card">
-                            <h2 class="text-2xl font-bold text-gray-900 mb-4">{{{{ selectedDependencyKey }}}}</h2>
+                    <div class="panel-right">
+                        <div v-if="selectedDependencyKey" class="card">
+                            <div class="card__header">
+                                <h2 class="card__title">{{{{ selectedDependencyKey }}}}</h2>
+                            </div>
 
                             <!-- Depends On -->
-                            <div class="mb-6">
-                                <h3 class="text-lg font-semibold text-gray-900 mb-3">
+                            <div class="dependency-section">
+                                <h3 class="dependency-section__title">
                                     Depends On ({{{{ currentDependencyDetails.dependsOn.length }}}})
                                 </h3>
-                                <div v-if="currentDependencyDetails.dependsOn.length > 0" class="space-y-2">
-                                    <div v-for="dep in currentDependencyDetails.dependsOn" :key="dep" class="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                                <div v-if="currentDependencyDetails.dependsOn.length > 0" class="dependency-list">
+                                    <div v-for="dep in currentDependencyDetails.dependsOn" :key="dep" class="dep-list-item">
                                         <span class="badge badge-primary">Measure</span>
-                                        <span class="text-sm text-gray-700">{{{{ dep }}}}</span>
+                                        <span>{{{{ dep }}}}</span>
                                     </div>
                                 </div>
-                                <div v-else class="text-gray-500 italic">No dependencies</div>
+                                <div v-else class="empty-state empty-state--small">No dependencies</div>
                             </div>
 
                             <!-- Used By -->
-                            <div class="mb-6">
-                                <h3 class="text-lg font-semibold text-gray-900 mb-3">
+                            <div class="dependency-section">
+                                <h3 class="dependency-section__title">
                                     Used By ({{{{ currentDependencyDetails.usedBy.length }}}})
                                 </h3>
-                                <div v-if="currentDependencyDetails.usedBy.length > 0" class="space-y-3">
-                                    <div v-for="(measures, folderName) in groupMeasuresByFolder(currentDependencyDetails.usedBy)" :key="folderName" class="border border-gray-200 rounded">
-                                        <div class="folder-header cursor-pointer" :class="{{collapsed: collapsedUsedByFolders[folderName]}}" @click="toggleUsedByFolder(folderName)">
-                                            <div class="flex items-center gap-2">
+                                <div v-if="currentDependencyDetails.usedBy.length > 0" class="dependency-groups">
+                                    <div v-for="(measures, folderName) in groupMeasuresByFolder(currentDependencyDetails.usedBy)" :key="folderName" class="folder-group">
+                                        <div class="folder-header" :class="{{collapsed: collapsedUsedByFolders[folderName]}}" @click="toggleUsedByFolder(folderName)">
+                                            <div class="folder-header__info">
                                                 <span>📁</span>
-                                                <span class="font-semibold">{{{{ folderName }}}}</span>
-                                                <span class="text-sm text-gray-500">({{{{ measures.length }}}})</span>
+                                                <span class="folder-header__name">{{{{ folderName }}}}</span>
+                                                <span class="folder-header__count">({{{{ measures.length }}}})</span>
                                             </div>
-                                            <span class="expand-icon">▼</span>
+                                            <span class="folder-header__toggle">▼</span>
                                         </div>
-                                        <div v-show="!collapsedUsedByFolders[folderName]" class="folder-content space-y-1 p-3">
-                                            <div v-for="measure in measures" :key="measure" class="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                                        <div v-show="!collapsedUsedByFolders[folderName]" class="folder-content">
+                                            <div v-for="measure in measures" :key="measure" class="dep-list-item">
                                                 <span class="badge badge-success">Measure</span>
-                                                <span class="text-sm text-gray-700">{{{{ measure }}}}</span>
+                                                <span>{{{{ measure }}}}</span>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                                <div v-else class="text-gray-500 italic">Not used by other measures</div>
+                                <div v-else class="empty-state empty-state--small">Not used by other measures</div>
                             </div>
 
                             <!-- Used In Visuals -->
-                            <div v-if="reportData">
-                                <h3 class="text-lg font-semibold text-gray-900 mb-3">
+                            <div v-if="reportData" class="dependency-section">
+                                <h3 class="dependency-section__title">
                                     Used In Visuals ({{{{ currentDependencyDetails.visualUsage.length }}}})
                                 </h3>
-                                <div v-if="currentDependencyDetails.visualUsage.length > 0" class="space-y-3">
-                                    <div v-for="(visuals, pageName) in groupVisualUsageByPage(currentDependencyDetails.visualUsage)" :key="pageName" class="border border-gray-200 rounded p-3">
-                                        <div class="font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                                <div v-if="currentDependencyDetails.visualUsage.length > 0" class="usage-pages">
+                                    <div v-for="(visuals, pageName) in groupVisualUsageByPage(currentDependencyDetails.visualUsage)" :key="pageName" class="usage-page">
+                                        <div class="usage-page__header">
                                             <span>📄</span>
                                             <span>{{{{ pageName }}}}</span>
-                                            <span class="text-sm text-gray-500">({{{{ visuals.length }}}})</span>
+                                            <span class="usage-page__count">({{{{ visuals.length }}}})</span>
                                         </div>
-                                        <div class="space-y-1 ml-6">
-                                            <div v-for="usage in visuals" :key="usage.visualId" class="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                                        <div class="usage-items">
+                                            <div v-for="usage in visuals" :key="usage.visualId" class="usage-item">
                                                 <span class="badge badge-warning">{{{{ usage.visualType }}}}</span>
-                                                <span class="text-sm text-gray-700">{{{{ usage.visualName || 'Unnamed Visual' }}}}</span>
+                                                <span>{{{{ usage.visualName || 'Unnamed Visual' }}}}</span>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                                <div v-else class="text-gray-500 italic">Not used in any visuals</div>
+                                <div v-else class="empty-state empty-state--small">Not used in any visuals</div>
                             </div>
                         </div>
-                        <div v-else class="stat-card">
-                            <p class="text-gray-500 italic">Select a measure from the left to view dependencies</p>
+                        <div v-else class="card">
+                            <p class="empty-state">Select a measure from the left to view dependencies</p>
                         </div>
                     </div>
                 </div>
 
                 <!-- Columns Dependencies -->
-                <div v-show="dependencySubTab === 'columns'" class="grid grid-cols-12 gap-6">
+                <div v-show="dependencySubTab === 'columns'" class="panel-grid">
                     <!-- Left: Search & Select -->
-                    <div class="col-span-12 md:col-span-4">
-                        <div class="stat-card">
-                            <h3 class="text-xl font-bold text-gray-900 mb-4">Select Column</h3>
+                    <div class="panel-left">
+                        <div class="card">
+                            <div class="card__header">
+                                <h3 class="card__title">Select Column</h3>
+                            </div>
                             <input
                                 v-model="columnSearchQuery"
                                 type="search"
                                 placeholder="Search columns..."
-                                class="w-full px-3 py-2 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-blue-500"
+                                class="search-input"
                             />
 
                             <div class="scrollable">
-                                <div v-for="(columns, tableName) in filteredColumnsForDependency" :key="tableName" class="folder-item">
+                                <div v-for="(columns, tableName) in filteredColumnsForDependency" :key="tableName" class="folder-group">
                                     <div class="folder-header" @click="toggleDependencyFolder(tableName)">
-                                        <div>
-                                            <span class="mr-2">📊</span>
-                                            <strong>{{{{ tableName }}}}</strong>
-                                            <span class="ml-2 text-sm opacity-75">({{{{ columns.length }}}})</span>
+                                        <div class="folder-header__info">
+                                            <span class="folder-header__icon">📊</span>
+                                            <span class="folder-header__name">{{{{ tableName }}}}</span>
+                                            <span class="folder-header__count">({{{{ columns.length }}}})</span>
                                         </div>
-                                        <span class="expand-icon">▼</span>
+                                        <span class="folder-header__toggle">▼</span>
                                     </div>
-                                    <div v-show="!collapsedDependencyFolders[tableName]" class="folder-content space-y-2">
+                                    <div v-show="!collapsedDependencyFolders[tableName]" class="folder-content">
                                         <div
                                             v-for="column in columns"
                                             :key="column.key"
                                             @click="selectColumnDependency(column.key)"
-                                            :class="['list-item border-l-4 p-3 cursor-pointer rounded', selectedColumnKey === column.key ? 'selected' : 'border-gray-300']"
+                                            :class="['measure-item', selectedColumnKey === column.key ? 'active' : '']"
                                         >
-                                            <div class="font-semibold text-gray-900">{{{{ column.name }}}}</div>
+                                            <div class="measure-item__name">{{{{ column.name }}}}</div>
                                         </div>
                                     </div>
                                 </div>
@@ -1620,135 +5022,136 @@ class PbipHtmlGenerator:
                     </div>
 
                     <!-- Right: Column Dependency Details -->
-                    <div class="col-span-12 md:col-span-8">
-                        <div v-if="selectedColumnKey" class="stat-card">
-                            <h2 class="text-2xl font-bold text-gray-900 mb-4">{{{{ selectedColumnKey }}}}</h2>
+                    <div class="panel-right">
+                        <div v-if="selectedColumnKey" class="card">
+                            <div class="card__header">
+                                <h2 class="card__title">{{{{ selectedColumnKey }}}}</h2>
+                            </div>
 
                             <!-- Used By Field Parameters -->
-                            <div class="mb-6">
-                                <h3 class="text-lg font-semibold text-gray-900 mb-3">
+                            <div class="dependency-section">
+                                <h3 class="dependency-section__title">
                                     Used By Field Parameters ({{{{ currentColumnDependencies.usedByFieldParams.length }}}})
                                 </h3>
-                                <div v-if="currentColumnDependencies.usedByFieldParams.length > 0" class="space-y-2">
-                                    <div v-for="fieldParam in currentColumnDependencies.usedByFieldParams" :key="fieldParam" class="flex items-center gap-2 p-2 bg-green-50 rounded border border-green-200">
+                                <div v-if="currentColumnDependencies.usedByFieldParams.length > 0" class="dependency-list">
+                                    <div v-for="fieldParam in currentColumnDependencies.usedByFieldParams" :key="fieldParam" class="dep-list-item usage-item--field-param">
                                         <span class="badge badge-success">Field Parameter</span>
-                                        <span class="text-sm text-gray-700">{{{{ fieldParam }}}}</span>
+                                        <span>{{{{ fieldParam }}}}</span>
                                     </div>
                                 </div>
-                                <div v-else class="text-gray-500 italic">Not used by any field parameters</div>
+                                <div v-else class="empty-state empty-state--small">Not used by any field parameters</div>
                             </div>
 
                             <!-- Used By Measures -->
-                            <div class="mb-6">
-                                <h3 class="text-lg font-semibold text-gray-900 mb-3">
+                            <div class="dependency-section">
+                                <h3 class="dependency-section__title">
                                     Used By Measures ({{{{ currentColumnDependencies.usedByMeasures.length }}}})
                                 </h3>
-                                <div v-if="currentColumnDependencies.usedByMeasures.length > 0" class="space-y-3">
-                                    <div v-for="(measures, folderName) in groupMeasuresByFolder(currentColumnDependencies.usedByMeasures)" :key="folderName" class="border border-gray-200 rounded p-3">
-                                        <div class="font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                                <div v-if="currentColumnDependencies.usedByMeasures.length > 0" class="dependency-groups">
+                                    <div v-for="(measures, folderName) in groupMeasuresByFolder(currentColumnDependencies.usedByMeasures)" :key="folderName" class="usage-page">
+                                        <div class="usage-page__header">
                                             <span>📁</span>
                                             <span>{{{{ folderName }}}}</span>
-                                            <span class="text-sm text-gray-500">({{{{ measures.length }}}})</span>
+                                            <span class="usage-page__count">({{{{ measures.length }}}})</span>
                                         </div>
-                                        <div class="space-y-1 ml-6">
-                                            <div v-for="measure in measures" :key="measure" class="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                                        <div class="usage-items">
+                                            <div v-for="measure in measures" :key="measure" class="dep-list-item">
                                                 <span class="badge badge-success">Measure</span>
-                                                <span class="text-sm text-gray-700">{{{{ measure }}}}</span>
+                                                <span>{{{{ measure }}}}</span>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                                <div v-else class="text-gray-500 italic">Not used by any measures</div>
+                                <div v-else class="empty-state empty-state--small">Not used by any measures</div>
                             </div>
 
                             <!-- Used In Visuals -->
-                            <div v-if="reportData">
-                                <h3 class="text-lg font-semibold text-gray-900 mb-3">
+                            <div v-if="reportData" class="dependency-section">
+                                <h3 class="dependency-section__title">
                                     Used In Visuals ({{{{ currentColumnDependencies.visualUsage.length }}}})
                                 </h3>
-                                <div v-if="currentColumnDependencies.visualUsage.length > 0" class="space-y-3">
-                                    <div v-for="(visuals, pageName) in groupVisualUsageByPage(currentColumnDependencies.visualUsage)" :key="pageName" class="border border-gray-200 rounded p-3">
-                                        <div class="font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                                <div v-if="currentColumnDependencies.visualUsage.length > 0" class="usage-pages">
+                                    <div v-for="(visuals, pageName) in groupVisualUsageByPage(currentColumnDependencies.visualUsage)" :key="pageName" class="usage-page">
+                                        <div class="usage-page__header">
                                             <span>📄</span>
                                             <span>{{{{ pageName }}}}</span>
-                                            <span class="text-sm text-gray-500">({{{{ visuals.length }}}})</span>
+                                            <span class="usage-page__count">({{{{ visuals.length }}}})</span>
                                         </div>
-                                        <div class="space-y-1 ml-6">
-                                            <div v-for="usage in visuals" :key="usage.visualId" class="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                                        <div class="usage-items">
+                                            <div v-for="usage in visuals" :key="usage.visualId" class="usage-item">
                                                 <span class="badge badge-warning">{{{{ usage.visualType }}}}</span>
-                                                <span class="text-sm text-gray-700">{{{{ usage.visualName || 'Unnamed Visual' }}}}</span>
+                                                <span>{{{{ usage.visualName || 'Unnamed Visual' }}}}</span>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                                <div v-else class="text-gray-500 italic">Not used in any visuals</div>
+                                <div v-else class="empty-state empty-state--small">Not used in any visuals</div>
                             </div>
 
                             <!-- Used In Filter Pane -->
-                            <div v-if="reportData" class="mt-6">
-                                <h3 class="text-lg font-semibold text-gray-900 mb-3">
+                            <div v-if="reportData" class="dependency-section">
+                                <h3 class="dependency-section__title">
                                     Used In Filter Pane ({{{{ currentColumnDependencies.filterUsage?.length || 0 }}}})
                                 </h3>
-                                <div v-if="currentColumnDependencies.filterUsage?.length > 0" class="space-y-3">
-                                    <div v-for="(filters, pageName) in groupFilterUsageByPageForKey(currentColumnDependencies.filterUsage)" :key="pageName" class="border border-gray-200 rounded p-3">
-                                        <div class="font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                                <div v-if="currentColumnDependencies.filterUsage?.length > 0" class="usage-pages">
+                                    <div v-for="(filters, pageName) in groupFilterUsageByPageForKey(currentColumnDependencies.filterUsage)" :key="pageName" class="usage-page">
+                                        <div class="usage-page__header">
                                             <span v-if="filters[0]?.filterLevel === 'report'">🌐</span>
                                             <span v-else>📄</span>
                                             <span>{{{{ pageName }}}}</span>
                                         </div>
-                                        <div class="space-y-1 ml-6">
-                                            <div v-for="(filter, idx) in filters" :key="idx" class="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                                        <div class="usage-items">
+                                            <div v-for="(filter, idx) in filters" :key="idx" class="usage-item">
                                                 <span class="badge" :class="filter.filterLevel === 'report' ? 'badge-info' : 'badge-warning'">{{{{ filter.filterLevel === 'report' ? 'Report Filter' : 'Page Filter' }}}}</span>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                                <div v-else class="text-gray-500 italic">Not used in any filters</div>
+                                <div v-else class="empty-state empty-state--small">Not used in any filters</div>
                             </div>
                         </div>
-                        <div v-else class="stat-card">
-                            <p class="text-gray-500 italic">Select a column from the left to view usage</p>
+                        <div v-else class="card">
+                            <p class="empty-state">Select a column from the left to view usage</p>
                         </div>
                     </div>
                 </div>
 
                 <!-- Measure Chains Tab -->
-                <div v-show="dependencySubTab === 'chains'" class="grid grid-cols-12 gap-6">
+                <div v-show="dependencySubTab === 'chains'" class="panel-grid">
                     <!-- Left: Measure List with Folders -->
-                    <div class="col-span-12 md:col-span-4">
-                        <div class="stat-card">
-                            <h3 class="text-xl font-bold text-gray-900 mb-4">Select Measure</h3>
+                    <div class="panel-left">
+                        <div class="card">
+                            <div class="card__header">
+                                <h3 class="card__title">Select Measure</h3>
+                            </div>
                             <input
                                 v-model="chainSearchQuery"
                                 type="search"
                                 placeholder="Search measures..."
-                                class="w-full px-3 py-2 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-blue-500"
+                                class="search-input"
                             />
-                            <div class="space-y-2 max-h-[600px] overflow-y-auto">
+                            <div class="scrollable">
                                 <!-- Folder-based structure -->
-                                <div v-for="(measures, folderName) in filteredChainMeasuresByFolder" :key="folderName">
-                                    <div class="list-group-header" :class="{{collapsed: collapsedChainFolders[folderName]}}" @click="toggleChainFolder(folderName)">
-                                        <div>
-                                            <strong>{{{{ folderName }}}}</strong>
-                                            <span class="ml-2 text-sm opacity-75">({{{{ measures.length }}}})</span>
+                                <div v-for="(measures, folderName) in filteredChainMeasuresByFolder" :key="folderName" class="folder-group">
+                                    <div class="folder-header" :class="{{collapsed: collapsedChainFolders[folderName]}}" @click="toggleChainFolder(folderName)">
+                                        <div class="folder-header__info">
+                                            <span class="folder-header__name">{{{{ folderName }}}}</span>
+                                            <span class="folder-header__count">({{{{ measures.length }}}})</span>
                                         </div>
-                                        <span class="expand-icon">▼</span>
+                                        <span class="folder-header__toggle">▼</span>
                                     </div>
-                                    <div v-show="!collapsedChainFolders[folderName]" class="folder-content space-y-2 mt-2">
+                                    <div v-show="!collapsedChainFolders[folderName]" class="folder-content">
                                         <div v-for="measure in measures" :key="measure.fullName"
                                             @click="selectedChainMeasure = measure.fullName"
-                                            :class="[
-                                                'p-3 rounded border cursor-pointer transition',
-                                                selectedChainMeasure === measure.fullName ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
-                                            ]"
+                                            :class="['chain-measure-item', selectedChainMeasure === measure.fullName ? 'active' : '']"
                                         >
-                                            <div class="font-semibold text-gray-900 text-sm">{{{{ measure.name }}}}</div>
-                                            <div class="text-xs text-gray-500 mt-1">{{{{ measure.table }}}}</div>
-                                            <div class="flex gap-1 mt-2 flex-wrap">
-                                                <span v-if="measure.isBase" class="badge badge-success" style="font-size: 10px;">Base</span>
-                                                <span v-if="measure.chainDepth > 0" class="badge badge-primary" style="font-size: 10px;">Chain: {{{{ measure.chainDepth }}}}</span>
-                                                <span v-if="measure.usedByCount > 0" class="badge badge-info" style="font-size: 10px;">Used by {{{{ measure.usedByCount }}}}</span>
-                                                <span v-if="measure.usedInVisuals" class="badge badge-warning" style="font-size: 10px;">{{{{ measure.visualCount }}}} visual(s)</span>
+                                            <div class="chain-measure-item__name">{{{{ measure.name }}}}</div>
+                                            <div class="chain-measure-item__table">{{{{ measure.table }}}}</div>
+                                            <div class="chain-measure-item__badges">
+                                                <span v-if="measure.isBase" class="badge badge-success badge--small">Base</span>
+                                                <span v-if="measure.chainDepth > 0" class="badge badge-primary badge--small">Chain: {{{{ measure.chainDepth }}}}</span>
+                                                <span v-if="measure.usedByCount > 0" class="badge badge-info badge--small">Used by {{{{ measure.usedByCount }}}}</span>
+                                                <span v-if="measure.usedInVisuals" class="badge badge-warning badge--small">{{{{ measure.visualCount }}}} visual(s)</span>
                                             </div>
                                         </div>
                                     </div>
@@ -1758,57 +5161,52 @@ class PbipHtmlGenerator:
                     </div>
 
                     <!-- Right: Chain Visualization -->
-                    <div class="col-span-12 md:col-span-8">
-                        <div v-if="selectedChainMeasure" class="stat-card">
-                            <h2 class="text-2xl font-bold text-gray-900 mb-4">Complete Measure Chain</h2>
-
-                            <!-- Selected Measure - Center -->
-                            <div class="p-4 bg-purple-100 border-2 border-purple-600 rounded-lg mb-6">
-                                <div class="text-center">
-                                    <div class="text-sm text-purple-700 font-semibold mb-1">SELECTED MEASURE</div>
-                                    <div class="text-xl font-bold text-gray-900">{{{{ selectedChainMeasure }}}}</div>
-                                </div>
+                    <div class="panel-right">
+                        <div v-if="selectedChainMeasure" class="card">
+                            <div class="card__header">
+                                <h3 class="card__title">Complete Measure Chain</h3>
                             </div>
+                            <div class="card__body">
+                                <!-- Selected Measure - Center -->
+                                <div class="chain-selected-measure">
+                                    <div class="chain-selected-measure__label">SELECTED MEASURE</div>
+                                    <div class="chain-selected-measure__name">{{{{ selectedChainMeasure }}}}</div>
+                                </div>
 
-                            <div class="space-y-8">
-                                <!-- UPWARD: Used By (What uses this measure) - HIERARCHICAL -->
-                                <div v-if="currentChain.usedByChain && currentChain.usedByChain.length > 0">
-                                    <div class="flex items-center gap-2 mb-3">
-                                        <span class="text-lg font-bold text-blue-600">⬆️ USED BY CHAIN</span>
-                                        <span class="text-sm text-gray-500">({{{{ currentChain.usedByCount }}}} total measure(s) in chain)</span>
-                                    </div>
+                                <div class="chain-sections">
+                                    <!-- UPWARD: Used By (What uses this measure) - HIERARCHICAL -->
+                                    <div v-if="currentChain.usedByChain && currentChain.usedByChain.length > 0" class="chain-section">
+                                        <div class="chain-section__header chain-section__header--upward">
+                                            <span class="chain-section__title">⬆️ USED BY CHAIN</span>
+                                            <span class="chain-section__count">({{{{ currentChain.usedByCount }}}} total measure(s) in chain)</span>
+                                        </div>
 
-                                    <!-- Recursive Used By Tree -->
-                                    <div class="pl-4 border-l-4 border-blue-500">
-                                        <div v-for="(item, idx) in currentChain.usedByChain" :key="idx">
-                                            <div class="measure-chain-item">
-                                                <div class="p-3 bg-blue-50 border-l-4 border-blue-400 rounded mb-2">
-                                                    <div class="flex items-center gap-2">
-                                                        <span class="text-blue-600 font-bold">→</span>
-                                                        <div class="font-medium text-gray-900">{{{{ item.measure }}}}</div>
-                                                    </div>
+                                        <!-- Recursive Used By Tree -->
+                                        <div class="chain-tree chain-tree--upward">
+                                            <div v-for="(item, idx) in currentChain.usedByChain" :key="idx" class="chain-node">
+                                                <div class="chain-node__item chain-node__item--level1">
+                                                    <span class="chain-node__arrow">→</span>
+                                                    <span class="chain-node__name">{{{{ item.measure }}}}</span>
                                                 </div>
 
                                                 <!-- Nested Used By (recursive) -->
-                                                <div v-if="item.usedBy && item.usedBy.length > 0" class="ml-8 pl-4 border-l-2 border-blue-300">
-                                                    <div v-for="(child, cidx) in item.usedBy" :key="cidx">
-                                                        <div class="p-2 bg-blue-100 border-l-4 border-blue-500 rounded mb-2">
-                                                            <div class="flex items-center gap-2">
-                                                                <span class="text-blue-700 font-bold">⇒</span>
-                                                                <div class="text-sm font-medium text-gray-800">{{{{ child.measure }}}}</div>
-                                                            </div>
+                                                <div v-if="item.usedBy && item.usedBy.length > 0" class="chain-tree chain-tree--nested">
+                                                    <div v-for="(child, cidx) in item.usedBy" :key="cidx" class="chain-node">
+                                                        <div class="chain-node__item chain-node__item--level2">
+                                                            <span class="chain-node__arrow">⇒</span>
+                                                            <span class="chain-node__name">{{{{ child.measure }}}}</span>
                                                         </div>
 
                                                         <!-- Level 3 -->
-                                                        <div v-if="child.usedBy && child.usedBy.length > 0" class="ml-8 pl-4 border-l-2 border-blue-200">
-                                                            <div v-for="(grandchild, gidx) in child.usedBy" :key="gidx" class="p-2 bg-blue-200 border-l-4 border-blue-600 rounded mb-2">
-                                                                <div class="flex items-center gap-2">
-                                                                    <span class="text-blue-800 font-bold">⇛</span>
-                                                                    <div class="text-xs font-medium text-gray-800">{{{{ grandchild.measure }}}}</div>
+                                                        <div v-if="child.usedBy && child.usedBy.length > 0" class="chain-tree chain-tree--nested">
+                                                            <div v-for="(grandchild, gidx) in child.usedBy" :key="gidx" class="chain-node">
+                                                                <div class="chain-node__item chain-node__item--level3">
+                                                                    <span class="chain-node__arrow">⇛</span>
+                                                                    <span class="chain-node__name">{{{{ grandchild.measure }}}}</span>
                                                                 </div>
 
                                                                 <!-- Level 4+ indicator -->
-                                                                <div v-if="grandchild.usedBy && grandchild.usedBy.length > 0" class="ml-6 text-xs text-blue-600 italic">
+                                                                <div v-if="grandchild.usedBy && grandchild.usedBy.length > 0" class="chain-node__more">
                                                                     ... and {{{{ grandchild.usedBy.length }}}} more level(s)
                                                                 </div>
                                                             </div>
@@ -1818,295 +5216,207 @@ class PbipHtmlGenerator:
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                                <div v-else>
-                                    <div class="flex items-center gap-2 mb-3">
-                                        <span class="text-lg font-bold text-gray-400">⬆️ USED BY</span>
+                                    <div v-else class="chain-section">
+                                        <div class="chain-section__header chain-section__header--muted">
+                                            <span class="chain-section__title">⬆️ USED BY</span>
+                                        </div>
+                                        <div class="chain-empty">No other measures depend on this measure</div>
                                     </div>
-                                    <div class="text-gray-500 italic text-sm p-3 bg-gray-50 rounded">
-                                        No other measures depend on this measure
-                                    </div>
-                                </div>
 
-                                <div class="border-t-2 border-dashed border-gray-300"></div>
+                                    <div class="chain-divider"></div>
 
-                                <!-- DOWNWARD: Dependencies (What this measure uses) -->
-                                <div v-if="currentChain.dependencies && currentChain.dependencies.length > 0">
-                                    <div class="flex items-center gap-2 mb-3">
-                                        <span class="text-lg font-bold text-green-600">⬇️ DEPENDS ON</span>
-                                        <span class="text-sm text-gray-500">(This measure uses {{{{ currentChain.dependencies.length }}}} measure(s))</span>
+                                    <!-- DOWNWARD: Dependencies (What this measure uses) -->
+                                    <div v-if="currentChain.dependencies && currentChain.dependencies.length > 0" class="chain-section">
+                                        <div class="chain-section__header chain-section__header--downward">
+                                            <span class="chain-section__title">⬇️ DEPENDS ON</span>
+                                            <span class="chain-section__count">(This measure uses {{{{ currentChain.dependencies.length }}}} measure(s))</span>
+                                        </div>
+                                        <div class="chain-deps-grid">
+                                            <div v-for="dep in currentChain.dependencies" :key="dep" class="chain-dep-item">
+                                                {{{{ dep }}}}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pl-4 border-l-4 border-green-500">
-                                        <div v-for="dep in currentChain.dependencies" :key="dep" class="p-3 bg-green-50 border border-green-300 rounded">
-                                            <div class="font-medium text-gray-900">{{{{ dep }}}}</div>
+                                    <div v-else class="chain-section">
+                                        <div class="chain-section__header chain-section__header--downward">
+                                            <span class="chain-section__title">⬇️ DEPENDS ON</span>
+                                        </div>
+                                        <div class="chain-base-measure">
+                                            <div class="chain-base-measure__icon">🟢 BASE MEASURE</div>
+                                            <div class="chain-base-measure__text">This measure doesn't depend on any other measures</div>
                                         </div>
                                     </div>
                                 </div>
-                                <div v-else>
-                                    <div class="flex items-center gap-2 mb-3">
-                                        <span class="text-lg font-bold text-green-600">⬇️ DEPENDS ON</span>
-                                    </div>
-                                    <div class="p-3 bg-green-50 border border-green-300 rounded">
-                                        <div class="font-medium text-green-700">🟢 BASE MEASURE</div>
-                                        <div class="text-sm text-gray-600 mt-1">This measure doesn't depend on any other measures</div>
-                                    </div>
-                                </div>
-
                             </div>
                         </div>
-                        <div v-else class="stat-card">
-                            <p class="text-gray-500 italic">Select a measure from the left to view its complete dependency chain</p>
+                        <div v-else class="card">
+                            <div class="card__body">
+                                <p class="empty-state">Select a measure from the left to view its complete dependency chain</p>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Visuals Tab -->
-                <div v-show="dependencySubTab === 'visuals'" class="grid grid-cols-12 gap-6">
+                <div v-show="dependencySubTab === 'visuals'" class="panel-grid">
                     <!-- Left: Page & Visual Selection -->
-                    <div class="col-span-12 md:col-span-4">
-                        <div class="stat-card">
-                            <h3 class="text-xl font-bold text-gray-900 mb-4">Select Page & Visual</h3>
-
-                            <!-- Page Selection -->
-                            <div class="mb-6">
-                                <label class="block text-sm font-semibold text-gray-700 mb-2">Page</label>
-                                <select
-                                    v-model="selectedVisualPage"
-                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                    @change="selectedVisualId = null"
-                                >
-                                    <option :value="null">-- Select a page --</option>
-                                    <option v-for="page in visualAnalysisPages" :key="page.name" :value="page.name">
-                                        {{{{ page.name }}}} ({{{{ page.visualCount }}}} visuals)
-                                    </option>
-                                </select>
+                    <div class="panel-left">
+                        <div class="card">
+                            <div class="card__header">
+                                <h3 class="card__title">Select Page & Visual</h3>
                             </div>
+                            <div class="card__body">
+                                <!-- Page Selection -->
+                                <div class="form-group">
+                                    <label class="form-label">Page</label>
+                                    <select v-model="selectedVisualPage" class="form-select" @change="selectedVisualId = null">
+                                        <option :value="null">-- Select a page --</option>
+                                        <option v-for="page in visualAnalysisPages" :key="page.name" :value="page.name">
+                                            {{{{ page.name }}}} ({{{{ page.visualCount }}}} visuals)
+                                        </option>
+                                    </select>
+                                </div>
 
-                            <!-- Visual Selection -->
-                            <div v-if="selectedVisualPage">
-                                <label class="block text-sm font-semibold text-gray-700 mb-2">Visual</label>
-                                <div class="space-y-2 max-h-[500px] overflow-y-auto">
-                                    <div v-for="visual in visualsOnSelectedPage" :key="visual.visualId"
-                                        @click="selectedVisualId = visual.visualId"
-                                        :class="[
-                                            'p-3 rounded border cursor-pointer transition',
-                                            selectedVisualId === visual.visualId ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
-                                        ]"
-                                    >
-                                        <div class="flex items-center gap-2 mb-1">
-                                            <span class="badge badge-primary" style="font-size: 10px;">{{{{ visual.visualType }}}}</span>
+                                <!-- Visual Selection -->
+                                <div v-if="selectedVisualPage" class="form-group">
+                                    <label class="form-label">Visual</label>
+                                    <div class="scrollable">
+                                        <div v-for="visual in visualsOnSelectedPage" :key="visual.visualId"
+                                            @click="selectedVisualId = visual.visualId"
+                                            :class="['visual-select-item', selectedVisualId === visual.visualId ? 'active' : '']"
+                                        >
+                                            <span class="badge badge-primary badge--small">{{{{ visual.visualType }}}}</span>
+                                            <div class="visual-select-item__name">{{{{ visual.visualName || 'Unnamed Visual' }}}}</div>
+                                            <div class="visual-select-item__meta">{{{{ visual.measureCount }}}} measure(s)</div>
                                         </div>
-                                        <div class="text-sm text-gray-700">{{{{ visual.visualName || 'Unnamed Visual' }}}}</div>
-                                        <div class="text-xs text-gray-500 mt-1">{{{{ visual.measureCount }}}} measure(s)</div>
                                     </div>
                                 </div>
+                                <div v-else class="empty-state">Select a page to view its visuals</div>
                             </div>
-                            <div v-else class="text-gray-500 italic text-sm">Select a page to view its visuals</div>
                         </div>
                     </div>
 
                     <!-- Right: Measure Backward Trace -->
-                    <div class="col-span-12 md:col-span-8">
-                        <div v-if="selectedVisualId && currentVisualAnalysis" class="stat-card">
-                            <h2 class="text-2xl font-bold text-gray-900 mb-4">Visual Measure Trace</h2>
-                            <div class="mb-4">
-                                <div class="flex items-center gap-2">
-                                    <span class="badge badge-primary">{{{{ currentVisualAnalysis.visualType }}}}</span>
-                                    <span class="font-semibold text-gray-800">{{{{ currentVisualAnalysis.visualName || 'Unnamed Visual' }}}}</span>
-                                </div>
-                                <div class="text-sm text-gray-500 mt-1">Page: {{{{ selectedVisualPage }}}}</div>
+                    <div class="panel-right">
+                        <div v-if="selectedVisualId && currentVisualAnalysis" class="card">
+                            <div class="card__header">
+                                <h3 class="card__title">Visual Measure Trace</h3>
                             </div>
+                            <div class="card__body">
+                                <div class="visual-trace-header">
+                                    <span class="badge badge-primary">{{{{ currentVisualAnalysis.visualType }}}}</span>
+                                    <span class="visual-trace-header__name">{{{{ currentVisualAnalysis.visualName || 'Unnamed Visual' }}}}</span>
+                                    <div class="visual-trace-header__page">Page: {{{{ selectedVisualPage }}}}</div>
+                                </div>
 
-                            <!-- Backward Trace -->
-                            <div class="space-y-6">
-                                <!-- Top-Level Measures (Used Directly in Visual) -->
-                                <div v-if="currentVisualAnalysis.topMeasures && currentVisualAnalysis.topMeasures.length > 0">
-                                    <div class="flex items-center gap-2 mb-3">
-                                        <span class="text-lg font-bold text-orange-600">📊 Measures Used in Visual</span>
-                                        <span class="text-sm text-gray-500">({{{{ currentVisualAnalysis.topMeasures.length }}}})</span>
-                                    </div>
-                                    <div class="grid grid-cols-1 gap-3 pl-4 border-l-4 border-orange-500">
-                                        <div v-for="measure in currentVisualAnalysis.topMeasures" :key="measure.fullName" class="p-3 bg-orange-50 border border-orange-200 rounded">
-                                            <div class="font-semibold text-gray-900">{{{{ measure.name }}}}</div>
-                                            <div class="text-xs text-gray-500 mt-1">{{{{ measure.table }}}}</div>
+                                <!-- Backward Trace -->
+                                <div class="trace-sections">
+                                    <!-- Top-Level Measures (Used Directly in Visual) -->
+                                    <div v-if="currentVisualAnalysis.topMeasures && currentVisualAnalysis.topMeasures.length > 0" class="trace-section">
+                                        <div class="trace-section__header trace-section__header--visual">
+                                            <span class="trace-section__title">📊 Measures Used in Visual</span>
+                                            <span class="trace-section__count">({{{{ currentVisualAnalysis.topMeasures.length }}}})</span>
+                                        </div>
+                                        <div class="trace-tree trace-tree--visual">
+                                            <div v-for="measure in currentVisualAnalysis.topMeasures" :key="measure.fullName" class="trace-measure">
+                                                <div class="trace-measure__name">{{{{ measure.name }}}}</div>
+                                                <div class="trace-measure__table">{{{{ measure.table }}}}</div>
 
-                                            <!-- Show Dependencies -->
-                                            <div v-if="measure.dependencies && measure.dependencies.length > 0" class="mt-3">
-                                                <div class="text-xs font-semibold text-gray-700 mb-2">⬇️ Depends on:</div>
-                                                <div class="space-y-2 ml-4 pl-3 border-l-2 border-blue-300">
-                                                    <div v-for="dep in measure.dependencies" :key="dep.fullName" class="p-2 bg-blue-50 border border-blue-200 rounded">
-                                                        <div class="font-medium text-sm text-gray-800">{{{{ dep.name }}}}</div>
-                                                        <div class="text-xs text-gray-500">{{{{ dep.table }}}}</div>
+                                                <!-- Show Dependencies -->
+                                                <div v-if="measure.dependencies && measure.dependencies.length > 0" class="trace-deps">
+                                                    <div class="trace-deps__header">⬇️ Depends on:</div>
+                                                    <div class="trace-deps__list">
+                                                        <div v-for="dep in measure.dependencies" :key="dep.fullName" class="trace-dep">
+                                                            <div class="trace-dep__name">{{{{ dep.name }}}}</div>
+                                                            <div class="trace-dep__table">{{{{ dep.table }}}}</div>
 
-                                                        <!-- Nested Dependencies (Base Measures) -->
-                                                        <div v-if="dep.dependencies && dep.dependencies.length > 0" class="mt-2 ml-3 pl-3 border-l-2 border-green-300">
-                                                            <div class="text-xs font-semibold text-gray-600 mb-1">⬇️ Base:</div>
-                                                            <div class="space-y-1">
-                                                                <div v-for="baseDep in dep.dependencies" :key="baseDep.fullName" class="p-2 bg-green-50 border border-green-200 rounded text-xs">
-                                                                    <div class="font-medium text-gray-800">{{{{ baseDep.name }}}}</div>
-                                                                    <div class="text-gray-500">{{{{ baseDep.table }}}}</div>
-                                                                    <span class="badge badge-success mt-1" style="font-size: 9px;">Base Measure</span>
+                                                            <!-- Nested Dependencies (Base Measures) -->
+                                                            <div v-if="dep.dependencies && dep.dependencies.length > 0" class="trace-base-deps">
+                                                                <div class="trace-deps__header">⬇️ Base:</div>
+                                                                <div v-for="baseDep in dep.dependencies" :key="baseDep.fullName" class="trace-base-measure">
+                                                                    <div class="trace-base-measure__name">{{{{ baseDep.name }}}}</div>
+                                                                    <div class="trace-base-measure__table">{{{{ baseDep.table }}}}</div>
+                                                                    <span class="badge badge-success badge--tiny">Base Measure</span>
                                                                 </div>
                                                             </div>
                                                         </div>
                                                     </div>
                                                 </div>
-                                            </div>
 
-                                            <!-- Base Measure Indicator -->
-                                            <div v-else class="mt-2">
-                                                <span class="badge badge-success" style="font-size: 10px;">🟢 Base Measure</span>
+                                                <!-- Base Measure Indicator -->
+                                                <div v-else class="trace-measure__base">
+                                                    <span class="badge badge-success badge--small">🟢 Base Measure</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Summary -->
+                                    <div v-if="currentVisualAnalysis.summary" class="trace-summary">
+                                        <h4 class="trace-summary__title">📋 Summary</h4>
+                                        <div class="trace-summary__grid">
+                                            <div class="trace-summary__item">
+                                                <div class="trace-summary__label">Total Measures</div>
+                                                <div class="trace-summary__value">{{{{ currentVisualAnalysis.summary.totalMeasures }}}}</div>
+                                            </div>
+                                            <div class="trace-summary__item">
+                                                <div class="trace-summary__label">Direct Dependencies</div>
+                                                <div class="trace-summary__value">{{{{ currentVisualAnalysis.summary.directDeps }}}}</div>
+                                            </div>
+                                            <div class="trace-summary__item">
+                                                <div class="trace-summary__label">Base Measures</div>
+                                                <div class="trace-summary__value">{{{{ currentVisualAnalysis.summary.baseMeasures }}}}</div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-
-                                <!-- Summary -->
-                                <div v-if="currentVisualAnalysis.summary" class="p-4 bg-gray-50 border border-gray-200 rounded">
-                                    <h4 class="font-semibold text-gray-800 mb-2">📋 Summary</h4>
-                                    <div class="grid grid-cols-3 gap-4 text-sm">
-                                        <div>
-                                            <div class="text-gray-600">Total Measures</div>
-                                            <div class="font-bold text-gray-900">{{{{ currentVisualAnalysis.summary.totalMeasures }}}}</div>
-                                        </div>
-                                        <div>
-                                            <div class="text-gray-600">Direct Dependencies</div>
-                                            <div class="font-bold text-gray-900">{{{{ currentVisualAnalysis.summary.directDeps }}}}</div>
-                                        </div>
-                                        <div>
-                                            <div class="text-gray-600">Base Measures</div>
-                                            <div class="font-bold text-gray-900">{{{{ currentVisualAnalysis.summary.baseMeasures }}}}</div>
-                                        </div>
-                                    </div>
-                                </div>
                             </div>
                         </div>
-                        <div v-else class="stat-card">
-                            <p class="text-gray-500 italic">Select a page and visual from the left to trace measure dependencies</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Dependency Graph Tab -->
-                <div v-show="dependencySubTab === 'graph'" class="space-y-4">
-                    <!-- Graph Controls -->
-                    <div class="stat-card">
-                        <div class="flex flex-wrap items-center gap-4 justify-between">
-                            <div class="flex items-center gap-4 flex-1">
-                                <div class="relative flex-1 max-w-md">
-                                    <input
-                                        v-model="graphSearchQuery"
-                                        type="search"
-                                        placeholder="Search measures..."
-                                        class="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        @input="renderMeasureLineage"
-                                    />
-                                    <svg class="absolute left-3 top-2.5 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                                    </svg>
-                                </div>
-                                <select
-                                    v-model="graphFilterMode"
-                                    @change="renderMeasureLineage"
-                                    class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                                >
-                                    <option value="all">All measures</option>
-                                    <option value="connected">Only connected</option>
-                                </select>
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        v-model="graphShowDisconnected"
-                                        @change="renderMeasureLineage"
-                                        class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                    />
-                                    <span class="text-sm text-gray-700">Show Disconnected</span>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Graph Container with Cards -->
-                    <div class="stat-card p-6 overflow-auto" style="max-height: 800px;">
-                        <div id="measure-lineage-container" style="min-width: 100%; position: relative; min-height: 600px;">
-                            <!-- SVG for connection lines (behind cards) -->
-                            <svg id="lineage-svg" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1;">
-                                <defs>
-                                    <marker id="arrowhead-lineage" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-                                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b82f6" />
-                                    </marker>
-                                </defs>
-                            </svg>
-
-                            <!-- Measure cards will be rendered here -->
-                            <div id="measure-cards-container" style="position: relative; z-index: 2;"></div>
-                        </div>
-                    </div>
-
-                    <!-- Statistics -->
-                    <div class="stat-card">
-                        <div class="grid grid-cols-4 gap-6 text-center">
-                            <div>
-                                <div class="text-gray-600 text-sm mb-1">Total Measures</div>
-                                <div class="text-2xl font-bold text-gray-900">{{{{ graphStats.totalMeasures }}}}</div>
-                            </div>
-                            <div>
-                                <div class="text-gray-600 text-sm mb-1">Visible</div>
-                                <div class="text-2xl font-bold text-blue-600">{{{{ graphStats.visibleMeasures }}}}</div>
-                            </div>
-                            <div>
-                                <div class="text-gray-600 text-sm mb-1">Dependencies</div>
-                                <div class="text-2xl font-bold text-green-600">{{{{ graphStats.totalDependencies }}}}</div>
-                            </div>
-                            <div>
-                                <div class="text-gray-600 text-sm mb-1">Max Depth</div>
-                                <div class="text-2xl font-bold text-purple-600">{{{{ graphStats.maxDepth }}}}</div>
+                        <div v-else class="card">
+                            <div class="card__body">
+                                <p class="empty-state">Select a page and visual from the left to trace measure dependencies</p>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Measure Info Modal -->
-                <div v-if="showMeasureModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" @click.self="closeMeasureModal">
-                    <div class="bg-white rounded-lg shadow-xl max-w-3xl w-full mx-4" style="max-height: 90vh; overflow-y: auto;">
-                        <div class="p-6 border-b border-gray-200 flex justify-between items-start">
+                <div v-if="showMeasureModal" class="modal-overlay" @click.self="closeMeasureModal">
+                    <div class="modal">
+                        <div class="modal__header">
                             <div>
-                                <h2 class="text-2xl font-bold text-gray-900">{{{{ selectedMeasureForModal?.name }}}}</h2>
-                                <p class="text-sm text-gray-600 mt-1">table: {{{{ selectedMeasureForModal?.table }}}}</p>
+                                <h2 class="modal__title">{{{{ selectedMeasureForModal?.name }}}}</h2>
+                                <p class="modal__subtitle">table: {{{{ selectedMeasureForModal?.table }}}}</p>
                             </div>
-                            <button @click="closeMeasureModal" class="text-gray-400 hover:text-gray-600">
+                            <button @click="closeMeasureModal" class="modal__close">
                                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                                 </svg>
                             </button>
                         </div>
 
-                        <div class="p-6 space-y-6">
+                        <div class="modal__body">
                             <!-- Expression -->
-                            <div v-if="selectedMeasureForModal?.expression">
-                                <h3 class="text-lg font-semibold text-gray-900 mb-3">Expression:</h3>
-                                <div class="bg-gray-50 rounded-lg p-4 font-mono text-sm text-gray-800 overflow-x-auto border border-gray-200">
-                                    {{{{ selectedMeasureForModal.expression }}}}
-                                </div>
+                            <div v-if="selectedMeasureForModal?.expression" class="modal-section">
+                                <h3 class="modal-section__title">Expression:</h3>
+                                <div class="code-block">{{{{ selectedMeasureForModal.expression }}}}</div>
                             </div>
 
                             <!-- References -->
-                            <div v-if="selectedMeasureForModal?.references && selectedMeasureForModal.references.length > 0">
-                                <h3 class="text-lg font-semibold text-gray-900 mb-3">References:</h3>
-                                <div class="space-y-2">
-                                    <div v-for="ref in selectedMeasureForModal.references" :key="ref"
-                                         class="px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-gray-800">
+                            <div v-if="selectedMeasureForModal?.references && selectedMeasureForModal.references.length > 0" class="modal-section">
+                                <h3 class="modal-section__title">References:</h3>
+                                <div class="ref-list">
+                                    <div v-for="ref in selectedMeasureForModal.references" :key="ref" class="ref-item ref-item--uses">
                                         {{{{ ref }}}}
                                     </div>
                                 </div>
                             </div>
 
                             <!-- Referenced By -->
-                            <div v-if="selectedMeasureForModal?.referencedBy && selectedMeasureForModal.referencedBy.length > 0">
-                                <h3 class="text-lg font-semibold text-gray-900 mb-3">Referenced By:</h3>
-                                <div class="space-y-2">
-                                    <div v-for="ref in selectedMeasureForModal.referencedBy" :key="ref"
-                                         class="px-4 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-gray-800">
+                            <div v-if="selectedMeasureForModal?.referencedBy && selectedMeasureForModal.referencedBy.length > 0" class="modal-section">
+                                <h3 class="modal-section__title">Referenced By:</h3>
+                                <div class="ref-list">
+                                    <div v-for="ref in selectedMeasureForModal.referencedBy" :key="ref" class="ref-item ref-item--usedby">
                                         {{{{ ref }}}}
                                     </div>
                                 </div>
@@ -2117,299 +5427,289 @@ class PbipHtmlGenerator:
             </div>
 
             <!-- Usage Tab -->
-            <div v-show="activeTab === 'usage'" class="space-y-6">
+            <div v-show="activeTab === 'usage'" class="tab-content">
                 <!-- Field Parameters Section (Full Width) -->
-                <div class="stat-card">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-4">Field Parameters</h2>
-                    <div v-if="fieldParametersList.length > 0" class="bg-blue-50 p-4 rounded mb-4">
-                        <strong>Info:</strong> Found {{{{ fieldParametersList.length }}}} field parameter(s) in the model.
+                <div class="card">
+                    <div class="card__header">
+                        <h3 class="card__title">Field Parameters</h3>
                     </div>
-                    <div v-if="fieldParametersList.length > 0" class="space-y-4">
-                        <div v-for="fp in fieldParametersList" :key="fp.name" class="border border-blue-200 rounded p-4 bg-white">
-                            <div class="flex items-center gap-2 mb-3">
-                                <span class="badge badge-success text-base">{{{{ fp.name }}}}</span>
-                                <span class="text-sm text-gray-500">{{{{ fp.table }}}}</span>
-                            </div>
-                            <div v-if="fp.columns && fp.columns.length > 0">
-                                <h4 class="font-semibold text-gray-700 mb-2">Referenced Columns ({{{{ fp.columns.length }}}}):</h4>
-                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                                    <div v-for="col in fp.columns" :key="col" class="text-sm p-2 bg-gray-50 rounded border border-gray-200">
-                                        {{{{ col }}}}
+                    <div class="card__body">
+                        <div v-if="fieldParametersList.length > 0" class="alert alert--info">
+                            <strong>Info:</strong> Found {{{{ fieldParametersList.length }}}} field parameter(s) in the model.
+                        </div>
+                        <div v-if="fieldParametersList.length > 0" class="field-params-list">
+                            <div v-for="fp in fieldParametersList" :key="fp.name" class="field-param-card">
+                                <div class="field-param-card__header">
+                                    <span class="badge badge-success">{{{{ fp.name }}}}</span>
+                                    <span class="field-param-card__table">{{{{ fp.table }}}}</span>
+                                </div>
+                                <div v-if="fp.columns && fp.columns.length > 0" class="field-param-card__columns">
+                                    <h4 class="field-param-card__subtitle">Referenced Columns ({{{{ fp.columns.length }}}}):</h4>
+                                    <div class="columns-tag-grid">
+                                        <div v-for="col in fp.columns" :key="col" class="column-tag">{{{{ col }}}}</div>
                                     </div>
                                 </div>
+                                <div v-else class="empty-state empty-state--small">No columns referenced</div>
                             </div>
-                            <div v-else class="text-gray-500 italic text-sm">No columns referenced</div>
                         </div>
+                        <div v-else class="empty-state">No field parameters found in the model.</div>
                     </div>
-                    <div v-else class="text-gray-500 italic">No field parameters found in the model.</div>
                 </div>
 
                 <!-- Unused Measures and Columns Grid -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div class="stat-card">
-                        <div class="flex items-center justify-between mb-4">
-                            <h2 class="text-2xl font-bold text-gray-900">Unused Measures</h2>
-                            <div v-if="dependencies.unused_measures?.length > 0" class="flex gap-2">
-                                <button @click="expandAllUnusedMeasures" class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600">Expand All</button>
-                                <button @click="collapseAllUnusedMeasures" class="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600">Collapse All</button>
+                <div class="two-column-grid">
+                    <div class="card">
+                        <div class="card__header">
+                            <h3 class="card__title">Unused Measures</h3>
+                            <div v-if="dependencies.unused_measures?.length > 0" class="card__actions">
+                                <button @click="expandAllUnusedMeasures" class="btn btn--small btn--primary">Expand All</button>
+                                <button @click="collapseAllUnusedMeasures" class="btn btn--small btn--secondary">Collapse All</button>
                             </div>
                         </div>
-                        <div v-if="dependencies.unused_measures?.length > 0" class="bg-yellow-50 p-4 rounded mb-4">
-                            <strong>Warning:</strong> Found {{{{ dependencies.unused_measures.length }}}} measures not used anywhere.
-                        </div>
-                        <div v-if="dependencies.unused_measures?.length > 0" class="space-y-4 max-h-96 overflow-y-auto">
-                            <!-- Grouped by folder -->
-                            <div v-for="(measures, folderName) in unusedMeasuresByFolder" :key="folderName">
-                                <div class="list-group-header" :class="{{collapsed: collapsedUnusedMeasureFolders[folderName]}}" @click="toggleUnusedMeasureFolder(folderName)">
-                                    <div>
-                                        <strong>{{{{ folderName }}}}</strong>
-                                        <span class="ml-2 text-sm opacity-75">({{{{ measures.length }}}})</span>
+                        <div class="card__body">
+                            <div v-if="dependencies.unused_measures?.length > 0" class="alert alert--warning">
+                                <strong>Warning:</strong> Found {{{{ dependencies.unused_measures.length }}}} measures not used anywhere.
+                            </div>
+                            <div v-if="dependencies.unused_measures?.length > 0" class="scrollable">
+                                <!-- Grouped by folder -->
+                                <div v-for="(measures, folderName) in unusedMeasuresByFolder" :key="folderName" class="folder-group">
+                                    <div class="folder-header" :class="{{collapsed: collapsedUnusedMeasureFolders[folderName]}}" @click="toggleUnusedMeasureFolder(folderName)">
+                                        <div class="folder-header__info">
+                                            <strong>{{{{ folderName }}}}</strong>
+                                            <span class="folder-header__count">({{{{ measures.length }}}})</span>
+                                        </div>
+                                        <span class="folder-header__icon">▼</span>
                                     </div>
-                                    <span class="expand-icon">▼</span>
-                                </div>
-                                <div v-show="!collapsedUnusedMeasureFolders[folderName]" class="folder-content space-y-2 mt-2">
-                                    <div v-for="measure in measures" :key="measure" class="p-2 border border-gray-200 rounded text-sm bg-white">
-                                        {{{{ measure }}}}
+                                    <div v-show="!collapsedUnusedMeasureFolders[folderName]" class="folder-content">
+                                        <div v-for="measure in measures" :key="measure" class="unused-item">{{{{ measure }}}}</div>
                                     </div>
                                 </div>
                             </div>
+                            <div v-else class="success-state">✓ All measures are in use!</div>
                         </div>
-                        <div v-else class="text-green-600 font-semibold">✓ All measures are in use!</div>
                     </div>
 
-                    <div class="stat-card">
-                        <div class="flex items-center justify-between mb-4">
-                            <h2 class="text-2xl font-bold text-gray-900">Unused Columns</h2>
-                            <div v-if="dependencies.unused_columns?.length > 0" class="flex gap-2">
-                                <button @click="expandAllUnusedColumns" class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600">Expand All</button>
-                                <button @click="collapseAllUnusedColumns" class="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600">Collapse All</button>
+                    <div class="card">
+                        <div class="card__header">
+                            <h3 class="card__title">Unused Columns</h3>
+                            <div v-if="dependencies.unused_columns?.length > 0" class="card__actions">
+                                <button @click="expandAllUnusedColumns" class="btn btn--small btn--primary">Expand All</button>
+                                <button @click="collapseAllUnusedColumns" class="btn btn--small btn--secondary">Collapse All</button>
                             </div>
                         </div>
-                        <div v-if="dependencies.unused_columns?.length > 0" class="bg-yellow-50 p-4 rounded mb-4">
-                            <strong>Warning:</strong> Found {{{{ dependencies.unused_columns.length }}}} columns not used anywhere.
-                        </div>
-                        <div v-if="dependencies.unused_columns?.length > 0" class="space-y-4 max-h-96 overflow-y-auto">
-                            <!-- Grouped by table -->
-                            <div v-for="(columns, tableName) in unusedColumnsByTable" :key="tableName">
-                                <div class="list-group-header" :class="{{collapsed: collapsedUnusedColumnTables[tableName]}}" @click="toggleUnusedColumnTable(tableName)">
-                                    <div>
-                                        <strong>{{{{ tableName }}}}</strong>
-                                        <span class="ml-2 text-sm opacity-75">({{{{ columns.length }}}})</span>
+                        <div class="card__body">
+                            <div v-if="dependencies.unused_columns?.length > 0" class="alert alert--warning">
+                                <strong>Warning:</strong> Found {{{{ dependencies.unused_columns.length }}}} columns not used anywhere.
+                            </div>
+                            <div v-if="dependencies.unused_columns?.length > 0" class="scrollable">
+                                <!-- Grouped by table -->
+                                <div v-for="(columns, tableName) in unusedColumnsByTable" :key="tableName" class="folder-group">
+                                    <div class="folder-header" :class="{{collapsed: collapsedUnusedColumnTables[tableName]}}" @click="toggleUnusedColumnTable(tableName)">
+                                        <div class="folder-header__info">
+                                            <strong>{{{{ tableName }}}}</strong>
+                                            <span class="folder-header__count">({{{{ columns.length }}}})</span>
+                                        </div>
+                                        <span class="folder-header__icon">▼</span>
                                     </div>
-                                    <span class="expand-icon">▼</span>
-                                </div>
-                                <div v-show="!collapsedUnusedColumnTables[tableName]" class="folder-content space-y-2 mt-2">
-                                    <div v-for="column in columns" :key="column" class="p-2 border border-gray-200 rounded text-sm bg-white">
-                                        {{{{ column }}}}
+                                    <div v-show="!collapsedUnusedColumnTables[tableName]" class="folder-content">
+                                        <div v-for="column in columns" :key="column" class="unused-item">{{{{ column }}}}</div>
                                     </div>
                                 </div>
                             </div>
+                            <div v-else class="success-state">✓ All columns are in use!</div>
                         </div>
-                        <div v-else class="text-green-600 font-semibold">✓ All columns are in use!</div>
                     </div>
                 </div>
             </div>
 
             <!-- Best Practices Tab -->
-            <div v-show="activeTab === 'best-practices'" v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.bpa">
-                <div class="mb-6">
-                    <h1 class="text-3xl font-bold text-gray-900 mb-2">Best Practice Analysis</h1>
-                    <p class="text-gray-600">Analysis based on Microsoft Power BI Best Practices</p>
+            <div v-show="activeTab === 'best-practices'" class="tab-content">
+                <div class="tab-header">
+                    <h1 class="tab-header__title">Best Practice Analysis</h1>
+                    <p class="tab-header__subtitle">Analysis based on Microsoft Power BI Best Practices</p>
                 </div>
 
                 <!-- BPA Summary Cards -->
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-                    <div class="kpi-card">
-                        <h3>Total Violations</h3>
-                        <p class="text-4xl font-bold text-gray-900">{{{{ bpaTotalViolations }}}}</p>
+                <div class="metrics-grid metrics-grid--4">
+                    <div class="metric-card">
+                        <div class="metric-card__label">Total Violations</div>
+                        <div class="metric-card__value">{{{{ bpaTotalViolations }}}}</div>
                     </div>
-                    <div class="kpi-card">
-                        <h3>Errors</h3>
-                        <p class="text-4xl font-bold text-red-600">{{{{ bpaErrorCount }}}}</p>
+                    <div class="metric-card metric-card--coral">
+                        <div class="metric-card__label">Errors</div>
+                        <div class="metric-card__value">{{{{ bpaErrorCount }}}}</div>
                     </div>
-                    <div class="kpi-card">
-                        <h3>Warnings</h3>
-                        <p class="text-4xl font-bold text-yellow-600">{{{{ bpaWarningCount }}}}</p>
+                    <div class="metric-card metric-card--rust">
+                        <div class="metric-card__label">Warnings</div>
+                        <div class="metric-card__value">{{{{ bpaWarningCount }}}}</div>
                     </div>
-                    <div class="kpi-card">
-                        <h3>Info</h3>
-                        <p class="text-4xl font-bold text-blue-600">{{{{ bpaInfoCount }}}}</p>
+                    <div class="metric-card metric-card--ocean">
+                        <div class="metric-card__label">Info</div>
+                        <div class="metric-card__value">{{{{ bpaInfoCount }}}}</div>
                     </div>
                 </div>
 
                 <!-- Category Breakdown -->
-                <div class="stat-card mb-6">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-4">Violations by Category</h2>
-                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                        <div v-for="(count, category) in bpaCategoryBreakdown" :key="category" class="p-4 bg-gray-50 rounded-lg">
-                            <div class="text-sm text-gray-600 mb-1">{{{{ category }}}}</div>
-                            <div class="text-2xl font-bold">{{{{ count }}}}</div>
+                <div class="card">
+                    <div class="card__header">
+                        <h3 class="card__title">Violations by Category</h3>
+                    </div>
+                    <div class="card__body">
+                        <div class="category-breakdown">
+                            <div v-for="(count, category) in bpaCategoryBreakdown" :key="category" class="category-item">
+                                <div class="category-item__name">{{{{ category }}}}</div>
+                                <div class="category-item__count">{{{{ count }}}}</div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Violations by Object Type -->
-                <div class="stat-card">
-                    <div class="flex items-center justify-between mb-4">
-                        <h2 class="text-2xl font-bold text-gray-900">Violations by Object Type</h2>
-                        <div class="flex gap-2">
-                            <select v-model="bpaSeverityFilter" class="px-3 py-1 text-sm border border-gray-300 rounded">
+                <div class="card">
+                    <div class="card__header">
+                        <h3 class="card__title">Violations by Object Type</h3>
+                        <div class="card__filters">
+                            <select v-model="bpaSeverityFilter" class="form-select form-select--small">
                                 <option value="all">All Severities</option>
                                 <option value="ERROR">Errors</option>
                                 <option value="WARNING">Warnings</option>
                                 <option value="INFO">Info</option>
                             </select>
-                            <select v-model="bpaCategoryFilter" class="px-3 py-1 text-sm border border-gray-300 rounded">
+                            <select v-model="bpaCategoryFilter" class="form-select form-select--small">
                                 <option value="all">All Categories</option>
                                 <option v-for="category in bpaCategories" :key="category" :value="category">{{{{ category }}}}</option>
                             </select>
                         </div>
                     </div>
+                    <div class="card__body">
+                        <!-- Group by Object Type, then by Category (with Maintenance last) -->
+                        <div v-for="objectType in bpaObjectTypes" :key="objectType" class="accordion-group">
+                            <div @click="toggleBpaObjectGroup(objectType)" class="accordion-header">
+                                <div class="accordion-header__left">
+                                    <svg class="accordion-header__icon" :class="{{expanded: !collapsedBpaObjectGroups[objectType]}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                    </svg>
+                                    <span class="accordion-header__title">{{{{ objectType }}}} ({{{{ bpaViolationsByObjectType[objectType].length }}}})</span>
+                                </div>
+                            </div>
 
-                    <!-- Group by Object Type, then by Category (with Maintenance last) -->
-                    <div v-for="objectType in bpaObjectTypes" :key="objectType" class="mb-4">
-                        <div
-                            @click="toggleBpaObjectGroup(objectType)"
-                            class="flex items-center justify-between p-3 bg-gray-100 hover:bg-gray-200 cursor-pointer rounded-t"
-                        >
-                            <div class="flex items-center gap-2">
-                                <svg class="w-5 h-5 transition-transform" :class="{{'rotate-90': !collapsedBpaObjectGroups[objectType]}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-                                </svg>
-                                <span class="font-semibold text-lg text-gray-900">
-                                    {{{{ objectType }}}} ({{{{ bpaViolationsByObjectType[objectType].length }}}})
-                                </span>
+                            <div v-show="!collapsedBpaObjectGroups[objectType]" class="accordion-content">
+                                <!-- Violations grouped by category within this object type -->
+                                <div v-for="category in bpaOrderedCategories" :key="category">
+                                    <template v-if="bpaViolationsByObjectAndCategory[objectType] && bpaViolationsByObjectAndCategory[objectType][category]">
+                                        <div @click="toggleBpaCategory(objectType, category)" class="accordion-subheader">
+                                            <svg class="accordion-subheader__icon" :class="{{expanded: !collapsedBpaCategories[`${{objectType}}|${{category}}`]}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                            </svg>
+                                            <span>{{{{ category }}}} ({{{{ bpaViolationsByObjectAndCategory[objectType][category].length }}}})</span>
+                                        </div>
+                                        <div v-show="!collapsedBpaCategories[`${{objectType}}|${{category}}`]" class="table-container">
+                                            <table class="data-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Severity</th>
+                                                        <th>Rule</th>
+                                                        <th>Object</th>
+                                                        <th>Description</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr v-for="violation in bpaViolationsByObjectAndCategory[objectType][category]" :key="violation.rule_id + violation.object_name">
+                                                        <td><span :class="bpaSeverityClass(violation.severity)" class="severity-badge">{{{{ violation.severity }}}}</span></td>
+                                                        <td>{{{{ violation.rule_name }}}}</td>
+                                                        <td>
+                                                            <div class="cell-primary">{{{{ violation.object_name }}}}</div>
+                                                            <div v-if="violation.table_name" class="cell-secondary">Table: {{{{ violation.table_name }}}}</div>
+                                                        </td>
+                                                        <td>
+                                                            <div>{{{{ violation.description }}}}</div>
+                                                            <div v-if="violation.details" class="cell-secondary">{{{{ violation.details }}}}</div>
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </template>
+                                </div>
                             </div>
                         </div>
 
-                        <div v-show="!collapsedBpaObjectGroups[objectType]" class="border border-gray-200 border-t-0 rounded-b">
-                            <!-- Violations grouped by category within this object type -->
-                            <div v-for="category in bpaOrderedCategories" :key="category">
-                                <template v-if="bpaViolationsByObjectAndCategory[objectType] && bpaViolationsByObjectAndCategory[objectType][category]">
-                                    <div
-                                        @click="toggleBpaCategory(objectType, category)"
-                                        class="bg-gray-50 px-4 py-2 border-b border-gray-200 cursor-pointer hover:bg-gray-100 flex items-center gap-2"
-                                    >
-                                        <svg class="w-4 h-4 transition-transform" :class="{{'rotate-90': !collapsedBpaCategories[`${{objectType}}|${{category}}`]}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-                                        </svg>
-                                        <span class="font-medium text-gray-700">{{{{ category }}}} ({{{{ bpaViolationsByObjectAndCategory[objectType][category].length }}}})</span>
-                                    </div>
-                                    <div v-show="!collapsedBpaCategories[`${{objectType}}|${{category}}`]" class="overflow-x-auto">
-                                        <table class="min-w-full divide-y divide-gray-200">
-                                            <thead class="bg-gray-50">
-                                                <tr>
-                                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Severity</th>
-                                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Rule</th>
-                                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Object</th>
-                                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody class="bg-white divide-y divide-gray-200">
-                                                <tr v-for="violation in bpaViolationsByObjectAndCategory[objectType][category]" v-memo="[violation]" :key="violation.rule_id + violation.object_name" class="hover:bg-gray-50">
-                                                    <td class="px-4 py-2 whitespace-nowrap">
-                                                        <span :class="bpaSeverityClass(violation.severity)" class="px-2 py-1 text-xs font-semibold rounded">
-                                                            {{{{ violation.severity }}}}
-                                                        </span>
-                                                    </td>
-                                                    <td class="px-4 py-2 text-sm text-gray-900">{{{{ violation.rule_name }}}}</td>
-                                                    <td class="px-4 py-2 text-sm">
-                                                        <div class="font-medium text-gray-900">{{{{ violation.object_name }}}}</div>
-                                                        <div v-if="violation.table_name" class="text-xs text-gray-500">Table: {{{{ violation.table_name }}}}</div>
-                                                    </td>
-                                                    <td class="px-4 py-2 text-sm text-gray-600">
-                                                        <div>{{{{ violation.description }}}}</div>
-                                                        <div v-if="violation.details" class="mt-1 text-xs text-gray-500">{{{{ violation.details }}}}</div>
-                                                    </td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </template>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div v-if="filteredBpaViolations.length === 0" class="text-center py-8 text-gray-500">
-                        No violations found matching your filters
+                        <div v-if="filteredBpaViolations.length === 0" class="empty-state">No violations found matching your filters</div>
                     </div>
                 </div>
 
                 <!-- Naming Conventions Section -->
-                <div v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.naming_conventions" class="stat-card mt-6">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-4">Naming Convention Violations</h2>
-
-                    <div v-if="namingViolationsCount === 0" class="text-center py-8">
-                        <div class="text-6xl mb-4">✅</div>
-                        <h3 class="text-xl font-semibold text-green-700 mb-2">All naming conventions followed!</h3>
-                        <p class="text-gray-600">No violations found</p>
+                <div v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.naming_conventions" class="card">
+                    <div class="card__header">
+                        <h3 class="card__title">Naming Convention Violations</h3>
                     </div>
-
-                    <div v-else>
-                        <!-- Naming Summary -->
-                        <div class="grid grid-cols-3 gap-4 mb-6">
-                            <div class="text-center p-4 bg-red-50 rounded">
-                                <p class="text-sm text-gray-600 mb-1">Total Violations</p>
-                                <p class="text-3xl font-bold text-red-600">{{{{ namingViolationsCount }}}}</p>
-                            </div>
-                            <div class="text-center p-4 bg-yellow-50 rounded">
-                                <p class="text-sm text-gray-600 mb-1">Warnings</p>
-                                <p class="text-3xl font-bold text-yellow-600">{{{{ namingSummary.by_severity?.WARNING || 0 }}}}</p>
-                            </div>
-                            <div class="text-center p-4 bg-blue-50 rounded">
-                                <p class="text-sm text-gray-600 mb-1">Info</p>
-                                <p class="text-3xl font-bold text-blue-600">{{{{ namingSummary.by_severity?.INFO || 0 }}}}</p>
-                            </div>
+                    <div class="card__body">
+                        <div v-if="namingViolationsCount === 0" class="success-state success-state--large">
+                            <div class="success-state__icon">✅</div>
+                            <h3 class="success-state__title">All naming conventions followed!</h3>
+                            <p class="success-state__text">No violations found</p>
                         </div>
 
-                        <!-- Filters -->
-                        <div class="flex gap-2 mb-4">
-                            <select v-model="namingSeverityFilter" class="px-3 py-2 text-sm border border-gray-300 rounded">
-                                <option value="all">All Severities</option>
-                                <option value="WARNING">Warnings</option>
-                                <option value="INFO">Info</option>
-                            </select>
-                            <select v-model="namingTypeFilter" class="px-3 py-2 text-sm border border-gray-300 rounded">
-                                <option value="all">All Types</option>
-                                <option value="missing_prefix">Missing Prefix</option>
-                                <option value="contains_spaces">Contains Spaces</option>
-                                <option value="name_too_long">Name Too Long</option>
-                                <option value="special_characters">Special Characters</option>
-                            </select>
-                        </div>
+                        <div v-else>
+                            <!-- Naming Summary -->
+                            <div class="metrics-grid metrics-grid--3">
+                                <div class="metric-card metric-card--coral">
+                                    <div class="metric-card__label">Total Violations</div>
+                                    <div class="metric-card__value">{{{{ namingViolationsCount }}}}</div>
+                                </div>
+                                <div class="metric-card metric-card--rust">
+                                    <div class="metric-card__label">Warnings</div>
+                                    <div class="metric-card__value">{{{{ namingSummary.by_severity?.WARNING || 0 }}}}</div>
+                                </div>
+                                <div class="metric-card metric-card--ocean">
+                                    <div class="metric-card__label">Info</div>
+                                    <div class="metric-card__value">{{{{ namingSummary.by_severity?.INFO || 0 }}}}</div>
+                                </div>
+                            </div>
 
-                        <!-- Violations Table -->
-                        <div class="overflow-x-auto max-h-[400px] overflow-y-auto">
-                            <table class="min-w-full divide-y divide-gray-200">
-                                <thead class="bg-gray-50 sticky top-0">
-                                    <tr>
-                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Severity</th>
-                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Object Type</th>
-                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Table</th>
-                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Object</th>
-                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Issue</th>
-                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Current Name</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="bg-white divide-y divide-gray-200">
-                                    <tr v-for="(violation, idx) in filteredNamingViolations" v-memo="[violation]" :key="idx" class="hover:bg-gray-50">
-                                        <td class="px-4 py-3 whitespace-nowrap">
-                                            <span :class="severityBadgeClass(violation.severity)" class="px-2 py-1 text-xs font-semibold rounded">
-                                                {{{{ violation.severity }}}}
-                                            </span>
-                                        </td>
-                                        <td class="px-4 py-3 text-sm text-gray-600">{{{{ violation.type }}}}</td>
-                                        <td class="px-4 py-3 text-sm text-gray-700">{{{{ violation.object_type }}}}</td>
-                                        <td class="px-4 py-3 text-sm font-medium text-gray-900">{{{{ violation.table }}}}</td>
-                                        <td class="px-4 py-3 text-sm text-gray-900">{{{{ violation.object }}}}</td>
-                                        <td class="px-4 py-3 text-sm text-gray-600">{{{{ violation.issue }}}}</td>
-                                        <td class="px-4 py-3 text-sm font-mono text-gray-700">{{{{ violation.current_name }}}}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                            <div v-if="filteredNamingViolations.length === 0" class="text-center py-8 text-gray-500">
-                                No violations match your filters
+                            <!-- Filters -->
+                            <div class="filter-row">
+                                <select v-model="namingSeverityFilter" class="form-select form-select--small">
+                                    <option value="all">All Severities</option>
+                                    <option value="WARNING">Warnings</option>
+                                    <option value="INFO">Info</option>
+                                </select>
+                                <select v-model="namingTypeFilter" class="form-select form-select--small">
+                                    <option value="all">All Types</option>
+                                    <option value="missing_prefix">Missing Prefix</option>
+                                    <option value="contains_spaces">Contains Spaces</option>
+                                    <option value="name_too_long">Name Too Long</option>
+                                    <option value="special_characters">Special Characters</option>
+                                </select>
+                            </div>
+
+                            <!-- Violations Table -->
+                            <div class="table-container table-container--scrollable">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Severity</th>
+                                            <th>Type</th>
+                                            <th>Object Type</th>
+                                            <th>Table</th>
+                                            <th>Object</th>
+                                            <th>Issue</th>
+                                            <th>Current Name</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="(violation, idx) in filteredNamingViolations" :key="idx">
+                                            <td><span :class="severityBadgeClass(violation.severity)" class="severity-badge">{{{{ violation.severity }}}}</span></td>
+                                            <td>{{{{ violation.type }}}}</td>
+                                            <td>{{{{ violation.object_type }}}}</td>
+                                            <td class="cell-primary">{{{{ violation.table }}}}</td>
+                                            <td>{{{{ violation.object }}}}</td>
+                                            <td>{{{{ violation.issue }}}}</td>
+                                            <td class="cell-mono">{{{{ violation.current_name }}}}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            <div v-if="filteredNamingViolations.length === 0" class="empty-state">No violations match your filters</div>
                             </div>
                         </div>
                     </div>
@@ -2417,459 +5717,564 @@ class PbipHtmlGenerator:
             </div>
 
             <!-- Data Quality Tab -->
-            <div v-show="activeTab === 'data-quality'" v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.data_types">
-                <div class="mb-6">
-                    <h1 class="text-3xl font-bold text-gray-900 mb-2">Data Quality Analysis</h1>
-                    <p class="text-gray-600">Data type optimization and cardinality warnings</p>
+            <div v-show="activeTab === 'data-quality'" class="tab-content">
+                <div class="tab-header">
+                    <h1 class="tab-header__title">Data Quality Analysis</h1>
+                    <p class="tab-header__subtitle">Data type optimization and cardinality warnings</p>
                 </div>
 
                 <!-- Data Type Summary -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                    <div class="stat-card">
-                        <h2 class="text-2xl font-bold text-gray-900 mb-4">Data Type Distribution</h2>
-                        <div class="space-y-2">
-                            <div v-for="(count, type) in dataTypeSummary" :key="type" class="flex justify-between items-center p-2 bg-gray-50 rounded">
-                                <span class="font-medium">{{{{ type }}}}</span>
-                                <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-semibold">{{{{ count }}}}</span>
+                <div class="two-column-grid">
+                    <div class="card">
+                        <div class="card__header">
+                            <h3 class="card__title">Data Type Distribution</h3>
+                        </div>
+                        <div class="card__body">
+                            <div class="distribution-list">
+                                <div v-for="(count, type) in dataTypeSummary" :key="type" class="distribution-item">
+                                    <span class="distribution-item__type">{{{{ type }}}}</span>
+                                    <div class="distribution-item__bar">
+                                        <div class="distribution-item__fill" :style="{{ width: (count / totalDataTypeCount * 100) + '%' }}"></div>
+                                    </div>
+                                    <span class="distribution-item__count">{{{{ count }}}}</span>
+                                    <span class="distribution-item__percent">{{{{ Math.round(count / totalDataTypeCount * 100) }}}}%</span>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <div class="stat-card">
-                        <h2 class="text-2xl font-bold text-gray-900 mb-4">Quality Metrics</h2>
-                        <div class="space-y-4">
-                            <div class="kpi-card">
-                                <h3>Data Type Issues</h3>
-                                <p class="text-4xl font-bold text-yellow-600">{{{{ dataTypeIssues.length }}}}</p>
-                            </div>
-                            <div class="kpi-card">
-                                <h3>High-Impact Issues</h3>
-                                <p class="text-4xl font-bold text-red-600">{{{{ dataTypeHighImpactCount }}}}</p>
+                    <div class="card">
+                        <div class="card__header">
+                            <h3 class="card__title">Quality Metrics</h3>
+                        </div>
+                        <div class="card__body">
+                            <div class="metrics-stack">
+                                <div class="metric-card metric-card--rust">
+                                    <div class="metric-card__label">Data Type Issues</div>
+                                    <div class="metric-card__value">{{{{ dataTypeIssues.length }}}}</div>
+                                </div>
+                                <div class="metric-card metric-card--coral">
+                                    <div class="metric-card__label">High-Impact Issues</div>
+                                    <div class="metric-card__value">{{{{ dataTypeHighImpactCount }}}}</div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Data Type Issues Table -->
-                <div class="stat-card mb-6">
-                    <div class="flex items-center justify-between mb-4">
-                        <h2 class="text-2xl font-bold text-gray-900">Data Type Optimization Opportunities</h2>
-                        <select v-model="dataTypeImpactFilter" class="px-3 py-1 text-sm border border-gray-300 rounded">
+                <div class="card">
+                    <div class="card__header">
+                        <h3 class="card__title">Data Type Optimization Opportunities</h3>
+                        <select v-model="dataTypeImpactFilter" class="form-select form-select--small">
                             <option value="all">All Impact Levels</option>
                             <option value="HIGH">High Impact</option>
                             <option value="MEDIUM">Medium Impact</option>
                             <option value="LOW">Low Impact</option>
                         </select>
                     </div>
-                    <div class="overflow-x-auto max-h-[500px] overflow-y-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50 sticky top-0">
-                                <tr>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Table</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Column</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Current Type</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Issue</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Recommendation</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Impact</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200">
-                                <tr v-for="issue in filteredDataTypeIssues" v-memo="[issue]" :key="issue.table + issue.column" class="hover:bg-gray-50">
-                                    <td class="px-4 py-3 text-sm font-medium text-gray-900">{{{{ issue.table }}}}</td>
-                                    <td class="px-4 py-3 text-sm text-gray-900">{{{{ issue.column }}}}</td>
-                                    <td class="px-4 py-3 text-sm">
-                                        <code class="px-2 py-1 bg-gray-100 rounded text-xs">{{{{ issue.current_type }}}}</code>
-                                    </td>
-                                    <td class="px-4 py-3 text-sm text-gray-600">{{{{ issue.issue }}}}</td>
-                                    <td class="px-4 py-3 text-sm text-blue-600">{{{{ issue.recommendation }}}}</td>
-                                    <td class="px-4 py-3 whitespace-nowrap">
-                                        <span :class="impactBadgeClass(issue.impact)" class="px-2 py-1 text-xs font-semibold rounded">
-                                            {{{{ issue.impact }}}}
-                                        </span>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        <div v-if="filteredDataTypeIssues.length === 0" class="text-center py-8 text-gray-500">
-                            No data type issues found
+                    <div class="card__body">
+                        <div class="table-container table-container--scrollable">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Table</th>
+                                        <th>Column</th>
+                                        <th>Current Type</th>
+                                        <th>Issue</th>
+                                        <th>Recommendation</th>
+                                        <th>Impact</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="issue in filteredDataTypeIssues" :key="issue.table + issue.column">
+                                        <td class="cell-primary">{{{{ issue.table }}}}</td>
+                                        <td>{{{{ issue.column }}}}</td>
+                                        <td><code class="code-inline">{{{{ issue.current_type }}}}</code></td>
+                                        <td>{{{{ issue.issue }}}}</td>
+                                        <td class="cell-link">{{{{ issue.recommendation }}}}</td>
+                                        <td><span :class="impactBadgeClass(issue.impact)" class="impact-badge">{{{{ issue.impact }}}}</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <div v-if="filteredDataTypeIssues.length === 0" class="empty-state">No data type issues found</div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Cardinality Warnings -->
-                <div class="stat-card" v-if="cardinalityWarnings.length > 0">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-4">High Cardinality Warnings</h2>
-                    <div class="bg-yellow-50 p-4 rounded mb-4">
-                        <strong>Note:</strong> High cardinality columns can impact performance and memory usage. Consider hiding or pre-aggregating these columns.
+                <div class="card" v-if="cardinalityWarnings.length > 0">
+                    <div class="card__header">
+                        <h3 class="card__title">High Cardinality Warnings</h3>
                     </div>
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Table</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Column</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reason</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Is Hidden</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Recommendation</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200">
-                                <tr v-for="warning in cardinalityWarnings" :key="warning.table + warning.column" class="hover:bg-gray-50">
-                                    <td class="px-4 py-3 text-sm font-medium text-gray-900">{{{{ warning.table }}}}</td>
-                                    <td class="px-4 py-3 text-sm text-gray-900">{{{{ warning.column }}}}</td>
-                                    <td class="px-4 py-3 text-sm text-gray-600">{{{{ warning.reason }}}}</td>
-                                    <td class="px-4 py-3 text-sm">
-                                        <span :class="warning.is_hidden ? 'text-green-600' : 'text-red-600'" class="font-semibold">
-                                            {{{{ warning.is_hidden ? '✓ Yes' : '✗ No' }}}}
-                                        </span>
-                                    </td>
-                                    <td class="px-4 py-3 text-sm text-blue-600">{{{{ warning.recommendation }}}}</td>
-                                </tr>
-                            </tbody>
+                    <div class="card__body">
+                        <div class="alert alert--warning">
+                            <strong>Note:</strong> High cardinality columns can impact performance and memory usage. Consider hiding or pre-aggregating these columns.
+                        </div>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Table</th>
+                                        <th>Column</th>
+                                        <th>Reason</th>
+                                        <th>Is Hidden</th>
+                                        <th>Recommendation</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="warning in cardinalityWarnings" :key="warning.table + warning.column">
+                                        <td class="cell-primary">{{{{ warning.table }}}}</td>
+                                        <td>{{{{ warning.column }}}}</td>
+                                        <td>{{{{ warning.reason }}}}</td>
+                                        <td><span :class="warning.is_hidden ? 'status-success' : 'status-error'">{{{{ warning.is_hidden ? '✓ Yes' : '✗ No' }}}}</span></td>
+                                        <td class="cell-link">{{{{ warning.recommendation }}}}</td>
+                                    </tr>
+                                </tbody>
                         </table>
                     </div>
                 </div>
             </div>
 
             <!-- Code Quality Tab -->
-            <div v-show="activeTab === 'code-quality'" v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.dax_quality">
-                <div class="mb-6">
-                    <h1 class="text-3xl font-bold text-gray-900 mb-2">DAX Code Quality Analysis</h1>
-                    <p class="text-gray-600">Complexity metrics and anti-pattern detection</p>
+            <div v-show="activeTab === 'code-quality'" class="tab-content">
+                <div class="tab-header">
+                    <h1 class="tab-header__title">DAX Code Quality Analysis</h1>
+                    <p class="tab-header__subtitle">Complexity metrics, anti-pattern detection, and best practices</p>
                 </div>
 
-                <!-- DAX Quality Summary -->
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-                    <div class="kpi-card">
-                        <h3>Total Measures</h3>
-                        <p class="text-4xl font-bold text-gray-900">{{{{ daxSummary.total_measures || 0 }}}}</p>
-                    </div>
-                    <div class="kpi-card">
-                        <h3>Avg Complexity</h3>
-                        <p class="text-4xl font-bold text-blue-600">{{{{ daxSummary.avg_complexity || 0 }}}}</p>
-                    </div>
-                    <div class="kpi-card">
-                        <h3>High Complexity</h3>
-                        <p class="text-4xl font-bold text-red-600">{{{{ daxSummary.high_complexity_measures || 0 }}}}</p>
-                    </div>
-                    <div class="kpi-card">
-                        <h3>Total Issues</h3>
-                        <p class="text-4xl font-bold text-yellow-600">{{{{ daxQualityIssues.length }}}}</p>
-                    </div>
+                <!-- DEBUG INFO - Remove after debugging -->
+                <div style="background: #ffe0e0; padding: 10px; margin-bottom: 10px; border: 2px solid red; font-family: monospace; font-size: 12px;">
+                    <strong>DEBUG:</strong><br>
+                    enhancedData exists: {{{{ !!enhancedData }}}}<br>
+                    enhancedData.analyses exists: {{{{ !!(enhancedData && enhancedData.analyses) }}}}<br>
+                    dax_quality exists: {{{{ !!(enhancedData && enhancedData.analyses && enhancedData.analyses.dax_quality) }}}}<br>
+                    quality_issues exists: {{{{ !!(enhancedData && enhancedData.analyses && enhancedData.analyses.dax_quality && enhancedData.analyses.dax_quality.quality_issues) }}}}<br>
+                    codeQualityIssuesList.length: {{{{ codeQualityIssuesList.length }}}}<br>
+                    filteredCodeQualityIssues.length: {{{{ filteredCodeQualityIssues.length }}}}<br>
+                    sortedCodeQualityIssues.length: {{{{ sortedCodeQualityIssues.length }}}}<br>
+                    paginatedCodeQualityIssues.length: {{{{ paginatedCodeQualityIssues.length }}}}<br>
                 </div>
 
-                <!-- DAX Quality Issues Table -->
-                <div class="stat-card">
-                    <div class="flex items-center justify-between mb-4">
-                        <h2 class="text-2xl font-bold text-gray-900">Code Quality Issues</h2>
-                        <div class="flex gap-2">
-                            <select v-model="daxSeverityFilter" class="px-3 py-1 text-sm border border-gray-300 rounded">
-                                <option value="all">All Severities</option>
-                                <option value="WARNING">Warnings</option>
-                                <option value="INFO">Info</option>
-                            </select>
-                            <select v-model="daxTypeFilter" class="px-3 py-1 text-sm border border-gray-300 rounded">
-                                <option value="all">All Types</option>
-                                <option value="high_complexity">High Complexity</option>
-                                <option value="deep_nesting">Deep Nesting</option>
-                                <option value="excessive_calculate">Excessive CALCULATE</option>
-                                <option value="no_variables">No Variables</option>
-                                <option value="sumx_filter">SUMX(FILTER) Pattern</option>
-                            </select>
+                    <!-- Summary Metrics -->
+                    <div class="metrics-grid metrics-grid--4">
+                        <div class="metric-card">
+                            <div class="metric-card__icon">📐</div>
+                            <div class="metric-card__content">
+                                <div class="metric-card__label">Total Measures</div>
+                                <div class="metric-card__value">{{{{ codeQualitySummary.total_measures }}}}</div>
+                            </div>
+                        </div>
+                        <div class="metric-card metric-card--ocean">
+                            <div class="metric-card__icon">📈</div>
+                            <div class="metric-card__content">
+                                <div class="metric-card__label">Avg Complexity</div>
+                                <div class="metric-card__value">{{{{ codeQualitySummary.avg_complexity }}}}</div>
+                            </div>
+                        </div>
+                        <div class="metric-card metric-card--coral">
+                            <div class="metric-card__icon">⚠️</div>
+                            <div class="metric-card__content">
+                                <div class="metric-card__label">High Complexity</div>
+                                <div class="metric-card__value">{{{{ codeQualitySummary.high_complexity_count }}}}</div>
+                            </div>
+                        </div>
+                        <div class="metric-card metric-card--rust">
+                            <div class="metric-card__icon">🔍</div>
+                            <div class="metric-card__content">
+                                <div class="metric-card__label">Total Issues</div>
+                                <div class="metric-card__value">{{{{ codeQualityIssuesList.length }}}}</div>
+                            </div>
                         </div>
                     </div>
-                    <div class="overflow-x-auto max-h-[600px] overflow-y-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50 sticky top-0">
-                                <tr>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Severity</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortDaxQuality('type')">
-                                        Type
-                                        <span v-if="daxQualitySortBy === 'type'">{{{{ daxQualitySortDesc ? '▼' : '▲' }}}}</span>
-                                    </th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortDaxQuality('table')">
-                                        Table
-                                        <span v-if="daxQualitySortBy === 'table'">{{{{ daxQualitySortDesc ? '▼' : '▲' }}}}</span>
-                                    </th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortDaxQuality('measure')">
-                                        Measure
-                                        <span v-if="daxQualitySortBy === 'measure'">{{{{ daxQualitySortDesc ? '▼' : '▲' }}}}</span>
-                                    </th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Issue</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Recommendation</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortDaxQuality('complexity')">
-                                        Complexity
-                                        <span v-if="daxQualitySortBy === 'complexity'">{{{{ daxQualitySortDesc ? '▼' : '▲' }}}}</span>
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200">
-                                <template v-for="(issues, type) in groupedDaxQualityIssues">
-                                    <!-- Group Header Row -->
-                                    <tr
-                                        v-memo="[type, issues.length, collapsedDaxTypeGroups[type]]"
-                                        :key="'group-' + type"
-                                        class="bg-gray-100 hover:bg-gray-200 cursor-pointer font-semibold"
-                                        @click="toggleDaxTypeGroup(type)"
-                                    >
-                                        <td class="px-4 py-3" colspan="7">
-                                            <div class="flex items-center justify-between">
-                                                <div class="flex items-center gap-2">
-                                                    <span class="text-gray-600">
-                                                        {{{{ collapsedDaxTypeGroups[type] ? '▶' : '▼' }}}}
-                                                    </span>
-                                                    <span class="text-gray-900">{{{{ type }}}}</span>
-                                                    <span class="text-sm text-gray-600 font-normal">
-                                                        ({{{{ issues.length }}}} issue{{{{ issues.length !== 1 ? 's' : '' }}}})
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    <!-- Issue Rows (Collapsible) -->
-                                    <tr
-                                        v-for="(issue, idx) in issues"
-                                        v-show="!collapsedDaxTypeGroups[type]"
-                                        v-memo="[issue, collapsedDaxTypeGroups[type]]"
-                                        :key="type + '-' + idx"
-                                        class="hover:bg-gray-50"
-                                    >
-                                        <td class="px-4 py-3 whitespace-nowrap">
-                                            <span :class="severityBadgeClass(issue.severity)" class="px-2 py-1 text-xs font-semibold rounded">
-                                                {{{{ issue.severity }}}}
-                                            </span>
-                                        </td>
-                                        <td class="px-4 py-3 text-sm text-gray-600">{{{{ issue.type }}}}</td>
-                                        <td class="px-4 py-3 text-sm font-medium text-gray-900">{{{{ issue.table }}}}</td>
-                                        <td class="px-4 py-3 text-sm">
-                                            <button
-                                                @click="jumpToMeasureInModel(issue.table, issue.measure)"
-                                                class="text-blue-600 hover:text-blue-800 hover:underline font-medium"
-                                                title="Go to measure in Model tab"
-                                            >
-                                                {{{{ issue.measure }}}}
-                                            </button>
-                                        </td>
-                                        <td class="px-4 py-3 text-sm text-gray-600">{{{{ issue.issue }}}}</td>
-                                        <td class="px-4 py-3 text-sm text-blue-600">{{{{ issue.recommendation }}}}</td>
-                                        <td class="px-4 py-3 text-sm">
-                                            <span v-if="issue.complexity_score" :class="complexityBadgeClass(issue.complexity_score)" class="px-2 py-1 text-xs font-semibold rounded">
-                                                {{{{ issue.complexity_score }}}}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                </template>
-                            </tbody>
-                        </table>
-                        <div v-if="sortedDaxQualityIssues.length === 0" class="text-center py-8 text-gray-500">
-                            No code quality issues found
+
+                    <!-- Issues by Type Summary -->
+                    <div v-if="codeQualityIssuesList.length > 0" class="card" style="margin-bottom: var(--space-lg);">
+                        <div class="card__header">
+                            <h3 class="card__title">Issues by Category</h3>
+                        </div>
+                        <div class="card__body">
+                            <div class="issue-type-grid">
+                                <div v-for="(issues, issueType) in codeQualityByType" :key="issueType" class="issue-type-card" @click="filterByIssueType(issueType)">
+                                    <div class="issue-type-card__icon">{{{{ getIssueTypeIcon(issueType) }}}}</div>
+                                    <div class="issue-type-card__content">
+                                        <div class="issue-type-card__name">{{{{ formatIssueType(issueType) }}}}</div>
+                                        <div class="issue-type-card__count">{{{{ issues.length }}}} {{{{ issues.length === 1 ? 'issue' : 'issues' }}}}</div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
+
+                    <!-- Filters and Search -->
+                    <div class="card" style="margin-bottom: var(--space-lg);">
+                        <div class="card__body">
+                            <div class="filter-row">
+                                <input v-model="codeQualitySearch" type="text" placeholder="Search measures, tables, or issues..." class="search-input" style="flex: 2;" />
+                                <select v-model="codeQualitySeverityFilter" class="form-select">
+                                    <option value="all">All Severities</option>
+                                    <option value="ERROR">Errors</option>
+                                    <option value="WARNING">Warnings</option>
+                                    <option value="INFO">Info</option>
+                                </select>
+                                <select v-model="codeQualityTypeFilter" class="form-select">
+                                    <option value="all">All Types</option>
+                                    <option value="high_complexity">High Complexity</option>
+                                    <option value="deep_nesting">Deep Nesting</option>
+                                    <option value="excessive_calculate">Excessive CALCULATE</option>
+                                    <option value="no_variables">No Variables</option>
+                                    <option value="sumx_filter">SUMX(FILTER) Pattern</option>
+                                    <option value="long_expression">Long Expression</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Issues Table -->
+                    <div class="card">
+                        <div class="card__header">
+                            <h3 class="card__title">Code Quality Issues</h3>
+                            <span class="card__badge">{{{{ filteredCodeQualityIssues.length }}}} of {{{{ codeQualityIssuesList.length }}}}</span>
+                        </div>
+                        <div class="card__body">
+                            <div v-if="filteredCodeQualityIssues.length === 0" class="empty-state empty-state--compact">
+                                <div class="empty-state__icon">✅</div>
+                                <h3 class="empty-state__title">No Issues Found</h3>
+                                <p class="empty-state__text">{{{{ codeQualityIssuesList.length === 0 ? 'Your DAX code looks clean!' : 'No issues match the current filters.' }}}}</p>
+                            </div>
+                            <div v-else class="table-container table-container--scrollable">
+                                <table class="data-table data-table--hover">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 90px;">Severity</th>
+                                            <th class="sortable" @click="sortCodeQuality('type')" style="width: 140px;">
+                                                Type
+                                                <span v-if="codeQualitySortField === 'type'" class="sort-indicator">{{{{ codeQualitySortAsc ? '▲' : '▼' }}}}</span>
+                                            </th>
+                                            <th class="sortable" @click="sortCodeQuality('table')" style="width: 150px;">
+                                                Table
+                                                <span v-if="codeQualitySortField === 'table'" class="sort-indicator">{{{{ codeQualitySortAsc ? '▲' : '▼' }}}}</span>
+                                            </th>
+                                            <th class="sortable" @click="sortCodeQuality('measure')" style="width: 180px;">
+                                                Measure
+                                                <span v-if="codeQualitySortField === 'measure'" class="sort-indicator">{{{{ codeQualitySortAsc ? '▲' : '▼' }}}}</span>
+                                            </th>
+                                            <th>Issue Description</th>
+                                            <th style="width: 200px;">Recommendation</th>
+                                            <th class="sortable" @click="sortCodeQuality('complexity')" style="width: 100px; text-align: center;">
+                                                Score
+                                                <span v-if="codeQualitySortField === 'complexity'" class="sort-indicator">{{{{ codeQualitySortAsc ? '▲' : '▼' }}}}</span>
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="(issue, index) in paginatedCodeQualityIssues" :key="'cq-' + index" class="data-row">
+                                            <td>
+                                                <span class="severity-badge" :class="getSeverityClass(issue.severity)">
+                                                    {{{{ issue.severity || 'INFO' }}}}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span class="issue-type-badge">{{{{ formatIssueType(issue.type) }}}}</span>
+                                            </td>
+                                            <td class="cell--bold">{{{{ issue.table || '-' }}}}</td>
+                                            <td>
+                                                <button
+                                                    v-if="issue.table && issue.measure"
+                                                    @click="navigateToMeasure(issue.table, issue.measure)"
+                                                    class="cell-link"
+                                                    :title="'View ' + issue.measure + ' in Model tab'"
+                                                >
+                                                    {{{{ issue.measure }}}}
+                                                </button>
+                                                <span v-else>{{{{ issue.measure || '-' }}}}</span>
+                                            </td>
+                                            <td class="cell--wrap">{{{{ issue.issue || issue.description || '-' }}}}</td>
+                                            <td class="cell--wrap cell--muted">{{{{ issue.recommendation || '-' }}}}</td>
+                                            <td class="cell--center">
+                                                <span v-if="issue.complexity_score != null" class="complexity-badge" :class="getComplexityClass(issue.complexity_score)">
+                                                    {{{{ issue.complexity_score }}}}
+                                                </span>
+                                                <span v-else class="text-muted">-</span>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <!-- Pagination Controls -->
+                            <div v-if="codeQualityTotalPages > 1" class="pagination-controls" style="display: flex; justify-content: center; align-items: center; gap: 1rem; padding: 1rem; border-top: 1px solid var(--clay);">
+                                <button @click="codeQualityPage = 1" :disabled="codeQualityPage === 1" class="btn btn--sm">First</button>
+                                <button @click="codeQualityPage--" :disabled="codeQualityPage === 1" class="btn btn--sm">Previous</button>
+                                <span style="font-size: 14px;">Page {{{{ codeQualityPage }}}} of {{{{ codeQualityTotalPages }}}} ({{{{ sortedCodeQualityIssues.length }}}} items)</span>
+                                <button @click="codeQualityPage++" :disabled="codeQualityPage >= codeQualityTotalPages" class="btn btn--sm">Next</button>
+                                <button @click="codeQualityPage = codeQualityTotalPages" :disabled="codeQualityPage >= codeQualityTotalPages" class="btn btn--sm">Last</button>
+                            </div>
+                        </div>
+                    </div>
             </div>
 
             <!-- Column Lineage Tab -->
-            <div v-show="activeTab === 'lineage'" v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.column_lineage">
-                <div class="mb-6">
-                    <h1 class="text-3xl font-bold text-gray-900 mb-2">Column Lineage & Impact Analysis</h1>
-                    <p class="text-gray-600">Track column usage and impact across the model</p>
+            <div v-show="activeTab === 'lineage'" class="tab-content">
+                <div class="tab-header">
+                    <h1 class="tab-header__title">Column Lineage & Impact Analysis</h1>
+                    <p class="tab-header__subtitle">Track column usage across measures, relationships, and visuals</p>
                 </div>
-
-                <!-- Lineage Summary -->
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-                    <div class="kpi-card">
-                        <h3>Total Columns</h3>
-                        <p class="text-4xl font-bold text-gray-900">{{{{ Object.keys(columnLineage).length }}}}</p>
+                    <!-- DEBUG INFO - Remove after debugging -->
+                    <div style="background: #e0ffe0; padding: 10px; margin-bottom: 10px; border: 2px solid green; font-family: monospace; font-size: 12px;">
+                        <strong>LINEAGE DEBUG:</strong><br>
+                        enhancedData exists: {{{{ !!enhancedData }}}}<br>
+                        enhancedData.analyses exists: {{{{ !!(enhancedData && enhancedData.analyses) }}}}<br>
+                        column_lineage exists: {{{{ !!(enhancedData && enhancedData.analyses && enhancedData.analyses.column_lineage) }}}}<br>
+                        columns exists: {{{{ !!(enhancedData && enhancedData.analyses && enhancedData.analyses.column_lineage && enhancedData.analyses.column_lineage.columns) }}}}<br>
+                        lineageColumnsList.length: {{{{ lineageColumnsList ? lineageColumnsList.length : 'undefined' }}}}<br>
+                        filteredLineageColumns.length: {{{{ filteredLineageColumns ? filteredLineageColumns.length : 'undefined' }}}}<br>
+                        sortedLineageColumns.length: {{{{ sortedLineageColumns ? sortedLineageColumns.length : 'undefined' }}}}<br>
+                        paginatedLineageColumns.length: {{{{ paginatedLineageColumns ? paginatedLineageColumns.length : 'undefined' }}}}<br>
                     </div>
-                    <div class="kpi-card">
-                        <h3>Orphan Columns</h3>
-                        <p class="text-4xl font-bold text-red-600">{{{{ orphanColumnsCount }}}}</p>
-                    </div>
-                    <div class="kpi-card">
-                        <h3>Calculated Columns</h3>
-                        <p class="text-4xl font-bold text-blue-600">{{{{ calculatedColumnsCount }}}}</p>
-                    </div>
-                    <div class="kpi-card">
-                        <h3>High Usage</h3>
-                        <p class="text-4xl font-bold text-green-600">{{{{ highUsageColumnsCount }}}}</p>
-                    </div>
-                </div>
-
-                <!-- Search and Filter -->
-                <div class="stat-card mb-6">
-                    <div class="flex items-center gap-4">
-                        <input
-                            v-model="lineageSearchQuery"
-                            type="text"
-                            placeholder="Search columns..."
-                            class="flex-1 px-4 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-                        />
-                        <select v-model="lineageUsageFilter" class="px-3 py-2 border border-gray-300 rounded">
-                            <option value="all">All Columns</option>
-                            <option value="orphan">Orphan Only</option>
-                            <option value="calculated">Calculated Only</option>
-                            <option value="high-usage">High Usage (3+)</option>
-                        </select>
-                    </div>
-                </div>
-
-                <!-- Column Lineage Table -->
-                <div class="stat-card">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-4">Column Impact Analysis</h2>
-                    <div class="overflow-x-auto max-h-[600px] overflow-y-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50 sticky top-0">
-                                <tr>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortLineage('table')">
-                                        Table
-                                        <span v-if="lineageSortBy === 'table'">{{{{ lineageSortDesc ? '▼' : '▲' }}}}</span>
-                                    </th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortLineage('column')">
-                                        Column
-                                        <span v-if="lineageSortBy === 'column'">{{{{ lineageSortDesc ? '▼' : '▲' }}}}</span>
-                                    </th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortLineage('type')">
-                                        Type
-                                        <span v-if="lineageSortBy === 'type'">{{{{ lineageSortDesc ? '▼' : '▲' }}}}</span>
-                                    </th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortLineage('data_type')">
-                                        Data Type
-                                        <span v-if="lineageSortBy === 'data_type'">{{{{ lineageSortDesc ? '▼' : '▲' }}}}</span>
-                                    </th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortLineage('measures')">
-                                        In Measures
-                                        <span v-if="lineageSortBy === 'measures'">{{{{ lineageSortDesc ? '▼' : '▲' }}}}</span>
-                                    </th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortLineage('relationships')">
-                                        In Relationships
-                                        <span v-if="lineageSortBy === 'relationships'">{{{{ lineageSortDesc ? '▼' : '▲' }}}}</span>
-                                    </th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortLineage('visuals')">
-                                        In Visuals
-                                        <span v-if="lineageSortBy === 'visuals'">{{{{ lineageSortDesc ? '▼' : '▲' }}}}</span>
-                                    </th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortLineage('usage_score')">
-                                        Usage Score
-                                        <span v-if="lineageSortBy === 'usage_score'">{{{{ lineageSortDesc ? '▼' : '▲' }}}}</span>
-                                    </th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100" @click="sortLineage('status')">
-                                        Status
-                                        <span v-if="lineageSortBy === 'status'">{{{{ lineageSortDesc ? '▼' : '▲' }}}}</span>
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200">
-                                <tr v-for="(lineage, colKey) in sortedColumnLineage" v-memo="[lineage]" :key="colKey" class="hover:bg-gray-50">
-                                    <td class="px-4 py-3 text-sm font-medium text-gray-900">{{{{ lineage.table }}}}</td>
-                                    <td class="px-4 py-3 text-sm text-gray-900">{{{{ lineage.column }}}}</td>
-                                    <td class="px-4 py-3 text-sm">
-                                        <span v-if="lineage.is_calculated" class="px-2 py-1 text-xs font-semibold rounded bg-purple-100 text-purple-800">
-                                            Calculated
-                                        </span>
-                                        <span v-else class="px-2 py-1 text-xs font-semibold rounded bg-gray-100 text-gray-800">
-                                            Physical
-                                        </span>
-                                    </td>
-                                    <td class="px-4 py-3 text-sm text-gray-600 font-mono">{{{{ lineage.data_type }}}}</td>
-                                    <td class="px-4 py-3 text-sm text-center">
-                                        <span class="px-2 py-1 text-xs font-semibold rounded bg-blue-100 text-blue-800">
-                                            {{{{ lineage.used_in_measures?.length || 0 }}}}
-                                        </span>
-                                    </td>
-                                    <td class="px-4 py-3 text-sm text-center">
-                                        <span class="px-2 py-1 text-xs font-semibold rounded bg-green-100 text-green-800">
-                                            {{{{ lineage.used_in_relationships?.length || 0 }}}}
-                                        </span>
-                                    </td>
-                                    <td class="px-4 py-3 text-sm text-center">
-                                        <span class="px-2 py-1 text-xs font-semibold rounded bg-yellow-100 text-yellow-800">
-                                            {{{{ lineage.used_in_visuals?.length || 0 }}}}
-                                        </span>
-                                    </td>
-                                    <td class="px-4 py-3 text-sm text-center">
-                                        <span :class="usageScoreBadgeClass(lineage.usage_score)" class="px-2 py-1 text-xs font-semibold rounded">
-                                            {{{{ lineage.usage_score }}}}
-                                        </span>
-                                    </td>
-                                    <td class="px-4 py-3 whitespace-nowrap">
-                                        <span v-if="lineage.is_orphan" class="px-2 py-1 text-xs font-semibold rounded bg-red-100 text-red-800">
-                                            Orphan
-                                        </span>
-                                        <span v-else class="px-2 py-1 text-xs font-semibold rounded bg-green-100 text-green-800">
-                                            In Use
-                                        </span>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        <div v-if="Object.keys(sortedColumnLineage).length === 0" class="text-center py-8 text-gray-500">
-                            No columns match the current filter
+                    <!-- Summary Metrics -->
+                    <div class="metrics-grid metrics-grid--4">
+                        <div class="metric-card">
+                            <div class="metric-card__icon">📊</div>
+                            <div class="metric-card__content">
+                                <div class="metric-card__label">Total Columns</div>
+                                <div class="metric-card__value">{{{{ lineageSummary.total_columns }}}}</div>
+                            </div>
+                        </div>
+                        <div class="metric-card metric-card--coral">
+                            <div class="metric-card__icon">⚠️</div>
+                            <div class="metric-card__content">
+                                <div class="metric-card__label">Orphan Columns</div>
+                                <div class="metric-card__value">{{{{ lineageSummary.orphan_count }}}}</div>
+                            </div>
+                        </div>
+                        <div class="metric-card metric-card--ocean">
+                            <div class="metric-card__icon">🔢</div>
+                            <div class="metric-card__content">
+                                <div class="metric-card__label">Calculated</div>
+                                <div class="metric-card__value">{{{{ lineageSummary.calculated_count }}}}</div>
+                            </div>
+                        </div>
+                        <div class="metric-card metric-card--sage">
+                            <div class="metric-card__icon">⭐</div>
+                            <div class="metric-card__content">
+                                <div class="metric-card__label">High Usage</div>
+                                <div class="metric-card__value">{{{{ lineageSummary.high_usage_count }}}}</div>
+                            </div>
                         </div>
                     </div>
-                </div>
+
+                    <!-- Quick Stats Cards -->
+                    <div class="lineage-stats-row" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-md); margin-bottom: var(--space-lg);">
+                        <div class="stat-card stat-card--clickable" @click="setLineageFilter('orphan')">
+                            <div class="stat-card__icon stat-card__icon--coral">🚨</div>
+                            <div class="stat-card__content">
+                                <div class="stat-card__title">Orphan Columns</div>
+                                <div class="stat-card__desc">Columns not used anywhere in the model</div>
+                            </div>
+                            <div class="stat-card__count">{{{{ lineageSummary.orphan_count }}}}</div>
+                        </div>
+                        <div class="stat-card stat-card--clickable" @click="setLineageFilter('calculated')">
+                            <div class="stat-card__icon stat-card__icon--ocean">📐</div>
+                            <div class="stat-card__content">
+                                <div class="stat-card__title">Calculated Columns</div>
+                                <div class="stat-card__desc">Columns with DAX expressions</div>
+                            </div>
+                            <div class="stat-card__count">{{{{ lineageSummary.calculated_count }}}}</div>
+                        </div>
+                        <div class="stat-card stat-card--clickable" @click="setLineageFilter('high-usage')">
+                            <div class="stat-card__icon stat-card__icon--sage">🔥</div>
+                            <div class="stat-card__content">
+                                <div class="stat-card__title">High Usage</div>
+                                <div class="stat-card__desc">Columns used in 3+ places</div>
+                            </div>
+                            <div class="stat-card__count">{{{{ lineageSummary.high_usage_count }}}}</div>
+                        </div>
+                    </div>
+
+                    <!-- Search and Filters -->
+                    <div class="card" style="margin-bottom: var(--space-lg);">
+                        <div class="card__body">
+                            <div class="filter-row">
+                                <input v-model="lineageSearch" type="text" placeholder="Search tables or columns..." class="search-input" style="flex: 2;" />
+                                <select v-model="lineageFilterType" class="form-select">
+                                    <option value="all">All Columns</option>
+                                    <option value="orphan">Orphan Only</option>
+                                    <option value="calculated">Calculated Only</option>
+                                    <option value="physical">Physical Only</option>
+                                    <option value="high-usage">High Usage (3+)</option>
+                                    <option value="in-measures">Used in Measures</option>
+                                    <option value="in-visuals">Used in Visuals</option>
+                                </select>
+                                <select v-model="lineageTableFilter" class="form-select">
+                                    <option value="all">All Tables</option>
+                                    <option v-for="table in lineageTableList" :key="table" :value="table">{{{{ table }}}}</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Column Lineage Table -->
+                    <div class="card">
+                        <div class="card__header">
+                            <h3 class="card__title">Column Impact Analysis</h3>
+                            <span class="card__badge">{{{{ filteredLineageList.length }}}} of {{{{ lineageColumnList.length }}}} columns</span>
+                        </div>
+                        <div class="card__body">
+                            <div v-if="filteredLineageList.length === 0" class="empty-state empty-state--compact">
+                                <div class="empty-state__icon">🔍</div>
+                                <h3 class="empty-state__title">No Columns Match</h3>
+                                <p class="empty-state__text">Try adjusting your search or filter criteria.</p>
+                            </div>
+                            <div v-else class="table-container table-container--scrollable">
+                                <table class="data-table data-table--hover">
+                                    <thead>
+                                        <tr>
+                                            <th class="sortable" @click="sortLineageBy('table')" style="width: 160px;">
+                                                Table
+                                                <span v-if="lineageSortField === 'table'" class="sort-indicator">{{{{ lineageSortAsc ? '▲' : '▼' }}}}</span>
+                                            </th>
+                                            <th class="sortable" @click="sortLineageBy('column')" style="width: 180px;">
+                                                Column
+                                                <span v-if="lineageSortField === 'column'" class="sort-indicator">{{{{ lineageSortAsc ? '▲' : '▼' }}}}</span>
+                                            </th>
+                                            <th style="width: 100px;">Type</th>
+                                            <th class="sortable" @click="sortLineageBy('data_type')" style="width: 120px;">
+                                                Data Type
+                                                <span v-if="lineageSortField === 'data_type'" class="sort-indicator">{{{{ lineageSortAsc ? '▲' : '▼' }}}}</span>
+                                            </th>
+                                            <th class="sortable cell--center" @click="sortLineageBy('measures')" style="width: 100px;">
+                                                Measures
+                                                <span v-if="lineageSortField === 'measures'" class="sort-indicator">{{{{ lineageSortAsc ? '▲' : '▼' }}}}</span>
+                                            </th>
+                                            <th class="sortable cell--center" @click="sortLineageBy('relationships')" style="width: 100px;">
+                                                Relations
+                                                <span v-if="lineageSortField === 'relationships'" class="sort-indicator">{{{{ lineageSortAsc ? '▲' : '▼' }}}}</span>
+                                            </th>
+                                            <th class="sortable cell--center" @click="sortLineageBy('visuals')" style="width: 90px;">
+                                                Visuals
+                                                <span v-if="lineageSortField === 'visuals'" class="sort-indicator">{{{{ lineageSortAsc ? '▲' : '▼' }}}}</span>
+                                            </th>
+                                            <th class="sortable cell--center" @click="sortLineageBy('usage_score')" style="width: 90px;">
+                                                Score
+                                                <span v-if="lineageSortField === 'usage_score'" class="sort-indicator">{{{{ lineageSortAsc ? '▲' : '▼' }}}}</span>
+                                            </th>
+                                            <th style="width: 90px;">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="col in paginatedLineageList" :key="col.key" class="data-row" :class="{{'row--warning': col.is_orphan}}">
+                                            <td class="cell--bold">{{{{ col.table }}}}</td>
+                                            <td>
+                                                <span class="column-name">{{{{ col.column }}}}</span>
+                                            </td>
+                                            <td>
+                                                <span v-if="col.is_calculated" class="badge badge--purple">Calculated</span>
+                                                <span v-else class="badge badge--neutral">Physical</span>
+                                            </td>
+                                            <td class="cell--mono">{{{{ col.data_type || '-' }}}}</td>
+                                            <td class="cell--center">
+                                                <span class="usage-badge usage-badge--ocean" :class="{{'usage-badge--zero': (col.used_in_measures || []).length === 0}}">
+                                                    {{{{ (col.used_in_measures || []).length }}}}
+                                                </span>
+                                            </td>
+                                            <td class="cell--center">
+                                                <span class="usage-badge usage-badge--sage" :class="{{'usage-badge--zero': (col.used_in_relationships || []).length === 0}}">
+                                                    {{{{ (col.used_in_relationships || []).length }}}}
+                                                </span>
+                                            </td>
+                                            <td class="cell--center">
+                                                <span class="usage-badge usage-badge--terracotta" :class="{{'usage-badge--zero': (col.used_in_visuals || []).length === 0}}">
+                                                    {{{{ (col.used_in_visuals || []).length }}}}
+                                                </span>
+                                            </td>
+                                            <td class="cell--center">
+                                                <span class="usage-score-badge" :class="getUsageScoreClass(col.usage_score)">
+                                                    {{{{ col.usage_score || 0 }}}}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span v-if="col.is_orphan" class="status-badge status-badge--error">Orphan</span>
+                                                <span v-else class="status-badge status-badge--success">In Use</span>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <!-- Pagination Controls -->
+                            <div v-if="lineageTotalPages > 1" class="pagination-controls" style="display: flex; justify-content: center; align-items: center; gap: 1rem; padding: 1rem; border-top: 1px solid var(--clay);">
+                                <button @click="lineagePage = 1" :disabled="lineagePage === 1" class="btn btn--sm">First</button>
+                                <button @click="lineagePage--" :disabled="lineagePage === 1" class="btn btn--sm">Previous</button>
+                                <span style="font-size: 14px;">Page {{{{ lineagePage }}}} of {{{{ lineageTotalPages }}}} ({{{{ sortedLineageList.length }}}} items)</span>
+                                <button @click="lineagePage++" :disabled="lineagePage >= lineageTotalPages" class="btn btn--sm">Next</button>
+                                <button @click="lineagePage = lineageTotalPages" :disabled="lineagePage >= lineageTotalPages" class="btn btn--sm">Last</button>
+                            </div>
+                        </div>
+                    </div>
             </div>
 
             <!-- Perspectives Tab -->
-            <div v-show="activeTab === 'perspectives'" v-if="enhancedData && enhancedData.analyses && enhancedData.analyses.perspectives">
-                <div class="mb-6">
-                    <h1 class="text-3xl font-bold text-gray-900 mb-2">Perspectives Analysis</h1>
-                    <p class="text-gray-600">Object visibility and perspective usage</p>
+            <div v-show="activeTab === 'perspectives'" class="tab-content">
+                <div class="tab-header">
+                    <h1 class="tab-header__title">Perspectives Analysis</h1>
+                    <p class="tab-header__subtitle">Object visibility and perspective usage</p>
                 </div>
 
-                <div v-if="!perspectivesData.has_perspectives" class="stat-card">
-                    <div class="text-center py-12">
-                        <div class="text-6xl mb-4">👁️</div>
-                        <h3 class="text-xl font-semibold text-gray-700 mb-2">No Perspectives Defined</h3>
-                        <p class="text-gray-600">{{{{ perspectivesData.message }}}}</p>
+                <div v-if="!perspectivesData.has_perspectives" class="card">
+                    <div class="card__body">
+                        <div class="empty-state">
+                            <div class="empty-state__icon">👁️</div>
+                            <h3 class="empty-state__title">No Perspectives Defined</h3>
+                            <p class="empty-state__text">{{{{ perspectivesData.message }}}}</p>
+                        </div>
                     </div>
                 </div>
 
                 <div v-else>
                     <!-- Perspectives Summary -->
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                        <div class="kpi-card">
-                            <h3>Total Perspectives</h3>
-                            <p class="text-4xl font-bold text-gray-900">{{{{ perspectivesCount }}}}</p>
+                    <div class="metrics-grid metrics-grid--3">
+                        <div class="metric-card metric-card--ocean">
+                            <div class="metric-card__label">Total Perspectives</div>
+                            <div class="metric-card__value">{{{{ perspectivesCount }}}}</div>
                         </div>
-                        <div class="kpi-card">
-                            <h3>Unused Perspectives</h3>
-                            <p class="text-4xl font-bold text-yellow-600">{{{{ perspectivesData.unused_perspectives?.length || 0 }}}}</p>
+                        <div class="metric-card metric-card--rust">
+                            <div class="metric-card__label">Unused Perspectives</div>
+                            <div class="metric-card__value">{{{{ perspectivesData.unused_perspectives?.length || 0 }}}}</div>
                         </div>
-                        <div class="kpi-card">
-                            <h3>Active Perspectives</h3>
-                            <p class="text-4xl font-bold text-green-600">{{{{ perspectivesCount - (perspectivesData.unused_perspectives?.length || 0) }}}}</p>
+                        <div class="metric-card metric-card--sage">
+                            <div class="metric-card__label">Active Perspectives</div>
+                            <div class="metric-card__value">{{{{ perspectivesCount - (perspectivesData.unused_perspectives?.length || 0) }}}}</div>
                         </div>
                     </div>
 
                     <!-- Perspectives Details -->
-                    <div class="stat-card">
-                        <h2 class="text-2xl font-bold text-gray-900 mb-4">Perspective Details</h2>
-                        <div class="space-y-4">
-                            <div v-for="perspective in perspectivesData.perspectives" :key="perspective.name" class="border border-gray-200 rounded-lg p-4">
-                                <div class="flex items-center justify-between mb-3">
-                                    <h3 class="text-lg font-semibold text-gray-900">{{{{ perspective.name }}}}</h3>
-                                    <span v-if="perspective.total_objects === 0" class="px-3 py-1 text-xs font-semibold rounded bg-yellow-100 text-yellow-800">
-                                        UNUSED
-                                    </span>
-                                    <span v-else class="px-3 py-1 text-xs font-semibold rounded bg-green-100 text-green-800">
-                                        ACTIVE
-                                    </span>
-                                </div>
-                                <div class="grid grid-cols-4 gap-4 text-sm">
-                                    <div class="text-center p-3 bg-blue-50 rounded">
-                                        <p class="text-gray-600 mb-1">Tables</p>
-                                        <p class="text-2xl font-bold text-blue-600">{{{{ perspective.table_count }}}}</p>
+                    <div class="card">
+                        <div class="card__header">
+                            <h2 class="card__title">Perspective Details</h2>
+                        </div>
+                        <div class="card__body">
+                            <div class="perspective-list">
+                                <div v-for="perspective in perspectivesData.perspectives" :key="perspective.name" class="perspective-item">
+                                    <div class="perspective-item__header">
+                                        <h3 class="perspective-item__name">{{{{ perspective.name }}}}</h3>
+                                        <span v-if="perspective.total_objects === 0" class="status-badge status-badge--warning">UNUSED</span>
+                                        <span v-else class="status-badge status-badge--success">ACTIVE</span>
                                     </div>
-                                    <div class="text-center p-3 bg-green-50 rounded">
-                                        <p class="text-gray-600 mb-1">Columns</p>
-                                        <p class="text-2xl font-bold text-green-600">{{{{ perspective.column_count }}}}</p>
-                                    </div>
-                                    <div class="text-center p-3 bg-purple-50 rounded">
-                                        <p class="text-gray-600 mb-1">Measures</p>
-                                        <p class="text-2xl font-bold text-purple-600">{{{{ perspective.measure_count }}}}</p>
-                                    </div>
-                                    <div class="text-center p-3 bg-gray-50 rounded">
-                                        <p class="text-gray-600 mb-1">Total Objects</p>
-                                        <p class="text-2xl font-bold text-gray-900">{{{{ perspective.total_objects }}}}</p>
+                                    <div class="perspective-item__stats">
+                                        <div class="perspective-stat perspective-stat--ocean">
+                                            <span class="perspective-stat__label">Tables</span>
+                                            <span class="perspective-stat__value">{{{{ perspective.table_count }}}}</span>
+                                        </div>
+                                        <div class="perspective-stat perspective-stat--sage">
+                                            <span class="perspective-stat__label">Columns</span>
+                                            <span class="perspective-stat__value">{{{{ perspective.column_count }}}}</span>
+                                        </div>
+                                        <div class="perspective-stat perspective-stat--purple">
+                                            <span class="perspective-stat__label">Measures</span>
+                                            <span class="perspective-stat__value">{{{{ perspective.measure_count }}}}</span>
+                                        </div>
+                                        <div class="perspective-stat perspective-stat--neutral">
+                                            <span class="perspective-stat__label">Total</span>
+                                            <span class="perspective-stat__value">{{{{ perspective.total_objects }}}}</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -2877,30 +6282,32 @@ class PbipHtmlGenerator:
                     </div>
                 </div>
             </div>
+                </main>
+            </div>
         </div>
 
         <!-- Command Palette -->
         <div v-if="showCommandPalette" v-cloak class="command-palette" @click.self="showCommandPalette = false">
-            <div class="command-palette-content">
-                <div class="p-4 border-b border-gray-200">
+            <div class="command-palette__content">
+                <div class="command-palette__input-wrapper">
                     <input
                         v-model="commandQuery"
                         type="text"
                         placeholder="Type a command..."
-                        class="w-full px-4 py-2 border-0 focus:ring-0 text-lg"
+                        class="command-palette__input"
                         @keydown.esc="showCommandPalette = false"
                         ref="commandInput"
                     />
                 </div>
-                <div class="p-2 max-h-96 overflow-y-auto">
+                <div class="command-palette__results">
                     <div
                         v-for="cmd in filteredCommands"
                         :key="cmd.name"
                         @click="executeCommand(cmd)"
-                        class="p-3 hover:bg-gray-100 cursor-pointer rounded transition"
+                        class="command-palette__item"
                     >
-                        <div class="font-semibold text-gray-900">{{{{ cmd.name }}}}</div>
-                        <div class="text-sm text-gray-600">{{{{ cmd.description }}}}</div>
+                        <div class="command-palette__item-name">{{{{ cmd.name }}}}</div>
+                        <div class="command-palette__item-desc">{{{{ cmd.description }}}}</div>
                     </div>
                 </div>
             </div>
@@ -2909,7 +6316,7 @@ class PbipHtmlGenerator:
 """
 
     def _get_vue_app_script(self, data_json_str: str) -> str:
-        """Get the Vue 3 application JavaScript."""
+        """Get Vue 3 app script."""
         return f"""    <script>
         const {{ createApp }} = Vue;
 
@@ -2990,21 +6397,28 @@ class PbipHtmlGenerator:
                     collapsedBpaObjectGroups: {{}},
                     collapsedBpaCategories: {{}},
                     dataTypeImpactFilter: 'all',
-                    daxSeverityFilter: 'all',
-                    daxTypeFilter: 'all',
-                    daxQualitySortBy: 'complexity',
-                    daxQualitySortDesc: true,
-                    collapsedDaxTypeGroups: {{}},
+
+                    // Code Quality tab - rebuilt
+                    codeQualitySearch: '',
+                    codeQualitySeverityFilter: 'all',
+                    codeQualityTypeFilter: 'all',
+                    codeQualitySortField: 'complexity',
+                    codeQualitySortAsc: false,
+                    codeQualityPage: 1,
+                    codeQualityPageSize: 100,
 
                     // Naming conventions
                     namingSeverityFilter: 'all',
                     namingTypeFilter: 'all',
 
-                    // Column lineage
-                    lineageSearchQuery: '',
-                    lineageUsageFilter: 'all',
-                    lineageSortBy: 'usage_score',
-                    lineageSortDesc: true,
+                    // Lineage tab - rebuilt
+                    lineageSearch: '',
+                    lineageFilterType: 'all',
+                    lineageTableFilter: 'all',
+                    lineageSortField: 'usage_score',
+                    lineageSortAsc: false,
+                    lineagePage: 1,
+                    lineagePageSize: 100,
 
                     commands: [
                         {{ name: 'Go to Summary', description: 'View summary and insights', action: () => this.activeTab = 'summary' }},
@@ -3430,40 +6844,36 @@ class PbipHtmlGenerator:
 
                 fieldParametersList() {{
                     const fieldParams = [];
-                    const fieldParamMap = this.dependencies.field_param_to_columns || {{}};
 
-                    // Iterate through field parameters and build the list
-                    Object.keys(fieldParamMap).forEach(fpKey => {{
-                        const columns = fieldParamMap[fpKey] || [];
+                    // Build field_param_to_columns from column_to_field_params (reverse mapping)
+                    const columnToFieldParams = this.dependencies.column_to_field_params || {{}};
+                    const fieldParamToColumns = {{}};
 
-                        // Parse the field parameter key to get table and name
-                        // Format is typically: TableName[FieldParamName]
-                        const match = fpKey.match(/^(.+?)\[(.+?)\]$/);
-                        if (match) {{
-                            fieldParams.push({{
-                                name: match[2],
-                                table: match[1],
-                                fullName: fpKey,
-                                columns: columns
-                            }});
-                        }} else {{
-                            // Fallback if format doesn't match
-                            fieldParams.push({{
-                                name: fpKey,
-                                table: '',
-                                fullName: fpKey,
-                                columns: columns
-                            }});
-                        }}
+                    // Reverse the mapping: column -> [field params] to field_param -> [columns]
+                    Object.entries(columnToFieldParams).forEach(([columnKey, fpTables]) => {{
+                        (fpTables || []).forEach(fpTable => {{
+                            if (!fieldParamToColumns[fpTable]) {{
+                                fieldParamToColumns[fpTable] = [];
+                            }}
+                            if (!fieldParamToColumns[fpTable].includes(columnKey)) {{
+                                fieldParamToColumns[fpTable].push(columnKey);
+                            }}
+                        }});
                     }});
 
-                    // Sort by table name, then by field parameter name
-                    return fieldParams.sort((a, b) => {{
-                        if (a.table !== b.table) {{
-                            return a.table.localeCompare(b.table);
-                        }}
-                        return a.name.localeCompare(b.name);
+                    // Now build the list from the reversed mapping
+                    Object.keys(fieldParamToColumns).forEach(fpTable => {{
+                        const columns = fieldParamToColumns[fpTable] || [];
+                        fieldParams.push({{
+                            name: fpTable,
+                            table: fpTable,
+                            fullName: fpTable,
+                            columns: columns
+                        }});
                     }});
+
+                    // Sort by table name
+                    return fieldParams.sort((a, b) => a.name.localeCompare(b.name));
                 }},
 
                 // Measure Chains - Get all measures with chain info
@@ -3724,7 +7134,7 @@ class PbipHtmlGenerator:
 
                     // Analyze each measure's dependencies
                     const topMeasures = usedMeasures.map(measureName => {{
-                        const match = measureName.match(/^(.+?)\[(.+?)\]$/);
+                        const match = measureName.match(/^(.+?)\\[(.+?)\\]$/);
                         if (!match) return null;
 
                         const [, table, name] = match;
@@ -3735,7 +7145,7 @@ class PbipHtmlGenerator:
                             table: table,
                             fullName: measureName,
                             dependencies: deps.map(depName => {{
-                                const depMatch = depName.match(/^(.+?)\[(.+?)\]$/);
+                                const depMatch = depName.match(/^(.+?)\\[(.+?)\\]$/);
                                 if (!depMatch) return null;
                                 const [, depTable, depMeasureName] = depMatch;
                                 const depDeps = measureToMeasure[depName] || [];
@@ -3745,8 +7155,8 @@ class PbipHtmlGenerator:
                                     fullName: depName,
                                     dependencies: depDeps.length > 0 ? depDeps.map(d => ({{
                                         fullName: d,
-                                        name: d.match(/\[([^\]]+)\]$/)?.[1] || d,
-                                        table: d.match(/^(.+?)\[/)?.[1] || ''
+                                        name: d.match(/\\[([^\\]]+)\\]$/)?.[1] || d,
+                                        table: d.match(/^(.+?)\\[/)?.[1] || ''
                                     }})) : []
                                 }};
                             }}).filter(Boolean)
@@ -3889,6 +7299,10 @@ class PbipHtmlGenerator:
                     return filtered;
                 }},
 
+                totalDataTypeCount() {{
+                    return Object.values(this.dataTypeSummary).reduce((sum, count) => sum + count, 0) || 1;
+                }},
+
                 cardinalityWarnings() {{
                     return this.enhancedData?.analyses?.cardinality?.cardinality_warnings || [];
                 }},
@@ -3899,72 +7313,152 @@ class PbipHtmlGenerator:
                     }});
                 }},
 
-                // Enhanced Analysis - DAX Quality
-                daxQualityIssues() {{
-                    return this.enhancedData?.analyses?.dax_quality?.quality_issues || [];
+                // ==================== Code Quality Tab (Rebuilt) ====================
+                hasCodeQualityData() {{
+                    try {{
+                        const daxQuality = this.enhancedData?.analyses?.dax_quality;
+                        return daxQuality != null && daxQuality.quality_issues != null;
+                    }} catch (e) {{
+                        console.error('hasCodeQualityData error:', e);
+                        return false;
+                    }}
+                }},
+
+                codeQualityIssuesList() {{
+                    try {{
+                        const issues = this.enhancedData?.analyses?.dax_quality?.quality_issues;
+                        return Array.isArray(issues) ? issues : [];
+                    }} catch (e) {{
+                        console.error('codeQualityIssuesList error:', e);
+                        return [];
+                    }}
+                }},
+
+                codeQualitySummary() {{
+                    const issues = this.codeQualityIssuesList;
+                    const summary = this.enhancedData?.analyses?.dax_quality?.summary;
+                    const safeSummary = (summary && typeof summary === 'object') ? summary : {{}};
+                    return {{
+                        total_measures: safeSummary.total_measures || 0,
+                        avg_complexity: safeSummary.avg_complexity || 0,
+                        high_complexity_count: safeSummary.high_complexity_measures || issues.filter(i => i.type === 'high_complexity').length,
+                        total_issues: issues.length
+                    }};
+                }},
+
+                codeQualityByType() {{
+                    const issues = this.codeQualityIssuesList;
+                    if (!Array.isArray(issues)) return {{}};
+                    const grouped = {{}};
+                    issues.forEach(issue => {{
+                        const type = issue?.type || 'unknown';
+                        if (!grouped[type]) grouped[type] = [];
+                        grouped[type].push(issue);
+                    }});
+                    return grouped;
+                }},
+
+                filteredCodeQualityIssues() {{
+                    try {{
+                        const issues = this.codeQualityIssuesList || [];
+                        const search = (this.codeQualitySearch || '').toLowerCase();
+                        const severityFilter = this.codeQualitySeverityFilter || 'all';
+                        const typeFilter = this.codeQualityTypeFilter || 'all';
+
+                        return issues.filter(issue => {{
+                            // Search filter
+                            const searchMatch = !search ||
+                                (issue.table || '').toLowerCase().includes(search) ||
+                                (issue.measure || '').toLowerCase().includes(search) ||
+                                (issue.issue || '').toLowerCase().includes(search) ||
+                                (issue.description || '').toLowerCase().includes(search);
+
+                            // Severity filter
+                            const severityMatch = severityFilter === 'all' || issue.severity === severityFilter;
+
+                            // Type filter
+                            const typeMatch = typeFilter === 'all' || issue.type === typeFilter;
+
+                            return searchMatch && severityMatch && typeMatch;
+                        }});
+                    }} catch (e) {{
+                        console.error('filteredCodeQualityIssues error:', e);
+                        return [];
+                    }}
+                }},
+
+                sortedCodeQualityIssues() {{
+                    try {{
+                        const filtered = this.filteredCodeQualityIssues;
+                        if (!Array.isArray(filtered)) return [];
+                        const issues = [...filtered];
+                        const field = this.codeQualitySortField;
+                        const asc = this.codeQualitySortAsc;
+
+                        issues.sort((a, b) => {{
+                            let aVal, bVal;
+
+                            switch (field) {{
+                                case 'complexity':
+                                    aVal = a.complexity_score || 0;
+                                    bVal = b.complexity_score || 0;
+                                    break;
+                                case 'type':
+                                    aVal = (a.type || '').toLowerCase();
+                                    bVal = (b.type || '').toLowerCase();
+                                    break;
+                                case 'table':
+                                    aVal = (a.table || '').toLowerCase();
+                                    bVal = (b.table || '').toLowerCase();
+                                    break;
+                                case 'measure':
+                                    aVal = (a.measure || '').toLowerCase();
+                                    bVal = (b.measure || '').toLowerCase();
+                                    break;
+                                default:
+                                    return 0;
+                            }}
+
+                            if (typeof aVal === 'number') {{
+                                return asc ? aVal - bVal : bVal - aVal;
+                            }}
+                            return asc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                        }});
+
+                        return issues;
+                    }} catch (e) {{
+                        console.error('sortedCodeQualityIssues error:', e);
+                        return [];
+                    }}
+                }},
+
+                paginatedCodeQualityIssues() {{
+                    try {{
+                        const sorted = this.sortedCodeQualityIssues;
+                        if (!Array.isArray(sorted)) return [];
+                        const start = (this.codeQualityPage - 1) * this.codeQualityPageSize;
+                        const end = start + this.codeQualityPageSize;
+                        return sorted.slice(start, end);
+                    }} catch (e) {{
+                        console.error('paginatedCodeQualityIssues error:', e);
+                        return [];
+                    }}
+                }},
+
+                codeQualityTotalPages() {{
+                    try {{
+                        const sorted = this.sortedCodeQualityIssues;
+                        if (!Array.isArray(sorted)) return 1;
+                        return Math.ceil(sorted.length / this.codeQualityPageSize) || 1;
+                    }} catch (e) {{
+                        console.error('codeQualityTotalPages error:', e);
+                        return 1;
+                    }}
                 }},
 
                 daxQualityIssuesCount() {{
-                    return this.daxQualityIssues.length;
-                }},
-
-                daxSummary() {{
-                    return this.enhancedData?.analyses?.dax_quality?.summary || {{}};
-                }},
-
-                filteredDaxQualityIssues() {{
-                    return this.daxQualityIssues.filter(issue => {{
-                        const severityMatch = this.daxSeverityFilter === 'all' || issue.severity === this.daxSeverityFilter;
-                        const typeMatch = this.daxTypeFilter === 'all' || issue.type === this.daxTypeFilter;
-                        return severityMatch && typeMatch;
-                    }});
-                }},
-
-                sortedDaxQualityIssues() {{
-                    const issues = [...this.filteredDaxQualityIssues];
-                    const sortBy = this.daxQualitySortBy;
-                    const desc = this.daxQualitySortDesc;
-
-                    issues.sort((a, b) => {{
-                        let aVal, bVal;
-
-                        if (sortBy === 'complexity') {{
-                            aVal = a.complexity_score || 0;
-                            bVal = b.complexity_score || 0;
-                            return desc ? bVal - aVal : aVal - bVal;
-                        }} else if (sortBy === 'type') {{
-                            aVal = a.type || '';
-                            bVal = b.type || '';
-                        }} else if (sortBy === 'table') {{
-                            aVal = a.table || '';
-                            bVal = b.table || '';
-                        }} else if (sortBy === 'measure') {{
-                            aVal = a.measure || '';
-                            bVal = b.measure || '';
-                        }}
-
-                        if (typeof aVal === 'string') {{
-                            return desc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
-                        }}
-                        return 0;
-                    }});
-
-                    return issues;
-                }},
-
-                groupedDaxQualityIssues() {{
-                    const issues = this.sortedDaxQualityIssues;
-                    const grouped = {{}};
-
-                    issues.forEach(issue => {{
-                        const type = issue.type || 'Unknown';
-                        if (!grouped[type]) {{
-                            grouped[type] = [];
-                        }}
-                        grouped[type].push(issue);
-                    }});
-
-                    return grouped;
+                    const issues = this.codeQualityIssuesList;
+                    return Array.isArray(issues) ? issues.length : 0;
                 }},
 
                 // Naming Conventions
@@ -3988,100 +7482,176 @@ class PbipHtmlGenerator:
                     }});
                 }},
 
-                // Column Lineage
-                columnLineage() {{
-                    return this.enhancedData?.analyses?.column_lineage || {{}};
+                // ==================== Lineage Tab (Rebuilt) ====================
+                hasLineageData() {{
+                    try {{
+                        const lineageData = this.enhancedData?.analyses?.column_lineage;
+                        if (!lineageData || typeof lineageData !== 'object') return false;
+                        return Object.keys(lineageData).length > 0;
+                    }} catch (e) {{
+                        console.error('hasLineageData error:', e);
+                        return false;
+                    }}
                 }},
 
-                filteredColumnLineage() {{
-                    const allColumns = this.columnLineage;
-                    const query = this.lineageSearchQuery.toLowerCase();
+                lineageColumnList() {{
+                    try {{
+                        const lineageData = this.enhancedData?.analyses?.column_lineage;
+                        if (!lineageData || typeof lineageData !== 'object') return [];
+                        return Object.entries(lineageData).map(([key, col]) => ({{
+                            key,
+                            ...col
+                        }}));
+                    }} catch (e) {{
+                        console.error('lineageColumnList error:', e);
+                        return [];
+                    }}
+                }},
 
-                    return Object.fromEntries(
-                        Object.entries(allColumns).filter(([key, lineage]) => {{
+                lineageTableList() {{
+                    const tables = new Set();
+                    this.lineageColumnList.forEach(col => {{
+                        if (col.table) tables.add(col.table);
+                    }});
+                    return [...tables].sort();
+                }},
+
+                lineageSummary() {{
+                    const columns = this.lineageColumnList;
+                    return {{
+                        total_columns: columns.length,
+                        orphan_count: columns.filter(c => c.is_orphan).length,
+                        calculated_count: columns.filter(c => c.is_calculated).length,
+                        high_usage_count: columns.filter(c => (c.usage_score || 0) >= 3).length
+                    }};
+                }},
+
+                filteredLineageList() {{
+                    try {{
+                        const columns = this.lineageColumnList || [];
+                        const search = (this.lineageSearch || '').toLowerCase();
+                        const filterType = this.lineageFilterType || 'all';
+                        const tableFilter = this.lineageTableFilter || 'all';
+
+                        return columns.filter(col => {{
                             // Search filter
-                            const searchMatch = !query ||
-                                lineage.table.toLowerCase().includes(query) ||
-                                lineage.column.toLowerCase().includes(query);
+                            const searchMatch = !search ||
+                                (col.table || '').toLowerCase().includes(search) ||
+                                (col.column || '').toLowerCase().includes(search);
 
-                            // Usage filter
-                            let usageMatch = true;
-                            if (this.lineageUsageFilter === 'orphan') {{
-                                usageMatch = lineage.is_orphan;
-                            }} else if (this.lineageUsageFilter === 'calculated') {{
-                                usageMatch = lineage.is_calculated;
-                            }} else if (this.lineageUsageFilter === 'high-usage') {{
-                                usageMatch = lineage.usage_score >= 3;
+                            // Table filter
+                            const tableMatch = tableFilter === 'all' || col.table === tableFilter;
+
+                            // Type filter
+                            let typeMatch = true;
+                            switch (filterType) {{
+                                case 'orphan':
+                                    typeMatch = col.is_orphan === true;
+                                    break;
+                                case 'calculated':
+                                    typeMatch = col.is_calculated === true;
+                                    break;
+                                case 'physical':
+                                    typeMatch = col.is_calculated !== true;
+                                    break;
+                                case 'high-usage':
+                                    typeMatch = (col.usage_score || 0) >= 3;
+                                    break;
+                                case 'in-measures':
+                                    typeMatch = (col.used_in_measures || []).length > 0;
+                                    break;
+                                case 'in-visuals':
+                                    typeMatch = (col.used_in_visuals || []).length > 0;
+                                    break;
                             }}
 
-                            return searchMatch && usageMatch;
-                        }})
-                    );
+                            return searchMatch && tableMatch && typeMatch;
+                        }});
+                    }} catch (e) {{
+                        console.error('filteredLineageList error:', e);
+                        return [];
+                    }}
                 }},
 
-                sortedColumnLineage() {{
-                    const filtered = this.filteredColumnLineage;
-                    const entries = Object.entries(filtered);
-                    const sortBy = this.lineageSortBy;
-                    const desc = this.lineageSortDesc;
+                sortedLineageList() {{
+                    try {{
+                        const filtered = this.filteredLineageList;
+                        if (!Array.isArray(filtered)) return [];
+                        const columns = [...filtered];
+                        const field = this.lineageSortField;
+                        const asc = this.lineageSortAsc;
 
-                    entries.sort(([keyA, a], [keyB, b]) => {{
-                        let aVal, bVal;
+                        columns.sort((a, b) => {{
+                            let aVal, bVal;
 
-                        if (sortBy === 'table') {{
-                            aVal = (a.table || '').toLowerCase();
-                            bVal = (b.table || '').toLowerCase();
-                            return desc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
-                        }} else if (sortBy === 'column') {{
-                            aVal = (a.column || '').toLowerCase();
-                            bVal = (b.column || '').toLowerCase();
-                            return desc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
-                        }} else if (sortBy === 'type') {{
-                            aVal = a.is_calculated ? 'calculated' : 'physical';
-                            bVal = b.is_calculated ? 'calculated' : 'physical';
-                            return desc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
-                        }} else if (sortBy === 'data_type') {{
-                            aVal = (a.data_type || '').toLowerCase();
-                            bVal = (b.data_type || '').toLowerCase();
-                            return desc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
-                        }} else if (sortBy === 'measures') {{
-                            aVal = (a.used_in_measures || []).length;
-                            bVal = (b.used_in_measures || []).length;
-                            return desc ? bVal - aVal : aVal - bVal;
-                        }} else if (sortBy === 'relationships') {{
-                            aVal = (a.used_in_relationships || []).length;
-                            bVal = (b.used_in_relationships || []).length;
-                            return desc ? bVal - aVal : aVal - bVal;
-                        }} else if (sortBy === 'visuals') {{
-                            aVal = (a.used_in_visuals || []).length;
-                            bVal = (b.used_in_visuals || []).length;
-                            return desc ? bVal - aVal : aVal - bVal;
-                        }} else if (sortBy === 'usage_score') {{
-                            aVal = a.usage_score || 0;
-                            bVal = b.usage_score || 0;
-                            return desc ? bVal - aVal : aVal - bVal;
-                        }} else if (sortBy === 'status') {{
-                            aVal = a.is_orphan ? 'orphan' : 'in use';
-                            bVal = b.is_orphan ? 'orphan' : 'in use';
-                            return desc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
-                        }}
+                            switch (field) {{
+                                case 'table':
+                                    aVal = (a.table || '').toLowerCase();
+                                    bVal = (b.table || '').toLowerCase();
+                                    break;
+                                case 'column':
+                                    aVal = (a.column || '').toLowerCase();
+                                    bVal = (b.column || '').toLowerCase();
+                                    break;
+                                case 'data_type':
+                                    aVal = (a.data_type || '').toLowerCase();
+                                    bVal = (b.data_type || '').toLowerCase();
+                                    break;
+                                case 'measures':
+                                    aVal = (a.used_in_measures || []).length;
+                                    bVal = (b.used_in_measures || []).length;
+                                    break;
+                                case 'relationships':
+                                    aVal = (a.used_in_relationships || []).length;
+                                    bVal = (b.used_in_relationships || []).length;
+                                    break;
+                                case 'visuals':
+                                    aVal = (a.used_in_visuals || []).length;
+                                    bVal = (b.used_in_visuals || []).length;
+                                    break;
+                                case 'usage_score':
+                                    aVal = a.usage_score || 0;
+                                    bVal = b.usage_score || 0;
+                                    break;
+                                default:
+                                    return 0;
+                            }}
 
-                        return 0;
-                    }});
+                            if (typeof aVal === 'number') {{
+                                return asc ? aVal - bVal : bVal - aVal;
+                            }}
+                            return asc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                        }});
 
-                    return Object.fromEntries(entries);
+                        return columns;
+                    }} catch (e) {{
+                        console.error('sortedLineageList error:', e);
+                        return [];
+                    }}
                 }},
 
-                orphanColumnsCount() {{
-                    return Object.values(this.columnLineage).filter(l => l.is_orphan).length;
+                paginatedLineageList() {{
+                    try {{
+                        const sorted = this.sortedLineageList;
+                        if (!Array.isArray(sorted)) return [];
+                        const start = (this.lineagePage - 1) * this.lineagePageSize;
+                        const end = start + this.lineagePageSize;
+                        return sorted.slice(start, end);
+                    }} catch (e) {{
+                        console.error('paginatedLineageList error:', e);
+                        return [];
+                    }}
                 }},
 
-                calculatedColumnsCount() {{
-                    return Object.values(this.columnLineage).filter(l => l.is_calculated).length;
-                }},
-
-                highUsageColumnsCount() {{
-                    return Object.values(this.columnLineage).filter(l => l.usage_score >= 3).length;
+                lineageTotalPages() {{
+                    try {{
+                        const sorted = this.sortedLineageList;
+                        if (!Array.isArray(sorted)) return 1;
+                        return Math.ceil(sorted.length / this.lineagePageSize) || 1;
+                    }} catch (e) {{
+                        console.error('lineageTotalPages error:', e);
+                        return 1;
+                    }}
                 }},
 
                 // Perspectives
@@ -4850,38 +8420,38 @@ class PbipHtmlGenerator:
 
                 // Enhanced Analysis - Helper Methods
                 bpaSeverityClass(severity) {{
-                    if (severity === 'ERROR') return 'bg-red-100 text-red-800';
-                    if (severity === 'WARNING') return 'bg-yellow-100 text-yellow-800';
-                    if (severity === 'INFO') return 'bg-blue-100 text-blue-800';
-                    return 'bg-gray-100 text-gray-800';
+                    if (severity === 'ERROR') return 'severity-badge--error';
+                    if (severity === 'WARNING') return 'severity-badge--warning';
+                    if (severity === 'INFO') return 'severity-badge--info';
+                    return 'severity-badge--info';
                 }},
 
                 severityBadgeClass(severity) {{
-                    if (severity === 'ERROR') return 'bg-red-100 text-red-800';
-                    if (severity === 'WARNING') return 'bg-yellow-100 text-yellow-800';
-                    if (severity === 'INFO') return 'bg-blue-100 text-blue-800';
-                    return 'bg-gray-100 text-gray-800';
+                    if (severity === 'ERROR') return 'severity-badge--error';
+                    if (severity === 'WARNING') return 'severity-badge--warning';
+                    if (severity === 'INFO') return 'severity-badge--info';
+                    return 'severity-badge--info';
                 }},
 
                 impactBadgeClass(impact) {{
-                    if (impact === 'HIGH') return 'bg-red-100 text-red-800';
-                    if (impact === 'MEDIUM') return 'bg-yellow-100 text-yellow-800';
-                    if (impact === 'LOW') return 'bg-green-100 text-green-800';
-                    return 'bg-gray-100 text-gray-800';
+                    if (impact === 'HIGH') return 'severity-badge--error';
+                    if (impact === 'MEDIUM') return 'severity-badge--warning';
+                    if (impact === 'LOW') return 'severity-badge--info';
+                    return 'severity-badge--info';
                 }},
 
                 complexityBadgeClass(score) {{
-                    if (score > 20) return 'bg-red-100 text-red-800';
-                    if (score > 15) return 'bg-orange-100 text-orange-800';
-                    if (score > 10) return 'bg-yellow-100 text-yellow-800';
-                    return 'bg-green-100 text-green-800';
+                    if (score > 20) return 'complexity-badge--very-high';
+                    if (score > 15) return 'complexity-badge--high';
+                    if (score > 10) return 'complexity-badge--medium';
+                    return 'complexity-badge--low';
                 }},
 
                 usageScoreBadgeClass(score) {{
-                    if (score === 0) return 'bg-red-100 text-red-800';
-                    if (score <= 2) return 'bg-yellow-100 text-yellow-800';
-                    if (score <= 5) return 'bg-blue-100 text-blue-800';
-                    return 'bg-green-100 text-green-800';
+                    if (score === 0) return 'usage-score-badge--none';
+                    if (score <= 2) return 'usage-score-badge--low';
+                    if (score <= 5) return 'usage-score-badge--medium';
+                    return 'usage-score-badge--high';
                 }},
 
                 selectDependencyObject(key) {{
@@ -4991,28 +8561,97 @@ class PbipHtmlGenerator:
                     this.collapsedBpaCategories[key] = !this.collapsedBpaCategories[key];
                 }},
 
-                sortDaxQuality(column) {{
-                    if (this.daxQualitySortBy === column) {{
-                        this.daxQualitySortDesc = !this.daxQualitySortDesc;
+                // ==================== Code Quality Tab Methods (Rebuilt) ====================
+                sortCodeQuality(field) {{
+                    if (this.codeQualitySortField === field) {{
+                        this.codeQualitySortAsc = !this.codeQualitySortAsc;
                     }} else {{
-                        this.daxQualitySortBy = column;
-                        this.daxQualitySortDesc = column === 'complexity'; // Default descending for complexity
+                        this.codeQualitySortField = field;
+                        // Default to descending for complexity, ascending for others
+                        this.codeQualitySortAsc = field !== 'complexity';
                     }}
                 }},
 
-                toggleDaxTypeGroup(type) {{
-                    // Vue 3 reactivity handles this automatically
-                    this.collapsedDaxTypeGroups[type] = !this.collapsedDaxTypeGroups[type];
+                filterByIssueType(issueType) {{
+                    this.codeQualityTypeFilter = issueType;
                 }},
 
-                sortLineage(column) {{
-                    if (this.lineageSortBy === column) {{
-                        this.lineageSortDesc = !this.lineageSortDesc;
-                    }} else {{
-                        this.lineageSortBy = column;
-                        // Default descending for numeric columns
-                        this.lineageSortDesc = ['measures', 'relationships', 'visuals', 'usage_score'].includes(column);
+                formatIssueType(type) {{
+                    if (!type) return 'Unknown';
+                    return type.replace(/_/g, ' ').replace(/\\b\\w/g, l => l.toUpperCase());
+                }},
+
+                getIssueTypeIcon(type) {{
+                    const icons = {{
+                        'high_complexity': '📊',
+                        'deep_nesting': '🔲',
+                        'excessive_calculate': '⚡',
+                        'no_variables': '📝',
+                        'sumx_filter': '🔁',
+                        'long_expression': '📏',
+                        'unknown': '❓'
+                    }};
+                    return icons[type] || '📌';
+                }},
+
+                getSeverityClass(severity) {{
+                    switch (severity) {{
+                        case 'ERROR': return 'severity-badge--error';
+                        case 'WARNING': return 'severity-badge--warning';
+                        case 'INFO': return 'severity-badge--info';
+                        default: return 'severity-badge--info';
                     }}
+                }},
+
+                getComplexityClass(score) {{
+                    if (score > 20) return 'complexity-badge--very-high';
+                    if (score > 15) return 'complexity-badge--high';
+                    if (score > 10) return 'complexity-badge--medium';
+                    return 'complexity-badge--low';
+                }},
+
+                navigateToMeasure(tableName, measureName) {{
+                    this.activeTab = 'model';
+                    this.$nextTick(() => {{
+                        const table = this.filteredTables.find(t => t.name === tableName);
+                        if (table) {{
+                            this.selectedTable = table;
+                            this.modelDetailTab = 'measures';
+                            this.$nextTick(() => {{
+                                this.expandedMeasures[measureName] = true;
+                                setTimeout(() => {{
+                                    const measureElement = document.querySelector(`[data-measure="${{measureName}}"]`);
+                                    if (measureElement) {{
+                                        measureElement.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+                                        measureElement.classList.add('highlight-flash');
+                                        setTimeout(() => measureElement.classList.remove('highlight-flash'), 2000);
+                                    }}
+                                }}, 100);
+                            }});
+                        }}
+                    }});
+                }},
+
+                // ==================== Lineage Tab Methods (Rebuilt) ====================
+                sortLineageBy(field) {{
+                    if (this.lineageSortField === field) {{
+                        this.lineageSortAsc = !this.lineageSortAsc;
+                    }} else {{
+                        this.lineageSortField = field;
+                        // Default to descending for numeric columns
+                        this.lineageSortAsc = !['measures', 'relationships', 'visuals', 'usage_score'].includes(field);
+                    }}
+                }},
+
+                setLineageFilter(filterType) {{
+                    this.lineageFilterType = filterType;
+                }},
+
+                getUsageScoreClass(score) {{
+                    if (!score || score === 0) return 'usage-score-badge--none';
+                    if (score <= 2) return 'usage-score-badge--low';
+                    if (score <= 5) return 'usage-score-badge--medium';
+                    return 'usage-score-badge--high';
                 }},
 
                 jumpToMeasureInModel(tableName, measureName) {{
@@ -5114,7 +8753,7 @@ class PbipHtmlGenerator:
                     const extractColumnName = (colRef) => {{
                         if (!colRef) return '';
                         // Match patterns: 'Table'.'Column' or 'Table'.Column
-                        const match = colRef.match(/['\"]([^'\"]+)['\"]\.['\"]*([^'\"]+)['\"]*$/);
+                        const match = colRef.match(/['"]([^'"]+)['"]\\.['"]*([^'"]+)['"]*$/);
                         if (match) return match[2];
                         return colRef;
                     }};
@@ -5230,7 +8869,7 @@ class PbipHtmlGenerator:
                     const grouped = {{}};
                     (measureNames || []).forEach(measureName => {{
                         // Parse measure name: Table[Measure]
-                        const match = measureName.match(/^(.+?)\[(.+?)\]$/);
+                        const match = measureName.match(/^(.+?)\\[(.+?)\\]$/);
                         if (!match) {{
                             const folder = 'No Folder';
                             if (!grouped[folder]) grouped[folder] = [];
@@ -5431,7 +9070,7 @@ class PbipHtmlGenerator:
 
                         if (typeof obj === 'string') {{
                             // Match measure references like [MeasureName]
-                            const matches = obj.match(/\[([^\]]+)\]/g);
+                            const matches = obj.match(/\\[([^\\]]+)\\]/g);
                             if (matches) {{
                                 matches.forEach(m => measures.add(m));
                             }}
@@ -5452,7 +9091,7 @@ class PbipHtmlGenerator:
                     const measureToMeasure = this.dependencies.measure_to_measure || {{}};
 
                     const analyzeMeasure = (measureName, depth = 0) => {{
-                        const match = measureName.match(/^(.+?)\[(.+?)\]$/);
+                        const match = measureName.match(/^(.+?)\\[(.+?)\\]$/);
                         if (!match) return null;
 
                         const [, table, name] = match;
@@ -6038,6 +9677,25 @@ class PbipHtmlGenerator:
             }},
 
             mounted() {{
+                // DEBUG: Log enhanced data state
+                console.log('=== ENHANCED DATA DEBUG ===');
+                console.log('enhancedData:', this.enhancedData);
+                console.log('hasCodeQualityData:', this.hasCodeQualityData);
+                console.log('hasLineageData:', this.hasLineageData);
+                console.log('codeQualityIssuesList length:', this.codeQualityIssuesList?.length);
+                console.log('lineageColumnList length:', this.lineageColumnList?.length);
+                console.log('codeQualitySummary:', this.codeQualitySummary);
+                console.log('lineageSummary:', this.lineageSummary);
+                // Additional debugging for filtered/sorted lists
+                console.log('=== FILTERING DEBUG ===');
+                console.log('filteredCodeQualityIssues length:', this.filteredCodeQualityIssues?.length);
+                console.log('sortedCodeQualityIssues length:', this.sortedCodeQualityIssues?.length);
+                console.log('filteredLineageList length:', this.filteredLineageList?.length);
+                console.log('sortedLineageList length:', this.sortedLineageList?.length);
+                console.log('First 3 code quality issues:', this.sortedCodeQualityIssues?.slice(0, 3));
+                console.log('First 3 lineage columns:', this.sortedLineageList?.slice(0, 3));
+                console.log('=== END DEBUG ===');
+
                 // Set first table as selected
                 if (this.modelData.tables && this.modelData.tables.length > 0) {{
                     this.selectedTable = this.modelData.tables[0];
@@ -6050,34 +9708,44 @@ class PbipHtmlGenerator:
 
                 // Initialize all folders as collapsed
                 // Collapse measure folders
-                Object.keys(this.measuresByFolder).forEach(folderName => {{
-                    this.collapsedFolders[folderName] = true;
-                }});
+                if (this.measuresByFolder && typeof this.measuresByFolder === 'object') {{
+                    Object.keys(this.measuresByFolder).forEach(folderName => {{
+                        this.collapsedFolders[folderName] = true;
+                    }});
+                }}
 
                 // Collapse dependency folders (columns grouped by table)
-                Object.keys(this.filteredColumnsForDependency).forEach(tableName => {{
-                    this.collapsedDependencyFolders[tableName] = true;
-                }});
+                if (this.filteredColumnsForDependency && typeof this.filteredColumnsForDependency === 'object') {{
+                    Object.keys(this.filteredColumnsForDependency).forEach(tableName => {{
+                        this.collapsedDependencyFolders[tableName] = true;
+                    }});
+                }}
 
                 // Collapse visual type groups
                 if (this.reportData && this.reportData.pages) {{
                     this.reportData.pages.forEach(page => {{
                         const visualGroups = this.visualsByType(page.visuals || []);
-                        Object.keys(visualGroups).forEach(visualType => {{
-                            this.collapsedVisualGroups[visualType] = true;
-                        }});
+                        if (visualGroups && typeof visualGroups === 'object') {{
+                            Object.keys(visualGroups).forEach(visualType => {{
+                                this.collapsedVisualGroups[visualType] = true;
+                            }});
+                        }}
                     }});
                 }}
 
                 // Start with unused measure folders expanded (set to false)
-                Object.keys(this.unusedMeasuresByFolder).forEach(folderName => {{
-                    this.collapsedUnusedMeasureFolders[folderName] = false;
-                }});
+                if (this.unusedMeasuresByFolder && typeof this.unusedMeasuresByFolder === 'object') {{
+                    Object.keys(this.unusedMeasuresByFolder).forEach(folderName => {{
+                        this.collapsedUnusedMeasureFolders[folderName] = false;
+                    }});
+                }}
 
                 // Start with unused column tables expanded (set to false)
-                Object.keys(this.unusedColumnsByTable).forEach(tableName => {{
-                    this.collapsedUnusedColumnTables[tableName] = false;
-                }});
+                if (this.unusedColumnsByTable && typeof this.unusedColumnsByTable === 'object') {{
+                    Object.keys(this.unusedColumnsByTable).forEach(tableName => {{
+                        this.collapsedUnusedColumnTables[tableName] = false;
+                    }});
+                }}
 
                 // Keyboard shortcuts
                 document.addEventListener('keydown', (e) => {{
@@ -6101,8 +9769,7 @@ class PbipHtmlGenerator:
                         document.querySelector('input[placeholder*="Search"]')?.focus();
                     }}
                 }});
-            }}
-        }}).mount('#app');
+            }}}}).mount('#app');
     </script>
 """
 
@@ -6119,6 +9786,3 @@ class PbipHtmlGenerator:
 {self._get_body_content()}
 {self._get_vue_app_script(data_json_str)}
 </html>"""
-
-
-        return html_content

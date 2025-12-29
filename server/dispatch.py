@@ -68,7 +68,13 @@ class ToolDispatcher:
         '11_Show_User_Guide': 'show_user_guide',
 
         # 12 - Monitoring & Token Usage (1 tool)
-        '12_Get_Token_Usage': 'get_token_usage'
+        '12_Get_Token_Usage': 'get_token_usage',
+
+        # 13 - Slicer Operations (1 tool)
+        '13_Slicer_Operations': 'slicer_operations',
+
+        # 14 - Report Info (1 tool)
+        '14_Report_Info': 'report_info'
     }
 
     def __init__(self):

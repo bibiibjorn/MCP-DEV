@@ -1190,5 +1190,140 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
                 "format": "detailed"
             }
         ]
+    },
+
+    # Slicer Operations (Tool 13) - PBIP Slicer Configuration
+    'slicer_operations': {
+        "type": "object",
+        "properties": {
+            "pbip_path": {
+                "type": "string",
+                "description": "Path to PBIP project folder, .Report folder, or definition folder containing the report visuals"
+            },
+            "operation": {
+                "type": "string",
+                "enum": ["list", "configure_single_select"],
+                "description": "Operation: 'list' finds slicers and shows their current configuration/values, 'configure_single_select' changes matching slicers to single-select with All selected. Default: 'list'",
+                "default": "list"
+            },
+            "display_name": {
+                "type": "string",
+                "description": "Filter by slicer display name/title (case-insensitive partial match). Example: 'Choose an asset' or 'Family Name'"
+            },
+            "entity": {
+                "type": "string",
+                "description": "Filter by table/entity name (case-insensitive). Example: 'd Assetinstrument' or 'd Family'"
+            },
+            "property": {
+                "type": "string",
+                "description": "Filter by column/property name (case-insensitive). Example: 'Asset Label' or 'Family Label'"
+            },
+            "dry_run": {
+                "type": "boolean",
+                "description": "For configure_single_select: if true, shows what would change without making actual changes. Default: false",
+                "default": False
+            }
+        },
+        "required": ["pbip_path"],
+        "examples": [
+            {
+                "_description": "List all slicers in the report with their current values and configuration",
+                "pbip_path": "C:/repos/MyProject/MyProject.Report",
+                "operation": "list"
+            },
+            {
+                "_description": "List slicers that use a specific column (e.g., Asset Label from d Assetinstrument)",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "list",
+                "entity": "d Assetinstrument",
+                "property": "Asset Label"
+            },
+            {
+                "_description": "Find slicers by display name",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "list",
+                "display_name": "Choose an asset"
+            },
+            {
+                "_description": "Preview changes - show what would be changed without modifying files",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "configure_single_select",
+                "entity": "d Assetinstrument",
+                "property": "Asset Label",
+                "dry_run": True
+            },
+            {
+                "_description": "Change all slicers using Asset Label to single-select with All selected",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "configure_single_select",
+                "entity": "d Assetinstrument",
+                "property": "Asset Label"
+            },
+            {
+                "_description": "Change specific slicer by display name to single-select",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "configure_single_select",
+                "display_name": "Choose an asset"
+            },
+            {
+                "_description": "List all slicers from Family table",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "list",
+                "entity": "d Family"
+            }
+        ]
+    },
+
+    # Report Info (Tool 14) - PBIP Report Structure Information
+    'report_info': {
+        "type": "object",
+        "properties": {
+            "pbip_path": {
+                "type": "string",
+                "description": "Path to PBIP project folder, .Report folder, or definition folder containing the report"
+            },
+            "include_visuals": {
+                "type": "boolean",
+                "description": "Include detailed visual information per page (default: true)",
+                "default": True
+            },
+            "include_filters": {
+                "type": "boolean",
+                "description": "Include filter pane filter information per page (default: true)",
+                "default": True
+            },
+            "page_name": {
+                "type": "string",
+                "description": "Filter results to pages matching this name (case-insensitive partial match)"
+            }
+        },
+        "required": ["pbip_path"],
+        "examples": [
+            {
+                "_description": "Get full report structure with all pages, filters, and visuals",
+                "pbip_path": "C:/repos/MyProject/MyProject.Report"
+            },
+            {
+                "_description": "Get pages list with filter pane info only (no visual details)",
+                "pbip_path": "C:/repos/MyProject",
+                "include_visuals": False
+            },
+            {
+                "_description": "Get pages list only (minimal info)",
+                "pbip_path": "C:/repos/MyProject",
+                "include_visuals": False,
+                "include_filters": False
+            },
+            {
+                "_description": "Get info for pages matching 'Dashboard'",
+                "pbip_path": "C:/repos/MyProject",
+                "page_name": "Dashboard"
+            },
+            {
+                "_description": "Get all visuals and filters for a specific page",
+                "pbip_path": "C:/repos/MyProject",
+                "page_name": "Overview"
+            }
+        ]
     }
 }
