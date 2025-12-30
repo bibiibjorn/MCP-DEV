@@ -82,7 +82,10 @@
       "Bash(powershell:*)",
       "Bash(mcpb --version:*)",
       "Bash(mcpb validate:*)",
-      "Bash(start \"\" \"c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\exports\\filter_test\\Family_Office_-_Remodel_PBIP_Analysis_20251209_153438.html\")"
+      "Bash(start \"\" \"c:\\Users\\bjorn.braet\\powerbi-mcp-servers\\exports\\filter_test\\Family_Office_-_Remodel_PBIP_Analysis_20251209_153438.html\")",
+      "Bash(tree:*)",
+      "Bash(ls -la \"C:\\Users\\bjorn.braet\\.claude-worktrees\\MCP-PowerBi-Finvision\\nifty-agnesi\\core\"\" | grep -i \"experimental|old|backup|legacy \")",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

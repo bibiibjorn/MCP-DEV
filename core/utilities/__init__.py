@@ -6,7 +6,6 @@ from .json_utils import load_json, loads_json, dump_json, dumps_json
 from .suggested_actions import add_suggested_actions
 from .proactive_recommendations import get_connection_recommendations, format_recommendations_summary
 from .business_impact import enrich_issue_with_impact, add_impact_summary
-from .tool_relationships import get_tool_metadata, get_next_steps, suggest_workflow
 
 __all__ = [
     'get_field_value',
@@ -17,7 +16,4 @@ __all__ = [
     'format_recommendations_summary',
     'enrich_issue_with_impact',
     'add_impact_summary',
-    'get_tool_metadata',
-    'get_next_steps',
-    'suggest_workflow'
 ]
