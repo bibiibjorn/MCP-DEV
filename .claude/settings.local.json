@@ -122,7 +122,8 @@
       "Bash(git config:*)",
       "Bash(wc:*)",
       "Bash(sort:*)",
-      "Bash(start \"\" \"c:\\\\Users\\\\bjorn.braet\\\\powerbi-mcp-servers\\\\exports\\\\test_agg_analysis\\\\G01-FamillyOffices_AggAnalysis.html\")"
+      "Bash(start \"\" \"c:\\\\Users\\\\bjorn.braet\\\\powerbi-mcp-servers\\\\exports\\\\test_agg_analysis\\\\G01-FamillyOffices_AggAnalysis.html\")",
+      "Bash(start \"\" \"c:\\\\Users\\\\bjorn.braet\\\\powerbi-mcp-servers\\\\exports\\\\test_expandable_hits\\\\G01-FamillyOffices_AggAnalysis.html\")"
     ],
     "deny": [],
     "ask": []

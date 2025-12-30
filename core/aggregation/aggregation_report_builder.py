@@ -934,11 +934,11 @@ document.querySelectorAll('.collapsible').forEach(el => {
                 <div class="stat-label">Tables Analyzed</div>
             </div>
             <div class="stat-box">
-                <div class="stat-value">{len(qa.measure_quality)}</div>
+                <div class="stat-value">{qa.measure_quality.total_measures}</div>
                 <div class="stat-label">Measures Analyzed</div>
             </div>
             <div class="stat-box">
-                <div class="stat-value">{qa.total_issues}</div>
+                <div class="stat-value">{len(qa.all_issues)}</div>
                 <div class="stat-label">Issues Found</div>
             </div>
         </div>
@@ -959,7 +959,7 @@ document.querySelectorAll('.collapsible').forEach(el => {
                 parts.append(f'''
                 <tr>
                     <td><code>{html.escape(tq.table_name)}</code></td>
-                    <td>{tq.grain_quality_score:.0f}</td>
+                    <td>{tq.grain_score:.0f}</td>
                     <td>{tq.coverage_score:.0f}</td>
                     <td><span class="badge {"badge-success" if tq.overall_score >= 70 else "badge-warning" if tq.overall_score >= 40 else "badge-danger"}">{tq.overall_score:.0f}</span></td>
                     <td><span class="badge {issue_class}">{issue_count}</span></td>
@@ -1034,31 +1034,132 @@ document.querySelectorAll('.collapsible').forEach(el => {
 ''')
             parts.append('</div>')
 
-        # Page Hit Rates
+        # Page Hit Rates - Expandable
         if hr.page_hit_rates:
-            parts.append('''
+            # Build lookup of visuals by page from report_summary
+            page_visuals = {}
+            if self.result.report_summary:
+                for page in self.result.report_summary.pages:
+                    page_visuals[page.page_name] = page.visuals
+
+            # Build lookup of misses by page
+            page_misses = {}
+            for miss in hr.all_misses:
+                if miss.page_name not in page_misses:
+                    page_misses[miss.page_name] = {}
+                page_misses[miss.page_name][miss.visual_id] = miss
+
+            parts.append(f'''
         <h3 style="font-size: 15px; margin: 20px 0 12px;">Hit Rate by Page</h3>
-        <table class="table">
-            <thead><tr><th>Page</th><th>Hit Rate</th><th>Hits</th><th>Misses</th></tr></thead>
-            <tbody>
+        <div style="display: grid; grid-template-columns: 1fr 200px 80px 80px; align-items: center; gap: 16px; padding: 8px 16px; background: {colors["bg"]}; border-radius: 8px 8px 0 0; font-size: 12px; font-weight: 600; color: {colors["text_muted"]}; margin-bottom: 4px;">
+            <div>Page</div>
+            <div>Hit Rate</div>
+            <div style="text-align: center;">Hits</div>
+            <div style="text-align: center;">Misses</div>
+        </div>
 ''')
-            for phr in hr.page_hit_rates:
+            for idx, phr in enumerate(hr.page_hit_rates):
+                page_id = f"page-hit-{idx}"
+                hit_color = colors["success"] if phr.page_hit_rate >= 70 else colors["warning"] if phr.page_hit_rate >= 40 else colors["danger"]
+
+                # Get visuals for this page
+                visuals = page_visuals.get(phr.page_name, [])
+                misses = page_misses.get(phr.page_name, {})
+
+                # Separate hits and misses
+                hits = []
+                miss_list = []
+                for v in visuals:
+                    if v.determined_agg_level == 1:  # Base table = miss
+                        miss_info = misses.get(v.visual_id)
+                        miss_list.append((v, miss_info))
+                    else:
+                        hits.append(v)
+
                 parts.append(f'''
-                <tr>
-                    <td>{html.escape(phr.page_name)}</td>
-                    <td>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <div class="progress-bar" style="width: 80px;">
-                                <div class="progress-bar-fill" style="width: {phr.page_hit_rate:.0f}%; background: {colors["success"] if phr.page_hit_rate >= 70 else colors["warning"] if phr.page_hit_rate >= 40 else colors["danger"]};"></div>
-                            </div>
-                            <span>{phr.page_hit_rate:.0f}%</span>
-                        </div>
-                    </td>
-                    <td>{phr.using_aggregation}</td>
-                    <td>{phr.using_base_table}</td>
-                </tr>
+        <div class="collapsible" style="padding: 12px 16px; border: 1px solid {colors["border"]}; border-radius: 8px; margin-bottom: 8px;">
+            <div style="display: grid; grid-template-columns: 1fr 200px 80px 80px; align-items: center; gap: 16px;">
+                <div style="font-weight: 500;">{html.escape(phr.page_name)}</div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div class="progress-bar" style="width: 80px;">
+                        <div class="progress-bar-fill" style="width: {phr.page_hit_rate:.0f}%; background: {hit_color};"></div>
+                    </div>
+                    <span>{phr.page_hit_rate:.0f}%</span>
+                </div>
+                <div style="text-align: center;">{phr.using_aggregation}</div>
+                <div style="text-align: center; color: {colors["danger"] if phr.using_base_table > 0 else colors["text_muted"]};">{phr.using_base_table}</div>
+            </div>
+        </div>
+        <div class="collapse-content" style="margin-left: 20px; margin-bottom: 16px;">
 ''')
-            parts.append('</tbody></table>')
+
+                # Show hits section
+                if hits:
+                    parts.append(f'''
+            <div style="margin-bottom: 16px;">
+                <div style="font-weight: 600; color: {colors["success"]}; margin-bottom: 8px; font-size: 13px;">
+                    ✓ Aggregation Hits ({len(hits)})
+                </div>
+                <div style="display: grid; gap: 6px;">
+''')
+                    for v in hits:
+                        agg_table = v.determined_agg_table or f"Level {v.determined_agg_level}"
+                        parts.append(f'''
+                    <div style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: #f0fdf4; border-radius: 6px; border-left: 3px solid {colors["success"]};">
+                        <div style="flex: 1;">
+                            <span style="font-weight: 500;">{html.escape(v.visual_title or v.visual_id[:12])}</span>
+                            <span style="color: {colors["text_muted"]}; font-size: 12px; margin-left: 8px;">{html.escape(v.visual_type)}</span>
+                        </div>
+                        <div style="font-size: 12px; color: {colors["success"]}; font-weight: 500;">
+                            {html.escape(agg_table)}
+                        </div>
+                    </div>
+''')
+                    parts.append('''
+                </div>
+            </div>
+''')
+
+                # Show misses section
+                if miss_list:
+                    parts.append(f'''
+            <div>
+                <div style="font-weight: 600; color: {colors["danger"]}; margin-bottom: 8px; font-size: 13px;">
+                    ✗ Base Table Misses ({len(miss_list)})
+                </div>
+                <div style="display: grid; gap: 6px;">
+''')
+                    for v, miss_info in miss_list:
+                        # Get miss reason if available
+                        reason_text = ""
+                        if miss_info:
+                            reason_name = miss_info.reason.name if hasattr(miss_info.reason, 'name') else str(miss_info.reason)
+                            reason_text = reason_name.replace("_", " ").title()
+                            if miss_info.triggering_columns:
+                                reason_text += f" ({', '.join(miss_info.triggering_columns[:2])})"
+
+                        parts.append(f'''
+                    <div style="padding: 8px 12px; background: #fef2f2; border-radius: 6px; border-left: 3px solid {colors["danger"]};">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <div style="flex: 1;">
+                                <span style="font-weight: 500;">{html.escape(v.visual_title or v.visual_id[:12])}</span>
+                                <span style="color: {colors["text_muted"]}; font-size: 12px; margin-left: 8px;">{html.escape(v.visual_type)}</span>
+                            </div>
+                            <div style="font-size: 12px; color: {colors["danger"]};">
+                                Base Table
+                            </div>
+                        </div>
+                        {f'<div style="font-size: 11px; color: {colors["text_muted"]}; margin-top: 4px;">Reason: {html.escape(reason_text)}</div>' if reason_text else ''}
+                    </div>
+''')
+                    parts.append('''
+                </div>
+            </div>
+''')
+
+                parts.append('''
+        </div>
+''')
 
         # Top Opportunities
         if hr.opportunity_rankings:
