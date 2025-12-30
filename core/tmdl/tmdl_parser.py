@@ -127,8 +127,20 @@ class TmdlParser:
         if not lines:
             return None
 
-        # Extract table name from first line: "table 'TableName'" or "table TableName"
-        table_match = re.match(r'^table\s+["\']?([^"\']+)["\']?', lines[0].strip())
+        # Find the table definition line, skipping leading comments
+        table_line_idx = 0
+        table_match = None
+        for idx, line in enumerate(lines):
+            stripped = line.strip()
+            # Skip empty lines and comments
+            if not stripped or stripped.startswith('///'):
+                continue
+            # Try to match the table definition
+            table_match = re.match(r'^table\s+["\']?([^"\']+)["\']?', stripped)
+            if table_match:
+                table_line_idx = idx
+                break
+
         if not table_match:
             return None
 
@@ -148,8 +160,8 @@ class TmdlParser:
             "annotations": []
         }
 
-        # Parse indented structure
-        i = 1
+        # Parse indented structure (start after the table definition line)
+        i = table_line_idx + 1
         while i < len(lines):
             line = lines[i].strip()
 
@@ -204,6 +216,12 @@ class TmdlParser:
                         table_data['calculation_items'] = []
                     table_data['calculation_items'].append(calc_item)
                 i = next_i
+                continue
+
+            # Handle boolean flags (isHidden without value means true)
+            if line == 'isHidden':
+                table_data['is_hidden'] = True
+                i += 1
                 continue
 
             # Parse properties (lineageTag, isHidden, etc.)
@@ -321,12 +339,16 @@ class TmdlParser:
         """Parse a measure definition."""
         line = lines[start_index].strip()
 
-        # Extract measure name: "measure 'Name' ="
+        # Extract measure name: "measure 'Name' =" or "measure Name ="
+        # Try quoted name first, then unquoted
         measure_match = re.match(r'^measure\s+["\']([^"\']+)["\']\s*=', line)
+        if not measure_match:
+            # Try unquoted name (name can contain spaces if followed by =)
+            measure_match = re.match(r'^measure\s+([^=]+?)\s*=', line)
         if not measure_match:
             return None, start_index + 1
 
-        measure_name = measure_match.group(1)
+        measure_name = measure_match.group(1).strip()
 
         measure = {
             "name": measure_name,

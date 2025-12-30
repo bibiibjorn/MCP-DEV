@@ -8,7 +8,7 @@ import logging
 import os
 from typing import Dict, Any, Optional
 from datetime import datetime
-from core.utilities.dmv_helpers import get_field_value
+from core.execution.dmv_helper import get_field_value
 from core.utilities.type_conversions import safe_bool
 
 logger = logging.getLogger(__name__)

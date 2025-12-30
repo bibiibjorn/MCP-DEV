@@ -5,7 +5,7 @@ Analyzes cardinality, encoding, and provides optimization recommendations
 
 import logging
 from typing import Dict, Any, List, Optional
-from core.utilities.dmv_helpers import get_field_value
+from core.execution.dmv_helper import get_field_value
 from core.utilities.type_conversions import safe_int, safe_bool
 
 logger = logging.getLogger(__name__)

@@ -1325,5 +1325,65 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
                 "page_name": "Overview"
             }
         ]
+    },
+
+    # Aggregation Analysis (1 tool) - Category: PBIP
+    'analyze_aggregation': {
+        "type": "object",
+        "properties": {
+            "pbip_path": {
+                "type": "string",
+                "description": "Path to PBIP project folder, .SemanticModel folder, or parent directory containing the model"
+            },
+            "output_format": {
+                "type": "string",
+                "enum": ["summary", "detailed", "html", "json"],
+                "description": "Output format: 'summary' (quick overview), 'detailed' (full text report), 'html' (interactive report), 'json' (structured data). HTML report is always generated.",
+                "default": "summary"
+            },
+            "output_path": {
+                "type": "string",
+                "description": "Optional output path for HTML/JSON reports. If not specified, exports to default location."
+            },
+            "page_filter": {
+                "type": "string",
+                "description": "Analyze only pages matching this name (case-insensitive partial match)"
+            },
+            "include_visual_details": {
+                "type": "boolean",
+                "description": "Include detailed per-visual analysis in output (default: true)",
+                "default": True
+            }
+        },
+        "required": ["pbip_path"],
+        "examples": [
+            {
+                "_description": "Quick aggregation summary",
+                "pbip_path": "C:/repos/MyModel",
+                "output_format": "summary"
+            },
+            {
+                "_description": "Full detailed text analysis",
+                "pbip_path": "C:/repos/MyModel",
+                "output_format": "detailed",
+                "include_visual_details": True
+            },
+            {
+                "_description": "Generate interactive HTML report",
+                "pbip_path": "C:/repos/MyModel",
+                "output_format": "html"
+            },
+            {
+                "_description": "Export structured JSON data",
+                "pbip_path": "C:/repos/MyModel",
+                "output_format": "json",
+                "output_path": "C:/reports/agg_analysis.json"
+            },
+            {
+                "_description": "Analyze specific page",
+                "pbip_path": "C:/repos/MyModel",
+                "page_filter": "Dashboard"
+            }
+        ]
     }
 }

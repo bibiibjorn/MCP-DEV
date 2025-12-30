@@ -348,6 +348,27 @@ class AgentPolicy:
             repo_path, output_path, exclude_folders, bpa_rules_path, enable_enhanced
         )
 
+    def analyze_aggregation(
+        self,
+        pbip_path: str,
+        output_format: str = "summary",
+        output_path: Optional[str] = None,
+        page_filter: Optional[str] = None,
+        include_visual_details: bool = True,
+        estimate_row_savings: bool = True,
+        base_table_rows: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Delegate aggregation analysis to PbipOrchestrator.
+
+        Analyzes aggregation table usage across visuals and pages, showing
+        which aggregation tables are hit based on filter context.
+        """
+        return self.pbip_orch.analyze_aggregation(
+            pbip_path, output_format, output_path, page_filter,
+            include_visual_details, estimate_row_savings, base_table_rows
+        )
+
     def get_column_lineage(
         self,
         repo_path: str,

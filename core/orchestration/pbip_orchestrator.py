@@ -139,6 +139,173 @@ class PbipOrchestrator(BaseOrchestrator):
                 "error_type": "analysis_error"
             }
 
+    def analyze_aggregation(
+        self,
+        pbip_path: str,
+        output_format: str = "summary",
+        output_path: Optional[str] = None,
+        page_filter: Optional[str] = None,
+        include_visual_details: bool = True,
+        estimate_row_savings: bool = True,
+        base_table_rows: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Analyze aggregation table usage across visuals and pages.
+
+        Args:
+            pbip_path: Path to PBIP project folder
+            output_format: Output format (summary, detailed, html, json)
+            output_path: Optional output path for HTML/JSON reports
+            page_filter: Analyze only pages matching this name
+            include_visual_details: Include detailed per-visual analysis
+            estimate_row_savings: Calculate estimated row savings
+            base_table_rows: Actual row count of base fact table
+
+        Returns:
+            Analysis result with aggregation tables, measures, and visual usage
+        """
+        try:
+            from core.aggregation import (
+                AggregationAnalyzer,
+                AggregationReportBuilder,
+                RowSavingsEstimator,
+            )
+            from pathlib import Path
+            from datetime import datetime
+
+            path = Path(pbip_path)
+            if not path.exists():
+                return {
+                    "success": False,
+                    "error": f"Path does not exist: {pbip_path}",
+                }
+
+            logger.info(f"Starting aggregation analysis for {pbip_path}")
+            analyzer = AggregationAnalyzer(str(path))
+            result = analyzer.analyze(
+                include_report=True,
+                base_table_rows=base_table_rows,
+            )
+
+            # Calculate row savings if requested
+            row_savings = None
+            if estimate_row_savings and result.report_summary:
+                base_rows = base_table_rows or 10_000_000
+                estimator = RowSavingsEstimator(
+                    result.aggregation_tables,
+                    base_table_name=result.base_fact_tables[0] if result.base_fact_tables else "Base Table",
+                    base_table_rows=base_rows,
+                )
+                row_savings = estimator.estimate_savings(result.report_summary)
+
+            # Build report
+            report_builder = AggregationReportBuilder(result)
+            if row_savings:
+                report_builder.set_row_savings(row_savings)
+
+            # Filter pages if requested
+            if page_filter and result.report_summary:
+                filtered_pages = [
+                    p for p in result.report_summary.pages
+                    if page_filter.lower() in p.page_name.lower()
+                ]
+                result.report_summary.pages = filtered_pages
+
+            # Generate output based on format
+            if output_format == "html":
+                if output_path:
+                    saved_path = report_builder.save_html_report(output_path)
+                else:
+                    export_dir = Path(pbip_path).parent / "exports" / "aggregation_analysis"
+                    export_dir.mkdir(parents=True, exist_ok=True)
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    model_name = result.model_name.replace(" ", "_")
+                    output_file = export_dir / f"{model_name}_Aggregation_{timestamp}.html"
+                    saved_path = report_builder.save_html_report(str(output_file))
+
+                return {
+                    "success": True,
+                    "format": "html",
+                    "output_path": saved_path,
+                    "summary": self._build_agg_summary(result, row_savings),
+                }
+
+            elif output_format == "json":
+                json_data = report_builder.build_json_export()
+                if output_path:
+                    saved_path = report_builder.save_json_export(output_path)
+                    return {
+                        "success": True,
+                        "format": "json",
+                        "output_path": saved_path,
+                        "data": json_data if include_visual_details else self._strip_agg_visual_details(json_data),
+                    }
+                return {
+                    "success": True,
+                    "format": "json",
+                    "data": json_data if include_visual_details else self._strip_agg_visual_details(json_data),
+                }
+
+            elif output_format == "detailed":
+                return {
+                    "success": True,
+                    "format": "detailed",
+                    "report": report_builder.build_detailed_text(),
+                }
+
+            else:  # summary
+                return {
+                    "success": True,
+                    "format": "summary",
+                    "report": report_builder.build_summary_text(),
+                }
+
+        except Exception as e:
+            logger.error(f"Aggregation analysis failed: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+                "error_type": "aggregation_error"
+            }
+
+    def _build_agg_summary(self, result, row_savings) -> Dict[str, Any]:
+        """Build a brief summary for aggregation analysis."""
+        summary = {
+            "model_name": result.model_name,
+            "aggregation_tables": len(result.aggregation_tables),
+            "agg_aware_measures": len(result.agg_aware_measures),
+            "agg_level_measures": len(result.agg_level_measures),
+        }
+        if result.report_summary:
+            rs = result.report_summary
+            summary["report"] = {
+                "pages": rs.total_pages,
+                "visuals_analyzed": rs.visuals_analyzed,
+                "optimization_score": rs.optimization_score,
+                "level_breakdown": rs.agg_level_breakdown,
+            }
+        if row_savings:
+            summary["row_savings"] = {
+                "total_saved": row_savings.total_rows_saved,
+                "savings_percentage": row_savings.overall_savings_percentage,
+            }
+        return summary
+
+    def _strip_agg_visual_details(self, json_data: Dict) -> Dict:
+        """Strip detailed visual information from JSON output."""
+        if "report_summary" in json_data and "pages" in json_data["report_summary"]:
+            for page in json_data["report_summary"]["pages"]:
+                page["visuals"] = [
+                    {
+                        "visual_id": v["visual_id"],
+                        "visual_type": v["visual_type"],
+                        "agg_level": v["agg_level"],
+                        "agg_table": v["agg_table"],
+                    }
+                    for v in page.get("visuals", [])
+                ]
+        return json_data
+
     def get_column_lineage(
         self,
         repo_path: str,

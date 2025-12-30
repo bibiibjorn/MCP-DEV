@@ -4,6 +4,7 @@ Tool 14: Get PBIP report structure information
 
 Returns pure data about:
 - All pages in the report
+- Filters on all pages (report-level filters from report.json)
 - Filter pane filters per page
 - All visual items per page
 """
@@ -166,11 +167,10 @@ def _extract_filter_values(filter_data: Dict) -> List[str]:
     return values
 
 
-def _extract_page_filters(page_data: Dict) -> List[Dict]:
-    """Extract filter pane filters from page.json"""
+def _extract_filters_from_config(filter_config: Dict) -> List[Dict]:
+    """Extract filters from a filterConfig structure (used in both report.json and page.json)"""
     filters = []
 
-    filter_config = page_data.get('filterConfig', {})
     page_filters = filter_config.get('filters', [])
 
     for flt in page_filters:
@@ -179,6 +179,10 @@ def _extract_page_filters(page_data: Dict) -> List[Dict]:
             'type': flt.get('type', ''),
             'how_created': flt.get('howCreated', '')
         }
+
+        # Check for ordinal (report-level filters have this)
+        if 'ordinal' in flt:
+            filter_info['ordinal'] = flt.get('ordinal')
 
         # Extract field reference
         field = flt.get('field', {})
@@ -190,10 +194,43 @@ def _extract_page_filters(page_data: Dict) -> List[Dict]:
         filter_def = flt.get('filter', {})
         if filter_def:
             filter_info['values'] = _extract_filter_values(filter_def)
+        else:
+            # No filter applied means "All" is selected
+            filter_info['values'] = ['(All)']
+
+        # Check for additional settings
+        objects = flt.get('objects', {})
+        general = objects.get('general', [])
+        if general and len(general) > 0:
+            props = general[0].get('properties', {})
+            # Check for inverted selection mode
+            if 'isInvertedSelectionMode' in props:
+                expr = props['isInvertedSelectionMode'].get('expr', {})
+                literal = expr.get('Literal', {})
+                if literal.get('Value') == 'true':
+                    filter_info['is_inverted'] = True
+            # Check for single select requirement
+            if 'requireSingleSelect' in props:
+                expr = props['requireSingleSelect'].get('expr', {})
+                literal = expr.get('Literal', {})
+                if literal.get('Value') == 'true':
+                    filter_info['single_select'] = True
 
         filters.append(filter_info)
 
     return filters
+
+
+def _extract_page_filters(page_data: Dict) -> List[Dict]:
+    """Extract filter pane filters from page.json"""
+    filter_config = page_data.get('filterConfig', {})
+    return _extract_filters_from_config(filter_config)
+
+
+def _extract_report_filters(report_data: Dict) -> List[Dict]:
+    """Extract 'Filters on all pages' from report.json"""
+    filter_config = report_data.get('filterConfig', {})
+    return _extract_filters_from_config(filter_config)
 
 
 def _extract_visual_info(visual_data: Dict, visual_path: Path) -> Dict:
@@ -338,6 +375,14 @@ def handle_report_info(args: Dict[str, Any]) -> Dict[str, Any]:
             'error': f'No pages folder found in: {definition_path}'
         }
 
+    # Load report.json for "Filters on all pages"
+    report_json_path = definition_path / "report.json"
+    report_level_filters = []
+    if report_json_path.exists():
+        report_data = _load_json_file(report_json_path)
+        if report_data:
+            report_level_filters = _extract_report_filters(report_data)
+
     # Collect page information
     pages = []
     total_visuals = 0
@@ -378,16 +423,24 @@ def handle_report_info(args: Dict[str, Any]) -> Dict[str, Any]:
     # Sort pages by display name
     pages.sort(key=lambda x: x.get('display_name', ''))
 
-    return {
+    result = {
         'success': True,
         'summary': {
             'total_pages': len(pages),
             'total_visuals': total_visuals,
             'total_filter_pane_filters': total_filters,
+            'filters_on_all_pages_count': len(report_level_filters),
             'visual_types': visual_type_counts
         },
+        'filters_on_all_pages': report_level_filters,
         'pages': pages
     }
+
+    # Optionally exclude report-level filters
+    if not include_filters:
+        result.pop('filters_on_all_pages', None)
+
+    return result
 
 
 def register_report_info_handler(registry):
@@ -396,7 +449,7 @@ def register_report_info_handler(registry):
 
     tool = ToolDefinition(
         name="report_info",
-        description="[PBIP] Get report structure info - all pages, filter pane filters per page, and visual items per page",
+        description="[PBIP] Get report structure info - all pages, filters on all pages, filter pane filters per page, and visual items per page",
         handler=handle_report_info,
         input_schema=TOOL_SCHEMAS.get('report_info', {}),
         category="pbip",

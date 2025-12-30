@@ -132,6 +132,10 @@
       "description": "[PBIP Analysis] Offline PBIP analysis"
     },
     {
+      "name": "analyze_aggregation",
+      "description": "[PBIP Analysis] Analyze aggregation tables, measures, and visual usage"
+    },
+    {
       "name": "export_hybrid_analysis",
       "description": "[Hybrid Analysis] Export TMDL + metadata"
     },

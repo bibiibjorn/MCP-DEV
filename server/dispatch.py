@@ -74,7 +74,10 @@ class ToolDispatcher:
         '13_Slicer_Operations': 'slicer_operations',
 
         # 14 - Report Info (1 tool)
-        '14_Report_Info': 'report_info'
+        '14_Report_Info': 'report_info',
+
+        # 15 - Aggregation Analysis (1 tool)
+        '15_Analyze_Aggregation': 'analyze_aggregation'
     }
 
     def __init__(self):

@@ -19,6 +19,7 @@ from server.handlers.dax_context_handler import register_dax_handlers
 from server.handlers.user_guide_handler import register_user_guide_handlers
 from server.handlers.hybrid_analysis_handler import register_hybrid_analysis_handlers
 from server.handlers.token_usage_handler import register_token_usage_handlers
+from server.handlers.aggregation_handler import register_aggregation_handler
 # Workflow handlers are internalized and not registered as public tools
 
 # Phase 1 Consolidated Operations (Tool Consolidation Plan)
@@ -71,6 +72,7 @@ def register_all_handlers(registry):
     register_user_guide_handlers(registry)
     register_hybrid_analysis_handlers(registry)
     register_token_usage_handlers(registry)
+    register_aggregation_handler(registry)
     # Workflow handlers are internalized and not registered as public tools
 
 __all__ = [
