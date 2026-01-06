@@ -1,37 +1,17 @@
 """
 PBIP Dependency HTML Generator
-Creates interactive, comprehensive dependency diagrams for PBIP projects.
-Includes sidebar navigation for all Measures, Columns, and Field Parameters.
-Supports selecting any item to view its dependencies.
+Creates a clean, professional dependency analysis page for PBIP projects.
+Displays dependencies in organized tables and lists without complex graph visualizations.
 """
 
 import os
 import logging
 import webbrowser
 import json
-import re
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
-
-
-def sanitize_node_id(name: str, prefix: str = "N") -> str:
-    """Convert name to valid Mermaid node ID (alphanumeric and underscores only)"""
-    clean = name.replace("[", "_").replace("]", "").replace(" ", "_")
-    clean = clean.replace("-", "_").replace("/", "_").replace("\\", "_")
-    clean = clean.replace("(", "_").replace(")", "_").replace("%", "pct")
-    clean = clean.replace("&", "and").replace("'", "").replace('"', "")
-    clean = clean.replace(".", "_").replace(",", "_").replace(":", "_")
-    clean = clean.replace("+", "plus").replace("*", "x").replace("=", "eq")
-    clean = clean.replace("<", "lt").replace(">", "gt").replace("!", "not")
-    clean = clean.replace("#", "num").replace("@", "at").replace("$", "dollar")
-    # Remove any remaining non-alphanumeric chars except underscore
-    clean = re.sub(r'[^a-zA-Z0-9_]', '', clean)
-    # Collapse multiple underscores
-    clean = re.sub(r'_+', '_', clean)
-    clean = clean.strip("_")
-    return f"{prefix}_{clean}" if clean else f"{prefix}_node"
 
 
 def generate_pbip_dependency_html(
@@ -43,10 +23,10 @@ def generate_pbip_dependency_html(
     main_item_type: Optional[str] = None
 ) -> Optional[str]:
     """
-    Generate a professional HTML page with interactive PBIP dependency diagram.
+    Generate a professional HTML page with PBIP dependency analysis.
 
     Features a left sidebar with all measures, columns, and field parameters.
-    Clicking any item in the sidebar switches the diagram to show that item's dependencies.
+    Clicking any item in the sidebar shows its dependencies in a clean table format.
 
     Args:
         dependency_data: Output from PbipDependencyEngine.analyze_all_dependencies()
@@ -70,6 +50,7 @@ def generate_pbip_dependency_html(
     column_to_measure = dependency_data.get('column_to_measure', {})
     column_to_field_params = dependency_data.get('column_to_field_params', {})
     visual_dependencies = dependency_data.get('visual_dependencies', {})
+    filter_pane_data = dependency_data.get('filter_pane_data', {})
     summary = dependency_data.get('summary', {})
 
     # Build comprehensive node lists
@@ -105,7 +86,6 @@ def generate_pbip_dependency_html(
         all_field_params.update(fp_list)
 
     # Pre-compute dependencies for EACH item
-    # This will be embedded as JSON in the HTML for client-side switching
     item_dependencies = {}
 
     def extract_table_and_name(key: str) -> Tuple[str, str]:
@@ -122,7 +102,6 @@ def generate_pbip_dependency_html(
     # Build dependencies for each MEASURE
     for measure_key in sorted(all_measures):
         table, name = extract_table_and_name(measure_key)
-        node_id = sanitize_node_id(measure_key, "M")
 
         # Upstream: what this measure depends on (columns and measures)
         upstream_measures = measure_to_measure.get(measure_key, [])
@@ -141,7 +120,6 @@ def generate_pbip_dependency_html(
 
         item_dependencies[measure_key] = {
             'key': measure_key,
-            'nodeId': node_id,
             'type': 'measure',
             'table': table,
             'name': name,
@@ -158,7 +136,6 @@ def generate_pbip_dependency_html(
     # Build dependencies for each COLUMN
     for column_key in sorted(all_columns):
         table, name = extract_table_and_name(column_key)
-        node_id = sanitize_node_id(column_key, "C")
 
         # Downstream: what uses this column
         downstream_measures = column_to_measure.get(column_key, [])
@@ -174,7 +151,6 @@ def generate_pbip_dependency_html(
 
         item_dependencies[column_key] = {
             'key': column_key,
-            'nodeId': node_id,
             'type': 'column',
             'table': table,
             'name': name,
@@ -191,8 +167,6 @@ def generate_pbip_dependency_html(
 
     # Build dependencies for each FIELD PARAMETER
     for fp_name in sorted(all_field_params):
-        node_id = sanitize_node_id(fp_name, "FP")
-
         # Upstream: columns referenced by this field parameter
         upstream_columns = []
         for column_key, fp_list in column_to_field_params.items():
@@ -201,7 +175,6 @@ def generate_pbip_dependency_html(
 
         item_dependencies[fp_name] = {
             'key': fp_name,
-            'nodeId': node_id,
             'type': 'field_parameter',
             'table': fp_name,
             'name': fp_name,
@@ -223,8 +196,7 @@ def generate_pbip_dependency_html(
             measures_by_table[table] = []
         measures_by_table[table].append({
             'name': name,
-            'key': measure_key,
-            'nodeId': sanitize_node_id(measure_key, "M")
+            'key': measure_key
         })
 
     columns_by_table = {}
@@ -234,16 +206,14 @@ def generate_pbip_dependency_html(
             columns_by_table[table] = []
         columns_by_table[table].append({
             'name': name,
-            'key': column_key,
-            'nodeId': sanitize_node_id(column_key, "C")
+            'key': column_key
         })
 
     field_params_list = []
     for fp_name in sorted(all_field_params):
         field_params_list.append({
             'name': fp_name,
-            'key': fp_name,
-            'nodeId': sanitize_node_id(fp_name, "FP")
+            'key': fp_name
         })
 
     # Determine initial selection
@@ -251,7 +221,6 @@ def generate_pbip_dependency_html(
     if main_item and main_item in item_dependencies:
         initial_item = main_item
     elif all_measures:
-        # Default to first measure
         initial_item = sorted(all_measures)[0]
     elif all_columns:
         initial_item = sorted(all_columns)[0]
@@ -263,7 +232,9 @@ def generate_pbip_dependency_html(
     measures_by_table_json = json.dumps(measures_by_table)
     columns_by_table_json = json.dumps(columns_by_table)
     field_params_json = json.dumps(field_params_list)
+    filter_pane_json = json.dumps(filter_pane_data)
     initial_item_json = json.dumps(initial_item)
+    summary_json = json.dumps(summary)
 
     timestamp = datetime.now().strftime("%B %d, %Y at %H:%M")
 
@@ -273,7 +244,6 @@ def generate_pbip_dependency_html(
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{model_name} - PBIP Dependency Analysis</title>
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -286,6 +256,7 @@ def generate_pbip_dependency_html(
             --measure-color: #2196F3;
             --column-color: #9C27B0;
             --fieldparam-color: #4CAF50;
+            --filter-color: #FF5722;
             --bg-dark: #0a0a0f;
             --bg-sidebar: #0d0d14;
             --bg-card: rgba(24, 24, 27, 0.8);
@@ -296,6 +267,9 @@ def generate_pbip_dependency_html(
             --text: #fafafa;
             --text-secondary: #a1a1aa;
             --text-muted: #71717a;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --error: #ef4444;
         }}
 
         * {{
@@ -344,10 +318,6 @@ def generate_pbip_dependency_html(
             font-weight: 600;
             color: var(--text);
             margin-bottom: 0.5rem;
-        }}
-
-        .sidebar-title-icon {{
-            font-size: 1.25rem;
         }}
 
         .sidebar-subtitle {{
@@ -446,6 +416,10 @@ def generate_pbip_dependency_html(
 
         .category-icon.fieldparam {{
             background: linear-gradient(135deg, #4CAF50, #388E3C);
+        }}
+
+        .category-icon.filter {{
+            background: linear-gradient(135deg, #FF5722, #E64A19);
         }}
 
         .category-name {{
@@ -570,6 +544,10 @@ def generate_pbip_dependency_html(
             background: var(--fieldparam-color);
         }}
 
+        .item.filter .item-dot {{
+            background: var(--filter-color);
+        }}
+
         .item.selected .item-dot {{
             background: white;
         }}
@@ -621,83 +599,48 @@ def generate_pbip_dependency_html(
             color: var(--text-muted);
         }}
 
-        .toolbar {{
-            display: flex;
-            gap: 0.5rem;
-            align-items: center;
-        }}
-
-        .btn {{
-            display: inline-flex;
-            align-items: center;
-            gap: 0.375rem;
-            padding: 0.5rem 0.875rem;
-            font-size: 0.75rem;
-            font-weight: 500;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s;
-            border: none;
-            font-family: inherit;
-        }}
-
-        .btn-ghost {{
-            background: transparent;
-            color: var(--text-secondary);
-            border: 1px solid var(--border);
-        }}
-
-        .btn-ghost:hover {{
-            background: var(--bg-elevated);
-            color: var(--text);
-        }}
-
-        .btn-primary {{
-            background: var(--accent);
-            color: white;
-            box-shadow: 0 4px 12px var(--accent-glow);
-        }}
-
-        .btn-primary:hover {{
-            background: var(--accent-light);
-        }}
-
-        .timestamp {{
-            font-size: 0.6875rem;
-            color: var(--text-muted);
-            font-family: 'JetBrains Mono', monospace;
-        }}
-
-        /* Diagram Area */
-        .diagram-area {{
+        /* Analysis Content */
+        .analysis-content {{
             flex: 1;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
+            overflow-y: auto;
+            padding: 1.5rem;
         }}
 
-        .selected-item-info {{
-            padding: 1rem 1.5rem;
+        .analysis-content::-webkit-scrollbar {{
+            width: 8px;
+        }}
+
+        .analysis-content::-webkit-scrollbar-track {{
+            background: transparent;
+        }}
+
+        .analysis-content::-webkit-scrollbar-thumb {{
+            background: var(--border);
+            border-radius: 4px;
+        }}
+
+        /* Selected Item Header */
+        .selected-item-header {{
             background: var(--bg-card);
-            border-bottom: 1px solid var(--border);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
         }}
 
         .selected-item-badge {{
             display: inline-flex;
             align-items: center;
-            gap: 0.5rem;
-            padding: 0.5rem 1rem;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            border-radius: 12px;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
         }}
 
         .selected-item-type {{
-            font-size: 0.625rem;
+            font-size: 0.6875rem;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            padding: 0.125rem 0.5rem;
-            border-radius: 4px;
+            padding: 0.25rem 0.625rem;
+            border-radius: 6px;
             font-weight: 600;
         }}
 
@@ -716,114 +659,378 @@ def generate_pbip_dependency_html(
             color: white;
         }}
 
-        .selected-item-name {{
-            font-size: 0.875rem;
-            font-weight: 600;
-            font-family: 'JetBrains Mono', monospace;
+        .selected-item-type.filter {{
+            background: var(--filter-color);
+            color: white;
         }}
 
-        .dependency-stats {{
-            display: flex;
-            gap: 1.5rem;
-            margin-top: 0.75rem;
-        }}
-
-        .dep-stat {{
-            display: flex;
+        /* Filter level badges */
+        .filter-level-badge {{
+            display: inline-flex;
             align-items: center;
             gap: 0.375rem;
-            font-size: 0.75rem;
-            color: var(--text-secondary);
+            padding: 0.25rem 0.625rem;
+            border-radius: 6px;
+            font-size: 0.6875rem;
+            font-weight: 500;
         }}
 
-        .dep-stat-value {{
-            font-weight: 600;
-            color: var(--text);
-            font-family: 'JetBrains Mono', monospace;
+        .filter-level-badge.report {{
+            background: rgba(233, 30, 99, 0.15);
+            color: #E91E63;
         }}
 
-        .diagram-container {{
-            flex: 1;
-            overflow: auto;
-            padding: 1.5rem;
-            background:
-                radial-gradient(ellipse at center, rgba(99, 102, 241, 0.03), transparent 70%),
-                linear-gradient(180deg, transparent, rgba(0,0,0,0.2));
+        .filter-level-badge.page {{
+            background: rgba(0, 188, 212, 0.15);
+            color: #00BCD4;
         }}
 
-        .mermaid {{
+        .filter-level-badge.visual {{
+            background: rgba(255, 152, 0, 0.15);
+            color: #FF9800;
+        }}
+
+        /* Filter values display */
+        .filter-values-container {{
             display: flex;
-            justify-content: center;
-        }}
-
-        .mermaid svg {{
-            max-width: 100%;
-            height: auto;
-        }}
-
-        .no-diagram {{
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            color: var(--text-muted);
-            text-align: center;
-        }}
-
-        .no-diagram-icon {{
-            font-size: 3rem;
-            margin-bottom: 1rem;
-            opacity: 0.5;
-        }}
-
-        .no-diagram-text {{
-            font-size: 0.875rem;
-        }}
-
-        /* Legend */
-        .legend {{
-            display: flex;
-            justify-content: center;
-            gap: 2rem;
-            padding: 1rem;
-            border-top: 1px solid var(--border);
-            background: var(--bg-card);
             flex-wrap: wrap;
+            gap: 0.375rem;
+            padding: 0.5rem 0;
         }}
 
-        .legend-item {{
+        .filter-value-chip {{
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.625rem;
+            background: rgba(var(--accent-rgb), 0.15);
+            color: var(--accent);
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            border: 1px solid rgba(var(--accent-rgb), 0.25);
+        }}
+
+        .filter-value-chip.exclusion {{
+            background: rgba(244, 67, 54, 0.15);
+            color: #F44336;
+            border-color: rgba(244, 67, 54, 0.25);
+        }}
+
+        .filter-no-values {{
+            color: var(--text-muted);
+            font-style: italic;
+            font-size: 0.8125rem;
+        }}
+
+        .filter-condition-badge {{
+            display: inline-flex;
+            align-items: center;
+            padding: 0.125rem 0.5rem;
+            background: rgba(156, 39, 176, 0.15);
+            color: #9C27B0;
+            border-radius: 4px;
+            font-size: 0.6875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-left: 0.5rem;
+        }}
+
+        /* Filter sub-header in sidebar */
+        .filter-sub-header {{
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            font-size: 0.75rem;
-            color: var(--text-secondary);
+            padding: 0.5rem 1rem;
+            font-size: 0.6875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            background: rgba(0, 0, 0, 0.2);
+            border-bottom: 1px solid var(--border-light);
         }}
 
-        .legend-dot {{
-            width: 12px;
-            height: 12px;
+        .filter-sub-header-icon {{
+            width: 18px;
+            height: 18px;
             border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.625rem;
         }}
 
-        .legend-dot.measure {{
-            background: var(--measure-color);
+        .filter-sub-header-icon.report {{
+            background: linear-gradient(135deg, #E91E63, #C2185B);
+            color: white;
         }}
 
-        .legend-dot.column {{
-            background: var(--column-color);
+        .filter-sub-header-icon.page {{
+            background: linear-gradient(135deg, #00BCD4, #0097A7);
+            color: white;
         }}
 
-        .legend-dot.fieldparam {{
-            background: var(--fieldparam-color);
+        .filter-sub-header-icon.visual {{
+            background: linear-gradient(135deg, #FF9800, #F57C00);
+            color: white;
         }}
 
-        .legend-dot.visual {{
-            background: var(--visual-color);
+        .selected-item-name {{
+            font-size: 1.25rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
         }}
 
-        .legend-dot.selected {{
-            background: #00ffff;
+        .selected-item-table {{
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }}
+
+        .dependency-summary {{
+            display: flex;
+            gap: 2rem;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border);
+        }}
+
+        .summary-stat {{
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }}
+
+        .summary-stat-label {{
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }}
+
+        .summary-stat-value {{
+            font-size: 1.5rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-light);
+        }}
+
+        /* Dependency Sections */
+        .dependency-section {{
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            overflow: hidden;
+        }}
+
+        .section-header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 1.25rem;
+            background: var(--bg-elevated);
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+        }}
+
+        .section-header:hover {{
+            background: rgba(99, 102, 241, 0.1);
+        }}
+
+        .section-title {{
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }}
+
+        .section-icon {{
+            font-size: 1rem;
+        }}
+
+        .section-count {{
+            background: var(--accent);
+            color: white;
+            font-size: 0.6875rem;
+            padding: 0.125rem 0.5rem;
+            border-radius: 999px;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }}
+
+        .section-chevron {{
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            transition: transform 0.2s;
+        }}
+
+        .dependency-section.collapsed .section-chevron {{
+            transform: rotate(-90deg);
+        }}
+
+        .section-content {{
+            padding: 0;
+        }}
+
+        .dependency-section.collapsed .section-content {{
+            display: none;
+        }}
+
+        /* Dependency Tables */
+        .dependency-table {{
+            width: 100%;
+            border-collapse: collapse;
+        }}
+
+        .dependency-table th {{
+            text-align: left;
+            padding: 0.75rem 1rem;
+            font-size: 0.6875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            background: rgba(0, 0, 0, 0.2);
+            border-bottom: 1px solid var(--border);
+        }}
+
+        .dependency-table td {{
+            padding: 0.625rem 1rem;
+            font-size: 0.8125rem;
+            border-bottom: 1px solid var(--border-light);
+        }}
+
+        .dependency-table tr:last-child td {{
+            border-bottom: none;
+        }}
+
+        .dependency-table tr:hover td {{
+            background: var(--bg-hover);
+        }}
+
+        .dep-item-name {{
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text);
+            cursor: pointer;
+        }}
+
+        .dep-item-name:hover {{
+            color: var(--accent-light);
+            text-decoration: underline;
+        }}
+
+        .dep-item-table {{
+            color: var(--text-muted);
+            font-size: 0.75rem;
+        }}
+
+        .dep-type-badge {{
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.6875rem;
+            font-weight: 500;
+        }}
+
+        .dep-type-badge.measure {{
+            background: rgba(33, 150, 243, 0.15);
+            color: var(--measure-color);
+        }}
+
+        .dep-type-badge.column {{
+            background: rgba(156, 39, 176, 0.15);
+            color: var(--column-color);
+        }}
+
+        .dep-type-badge.visual {{
+            background: rgba(255, 152, 0, 0.15);
+            color: var(--visual-color);
+        }}
+
+        .dep-type-badge.fieldparam {{
+            background: rgba(76, 175, 80, 0.15);
+            color: var(--fieldparam-color);
+        }}
+
+        .dep-type-badge.filter {{
+            background: rgba(255, 87, 34, 0.15);
+            color: var(--filter-color);
+        }}
+
+        /* Empty State */
+        .empty-state {{
+            padding: 2rem;
+            text-align: center;
+            color: var(--text-muted);
+        }}
+
+        .empty-icon {{
+            font-size: 2rem;
+            margin-bottom: 0.75rem;
+            opacity: 0.5;
+        }}
+
+        .empty-text {{
+            font-size: 0.875rem;
+        }}
+
+        /* Model Summary Card */
+        .model-summary {{
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(99, 102, 241, 0.02));
+            border: 1px solid var(--accent);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }}
+
+        .model-summary-title {{
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--accent-light);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }}
+
+        .model-stats-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 1rem;
+        }}
+
+        .model-stat {{
+            text-align: center;
+            padding: 0.75rem;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+        }}
+
+        .model-stat-value {{
+            font-size: 1.5rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text);
+        }}
+
+        .model-stat-label {{
+            font-size: 0.6875rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 0.25rem;
+        }}
+
+        .model-stat.warning .model-stat-value {{
+            color: var(--warning);
+        }}
+
+        .model-stat.success .model-stat-value {{
+            color: var(--success);
         }}
 
         /* Responsive */
@@ -851,10 +1058,9 @@ def generate_pbip_dependency_html(
         <aside class="sidebar">
             <div class="sidebar-header">
                 <div class="sidebar-title">
-                    <span class="sidebar-title-icon">📊</span>
                     <span>{model_name}</span>
                 </div>
-                <div class="sidebar-subtitle">Model Browser - Click to view dependencies</div>
+                <div class="sidebar-subtitle">Click any item to view its dependencies</div>
             </div>
 
             <div class="sidebar-search">
@@ -866,16 +1072,15 @@ def generate_pbip_dependency_html(
                 <div class="category-panel" id="panel-measures">
                     <div class="category-header" onclick="toggleCategory('measures')">
                         <div class="category-title">
-                            <div class="category-icon measure">📐</div>
+                            <div class="category-icon measure">M</div>
                             <span class="category-name">Measures</span>
                         </div>
                         <div class="category-badge">
                             <span class="category-count" id="count-measures">{len(all_measures)}</span>
-                            <span class="category-chevron">▼</span>
+                            <span class="category-chevron">&#9660;</span>
                         </div>
                     </div>
                     <div class="category-content" id="content-measures">
-                        <!-- Populated by JS -->
                     </div>
                 </div>
 
@@ -883,16 +1088,15 @@ def generate_pbip_dependency_html(
                 <div class="category-panel collapsed" id="panel-columns">
                     <div class="category-header" onclick="toggleCategory('columns')">
                         <div class="category-title">
-                            <div class="category-icon column">📋</div>
+                            <div class="category-icon column">C</div>
                             <span class="category-name">Columns</span>
                         </div>
                         <div class="category-badge">
                             <span class="category-count" id="count-columns">{len(all_columns)}</span>
-                            <span class="category-chevron">▼</span>
+                            <span class="category-chevron">&#9660;</span>
                         </div>
                     </div>
                     <div class="category-content" id="content-columns">
-                        <!-- Populated by JS -->
                     </div>
                 </div>
 
@@ -900,16 +1104,31 @@ def generate_pbip_dependency_html(
                 <div class="category-panel" id="panel-fieldparams">
                     <div class="category-header" onclick="toggleCategory('fieldparams')">
                         <div class="category-title">
-                            <div class="category-icon fieldparam">🎛️</div>
+                            <div class="category-icon fieldparam">FP</div>
                             <span class="category-name">Field Parameters</span>
                         </div>
                         <div class="category-badge">
                             <span class="category-count" id="count-fieldparams">{len(all_field_params)}</span>
-                            <span class="category-chevron">▼</span>
+                            <span class="category-chevron">&#9660;</span>
                         </div>
                     </div>
                     <div class="category-content" id="content-fieldparams">
-                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Filter Pane Panel -->
+                <div class="category-panel collapsed" id="panel-filters">
+                    <div class="category-header" onclick="toggleCategory('filters')">
+                        <div class="category-title">
+                            <div class="category-icon filter">&#9783;</div>
+                            <span class="category-name">Filter Pane</span>
+                        </div>
+                        <div class="category-badge">
+                            <span class="category-count" id="count-filters">0</span>
+                            <span class="category-chevron">&#9660;</span>
+                        </div>
+                    </div>
+                    <div class="category-content" id="content-filters">
                     </div>
                 </div>
             </div>
@@ -920,58 +1139,25 @@ def generate_pbip_dependency_html(
             <header class="main-header">
                 <div class="main-title">
                     <h1>PBIP Dependency Analysis</h1>
-                    <span class="timestamp">Generated: {timestamp}</span>
-                </div>
-                <div class="toolbar">
-                    <button class="btn btn-ghost" onclick="zoomIn()">🔍+ Zoom</button>
-                    <button class="btn btn-ghost" onclick="zoomOut()">🔍- Zoom</button>
-                    <button class="btn btn-ghost" onclick="resetZoom()">↺ Reset</button>
-                    <button class="btn btn-primary" onclick="downloadSVG()">💾 Download SVG</button>
+                    <span>Generated: {timestamp}</span>
                 </div>
             </header>
 
-            <div class="diagram-area">
-                <div class="selected-item-info" id="selected-item-info">
-                    <div class="selected-item-badge">
-                        <span class="selected-item-type" id="selected-type">MEASURE</span>
-                        <span class="selected-item-name" id="selected-name">Select an item</span>
+            <div class="analysis-content" id="analysis-content">
+                <!-- Model Summary -->
+                <div class="model-summary">
+                    <div class="model-summary-title">
+                        Model Overview
                     </div>
-                    <div class="dependency-stats" id="dependency-stats">
-                        <div class="dep-stat">
-                            <span>Upstream:</span>
-                            <span class="dep-stat-value" id="stat-upstream">0</span>
-                        </div>
-                        <div class="dep-stat">
-                            <span>Downstream:</span>
-                            <span class="dep-stat-value" id="stat-downstream">0</span>
-                        </div>
+                    <div class="model-stats-grid" id="model-stats">
                     </div>
                 </div>
 
-                <div class="diagram-container" id="diagram-container">
-                    <div class="mermaid" id="mermaid-diagram"></div>
-                </div>
-
-                <div class="legend">
-                    <div class="legend-item">
-                        <div class="legend-dot selected"></div>
-                        <span>Selected Item</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-dot measure"></div>
-                        <span>Measure</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-dot column"></div>
-                        <span>Column</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-dot fieldparam"></div>
-                        <span>Field Parameter</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-dot visual"></div>
-                        <span>Visual</span>
+                <!-- Selected Item Analysis -->
+                <div id="selected-analysis">
+                    <div class="empty-state">
+                        <div class="empty-icon">&#128202;</div>
+                        <div class="empty-text">Select an item from the sidebar to view its dependencies</div>
                     </div>
                 </div>
             </div>
@@ -984,258 +1170,19 @@ def generate_pbip_dependency_html(
         const measuresByTable = {measures_by_table_json};
         const columnsByTable = {columns_by_table_json};
         const fieldParamsList = {field_params_json};
+        const filterPaneData = {filter_pane_json};
         const initialItem = {initial_item_json};
+        const modelSummary = {summary_json};
 
         // State
         let currentSelectedItem = null;
-        let currentZoom = 1;
+        let currentSelectedFilter = null;
 
-        // Mermaid configuration
-        mermaid.initialize({{
-            startOnLoad: false,
-            theme: 'dark',
-            themeVariables: {{
-                primaryColor: '#6366f1',
-                primaryTextColor: '#fafafa',
-                primaryBorderColor: '#818cf8',
-                lineColor: '#64748b',
-                secondaryColor: '#18181b',
-                tertiaryColor: '#27272a',
-                background: '#09090b',
-                mainBkg: '#18181b',
-                nodeBorder: '#818cf8',
-                clusterBkg: 'rgba(99, 102, 241, 0.15)',
-                clusterBorder: '#6366f1',
-                titleColor: '#fafafa',
-                edgeLabelBackground: '#18181b',
-                nodeTextColor: '#fafafa',
-                fontSize: '14px',
-                fontFamily: 'Inter, sans-serif'
-            }},
-            flowchart: {{
-                htmlLabels: true,
-                curve: 'basis',
-                nodeSpacing: 50,
-                rankSpacing: 70,
-                padding: 15,
-                useMaxWidth: true
-            }},
-            securityLevel: 'loose'
-        }});
-
-        // Sanitize node ID for Mermaid
-        function sanitizeNodeId(name, prefix = 'N') {{
-            let clean = name.replace(/[\\[\\]]/g, '_').replace(/\\s/g, '_');
-            clean = clean.replace(/[-\\/\\\\()%&'".,:\\+\\*=<>!#@$]/g, '_');
-            clean = clean.replace(/_+/g, '_').replace(/^_|_$/g, '');
-            return prefix + '_' + (clean || 'node');
-        }}
-
-        // Generate Mermaid diagram for selected item
-        function generateDiagramForItem(itemKey) {{
-            const item = itemDependencies[itemKey];
-            if (!item) {{
-                return 'flowchart LR\\n    nodata[No data available]';
-            }}
-
-            const lines = ['flowchart LR'];
-            lines.push('');
-
-            const rootId = sanitizeNodeId(item.key, item.type === 'measure' ? 'M' : item.type === 'column' ? 'C' : 'FP');
-            const rootLabel = item.name.replace(/"/g, '\\"');
-
-            // Root node (selected item)
-            lines.push(`    ${{rootId}}["<b>${{rootLabel}}</b>"]:::selected`);
-            lines.push('');
-
-            const addedNodes = new Set([rootId]);
-            const edges = [];
-
-            // Add upstream nodes (what this item depends on)
-            const upstream = item.upstream || {{}};
-
-            // Upstream measures
-            const upstreamMeasures = upstream.measures || [];
-            if (upstreamMeasures.length > 0) {{
-                lines.push('    subgraph Upstream_Measures["Upstream Measures"]');
-                lines.push('    direction TB');
-                upstreamMeasures.slice(0, 20).forEach(mKey => {{
-                    const mItem = itemDependencies[mKey];
-                    if (mItem) {{
-                        const nodeId = sanitizeNodeId(mKey, 'UM');
-                        const label = mItem.name.replace(/"/g, '\\"');
-                        lines.push(`        ${{nodeId}}["${{label}}"]:::measure`);
-                        addedNodes.add(nodeId);
-                        edges.push({{ from: nodeId, to: rootId }});
-                    }}
-                }});
-                if (upstreamMeasures.length > 20) {{
-                    lines.push(`        UM_more["... +${{upstreamMeasures.length - 20}} more"]:::measure`);
-                }}
-                lines.push('    end');
-                lines.push('');
-            }}
-
-            // Upstream columns
-            const upstreamColumns = upstream.columns || [];
-            if (upstreamColumns.length > 0) {{
-                lines.push('    subgraph Upstream_Columns["Upstream Columns"]');
-                lines.push('    direction TB');
-                upstreamColumns.slice(0, 15).forEach(cKey => {{
-                    const cItem = itemDependencies[cKey];
-                    if (cItem) {{
-                        const nodeId = sanitizeNodeId(cKey, 'UC');
-                        const label = cItem.name.replace(/"/g, '\\"');
-                        lines.push(`        ${{nodeId}}["${{label}}"]:::column`);
-                        addedNodes.add(nodeId);
-                        edges.push({{ from: nodeId, to: rootId }});
-                    }}
-                }});
-                if (upstreamColumns.length > 15) {{
-                    lines.push(`        UC_more["... +${{upstreamColumns.length - 15}} more"]:::column`);
-                }}
-                lines.push('    end');
-                lines.push('');
-            }}
-
-            // Add downstream nodes (what depends on this item)
-            const downstream = item.downstream || {{}};
-
-            // Downstream measures
-            const downstreamMeasures = downstream.measures || [];
-            if (downstreamMeasures.length > 0) {{
-                lines.push('    subgraph Downstream_Measures["Downstream Measures"]');
-                lines.push('    direction TB');
-                downstreamMeasures.slice(0, 20).forEach(mKey => {{
-                    const mItem = itemDependencies[mKey];
-                    if (mItem) {{
-                        const nodeId = sanitizeNodeId(mKey, 'DM');
-                        const label = mItem.name.replace(/"/g, '\\"');
-                        lines.push(`        ${{nodeId}}["${{label}}"]:::measure`);
-                        addedNodes.add(nodeId);
-                        edges.push({{ from: rootId, to: nodeId }});
-                    }}
-                }});
-                if (downstreamMeasures.length > 20) {{
-                    lines.push(`        DM_more["... +${{downstreamMeasures.length - 20}} more"]:::measure`);
-                }}
-                lines.push('    end');
-                lines.push('');
-            }}
-
-            // Downstream field parameters (for columns)
-            const downstreamFieldParams = downstream.fieldParams || [];
-            if (downstreamFieldParams.length > 0) {{
-                lines.push('    subgraph Downstream_FieldParams["Field Parameters"]');
-                lines.push('    direction TB');
-                downstreamFieldParams.forEach(fpName => {{
-                    const nodeId = sanitizeNodeId(fpName, 'DFP');
-                    const label = fpName.replace(/"/g, '\\"');
-                    lines.push(`        ${{nodeId}}["${{label}}"]:::fieldparam`);
-                    addedNodes.add(nodeId);
-                    edges.push({{ from: rootId, to: nodeId }});
-                }});
-                lines.push('    end');
-                lines.push('');
-            }}
-
-            // Downstream visuals
-            const downstreamVisuals = downstream.visuals || [];
-            if (downstreamVisuals.length > 0) {{
-                lines.push('    subgraph Downstream_Visuals["Visuals Using This"]');
-                lines.push('    direction TB');
-                downstreamVisuals.slice(0, 10).forEach((v, idx) => {{
-                    const nodeId = `DV_${{idx}}`;
-                    const label = `${{v.visual_type || 'Visual'}}\\n(${{v.page || 'Unknown Page'}})`.replace(/"/g, '\\"');
-                    lines.push(`        ${{nodeId}}["${{label}}"]:::visual`);
-                    addedNodes.add(nodeId);
-                    edges.push({{ from: rootId, to: nodeId }});
-                }});
-                if (downstreamVisuals.length > 10) {{
-                    lines.push(`        DV_more["... +${{downstreamVisuals.length - 10}} more visuals"]:::visual`);
-                }}
-                lines.push('    end');
-                lines.push('');
-            }}
-
-            // Add edges
-            edges.forEach(edge => {{
-                lines.push(`    ${{edge.from}} --> ${{edge.to}}`);
-            }});
-
-            // Styling
-            lines.push('');
-            lines.push('    %% Styling');
-            lines.push('    classDef selected fill:#00ffff,stroke:#00cccc,color:#000,stroke-width:3px');
-            lines.push('    classDef measure fill:#2196F3,stroke:#1565C0,color:#fff,stroke-width:2px');
-            lines.push('    classDef column fill:#9C27B0,stroke:#7B1FA2,color:#fff,stroke-width:2px');
-            lines.push('    classDef fieldparam fill:#4CAF50,stroke:#388E3C,color:#fff,stroke-width:2px');
-            lines.push('    classDef visual fill:#FF9800,stroke:#F57C00,color:#fff,stroke-width:2px');
-
-            return lines.join('\\n');
-        }}
-
-        // Select an item and render its diagram
-        async function selectItem(itemKey) {{
-            // Update selection state
-            currentSelectedItem = itemKey;
-
-            // Update sidebar selection
-            document.querySelectorAll('.item.selected').forEach(el => el.classList.remove('selected'));
-            const itemEl = document.querySelector(`.item[data-key="${{CSS.escape(itemKey)}}"]`);
-            if (itemEl) {{
-                itemEl.classList.add('selected');
-            }}
-
-            // Get item data
-            const item = itemDependencies[itemKey];
-            if (!item) {{
-                console.error('Item not found:', itemKey);
-                return;
-            }}
-
-            // Update info panel
-            document.getElementById('selected-type').textContent = item.type.toUpperCase().replace('_', ' ');
-            document.getElementById('selected-type').className = 'selected-item-type ' + item.type;
-            document.getElementById('selected-name').textContent = item.key;
-
-            // Calculate stats
-            const upstream = item.upstream || {{}};
-            const downstream = item.downstream || {{}};
-            const upstreamCount = (upstream.measures?.length || 0) + (upstream.columns?.length || 0);
-            const downstreamCount = (downstream.measures?.length || 0) +
-                                    (downstream.visuals?.length || 0) +
-                                    (downstream.fieldParams?.length || 0);
-
-            document.getElementById('stat-upstream').textContent = upstreamCount;
-            document.getElementById('stat-downstream').textContent = downstreamCount;
-
-            // Generate and render diagram
-            const diagramCode = generateDiagramForItem(itemKey);
-            const diagramContainer = document.getElementById('mermaid-diagram');
-
-            try {{
-                // Clear previous diagram
-                diagramContainer.innerHTML = '';
-                diagramContainer.removeAttribute('data-processed');
-
-                // Generate unique ID for this render
-                const id = 'mermaid-' + Date.now();
-
-                // Render new diagram
-                const {{ svg }} = await mermaid.render(id, diagramCode);
-                diagramContainer.innerHTML = svg;
-
-                // Reset zoom when switching items
-                currentZoom = 1;
-                applyZoom();
-            }} catch (err) {{
-                console.error('Mermaid render error:', err);
-                diagramContainer.innerHTML = `<div class="no-diagram">
-                    <div class="no-diagram-icon">⚠️</div>
-                    <div class="no-diagram-text">Error rendering diagram</div>
-                </div>`;
-            }}
+        // Escape HTML
+        function escapeHtml(text) {{
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }}
 
         // Toggle category panel
@@ -1254,6 +1201,286 @@ def generate_pbip_dependency_html(
             }}
         }}
 
+        // Toggle section
+        function toggleSection(element) {{
+            const section = element.closest('.dependency-section');
+            if (section) {{
+                section.classList.toggle('collapsed');
+            }}
+        }}
+
+        // Render model stats
+        function renderModelStats() {{
+            const statsGrid = document.getElementById('model-stats');
+            const stats = [
+                {{ label: 'Measures', value: modelSummary.total_measures || 0, type: '' }},
+                {{ label: 'Columns', value: modelSummary.total_columns || 0, type: '' }},
+                {{ label: 'Visuals', value: modelSummary.total_visuals || 0, type: '' }},
+                {{ label: 'Pages', value: modelSummary.total_pages || 0, type: '' }},
+                {{ label: 'Unused Measures', value: modelSummary.unused_measures || 0, type: modelSummary.unused_measures > 0 ? 'warning' : 'success' }},
+                {{ label: 'Unused Columns', value: modelSummary.unused_columns || 0, type: modelSummary.unused_columns > 0 ? 'warning' : 'success' }}
+            ];
+
+            statsGrid.innerHTML = stats.map(stat => `
+                <div class="model-stat ${{stat.type}}">
+                    <div class="model-stat-value">${{stat.value}}</div>
+                    <div class="model-stat-label">${{stat.label}}</div>
+                </div>
+            `).join('');
+        }}
+
+        // Select an item and render its analysis
+        function selectItem(itemKey) {{
+            currentSelectedItem = itemKey;
+
+            // Update sidebar selection
+            document.querySelectorAll('.item.selected').forEach(el => el.classList.remove('selected'));
+            const itemEl = document.querySelector(`.item[data-key="${{CSS.escape(itemKey)}}"]`);
+            if (itemEl) {{
+                itemEl.classList.add('selected');
+            }}
+
+            // Get item data
+            const item = itemDependencies[itemKey];
+            if (!item) {{
+                console.error('Item not found:', itemKey);
+                return;
+            }}
+
+            renderItemAnalysis(item);
+        }}
+
+        // Render item analysis
+        function renderItemAnalysis(item) {{
+            const container = document.getElementById('selected-analysis');
+            const upstream = item.upstream || {{}};
+            const downstream = item.downstream || {{}};
+
+            const upstreamMeasures = upstream.measures || [];
+            const upstreamColumns = upstream.columns || [];
+            const downstreamMeasures = downstream.measures || [];
+            const downstreamVisuals = downstream.visuals || [];
+            const downstreamFieldParams = downstream.fieldParams || [];
+
+            const totalUpstream = upstreamMeasures.length + upstreamColumns.length;
+            const totalDownstream = downstreamMeasures.length + downstreamVisuals.length + downstreamFieldParams.length;
+
+            let html = `
+                <div class="selected-item-header">
+                    <div class="selected-item-badge">
+                        <span class="selected-item-type ${{item.type}}">${{item.type.replace('_', ' ').toUpperCase()}}</span>
+                    </div>
+                    <div class="selected-item-name">${{escapeHtml(item.name)}}</div>
+                    <div class="selected-item-table">Table: ${{escapeHtml(item.table)}}</div>
+                    <div class="dependency-summary">
+                        <div class="summary-stat">
+                            <div class="summary-stat-label">Upstream Dependencies</div>
+                            <div class="summary-stat-value">${{totalUpstream}}</div>
+                        </div>
+                        <div class="summary-stat">
+                            <div class="summary-stat-label">Downstream Dependencies</div>
+                            <div class="summary-stat-value">${{totalDownstream}}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Upstream Measures Section
+            if (upstreamMeasures.length > 0) {{
+                html += `
+                    <div class="dependency-section">
+                        <div class="section-header" onclick="toggleSection(this)">
+                            <div class="section-title">
+                                <span class="section-icon">&#8593;</span>
+                                <span>Upstream Measures (Dependencies)</span>
+                                <span class="section-count">${{upstreamMeasures.length}}</span>
+                            </div>
+                            <span class="section-chevron">&#9660;</span>
+                        </div>
+                        <div class="section-content">
+                            <table class="dependency-table">
+                                <thead>
+                                    <tr>
+                                        <th>Measure Name</th>
+                                        <th>Table</th>
+                                        <th>Type</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${{upstreamMeasures.map(mKey => {{
+                                        const m = itemDependencies[mKey];
+                                        return `<tr>
+                                            <td><span class="dep-item-name" onclick="selectItem('${{mKey.replace(/'/g, "\\\\'")}}')">${{escapeHtml(m ? m.name : mKey)}}</span></td>
+                                            <td class="dep-item-table">${{escapeHtml(m ? m.table : '')}}</td>
+                                            <td><span class="dep-type-badge measure">Measure</span></td>
+                                        </tr>`;
+                                    }}).join('')}}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            }}
+
+            // Upstream Columns Section
+            if (upstreamColumns.length > 0) {{
+                html += `
+                    <div class="dependency-section">
+                        <div class="section-header" onclick="toggleSection(this)">
+                            <div class="section-title">
+                                <span class="section-icon">&#8593;</span>
+                                <span>Upstream Columns (Data Sources)</span>
+                                <span class="section-count">${{upstreamColumns.length}}</span>
+                            </div>
+                            <span class="section-chevron">&#9660;</span>
+                        </div>
+                        <div class="section-content">
+                            <table class="dependency-table">
+                                <thead>
+                                    <tr>
+                                        <th>Column Name</th>
+                                        <th>Table</th>
+                                        <th>Type</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${{upstreamColumns.map(cKey => {{
+                                        const c = itemDependencies[cKey];
+                                        return `<tr>
+                                            <td><span class="dep-item-name" onclick="selectItem('${{cKey.replace(/'/g, "\\\\'")}}')">${{escapeHtml(c ? c.name : cKey)}}</span></td>
+                                            <td class="dep-item-table">${{escapeHtml(c ? c.table : '')}}</td>
+                                            <td><span class="dep-type-badge column">Column</span></td>
+                                        </tr>`;
+                                    }}).join('')}}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            }}
+
+            // Downstream Measures Section
+            if (downstreamMeasures.length > 0) {{
+                html += `
+                    <div class="dependency-section">
+                        <div class="section-header" onclick="toggleSection(this)">
+                            <div class="section-title">
+                                <span class="section-icon">&#8595;</span>
+                                <span>Downstream Measures (Used By)</span>
+                                <span class="section-count">${{downstreamMeasures.length}}</span>
+                            </div>
+                            <span class="section-chevron">&#9660;</span>
+                        </div>
+                        <div class="section-content">
+                            <table class="dependency-table">
+                                <thead>
+                                    <tr>
+                                        <th>Measure Name</th>
+                                        <th>Table</th>
+                                        <th>Type</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${{downstreamMeasures.map(mKey => {{
+                                        const m = itemDependencies[mKey];
+                                        return `<tr>
+                                            <td><span class="dep-item-name" onclick="selectItem('${{mKey.replace(/'/g, "\\\\'")}}')">${{escapeHtml(m ? m.name : mKey)}}</span></td>
+                                            <td class="dep-item-table">${{escapeHtml(m ? m.table : '')}}</td>
+                                            <td><span class="dep-type-badge measure">Measure</span></td>
+                                        </tr>`;
+                                    }}).join('')}}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            }}
+
+            // Downstream Visuals Section
+            if (downstreamVisuals.length > 0) {{
+                html += `
+                    <div class="dependency-section">
+                        <div class="section-header" onclick="toggleSection(this)">
+                            <div class="section-title">
+                                <span class="section-icon">&#8595;</span>
+                                <span>Visuals Using This</span>
+                                <span class="section-count">${{downstreamVisuals.length}}</span>
+                            </div>
+                            <span class="section-chevron">&#9660;</span>
+                        </div>
+                        <div class="section-content">
+                            <table class="dependency-table">
+                                <thead>
+                                    <tr>
+                                        <th>Visual Type</th>
+                                        <th>Page</th>
+                                        <th>Type</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${{downstreamVisuals.map(v => `
+                                        <tr>
+                                            <td>${{escapeHtml(v.visual_type || 'Unknown')}}</td>
+                                            <td class="dep-item-table">${{escapeHtml(v.page || 'Unknown')}}</td>
+                                            <td><span class="dep-type-badge visual">Visual</span></td>
+                                        </tr>
+                                    `).join('')}}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            }}
+
+            // Downstream Field Parameters Section
+            if (downstreamFieldParams.length > 0) {{
+                html += `
+                    <div class="dependency-section">
+                        <div class="section-header" onclick="toggleSection(this)">
+                            <div class="section-title">
+                                <span class="section-icon">&#8595;</span>
+                                <span>Field Parameters Using This</span>
+                                <span class="section-count">${{downstreamFieldParams.length}}</span>
+                            </div>
+                            <span class="section-chevron">&#9660;</span>
+                        </div>
+                        <div class="section-content">
+                            <table class="dependency-table">
+                                <thead>
+                                    <tr>
+                                        <th>Field Parameter</th>
+                                        <th>Type</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${{downstreamFieldParams.map(fp => `
+                                        <tr>
+                                            <td><span class="dep-item-name" onclick="selectItem('${{fp.replace(/'/g, "\\\\'")}}')">${{escapeHtml(fp)}}</span></td>
+                                            <td><span class="dep-type-badge fieldparam">Field Param</span></td>
+                                        </tr>
+                                    `).join('')}}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            }}
+
+            // No dependencies message
+            if (totalUpstream === 0 && totalDownstream === 0) {{
+                html += `
+                    <div class="dependency-section">
+                        <div class="empty-state">
+                            <div class="empty-icon">&#128269;</div>
+                            <div class="empty-text">No dependencies found for this item</div>
+                        </div>
+                    </div>
+                `;
+            }}
+
+            container.innerHTML = html;
+        }}
+
         // Populate sidebar
         function populateSidebar() {{
             // Measures
@@ -1263,21 +1490,21 @@ def generate_pbip_dependency_html(
                 measuresHtml += `
                     <div class="table-group">
                         <div class="table-group-header" onclick="toggleTableGroup(this)">
-                            <span class="table-group-name">📁 ${{table}}</span>
+                            <span class="table-group-name">${{escapeHtml(table)}}</span>
                             <span class="table-group-count">${{measures.length}}</span>
                         </div>
                         <div class="table-group-items">
                             ${{measures.map(m => `
-                                <div class="item measure" data-key="${{m.key}}" onclick="selectItem('${{m.key.replace(/'/g, "\\\\'")}}')" title="${{m.key}}">
+                                <div class="item measure" data-key="${{escapeHtml(m.key)}}" onclick="selectItem('${{m.key.replace(/'/g, "\\\\'")}}')" title="${{escapeHtml(m.key)}}">
                                     <span class="item-dot"></span>
-                                    <span class="item-name">${{m.name}}</span>
+                                    <span class="item-name">${{escapeHtml(m.name)}}</span>
                                 </div>
                             `).join('')}}
                         </div>
                     </div>
                 `;
             }}
-            measuresContent.innerHTML = measuresHtml || '<div style="padding: 1rem; color: var(--text-muted); font-size: 0.75rem;">No measures found</div>';
+            measuresContent.innerHTML = measuresHtml || '<div class="empty-state"><div class="empty-text">No measures found</div></div>';
 
             // Columns
             const columnsContent = document.getElementById('content-columns');
@@ -1286,21 +1513,21 @@ def generate_pbip_dependency_html(
                 columnsHtml += `
                     <div class="table-group collapsed">
                         <div class="table-group-header" onclick="toggleTableGroup(this)">
-                            <span class="table-group-name">📁 ${{table}}</span>
+                            <span class="table-group-name">${{escapeHtml(table)}}</span>
                             <span class="table-group-count">${{columns.length}}</span>
                         </div>
                         <div class="table-group-items">
                             ${{columns.map(c => `
-                                <div class="item column" data-key="${{c.key}}" onclick="selectItem('${{c.key.replace(/'/g, "\\\\'")}}')" title="${{c.key}}">
+                                <div class="item column" data-key="${{escapeHtml(c.key)}}" onclick="selectItem('${{c.key.replace(/'/g, "\\\\'")}}')" title="${{escapeHtml(c.key)}}">
                                     <span class="item-dot"></span>
-                                    <span class="item-name">${{c.name}}</span>
+                                    <span class="item-name">${{escapeHtml(c.name)}}</span>
                                 </div>
                             `).join('')}}
                         </div>
                     </div>
                 `;
             }}
-            columnsContent.innerHTML = columnsHtml || '<div style="padding: 1rem; color: var(--text-muted); font-size: 0.75rem;">No columns found</div>';
+            columnsContent.innerHTML = columnsHtml || '<div class="empty-state"><div class="empty-text">No columns found</div></div>';
 
             // Field Parameters
             const fpContent = document.getElementById('content-fieldparams');
@@ -1308,16 +1535,311 @@ def generate_pbip_dependency_html(
                 fpContent.innerHTML = `
                     <div class="table-group-items">
                         ${{fieldParamsList.map(fp => `
-                            <div class="item fieldparam" data-key="${{fp.key}}" onclick="selectItem('${{fp.key.replace(/'/g, "\\\\'")}}')" title="${{fp.key}}">
+                            <div class="item fieldparam" data-key="${{escapeHtml(fp.key)}}" onclick="selectItem('${{fp.key.replace(/'/g, "\\\\'")}}')" title="${{escapeHtml(fp.key)}}">
                                 <span class="item-dot"></span>
-                                <span class="item-name">${{fp.name}}</span>
+                                <span class="item-name">${{escapeHtml(fp.name)}}</span>
                             </div>
                         `).join('')}}
                     </div>
                 `;
             }} else {{
-                fpContent.innerHTML = '<div style="padding: 1rem; color: var(--text-muted); font-size: 0.75rem;">No field parameters found</div>';
+                fpContent.innerHTML = '<div class="empty-state"><div class="empty-text">No field parameters found</div></div>';
             }}
+
+            // Filter Pane
+            populateFilterPane();
+        }}
+
+        // Populate Filter Pane sidebar section
+        function populateFilterPane() {{
+            const filterContent = document.getElementById('content-filters');
+            const filterCountEl = document.getElementById('count-filters');
+
+            if (!filterPaneData || !filterPaneData.summary) {{
+                filterContent.innerHTML = '<div class="empty-state"><div class="empty-text">No filters found</div></div>';
+                return;
+            }}
+
+            const summary = filterPaneData.summary || {{}};
+            const totalFilters = (summary.total_report_filters || 0) +
+                                (summary.total_page_filters || 0) +
+                                (summary.total_visual_filters || 0);
+
+            filterCountEl.textContent = totalFilters;
+
+            if (totalFilters === 0) {{
+                filterContent.innerHTML = '<div class="empty-state"><div class="empty-text">No filters found in this report</div></div>';
+                return;
+            }}
+
+            let html = '';
+
+            // Report Filters (Filters on All Pages)
+            const reportFilters = filterPaneData.report_filters || [];
+            if (reportFilters.length > 0) {{
+                html += `
+                    <div class="filter-sub-header">
+                        <div class="filter-sub-header-icon report">R</div>
+                        <span>Filters on All Pages (${{reportFilters.length}})</span>
+                    </div>
+                    <div class="table-group-items">
+                        ${{reportFilters.map((f, idx) => `
+                            <div class="item filter" data-filter-type="report" data-filter-index="${{idx}}" onclick="selectFilter('report', ${{idx}})" title="${{escapeHtml(f.field_key || f.field_name || 'Unknown')}}">
+                                <span class="item-dot"></span>
+                                <span class="item-name">${{escapeHtml(f.field_name || f.name || 'Unknown')}}</span>
+                            </div>
+                        `).join('')}}
+                    </div>
+                `;
+            }}
+
+            // Page Filters (grouped by page)
+            const pageFilters = filterPaneData.page_filters || {{}};
+            const pageNames = Object.keys(pageFilters).sort();
+            if (pageNames.length > 0) {{
+                html += `
+                    <div class="filter-sub-header">
+                        <div class="filter-sub-header-icon page">P</div>
+                        <span>Page Filters (${{summary.total_page_filters || 0}})</span>
+                    </div>
+                `;
+                for (const pageName of pageNames) {{
+                    const pageData = pageFilters[pageName];
+                    const filters = pageData.filters || [];
+                    html += `
+                        <div class="table-group">
+                            <div class="table-group-header" onclick="toggleTableGroup(this)">
+                                <span class="table-group-name">${{escapeHtml(pageName)}}</span>
+                                <span class="table-group-count">${{filters.length}}</span>
+                            </div>
+                            <div class="table-group-items">
+                                ${{filters.map((f, idx) => `
+                                    <div class="item filter" data-filter-type="page" data-page="${{escapeHtml(pageName)}}" data-filter-index="${{idx}}" onclick="selectFilter('page', ${{idx}}, '${{pageName.replace(/'/g, "\\\\'")}}')" title="${{escapeHtml(f.field_key || f.field_name || 'Unknown')}}">
+                                        <span class="item-dot"></span>
+                                        <span class="item-name">${{escapeHtml(f.field_name || f.name || 'Unknown')}}</span>
+                                    </div>
+                                `).join('')}}
+                            </div>
+                        </div>
+                    `;
+                }}
+            }}
+
+            // Visual Filters (grouped by visual)
+            const visualFilters = filterPaneData.visual_filters || {{}};
+            const visualKeys = Object.keys(visualFilters).sort();
+            if (visualKeys.length > 0) {{
+                html += `
+                    <div class="filter-sub-header">
+                        <div class="filter-sub-header-icon visual">V</div>
+                        <span>Visual Filters (${{summary.total_visual_filters || 0}})</span>
+                    </div>
+                `;
+                for (const visualKey of visualKeys) {{
+                    const visualData = visualFilters[visualKey];
+                    const filters = visualData.filters || [];
+                    const displayName = visualData.visual_name || visualData.visual_type || visualData.visual_id || 'Unknown Visual';
+                    html += `
+                        <div class="table-group collapsed">
+                            <div class="table-group-header" onclick="toggleTableGroup(this)">
+                                <span class="table-group-name">${{escapeHtml(displayName)}}</span>
+                                <span class="table-group-count">${{filters.length}}</span>
+                            </div>
+                            <div class="table-group-items">
+                                ${{filters.map((f, idx) => `
+                                    <div class="item filter" data-filter-type="visual" data-visual="${{escapeHtml(visualKey)}}" data-filter-index="${{idx}}" onclick="selectFilter('visual', ${{idx}}, '${{visualKey.replace(/'/g, "\\\\'")}}')" title="${{escapeHtml(f.field_key || f.field_name || 'Unknown')}}">
+                                        <span class="item-dot"></span>
+                                        <span class="item-name">${{escapeHtml(f.field_name || f.name || 'Unknown')}}</span>
+                                    </div>
+                                `).join('')}}
+                            </div>
+                        </div>
+                    `;
+                }}
+            }}
+
+            filterContent.innerHTML = html || '<div class="empty-state"><div class="empty-text">No filters found</div></div>';
+        }}
+
+        // Select a filter and display its details
+        function selectFilter(filterType, filterIndex, context = null) {{
+            currentSelectedItem = null;  // Clear item selection
+            currentSelectedFilter = {{ type: filterType, index: filterIndex, context: context }};
+
+            // Update sidebar selection
+            document.querySelectorAll('.item.selected').forEach(el => el.classList.remove('selected'));
+
+            let selector;
+            if (filterType === 'report') {{
+                selector = `.item.filter[data-filter-type="report"][data-filter-index="${{filterIndex}}"]`;
+            }} else if (filterType === 'page') {{
+                selector = `.item.filter[data-filter-type="page"][data-page="${{CSS.escape(context)}}"][data-filter-index="${{filterIndex}}"]`;
+            }} else if (filterType === 'visual') {{
+                selector = `.item.filter[data-filter-type="visual"][data-visual="${{CSS.escape(context)}}"][data-filter-index="${{filterIndex}}"]`;
+            }}
+
+            const itemEl = document.querySelector(selector);
+            if (itemEl) {{
+                itemEl.classList.add('selected');
+            }}
+
+            // Get filter data
+            let filter = null;
+            if (filterType === 'report') {{
+                filter = (filterPaneData.report_filters || [])[filterIndex];
+            }} else if (filterType === 'page' && context) {{
+                const pageData = (filterPaneData.page_filters || {{}})[context];
+                filter = (pageData?.filters || [])[filterIndex];
+            }} else if (filterType === 'visual' && context) {{
+                const visualData = (filterPaneData.visual_filters || {{}})[context];
+                filter = (visualData?.filters || [])[filterIndex];
+            }}
+
+            if (filter) {{
+                renderFilterAnalysis(filter, filterType, context);
+            }}
+        }}
+
+        // Render filter analysis view
+        function renderFilterAnalysis(filter, filterType, context) {{
+            const container = document.getElementById('selected-analysis');
+
+            const levelLabels = {{
+                'report': 'Filters on All Pages',
+                'page': 'Page Filter',
+                'visual': 'Visual Filter'
+            }};
+
+            const fieldKey = filter.field_key || `${{filter.table}}[${{filter.field_name}}]`;
+            const displayName = filter.field_name || filter.name || 'Unknown Filter';
+
+            let contextInfo = '';
+            if (filterType === 'page') {{
+                contextInfo = `<div class="selected-item-table">Page: ${{escapeHtml(context)}}</div>`;
+            }} else if (filterType === 'visual') {{
+                const visualData = (filterPaneData.visual_filters || {{}})[context];
+                const visualName = visualData?.visual_name || visualData?.visual_type || 'Unknown';
+                const pageName = visualData?.page_name || '';
+                contextInfo = `
+                    <div class="selected-item-table">Visual: ${{escapeHtml(visualName)}}</div>
+                    <div class="selected-item-table">Page: ${{escapeHtml(pageName)}}</div>
+                `;
+            }}
+
+            let html = `
+                <div class="selected-item-header">
+                    <div class="selected-item-badge">
+                        <span class="selected-item-type filter">FILTER</span>
+                        <span class="filter-level-badge ${{filterType}}">${{levelLabels[filterType] || filterType}}</span>
+                    </div>
+                    <div class="selected-item-name">${{escapeHtml(displayName)}}</div>
+                    <div class="selected-item-table">Table: ${{escapeHtml(filter.table || 'Unknown')}}</div>
+                    ${{contextInfo}}
+                </div>
+
+                <div class="dependency-section">
+                    <div class="section-header" onclick="toggleSection(this)">
+                        <div class="section-title">
+                            <span class="section-icon">&#128269;</span>
+                            <span>Filter Details</span>
+                        </div>
+                        <span class="section-chevron">&#9660;</span>
+                    </div>
+                    <div class="section-content">
+                        <table class="dependency-table">
+                            <thead>
+                                <tr>
+                                    <th>Property</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Field Key</td>
+                                    <td><span class="dep-item-name" ${{fieldKey && itemDependencies[fieldKey] ? `onclick="selectItem('${{fieldKey.replace(/'/g, "\\\\'")}}')"` : ''}}>${{escapeHtml(fieldKey || 'N/A')}}</span></td>
+                                </tr>
+                                <tr>
+                                    <td>Field Type</td>
+                                    <td><span class="dep-type-badge ${{(filter.field_type || '').toLowerCase()}}">${{escapeHtml(filter.field_type || 'Unknown')}}</span></td>
+                                </tr>
+                                <tr>
+                                    <td>Filter Level</td>
+                                    <td><span class="filter-level-badge ${{filterType}}">${{escapeHtml(filter.level || filterType)}}</span></td>
+                                </tr>
+                                ${{filter.how_created ? `<tr><td>How Created</td><td>${{escapeHtml(filter.how_created)}}</td></tr>` : ''}}
+                                ${{filter.filter_type ? `<tr><td>Filter Type</td><td>${{escapeHtml(filter.filter_type)}}</td></tr>` : ''}}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+            // Add Filter Values section
+            const filterValues = filter.filter_values || [];
+            const conditionType = filter.condition_type;
+            const hasValues = filter.has_values;
+
+            html += `
+                <div class="dependency-section">
+                    <div class="section-header" onclick="toggleSection(this)">
+                        <div class="section-title">
+                            <span class="section-icon">&#127991;</span>
+                            <span>Filter Values</span>
+                            ${{conditionType ? `<span class="filter-condition-badge">${{escapeHtml(conditionType)}}</span>` : ''}}
+                        </div>
+                        <span class="section-count">${{filterValues.length}}</span>
+                        <span class="section-chevron">&#9660;</span>
+                    </div>
+                    <div class="section-content">
+                        ${{hasValues && filterValues.length > 0 ? `
+                            <div class="filter-values-container">
+                                ${{filterValues.map(val => {{
+                                    const isExclusion = val.startsWith('NOT:');
+                                    const displayVal = isExclusion ? val.substring(5).trim() : val;
+                                    return `<span class="filter-value-chip ${{isExclusion ? 'exclusion' : ''}}">${{isExclusion ? '✕ ' : ''}}${{escapeHtml(displayVal)}}</span>`;
+                                }}).join('')}}
+                            </div>
+                        ` : `
+                            <div class="filter-no-values">No specific values defined (All values selected)</div>
+                        `}}
+                    </div>
+                </div>
+            `;
+
+            // If the field exists in itemDependencies, show a link to its dependencies
+            if (fieldKey && itemDependencies[fieldKey]) {{
+                html += `
+                    <div class="dependency-section">
+                        <div class="section-header" onclick="toggleSection(this)">
+                            <div class="section-title">
+                                <span class="section-icon">&#128279;</span>
+                                <span>Related Field</span>
+                            </div>
+                            <span class="section-chevron">&#9660;</span>
+                        </div>
+                        <div class="section-content">
+                            <table class="dependency-table">
+                                <thead>
+                                    <tr>
+                                        <th>Field</th>
+                                        <th>Type</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><span class="dep-item-name" onclick="selectItem('${{fieldKey.replace(/'/g, "\\\\'")}}')">${{escapeHtml(fieldKey)}}</span></td>
+                                        <td><span class="dep-type-badge ${{(itemDependencies[fieldKey].type || '').toLowerCase()}}">${{escapeHtml(itemDependencies[fieldKey].type || 'Unknown')}}</span></td>
+                                        <td><button onclick="selectItem('${{fieldKey.replace(/'/g, "\\\\'")}}')" style="background: var(--accent); color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer; font-size: 0.75rem;">View Dependencies</button></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            }}
+
+            container.innerHTML = html;
         }}
 
         // Search functionality
@@ -1340,64 +1862,15 @@ def generate_pbip_dependency_html(
             }});
         }}
 
-        // Zoom functions
-        function zoomIn() {{
-            currentZoom = Math.min(3, currentZoom + 0.2);
-            applyZoom();
-        }}
-
-        function zoomOut() {{
-            currentZoom = Math.max(0.3, currentZoom - 0.2);
-            applyZoom();
-        }}
-
-        function resetZoom() {{
-            currentZoom = 1;
-            applyZoom();
-        }}
-
-        function applyZoom() {{
-            const svg = document.querySelector('#mermaid-diagram svg');
-            if (svg) {{
-                svg.style.transform = `scale(${{currentZoom}})`;
-                svg.style.transformOrigin = 'center top';
-            }}
-        }}
-
-        // Download SVG
-        function downloadSVG() {{
-            const svg = document.querySelector('#mermaid-diagram svg');
-            if (svg) {{
-                const svgData = new XMLSerializer().serializeToString(svg);
-                const blob = new Blob([svgData], {{ type: 'image/svg+xml' }});
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                const itemName = currentSelectedItem ? currentSelectedItem.replace(/[\\[\\]]/g, '_') : 'diagram';
-                a.download = `${{itemName}}_dependencies.svg`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            }}
-        }}
-
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {{
+            renderModelStats();
             populateSidebar();
             setupSearch();
 
             // Select initial item
             if (initialItem) {{
                 selectItem(initialItem);
-            }} else {{
-                // Show empty state
-                document.getElementById('mermaid-diagram').innerHTML = `
-                    <div class="no-diagram">
-                        <div class="no-diagram-icon">📊</div>
-                        <div class="no-diagram-text">Select an item from the sidebar to view its dependencies</div>
-                    </div>
-                `;
             }}
         }});
     </script>
@@ -1417,7 +1890,7 @@ def generate_pbip_dependency_html(
         with open(html_path, 'w', encoding='utf-8') as f:
             f.write(html_content)
 
-        logger.info(f"Generated PBIP dependency diagram HTML: {html_path}")
+        logger.info(f"Generated PBIP dependency analysis HTML: {html_path}")
 
         if auto_open:
             webbrowser.open(f'file:///{html_path.replace(os.sep, "/")}')

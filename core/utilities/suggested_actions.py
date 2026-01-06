@@ -289,18 +289,11 @@ def _suggest_after_preview_data(result: Dict[str, Any], context: Dict[str, Any])
 
 def _suggest_after_run_dax(result: Dict[str, Any], context: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Suggestions after running a DAX query"""
-    suggestions = [
-        {
-            'action': 'export_results',
-            'description': 'Export model schema or TMDL for documentation',
-            'tool': 'get_live_model_schema',
-            'example': {'include_hidden': True}
-        }
-    ]
+    suggestions = []
 
     # Check if query had performance issues
     if result.get('storage_engine_ms', 0) > 1000:
-        suggestions.insert(0, {
+        suggestions.append({
             'action': 'optimize_performance',
             'description': 'Query took over 1 second - run comprehensive performance analysis',
             'tool': 'comprehensive_analysis',

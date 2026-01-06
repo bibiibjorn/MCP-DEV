@@ -47,37 +47,40 @@ class ToolDispatcher:
         '05_Live_Model_Simple_Analysis': 'simple_analysis',
         '05_Live_Model_Full_Analysis': 'full_analysis',
 
-        # 06 - Export (1 tool)
-        '06_Get_Live_Model_Schema': 'get_live_model_schema',
+        # 06 - Documentation (2 tools)
+        '06_Generate_Model_Documentation': 'generate_model_documentation_word',
+        '06_Update_Model_Documentation': 'update_model_documentation_word',
 
-        # 07 - Documentation (2 tools)
-        '07_Generate_Model_Documentation': 'generate_model_documentation_word',
-        '07_Update_Model_Documentation': 'update_model_documentation_word',
+        # 07 - Comparison (1 tool)
+        '07_Compare_Open_Live_Models': 'compare_pbi_models',
 
-        # 08 - Comparison (1 tool)
-        '08_Compare_Open_Live_Models': 'compare_pbi_models',
+        # 08 - PBIP Analysis - HTML (1 tool)
+        '08_PBIP_Analysis_HTML': 'analyze_pbip_repository',
 
-        # 09 - PBIP Analysis - HTML (1 tool)
-        '09_PBIP_Analysis_HTML': 'analyze_pbip_repository',
+        # 09 - Hybrid Analysis (PBIP + Sample) (2 tools)
+        '09_PBIP_Model_Sample_Export': 'export_hybrid_analysis',
+        '09_PBIP_Model_Sample_Analysis': 'analyze_hybrid_model',
 
-        # 10 - Hybrid Analysis (PBIP + Sample) (2 tools)
-        '10_PBIP_Model_Sample_Export': 'export_hybrid_analysis',
-        '10_PBIP_Model_Sample_Analysis': 'analyze_hybrid_model',
+        # 10 - Help (1 tool)
+        '10_Show_User_Guide': 'show_user_guide',
 
-        # 11 - Help (1 tool)
-        '11_Show_User_Guide': 'show_user_guide',
+        # 11 - Dependency Analysis HTML PBIP (1 tool)
+        '11_Dependency_Analysis_HTML_PBIP': 'pbip_dependency_analysis',
 
-        # 12 - Monitoring & Token Usage (1 tool)
-        '12_Get_Token_Usage': 'get_token_usage',
+        # 12 - Slicer Operations Analysis HTML PBIP (1 tool)
+        '12_Slicer_Operations_Analysis_HTML_PBIP': 'slicer_operations',
 
-        # 13 - Slicer Operations (1 tool)
-        '13_Slicer_Operations': 'slicer_operations',
+        # 13 - Aggregation Analysis HTML PBIP (1 tool)
+        '13_Aggregation_Analysis_HTML_PBIP': 'analyze_aggregation',
 
-        # 14 - Report Info (1 tool)
-        '14_Report_Info': 'report_info',
+        # 14 - Visual & Filter Analysis PBIP (1 tool)
+        '14_Visual_Filter_Analysis_PBIP': 'report_info',
 
-        # 15 - Aggregation Analysis (1 tool)
-        '15_Analyze_Aggregation': 'analyze_aggregation'
+        # 15 - Bookmark Analysis HTML PBIP (1 tool)
+        '15_Bookmark_Analysis_HTML_PBIP': 'analyze_bookmarks',
+
+        # 16 - Theme Compliance Analysis HTML PBIP (1 tool)
+        '16_Theme_Compliance_HTML_PBIP': 'analyze_theme_compliance'
     }
 
     def __init__(self):

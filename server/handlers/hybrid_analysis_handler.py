@@ -1377,11 +1377,11 @@ def handle_generate_pbip_dependency_diagram(
                 },
                 'features': [
                     'Left sidebar with ALL measures, columns, and field parameters',
-                    'Click any item in sidebar to view its dependencies instantly',
+                    'Click any item in sidebar to view its dependencies in tables',
                     'Search/filter items by name',
                     'Items grouped by table with expand/collapse',
-                    'Upstream & downstream dependency visualization',
-                    'Zoom controls and SVG download',
+                    'Clean table-based upstream & downstream dependency view',
+                    'Model overview with statistics',
                     'Auto-opens in browser' if auto_open else 'Saved to file'
                 ]
             }
@@ -1432,12 +1432,12 @@ def register_hybrid_analysis_handlers(registry):
     ))
 
     registry.register(ToolDefinition(
-        name='generate_pbip_dependency_diagram',
-        description='Generate interactive HTML dependency diagram for PBIP project. Features a sidebar with ALL measures, columns, and field parameters - click any item to instantly view its upstream and downstream dependencies. Optional main_item parameter to pre-select a specific item. Auto-opens in browser.',
+        name='pbip_dependency_analysis',
+        description='[PBIP Analysis] Generate interactive HTML dependency analysis for PBIP project. Features a sidebar with ALL measures, columns, and field parameters - click any item to view its upstream and downstream dependencies in clean tables. Shows model overview with statistics. Auto-opens in browser.',
         handler=make_handler(handle_generate_pbip_dependency_diagram),
-        input_schema=TOOL_SCHEMAS['generate_pbip_dependency_diagram'],
-        category='10 - Hybrid Analysis',
-        sort_order=92
+        input_schema=TOOL_SCHEMAS['pbip_dependency_analysis'],
+        category='11 - PBIP Analysis',
+        sort_order=93
     ))
 
     logger.info("Registered 3 hybrid analysis handlers")

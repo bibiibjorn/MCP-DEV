@@ -600,30 +600,7 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
         ]
     },
 
-    # Export (1 tool)
-    'get_live_model_schema': {
-        "type": "object",
-        "properties": {
-            "include_hidden": {
-                "type": "boolean",
-                "description": "Include hidden objects (tables, columns, measures). Default: true",
-                "default": True
-            }
-        },
-        "required": [],
-        "examples": [
-            {
-                "_description": "Export complete model schema including hidden objects"
-            },
-            {
-                "_description": "Export only visible objects",
-                "include_hidden": False
-            }
-        ]
-    },
-
-    #
-    # Documentation (3 tools)
+    # Documentation (2 tools)
     'generate_model_documentation_word': {
         "type": "object",
         "properties": {
@@ -1116,7 +1093,8 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
         ]
     },
 
-    'generate_pbip_dependency_diagram': {
+    # 15 - PBIP Dependency Analysis (1 tool)
+    'pbip_dependency_analysis': {
         "type": "object",
         "properties": {
             "pbip_folder_path": {
@@ -1125,12 +1103,12 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
             },
             "auto_open": {
                 "type": "boolean",
-                "description": "Automatically open the HTML diagram in browser (default: true)",
+                "description": "Automatically open the HTML analysis in browser (default: true)",
                 "default": True
             },
             "output_path": {
                 "type": "string",
-                "description": "Optional custom output path for the HTML file. If not specified, saves to exports/pbip_dependency_diagram.html"
+                "description": "Optional custom output path for the HTML file. If not specified, saves to exports/pbip_dependency_analysis.html"
             },
             "main_item": {
                 "type": "string",
@@ -1140,54 +1118,27 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
         "required": ["pbip_folder_path"],
         "examples": [
             {
-                "_description": "Generate dependency diagram for a PBIP project",
+                "_description": "Generate dependency analysis for a PBIP project",
                 "pbip_folder_path": "C:/repos/MyProject/MyModel.SemanticModel"
             },
             {
-                "_description": "Generate diagram from parent folder (auto-detects .SemanticModel)",
+                "_description": "Generate analysis from parent folder (auto-detects .SemanticModel)",
                 "pbip_folder_path": "C:/repos/MyProject"
             },
             {
-                "_description": "Generate diagram and select a specific measure initially",
+                "_description": "Generate analysis and select a specific measure initially",
                 "pbip_folder_path": "C:/repos/MyProject/MyModel.SemanticModel",
                 "main_item": "Measures[Total Sales]"
             },
             {
-                "_description": "Generate diagram without auto-opening browser",
+                "_description": "Generate analysis without auto-opening browser",
                 "pbip_folder_path": "C:/repos/MyProject/MyModel.SemanticModel",
                 "auto_open": False
             },
             {
-                "_description": "Generate diagram with custom output path",
+                "_description": "Generate analysis with custom output path",
                 "pbip_folder_path": "C:/repos/MyProject",
-                "output_path": "C:/output/my_diagram.html"
-            }
-        ]
-    },
-
-    # Token Usage Tracking (1 tool)
-    'get_token_usage': {
-        "type": "object",
-        "properties": {
-            "format": {
-                "type": "string",
-                "enum": ["json", "summary", "detailed"],
-                "description": "Output format: 'json' (full statistics), 'summary' (brief overview), 'detailed' (comprehensive report). Default: 'json'",
-                "default": "json"
-            }
-        },
-        "required": [],
-        "examples": [
-            {
-                "_description": "Get token usage summary"
-            },
-            {
-                "_description": "Get brief overview",
-                "format": "summary"
-            },
-            {
-                "_description": "Get comprehensive token report",
-                "format": "detailed"
+                "output_path": "C:/output/my_analysis.html"
             }
         ]
     },
@@ -1274,7 +1225,7 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
         ]
     },
 
-    # Report Info (Tool 14) - PBIP Report Structure Information
+    # 014 Visual & Filter Info PBIP
     'report_info': {
         "type": "object",
         "properties": {
@@ -1383,6 +1334,97 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
                 "_description": "Analyze specific page",
                 "pbip_path": "C:/repos/MyModel",
                 "page_filter": "Dashboard"
+            }
+        ]
+    },
+
+    # 15 - Bookmark Analysis HTML PBIP (1 tool)
+    'analyze_bookmarks': {
+        "type": "object",
+        "properties": {
+            "pbip_path": {
+                "type": "string",
+                "description": "Path to PBIP project folder, .Report folder, or .pbip file. Tool will auto-detect the .Report folder."
+            },
+            "auto_open": {
+                "type": "boolean",
+                "description": "Automatically open the HTML analysis in browser (default: true)",
+                "default": True
+            },
+            "output_path": {
+                "type": "string",
+                "description": "Optional custom output path for the HTML file. If not specified, saves to exports/bookmark_analysis/"
+            }
+        },
+        "required": ["pbip_path"],
+        "examples": [
+            {
+                "_description": "Analyze bookmarks in a PBIP report",
+                "pbip_path": "C:/repos/MyProject/MyProject.Report"
+            },
+            {
+                "_description": "Analyze bookmarks from parent folder (auto-detects .Report)",
+                "pbip_path": "C:/repos/MyProject"
+            },
+            {
+                "_description": "Analyze bookmarks without auto-opening browser",
+                "pbip_path": "C:/repos/MyProject/MyProject.Report",
+                "auto_open": False
+            },
+            {
+                "_description": "Analyze bookmarks with custom output path",
+                "pbip_path": "C:/repos/MyProject",
+                "output_path": "C:/output/bookmarks_analysis.html"
+            }
+        ]
+    },
+
+    # 16 - Theme Compliance Analysis HTML PBIP (1 tool)
+    'analyze_theme_compliance': {
+        "type": "object",
+        "properties": {
+            "pbip_path": {
+                "type": "string",
+                "description": "Path to PBIP project folder, .Report folder, or .pbip file. Tool will auto-detect the .Report folder."
+            },
+            "theme_path": {
+                "type": "string",
+                "description": "Optional path to a custom theme JSON file. If not specified, the tool will try to detect the theme from the report."
+            },
+            "auto_open": {
+                "type": "boolean",
+                "description": "Automatically open the HTML analysis in browser (default: true)",
+                "default": True
+            },
+            "output_path": {
+                "type": "string",
+                "description": "Optional custom output path for the HTML file. If not specified, saves to exports/theme_compliance/"
+            }
+        },
+        "required": ["pbip_path"],
+        "examples": [
+            {
+                "_description": "Analyze theme compliance in a PBIP report",
+                "pbip_path": "C:/repos/MyProject/MyProject.Report"
+            },
+            {
+                "_description": "Analyze theme compliance from parent folder (auto-detects .Report)",
+                "pbip_path": "C:/repos/MyProject"
+            },
+            {
+                "_description": "Analyze compliance against a specific theme file",
+                "pbip_path": "C:/repos/MyProject",
+                "theme_path": "C:/themes/corporate_theme.json"
+            },
+            {
+                "_description": "Analyze theme compliance without auto-opening browser",
+                "pbip_path": "C:/repos/MyProject",
+                "auto_open": False
+            },
+            {
+                "_description": "Analyze with custom output path",
+                "pbip_path": "C:/repos/MyProject",
+                "output_path": "C:/output/theme_compliance_report.html"
             }
         ]
     }

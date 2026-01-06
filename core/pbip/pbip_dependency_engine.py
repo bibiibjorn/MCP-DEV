@@ -43,6 +43,7 @@ class PbipDependencyEngine:
         self.column_to_field_params: Dict[str, List[str]] = {}  # Column -> field parameter tables that reference it
         self.visual_dependencies: Dict[str, Dict[str, List[str]]] = {}
         self.page_dependencies: Dict[str, Dict[str, Any]] = {}
+        self.filter_pane_data: Dict[str, Any] = {}  # Filter pane data at all levels
 
         # Build reference index for DAX parsing
         self.reference_index: Optional[DaxReferenceIndex] = None
@@ -94,6 +95,7 @@ class PbipDependencyEngine:
         if self.report:
             self._analyze_visual_dependencies()
             self._analyze_page_dependencies()
+            self._analyze_filter_pane()
 
         # Find unused objects
         unused = self._find_unused_objects()
@@ -106,6 +108,7 @@ class PbipDependencyEngine:
             "column_to_field_params": self.column_to_field_params,
             "visual_dependencies": self.visual_dependencies,
             "page_dependencies": self.page_dependencies,
+            "filter_pane_data": self.filter_pane_data,
             "unused_measures": unused["measures"],
             "unused_columns": unused["columns"],
             "summary": {
@@ -555,3 +558,138 @@ class PbipDependencyEngine:
             return max_depth
 
         return dfs(measure_key, 0)
+
+    def _analyze_filter_pane(self) -> None:
+        """
+        Analyze filter pane data at all levels: report, page, and visual.
+
+        Collects filters from:
+        - Report level (filters on all pages)
+        - Page level (filters on specific pages)
+        - Visual level (filters on individual visuals)
+        """
+        if not self.report:
+            return
+
+        self.filter_pane_data = {
+            "report_filters": [],
+            "page_filters": {},
+            "visual_filters": {},
+            "summary": {
+                "total_report_filters": 0,
+                "total_page_filters": 0,
+                "total_visual_filters": 0,
+                "pages_with_filters": 0,
+                "visuals_with_filters": 0
+            }
+        }
+
+        # Extract report-level filters (filters on all pages)
+        report_info = self.report.get("report", {})
+        report_filters = report_info.get("filters", [])
+        for filt in report_filters:
+            filter_entry = self._build_filter_entry(filt, "report", "All Pages")
+            self.filter_pane_data["report_filters"].append(filter_entry)
+
+        self.filter_pane_data["summary"]["total_report_filters"] = len(report_filters)
+
+        # Extract page-level and visual-level filters
+        pages_with_filters = 0
+        visuals_with_filters = 0
+        total_page_filters = 0
+        total_visual_filters = 0
+
+        for page in self.report.get("pages", []):
+            page_name = page.get("display_name", page.get("id", ""))
+            page_id = page.get("id", "")
+
+            # Page filters
+            page_filters = page.get("filters", [])
+            if page_filters:
+                pages_with_filters += 1
+                total_page_filters += len(page_filters)
+
+                self.filter_pane_data["page_filters"][page_name] = {
+                    "page_id": page_id,
+                    "page_name": page_name,
+                    "filters": []
+                }
+
+                for filt in page_filters:
+                    filter_entry = self._build_filter_entry(filt, "page", page_name)
+                    self.filter_pane_data["page_filters"][page_name]["filters"].append(filter_entry)
+
+            # Visual filters
+            for visual in page.get("visuals", []):
+                visual_id = visual.get("id", "")
+                visual_type = visual.get("visual_type", "")
+                visual_name = visual.get("visual_name") or visual.get("title") or visual_type
+                visual_filters = visual.get("filters", [])
+
+                if visual_filters:
+                    visuals_with_filters += 1
+                    total_visual_filters += len(visual_filters)
+
+                    visual_key = f"{page_name}/{visual_id}"
+                    self.filter_pane_data["visual_filters"][visual_key] = {
+                        "visual_id": visual_id,
+                        "visual_type": visual_type,
+                        "visual_name": visual_name,
+                        "page_name": page_name,
+                        "filters": []
+                    }
+
+                    for filt in visual_filters:
+                        filter_entry = self._build_filter_entry(filt, "visual", visual_key)
+                        self.filter_pane_data["visual_filters"][visual_key]["filters"].append(filter_entry)
+
+        self.filter_pane_data["summary"]["total_page_filters"] = total_page_filters
+        self.filter_pane_data["summary"]["total_visual_filters"] = total_visual_filters
+        self.filter_pane_data["summary"]["pages_with_filters"] = pages_with_filters
+        self.filter_pane_data["summary"]["visuals_with_filters"] = visuals_with_filters
+
+        self.logger.info(
+            f"Filter pane analysis: {len(report_filters)} report filters, "
+            f"{total_page_filters} page filters, {total_visual_filters} visual filters"
+        )
+
+    def _build_filter_entry(self, filt: Dict, level: str, context: str) -> Dict[str, Any]:
+        """
+        Build a standardized filter entry from raw filter data.
+
+        Args:
+            filt: Raw filter dictionary
+            level: Filter level (report, page, visual)
+            context: Context info (page name, visual key, etc.)
+
+        Returns:
+            Standardized filter entry dictionary
+        """
+        field = filt.get("field", {})
+        field_type = field.get("type", "Unknown")
+        table = field.get("table", "")
+        name = field.get("name", "")
+
+        # Build field key
+        field_key = f"{table}[{name}]" if table and name else ""
+
+        # Extract filter values if available (from report analyzer)
+        filter_values_data = filt.get("filter_values", {})
+        filter_values = filter_values_data.get("values", []) if filter_values_data else []
+        condition_type = filter_values_data.get("condition_type") if filter_values_data else None
+        has_values = filter_values_data.get("has_values", False) if filter_values_data else False
+
+        return {
+            "name": filt.get("name", ""),
+            "field_key": field_key,
+            "field_type": field_type,
+            "table": table,
+            "field_name": name,
+            "how_created": filt.get("how_created", ""),
+            "filter_type": filt.get("filter_type", filt.get("type", "")),
+            "level": level,
+            "context": context,
+            "filter_values": filter_values,
+            "condition_type": condition_type,
+            "has_values": has_values
+        }

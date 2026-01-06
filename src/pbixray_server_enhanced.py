@@ -187,24 +187,8 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent | ImageConten
             result_str = str(result)
             is_likely_small = len(result_str) < 4000  # ~1000 tokens estimate
 
-            # Always add limits info and track (even for small responses)
+            # Always add limits info (even for small responses)
             result = agent_policy.wrap_response_with_limits_info(result, name)
-
-            # Track token usage for ALL tool calls
-            try:
-                from core.infrastructure.token_usage_tracker import get_token_tracker
-                if '_limits_info' in result and 'token_usage' in result['_limits_info']:
-                    token_info = result['_limits_info']['token_usage']
-                    tracker = get_token_tracker()
-                    tracker.track(
-                        tool_name=name,
-                        tokens=token_info['estimated_tokens'],
-                        max_tokens=token_info['max_tokens'],
-                        percentage=token_info['percentage'],
-                        level=token_info['level']
-                    )
-            except Exception as e:
-                logger.debug(f"Failed to track token usage: {e}")
 
             # Only do expensive checks for large responses
             if not is_likely_small:
@@ -308,22 +292,6 @@ async def main():
     logger.info(f"MCP-PowerBi-Finvision Server v{__version__} - Clean Modular Edition")
     logger.info("=" * 80)
     logger.info(f"Registered {len(registry._handlers)} tools")
-
-    # Register token usage resource
-    try:
-        from core.infrastructure.token_usage_tracker import get_token_tracker
-        resource_manager = get_resource_manager()
-        tracker = get_token_tracker()
-        resource_manager.register_dynamic_resource(
-            uri="powerbi://monitoring/token-usage",
-            name="Token Usage Report",
-            description="Real-time token usage statistics for the current MCP session. Shows total tokens used, per-tool breakdown, and recent history.",
-            provider=tracker.get_resource_content,
-            mime_type="text/markdown"
-        )
-        logger.info("Token usage resource registered")
-    except Exception as e:
-        logger.warning(f"Failed to register token usage resource: {e}")
 
     # Build initialization instructions
     def _initial_instructions() -> str:

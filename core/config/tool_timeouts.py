@@ -52,7 +52,6 @@ class ToolTimeoutManager:
         'analyze_queries_batch': 180,
         
         # Export operations (15-60s)
-        'get_live_model_schema': 15,
         'export_compact_schema': 30,
         'export_relationship_graph': 20,
         'export_tmdl': 60,

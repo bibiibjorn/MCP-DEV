@@ -116,7 +116,9 @@ class PbirReportAnalyzer:
                     "name": filt.get("name", ""),
                     "field": self._extract_filter_field(filt.get("field", {})),
                     "how_created": filt.get("howCreated", ""),
-                    "filter_level": "report"  # Mark as report-level filter
+                    "filter_level": "report",  # Mark as report-level filter
+                    "filter_type": filt.get("type", ""),
+                    "filter_values": self._extract_filter_values(filt)
                 }
                 filters.append(filter_info)
 
@@ -193,7 +195,9 @@ class PbirReportAnalyzer:
                     "name": filt.get("name", ""),
                     "field": self._extract_filter_field(filt.get("field", {})),
                     "how_created": filt.get("howCreated", ""),
-                    "filter_level": "page"  # Mark as page-level filter
+                    "filter_level": "page",  # Mark as page-level filter
+                    "filter_type": filt.get("type", ""),
+                    "filter_values": self._extract_filter_values(filt)
                 }
                 filters.append(filter_info)
 
@@ -225,6 +229,88 @@ class PbirReportAnalyzer:
             self.logger.warning(f"Error extracting filter field: {e}")
 
         return {"type": "Unknown", "table": "", "name": ""}
+
+    def _extract_filter_values(self, filt: Dict) -> Dict[str, Any]:
+        """Extract filter values from filter condition."""
+        result = {
+            "has_values": False,
+            "values": [],
+            "condition_type": None,
+            "is_all_selected": False
+        }
+
+        try:
+            filter_condition = filt.get("filter", {})
+            if not filter_condition:
+                return result
+
+            where_clauses = filter_condition.get("Where", [])
+            for where in where_clauses:
+                condition = where.get("Condition", {})
+
+                # Handle "In" conditions (most common for categorical filters)
+                if "In" in condition:
+                    result["condition_type"] = "In"
+                    in_condition = condition["In"]
+                    values_list = in_condition.get("Values", [])
+
+                    for value_group in values_list:
+                        for val in value_group:
+                            if "Literal" in val:
+                                literal_value = val["Literal"].get("Value", "")
+                                # Clean up the value (remove quotes)
+                                if literal_value.startswith("'") and literal_value.endswith("'"):
+                                    literal_value = literal_value[1:-1]
+                                elif literal_value.startswith('"') and literal_value.endswith('"'):
+                                    literal_value = literal_value[1:-1]
+                                result["values"].append(literal_value)
+
+                # Handle "Comparison" conditions (e.g., greater than, less than)
+                elif "Comparison" in condition:
+                    result["condition_type"] = "Comparison"
+                    comp = condition["Comparison"]
+                    comp_kind = comp.get("ComparisonKind", "")
+                    right = comp.get("Right", {})
+                    if "Literal" in right:
+                        literal_value = right["Literal"].get("Value", "")
+                        if literal_value.startswith("'") and literal_value.endswith("'"):
+                            literal_value = literal_value[1:-1]
+                        result["values"].append(f"{comp_kind}: {literal_value}")
+
+                # Handle "Between" conditions
+                elif "Between" in condition:
+                    result["condition_type"] = "Between"
+                    between = condition["Between"]
+                    lower = between.get("Lower", {}).get("Literal", {}).get("Value", "")
+                    upper = between.get("Upper", {}).get("Literal", {}).get("Value", "")
+                    if lower.startswith("'"):
+                        lower = lower[1:-1]
+                    if upper.startswith("'"):
+                        upper = upper[1:-1]
+                    result["values"].append(f"{lower} to {upper}")
+
+                # Handle "Not" conditions (exclusions)
+                elif "Not" in condition:
+                    result["condition_type"] = "Not"
+                    not_condition = condition["Not"]
+                    # Recursively extract the inner condition
+                    if "In" in not_condition.get("Expression", {}):
+                        inner_in = not_condition["Expression"]["In"]
+                        values_list = inner_in.get("Values", [])
+                        for value_group in values_list:
+                            for val in value_group:
+                                if "Literal" in val:
+                                    literal_value = val["Literal"].get("Value", "")
+                                    if literal_value.startswith("'") and literal_value.endswith("'"):
+                                        literal_value = literal_value[1:-1]
+                                    result["values"].append(f"NOT: {literal_value}")
+
+            result["has_values"] = len(result["values"]) > 0
+
+        except Exception as e:
+            self.logger.warning(f"Error extracting filter values: {e}")
+
+        return result
 
     def _parse_visuals(self, visuals_path: str) -> List[Dict[str, Any]]:
         """Parse all visuals in a page with parallel processing."""

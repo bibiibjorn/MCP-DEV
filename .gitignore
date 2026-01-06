@@ -122,3 +122,6 @@ core/exports/
 # Distribution packages
 *.zip
 *.mcpb
+
+# Claude Code local settings (user-specific)
+.claude/settings.local.json
