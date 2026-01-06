@@ -111,32 +111,30 @@ echo.
 echo Step 5/5: Updating Claude Desktop config...
 
 :: Use PowerShell to handle JSON manipulation properly
+:: Note: Uses "MCP-PowerBi-Finvision-DEV" to avoid overwriting production server
 powershell -ExecutionPolicy Bypass -Command ^
     "$configPath = '%configPath%'; $repoPath = '%repoPath%';" ^
+    "$serverName = 'MCP-PowerBi-Finvision-DEV';" ^
     "$pythonPath = Join-Path $repoPath 'venv\Scripts\python.exe';" ^
     "$scriptPath = Join-Path $repoPath 'src\pbixray_server_enhanced.py';" ^
     "$mcpServer = @{ 'command' = $pythonPath; 'args' = @($scriptPath) };" ^
-    "if (Test-Path $configPath) { try { $config = Get-Content $configPath -Raw | ConvertFrom-Json; Write-Host 'Found existing config file' -ForegroundColor Green } catch { Write-Host 'Config file exists but is invalid, creating new one' -ForegroundColor Yellow; $config = [PSCustomObject]@{} } } else { Write-Host 'Creating new config file' -ForegroundColor Yellow; $config = [PSCustomObject]@{} };" ^
+    "if (Test-Path $configPath) { try { $config = Get-Content $configPath -Raw -Encoding UTF8 | ConvertFrom-Json; Write-Host 'Found existing config file' -ForegroundColor Green } catch { Write-Host 'Config file exists but is invalid, creating new one' -ForegroundColor Yellow; $config = [PSCustomObject]@{} } } else { Write-Host 'Creating new config file' -ForegroundColor Yellow; $config = [PSCustomObject]@{} };" ^
     "if (-not $config.PSObject.Properties['mcpServers']) { $config | Add-Member -NotePropertyName 'mcpServers' -NotePropertyValue ([PSCustomObject]@{}) };" ^
-    "if ($config.mcpServers.PSObject.Properties['MCP-PowerBi-Finvision']) { $config.mcpServers.'MCP-PowerBi-Finvision' = $mcpServer; Write-Host 'Updated existing MCP-PowerBi-Finvision configuration' -ForegroundColor Green } else { $config.mcpServers | Add-Member -NotePropertyName 'MCP-PowerBi-Finvision' -NotePropertyValue $mcpServer; Write-Host 'Added MCP-PowerBi-Finvision configuration' -ForegroundColor Green };" ^
-    "$config | ConvertTo-Json -Depth 10 | Set-Content $configPath -Encoding UTF8;" ^
+    "if ($config.mcpServers.PSObject.Properties[$serverName]) { $config.mcpServers.$serverName = $mcpServer; Write-Host ('Updated existing ' + $serverName + ' configuration') -ForegroundColor Green } else { $config.mcpServers | Add-Member -NotePropertyName $serverName -NotePropertyValue $mcpServer; Write-Host ('Added ' + $serverName + ' configuration') -ForegroundColor Green };" ^
+    "$json = $config | ConvertTo-Json -Depth 10; [System.IO.File]::WriteAllText($configPath, $json, [System.Text.UTF8Encoding]::new($false));" ^
     "Write-Host ''; Write-Host 'Config saved to:' $configPath -ForegroundColor Cyan;" ^
-    "Write-Host ''; Write-Host 'MCP Server configured with:' -ForegroundColor Cyan;" ^
+    "Write-Host ''; Write-Host 'MCP Server configured as:' $serverName -ForegroundColor Cyan;" ^
     "Write-Host '  Python: ' $pythonPath; Write-Host '  Script: ' $scriptPath;"
 
 if errorlevel 1 (
     echo.
     echo Warning: Failed to update Claude Desktop config automatically.
-    echo You may need to add the following manually to %configPath%:
+    echo You may need to add the following entry to mcpServers in %configPath%:
     echo.
-    echo {
-    echo   "mcpServers": {
-    echo     "MCP-PowerBi-Finvision": {
+    echo     "MCP-PowerBi-Finvision-DEV": {
     echo       "command": "%repoPath%\venv\Scripts\python.exe",
     echo       "args": ["%repoPath%\src\pbixray_server_enhanced.py"]
     echo     }
-    echo   }
-    echo }
     echo.
 )
 
@@ -147,7 +145,11 @@ echo   Setup Complete!
 echo ========================================
 echo.
 echo Repository cloned to: %repoPath%
-echo Claude config updated: %configPath%
+echo Claude config: %configPath%
+echo MCP Server added as: MCP-PowerBi-Finvision-DEV
+echo.
+echo NOTE: Your existing MCP servers are preserved.
+echo       The DEV version runs alongside production.
 echo.
 echo IMPORTANT: Restart Claude Desktop for changes to take effect!
 echo.
