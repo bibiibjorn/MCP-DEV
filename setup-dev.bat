@@ -8,26 +8,129 @@ echo ========================================
 echo.
 
 :: Check if Python 3.13 is available
-echo Checking Python version...
+echo Checking for Python 3.13...
+set "PYTHON_CMD="
+
+:: First try py launcher with 3.13
 py -3.13 --version >nul 2>&1
-if errorlevel 1 (
+if %errorlevel%==0 (
+    set "PYTHON_CMD=py -3.13"
+    goto :python_found
+)
+
+:: Try common installation paths
+if exist "%LOCALAPPDATA%\Programs\Python\Python313\python.exe" (
+    set "PYTHON_CMD=%LOCALAPPDATA%\Programs\Python\Python313\python.exe"
+    goto :python_found
+)
+
+if exist "%PROGRAMFILES%\Python313\python.exe" (
+    set "PYTHON_CMD=%PROGRAMFILES%\Python313\python.exe"
+    goto :python_found
+)
+
+if exist "C:\Python313\python.exe" (
+    set "PYTHON_CMD=C:\Python313\python.exe"
+    goto :python_found
+)
+
+:: Python 3.13 not found - install it automatically
+echo Python 3.13 not found. Installing automatically...
+echo.
+
+:: Check if winget is available
+winget --version >nul 2>&1
+if %errorlevel%==0 (
+    echo Installing Python 3.13 via winget...
+    echo This may take a few minutes...
     echo.
-    echo ERROR: Python 3.13 is not installed!
+    winget install Python.Python.3.13 --accept-source-agreements --accept-package-agreements --silent
+
+    if errorlevel 1 (
+        echo.
+        echo WARNING: winget installation may have had issues. Trying alternative...
+        goto :try_direct_download
+    )
+
+    :: Refresh PATH by checking common locations after install
     echo.
-    echo This project requires Python 3.13 (pythonnet doesn't support 3.14 yet).
+    echo Python installed. Locating executable...
+
+    :: Wait a moment for installation to complete
+    timeout /t 2 /nobreak >nul
+
+    :: Check installation paths again
+    if exist "%LOCALAPPDATA%\Programs\Python\Python313\python.exe" (
+        set "PYTHON_CMD=%LOCALAPPDATA%\Programs\Python\Python313\python.exe"
+        goto :python_found
+    )
+
+    :: Try py launcher again (might work now)
+    py -3.13 --version >nul 2>&1
+    if %errorlevel%==0 (
+        set "PYTHON_CMD=py -3.13"
+        goto :python_found
+    )
+
     echo.
-    echo Please install Python 3.13 first:
-    echo   Option 1: Run install-python.bat from this folder
-    echo   Option 2: Download from https://www.python.org/downloads/release/python-3130/
-    echo   Option 3: Run: winget install Python.Python.3.13
-    echo.
-    echo After installing, open a NEW terminal and run this script again.
+    echo Python was installed but cannot be located.
+    echo Please close this window, open a NEW terminal, and run setup-dev.bat again.
     echo.
     pause
     exit /b 1
 )
 
-for /f "tokens=*" %%i in ('py -3.13 --version') do echo Found: %%i
+:try_direct_download
+:: Fallback: Download and install directly
+echo winget not available. Downloading Python 3.13 installer...
+echo.
+
+set "installerUrl=https://www.python.org/ftp/python/3.13.0/python-3.13.0-amd64.exe"
+set "installerPath=%TEMP%\python-3.13.0-amd64.exe"
+
+powershell -Command "Invoke-WebRequest -Uri '%installerUrl%' -OutFile '%installerPath%'" 2>nul
+
+if not exist "%installerPath%" (
+    echo.
+    echo ERROR: Failed to download Python installer.
+    echo Please install Python 3.13 manually from:
+    echo   https://www.python.org/downloads/release/python-3130/
+    echo.
+    pause
+    exit /b 1
+)
+
+echo Installing Python 3.13 (this may take a minute)...
+start /wait "" "%installerPath%" /quiet InstallAllUsers=0 PrependPath=1 Include_test=0
+
+:: Clean up installer
+del "%installerPath%" >nul 2>&1
+
+:: Wait for installation
+timeout /t 3 /nobreak >nul
+
+:: Check installation paths
+if exist "%LOCALAPPDATA%\Programs\Python\Python313\python.exe" (
+    set "PYTHON_CMD=%LOCALAPPDATA%\Programs\Python\Python313\python.exe"
+    goto :python_found
+)
+
+py -3.13 --version >nul 2>&1
+if %errorlevel%==0 (
+    set "PYTHON_CMD=py -3.13"
+    goto :python_found
+)
+
+echo.
+echo Python was installed but cannot be located in this session.
+echo Please close this window, open a NEW terminal, and run setup-dev.bat again.
+echo.
+pause
+exit /b 1
+
+:python_found
+for /f "tokens=*" %%i in ('!PYTHON_CMD! --version') do echo Found: %%i
+echo Using: !PYTHON_CMD!
 echo.
 
 :: Ask for clone location
@@ -76,7 +179,7 @@ cd /d "%repoPath%"
 :: Create virtual environment using Python 3.13
 echo.
 echo Step 2/5: Creating virtual environment with Python 3.13...
-py -3.13 -m venv venv
+!PYTHON_CMD! -m venv venv
 
 if errorlevel 1 (
     echo.
