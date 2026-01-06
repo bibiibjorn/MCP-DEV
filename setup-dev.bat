@@ -7,6 +7,29 @@ echo   MCP-PowerBi-Finvision Dev Setup
 echo ========================================
 echo.
 
+:: Check if Python 3.13 is available
+echo Checking Python version...
+py -3.13 --version >nul 2>&1
+if errorlevel 1 (
+    echo.
+    echo ERROR: Python 3.13 is not installed!
+    echo.
+    echo This project requires Python 3.13 (pythonnet doesn't support 3.14 yet).
+    echo.
+    echo Please install Python 3.13 first:
+    echo   Option 1: Run install-python.bat from this folder
+    echo   Option 2: Download from https://www.python.org/downloads/release/python-3130/
+    echo   Option 3: Run: winget install Python.Python.3.13
+    echo.
+    echo After installing, open a NEW terminal and run this script again.
+    echo.
+    pause
+    exit /b 1
+)
+
+for /f "tokens=*" %%i in ('py -3.13 --version') do echo Found: %%i
+echo.
+
 :: Ask for clone location
 set "defaultPath=%USERPROFILE%\repos"
 echo Where would you like to clone the repository?
@@ -50,16 +73,29 @@ if errorlevel 1 (
 
 cd /d "%repoPath%"
 
-:: Create virtual environment
+:: Create virtual environment using Python 3.13
 echo.
-echo Step 2/5: Creating virtual environment...
-python -m venv venv
+echo Step 2/5: Creating virtual environment with Python 3.13...
+py -3.13 -m venv venv
 
 if errorlevel 1 (
+    echo.
     echo Failed to create virtual environment!
-    echo Make sure Python is installed and in your PATH
+    echo.
+    pause
     exit /b 1
 )
+
+if not exist "%repoPath%\venv\Scripts\python.exe" (
+    echo.
+    echo ERROR: Virtual environment was not created properly!
+    echo The venv folder or python.exe is missing.
+    echo.
+    pause
+    exit /b 1
+)
+
+echo Virtual environment created successfully.
 
 :: Activate virtual environment and install dependencies
 echo.
@@ -68,11 +104,16 @@ call "%repoPath%\venv\Scripts\activate.bat"
 
 echo.
 echo Step 4/5: Installing dependencies...
+echo This may take a few minutes...
 pip install -r requirements.txt
 
 if errorlevel 1 (
-    echo Warning: Failed to install some dependencies!
-    echo You may need to install them manually
+    echo.
+    echo WARNING: Failed to install some dependencies!
+    echo You may need to install them manually.
+    echo.
+    echo Press any key to continue anyway...
+    pause >nul
 )
 
 :: Configure Claude Desktop
