@@ -59,9 +59,19 @@ if %errorlevel%==0 (
     :: Wait a moment for installation to complete
     timeout /t 2 /nobreak >nul
 
-    :: Check installation paths again
+    :: Check installation paths again (winget may install to different locations)
     if exist "%LOCALAPPDATA%\Programs\Python\Python313\python.exe" (
         set "PYTHON_CMD=%LOCALAPPDATA%\Programs\Python\Python313\python.exe"
+        goto :python_found
+    )
+
+    if exist "%PROGRAMFILES%\Python313\python.exe" (
+        set "PYTHON_CMD=%PROGRAMFILES%\Python313\python.exe"
+        goto :python_found
+    )
+
+    if exist "%USERPROFILE%\AppData\Local\Programs\Python\Python313\python.exe" (
+        set "PYTHON_CMD=%USERPROFILE%\AppData\Local\Programs\Python\Python313\python.exe"
         goto :python_found
     )
 
@@ -112,6 +122,16 @@ timeout /t 3 /nobreak >nul
 :: Check installation paths
 if exist "%LOCALAPPDATA%\Programs\Python\Python313\python.exe" (
     set "PYTHON_CMD=%LOCALAPPDATA%\Programs\Python\Python313\python.exe"
+    goto :python_found
+)
+
+if exist "%USERPROFILE%\AppData\Local\Programs\Python\Python313\python.exe" (
+    set "PYTHON_CMD=%USERPROFILE%\AppData\Local\Programs\Python\Python313\python.exe"
+    goto :python_found
+)
+
+if exist "%PROGRAMFILES%\Python313\python.exe" (
+    set "PYTHON_CMD=%PROGRAMFILES%\Python313\python.exe"
     goto :python_found
 )
 
