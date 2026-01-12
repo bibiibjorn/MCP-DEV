@@ -20,20 +20,8 @@ def register_role_operations_handler(registry):
     """Register role operations handler"""
 
     tool = ToolDefinition(
-        name="role_operations",
-        description=(
-            "Unified RLS/OLS role operations handler supporting ALL CRUD operations.\n"
-            "\n"
-            "━━━ READ OPERATIONS ━━━\n"
-            "• list: List all security roles → operation='list'\n"
-            "  Example: {'operation': 'list'}\n"
-            "\n"
-            "RLS = Row-Level Security (filter data rows)\n"
-            "OLS = Object-Level Security (hide objects)\n"
-            "\n"
-            "Note: Additional CRUD operations (create, update, delete, rename) will be available when implemented.\n"
-            "USE ALL OPERATIONS AS NEEDED when they become available!"
-        ),
+        name="02_Role_Operations",
+        description="RLS/OLS security role operations: list roles with permissions.",
         handler=handle_role_operations,
         input_schema={
             "type": "object",
@@ -81,7 +69,7 @@ def register_role_operations_handler(registry):
             ]
         },
         category="model_operations",
-        sort_order=17
+        sort_order=25  # 02 = Model Operations
     )
 
     registry.register(tool)

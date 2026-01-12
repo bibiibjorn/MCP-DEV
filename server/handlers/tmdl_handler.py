@@ -225,36 +225,8 @@ def register_tmdl_operations_handler(registry):
     """Register unified TMDL operations handler"""
 
     tool = ToolDefinition(
-        name="tmdl_operations",
-        description=(
-            "Unified TMDL operations handler supporting ALL TMDL automation tasks.\n"
-            "\n"
-            "━━━ EXPORT OPERATION ━━━\n"
-            "• export: Export full TMDL definition to file → operation='export'\n"
-            "  Optional: output_dir (path to export directory)\n"
-            "  Returns: Full TMDL definition including all DAX expressions\n"
-            "  Example: {'operation': 'export', 'output_dir': 'C:/exports/tmdl'}\n"
-            "\n"
-            "━━━ FIND & REPLACE OPERATION ━━━\n"
-            "• find_replace: Find and replace in TMDL files with regex support → operation='find_replace'\n"
-            "  Required: tmdl_path, pattern, replacement\n"
-            "  Optional: dry_run (default: true), regex (default: false), case_sensitive (default: true), target (default: 'all')\n"
-            "  Example: {'operation': 'find_replace', 'tmdl_path': 'C:/exports/tmdl', 'pattern': 'SUM', 'replacement': 'SUMX', 'dry_run': true}\n"
-            "\n"
-            "━━━ BULK RENAME OPERATION ━━━\n"
-            "• bulk_rename: Bulk rename objects with automatic reference updates → operation='bulk_rename'\n"
-            "  Required: tmdl_path, renames (array of {object_type, old_name, new_name})\n"
-            "  Optional: dry_run (default: true), update_references (default: true)\n"
-            "  Example: {'operation': 'bulk_rename', 'tmdl_path': 'C:/exports/tmdl', 'renames': [{'object_type': 'measure', 'old_name': 'Rev', 'new_name': 'Revenue'}]}\n"
-            "\n"
-            "━━━ GENERATE SCRIPT OPERATION ━━━\n"
-            "• generate_script: Generate TMDL script from object definition → operation='generate_script'\n"
-            "  Required: definition (object definition dict)\n"
-            "  Optional: object_type (table|measure|relationship|calc_group, default: 'table')\n"
-            "  Example: {'operation': 'generate_script', 'object_type': 'measure', 'definition': {'name': 'Total Sales', 'expression': 'SUM(Sales[Amount])'}}\n"
-            "\n"
-            "USE ALL OPERATIONS AS NEEDED!"
-        ),
+        name="02_TMDL_Operations",
+        description="TMDL automation: export, find_replace (with regex), bulk_rename (with reference updates), generate_script.",
         handler=handle_tmdl_operations,
         input_schema={
             "type": "object",
@@ -423,7 +395,7 @@ def register_tmdl_operations_handler(registry):
             ]
         },
         category="tmdl",
-        sort_order=15
+        sort_order=26  # 02 = Model Operations
     )
 
     registry.register(tool)

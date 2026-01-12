@@ -548,7 +548,7 @@ def register_export_dax_measures_handler(registry):
     }
 
     tool = ToolDefinition(
-        name="export_dax_measures",
+        name="05_Export_DAX_Measures",
         description="""Export all DAX measures to CSV file.
 
 Creates a CSV with columns: Table, Measure_Name, Display_Folder, DAX_Expression
@@ -557,7 +557,7 @@ Use this to get a complete list of all measures in the model with their DAX defi
         handler=handle_export_dax_measures,
         input_schema=input_schema,
         category="dependencies",
-        sort_order=25
+        sort_order=53  # 05 = DAX Intelligence
     )
 
     registry.register(tool)
@@ -674,7 +674,7 @@ Operations:
     }
 
     tool = ToolDefinition(
-        name="column_usage_mapping",
+        name="05_Column_Usage_Mapping",
         description="""Analyze column usage - find unused columns, check measure dependencies.
 
 SIMPLE USAGE:
@@ -690,7 +690,7 @@ Returns CSV file paths or compact JSON results.""",
         handler=handle_column_usage_mapping,
         input_schema=input_schema,
         category="dependencies",
-        sort_order=24
+        sort_order=54  # 05 = DAX Intelligence
     )
 
     registry.register(tool)

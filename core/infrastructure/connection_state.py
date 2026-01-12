@@ -41,6 +41,13 @@ class ConnectionState:
         self._is_connected = False
         self._connection_info = None
         self._managers_initialized = False
+
+        # PBIP/PBIX file information (for visual debugger integration)
+        self._pbip_folder_path: Optional[str] = None  # Path to PBIP project folder
+        self._file_full_path: Optional[str] = None  # Full path to .pbix or .pbip file
+        self._file_type: Optional[str] = None  # 'pbix' or 'pbip'
+        self._pbip_path_source: str = 'none'  # 'auto-detected', 'manual', 'none'
+
         # Rolling query history (lightweight)
         self._query_history = []
         self._query_history_max = 200
@@ -420,7 +427,74 @@ class ConnectionState:
         self._table_name_by_id = None
         self._table_mapping_timestamp = None
 
+        # Clear PBIP path information
+        self._pbip_folder_path = None
+        self._file_full_path = None
+        self._file_type = None
+        self._pbip_path_source = 'none'
+
         logger.info("Connection state cleaned up")
+
+    # ---- PBIP Path Management ----
+    def set_pbip_info(
+        self,
+        pbip_folder_path: Optional[str] = None,
+        file_full_path: Optional[str] = None,
+        file_type: Optional[str] = None,
+        source: str = 'manual'
+    ) -> Dict[str, Any]:
+        """
+        Set PBIP/PBIX file information.
+
+        Args:
+            pbip_folder_path: Path to PBIP project folder (for PBIP projects)
+            file_full_path: Full path to .pbix or .pbip file
+            file_type: 'pbix' or 'pbip'
+            source: 'auto-detected' or 'manual'
+
+        Returns:
+            Status dictionary with current PBIP info
+        """
+        self._pbip_folder_path = pbip_folder_path
+        self._file_full_path = file_full_path
+        self._file_type = file_type
+        self._pbip_path_source = source
+
+        logger.info(f"PBIP info set: type={file_type}, folder={pbip_folder_path}, source={source}")
+        return self.get_pbip_info()
+
+    def get_pbip_info(self) -> Dict[str, Any]:
+        """
+        Get current PBIP/PBIX file information.
+
+        Returns:
+            Dictionary with:
+            - pbip_folder_path: Path to PBIP folder (None for PBIX)
+            - file_full_path: Full path to file
+            - file_type: 'pbix', 'pbip', or None
+            - source: 'auto-detected', 'manual', or 'none'
+            - pbip_available: True if PBIP folder is available for analysis
+        """
+        return {
+            'pbip_folder_path': self._pbip_folder_path,
+            'file_full_path': self._file_full_path,
+            'file_type': self._file_type,
+            'source': self._pbip_path_source,
+            'pbip_available': self._pbip_folder_path is not None and self._file_type == 'pbip'
+        }
+
+    def get_pbip_folder_path(self) -> Optional[str]:
+        """Get the PBIP folder path if available."""
+        return self._pbip_folder_path
+
+    @property
+    def pbip_path(self) -> Optional[str]:
+        """Alias for get_pbip_folder_path for easier access."""
+        return self._pbip_folder_path
+
+    def is_pbip_available(self) -> bool:
+        """Check if PBIP project folder is available for analysis."""
+        return self._pbip_folder_path is not None and self._file_type == 'pbip'
 
     # ---- Query history helpers ----
     def _history_logger(self, entry: dict) -> None:

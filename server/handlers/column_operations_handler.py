@@ -20,49 +20,8 @@ def register_column_operations_handler(registry):
     """Register column operations handler"""
 
     tool = ToolDefinition(
-        name="column_operations",
-        description=(
-            "Unified column operations handler supporting ALL CRUD operations.\n"
-            "\n"
-            "━━━ READ OPERATIONS ━━━\n"
-            "• list: List columns (all/data/calculated) → operation='list'\n"
-            "  Optional: table_name, column_type ('all'/'data'/'calculated')\n"
-            "  Example: {'operation': 'list', 'table_name': 'Sales', 'column_type': 'calculated'}\n"
-            "\n"
-            "• get: Get column details → operation='get', table_name=X, column_name=Y\n"
-            "  Example: {'operation': 'get', 'table_name': 'Sales', 'column_name': 'Amount'}\n"
-            "\n"
-            "• statistics: Get column stats (distinct/total/blank counts) → operation='statistics', table_name=X, column_name=Y\n"
-            "  Example: {'operation': 'statistics', 'table_name': 'Sales', 'column_name': 'CustomerID'}\n"
-            "\n"
-            "• distribution: Get top N values → operation='distribution', table_name=X, column_name=Y, top_n=N\n"
-            "  Example: {'operation': 'distribution', 'table_name': 'Sales', 'column_name': 'Country', 'top_n': 10}\n"
-            "\n"
-            "━━━ CREATE OPERATION ━━━\n"
-            "• create: Create new column → operation='create', table_name=X, column_name=Y\n"
-            "  Required: table_name, column_name\n"
-            "  Optional: data_type, expression (for calculated), description, hidden, display_folder, format_string, source_column\n"
-            "  Example (data column): {'operation': 'create', 'table_name': 'Sales', 'column_name': 'NewColumn', 'data_type': 'String'}\n"
-            "  Example (calculated): {'operation': 'create', 'table_name': 'Sales', 'column_name': 'TotalAmount', 'expression': '[Quantity] * [Price]'}\n"
-            "\n"
-            "━━━ UPDATE OPERATION ━━━\n"
-            "• update: Update existing column → operation='update', table_name=X, column_name=Y\n"
-            "  Required: table_name, column_name\n"
-            "  Optional: expression, description, hidden, display_folder, format_string, new_name\n"
-            "  Example: {'operation': 'update', 'table_name': 'Sales', 'column_name': 'Amount', 'format_string': '$#,0.00', 'description': 'Updated'}\n"
-            "\n"
-            "━━━ DELETE OPERATION ━━━\n"
-            "• delete: Delete column → operation='delete', table_name=X, column_name=Y\n"
-            "  Required: table_name, column_name\n"
-            "  Example: {'operation': 'delete', 'table_name': 'Sales', 'column_name': 'OldColumn'}\n"
-            "\n"
-            "━━━ RENAME OPERATION ━━━\n"
-            "• rename: Rename column → operation='rename', table_name=X, column_name=Y, new_name=Z\n"
-            "  Required: table_name, column_name, new_name\n"
-            "  Example: {'operation': 'rename', 'table_name': 'Sales', 'column_name': 'Amt', 'new_name': 'Amount'}\n"
-            "\n"
-            "USE ALL OPERATIONS AS NEEDED - don't skip CREATE/UPDATE/DELETE/RENAME!"
-        ),
+        name="02_Column_Operations",
+        description="Unified column CRUD: list, get, statistics, distribution, create, update, delete, rename. See input_schema for operation details.",
         handler=handle_column_operations,
         input_schema={
             "type": "object",
@@ -231,7 +190,7 @@ def register_column_operations_handler(registry):
             ]
         },
         category="metadata",
-        sort_order=12
+        sort_order=21  # 02 = Model Operations
     )
 
     registry.register(tool)

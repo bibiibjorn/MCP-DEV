@@ -181,12 +181,12 @@ def register_aggregation_handler(registry) -> None:
     from server.handler_factory import ToolDefinition
 
     tool = ToolDefinition(
-        name="analyze_aggregation",
+        name="07_Analyze_Aggregation",
         description="[PBIP] Analyze manual aggregation table usage across visuals and pages. Shows which aggregation tables are hit based on filter context, optimization opportunities, and estimated row savings. Supports summary, detailed, HTML, and JSON output formats.",
         handler=handle_aggregation_analysis,
         input_schema=get_aggregation_schema(),
         category="pbip",
-        sort_order=140,
+        sort_order=74,  # 07 = PBIP Analysis
     )
     registry.register(tool)
 

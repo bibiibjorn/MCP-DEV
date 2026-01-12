@@ -859,20 +859,20 @@ def register_analysis_handlers(registry):
 
     tools = [
         ToolDefinition(
-            name="simple_analysis",
+            name="06_Simple_Analysis",
             description="Fast Microsoft MCP operations with Power BI expert analysis: Runs 8 core operations (database, stats, tables, measures, columns, relationships, calculation groups, roles) + generates detailed insights and recommendations",
             handler=handle_simple_analysis,
             input_schema=TOOL_SCHEMAS.get('simple_analysis', {}),
             category="analysis",
-            sort_order=40
+            sort_order=60  # 06 = Analysis
         ),
         ToolDefinition(
-            name="full_analysis",
+            name="06_Full_Analysis",
             description="Comprehensive analysis: Best practices (BPA), performance, and integrity validation (10-180s)",
             handler=handle_full_analysis,
             input_schema=TOOL_SCHEMAS.get('full_analysis', {}),
             category="analysis",
-            sort_order=41
+            sort_order=61  # 06 = Analysis
         ),
     ]
 

@@ -210,12 +210,12 @@ def register_pbip_handlers(registry):
 
     tools = [
         ToolDefinition(
-            name="analyze_pbip_repository",
+            name="07_Analyze_PBIP_Repository",
             description="Offline PBIP repository analysis with HTML report export",
             handler=handle_analyze_pbip_repository,
             input_schema=TOOL_SCHEMAS.get('analyze_pbip_repository', {}),
             category="pbip",
-            sort_order=80
+            sort_order=70  # 07 = PBIP Analysis
         ),
     ]
 

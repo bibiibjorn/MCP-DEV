@@ -522,20 +522,20 @@ def register_dependencies_handlers(registry):
 
     tools = [
         ToolDefinition(
-            name="analyze_measure_dependencies",
+            name="05_Analyze_Dependencies",
             description="Analyze measure dependencies with formatted text output and rendered diagram image. Returns formatted_output (text analysis) and a visual dependency diagram as PNG image.",
             handler=handle_analyze_measure_dependencies,
             input_schema=TOOL_SCHEMAS.get('analyze_measure_dependencies', {}),
             category="dependencies",
-            sort_order=22
+            sort_order=51  # 05 = DAX Intelligence
         ),
         ToolDefinition(
-            name="get_measure_impact",
+            name="05_Get_Measure_Impact",
             description="Get measure usage impact - shows what depends on this measure",
             handler=handle_get_measure_impact,
             input_schema=TOOL_SCHEMAS.get('get_measure_impact', {}),
             category="dependencies",
-            sort_order=23
+            sort_order=52  # 05 = DAX Intelligence
         ),
     ]
 

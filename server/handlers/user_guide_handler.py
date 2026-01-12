@@ -711,12 +711,12 @@ def register_user_guide_handlers(registry):
 
     tools = [
         ToolDefinition(
-            name="show_user_guide",
+            name="10_Show_User_Guide",
             description="Show comprehensive user guide",
             handler=handle_show_user_guide,
             input_schema=TOOL_SCHEMAS.get('show_user_guide', {}),
             category="help",
-            sort_order=100
+            sort_order=110  # 10 = Help
         ),
     ]
 

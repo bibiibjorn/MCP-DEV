@@ -15,6 +15,9 @@ from .aggregation_detector import AggLevelMeasure, AggregationTable
 
 logger = logging.getLogger(__name__)
 
+# Visual types that are slicers (standard slicer + advanced/chiclet slicers)
+SLICER_VISUAL_TYPES = {'slicer', 'advancedslicervisual'}
+
 
 class FilterSourceType(Enum):
     """Types of filter sources in Power BI."""
@@ -472,8 +475,8 @@ def extract_slicers_from_page(page_data: Dict, page_id: str) -> List[SlicerInfo]
         visual_info = visual.get("visual", {})
         visual_type = visual_info.get("visualType", "")
 
-        # Check if this is a slicer
-        if visual_type.lower() == "slicer":
+        # Check if this is a slicer (standard or advanced/chiclet)
+        if visual_type.lower() in SLICER_VISUAL_TYPES:
             slicer_id = visual.get("name", "")
 
             # Extract the field being sliced

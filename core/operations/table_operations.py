@@ -87,32 +87,12 @@ class TableOperationsHandler(BaseOperationsHandler):
             return ErrorHandler.handle_unexpected_error('describe_table', e)
 
     def _preview_table(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Preview table data"""
-        # Get manager with connection check
-        agent_policy = get_manager_or_error('agent_policy')
-        if isinstance(agent_policy, dict):  # Error response
-            return agent_policy
-
-        # Extract parameters with backward compatibility
-        table_name = get_table_name(args)
-
-        # Validate required parameter
-        if error := validate_required(table_name, 'table_name', 'preview'):
-            return error
-
-        max_rows = get_optional_int(args, 'max_rows', 10)
-
-        # Create EVALUATE query for table preview
-        query = f'EVALUATE TOPN({max_rows}, \'{table_name}\')'
-
-        result = agent_policy.safe_run_dax(
-            connection_state=connection_state,
-            query=query,
-            mode='auto',
-            max_rows=max_rows
-        )
-
-        return result
+        """
+        Preview table data (simple version).
+        Delegates to sample_data for consistent implementation.
+        """
+        # Delegate to sample_data - preview is just sample_data without extra options
+        return self._sample_data(args)
 
     def _sample_data(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """

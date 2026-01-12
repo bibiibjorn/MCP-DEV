@@ -1341,9 +1341,9 @@ def register_dax_handlers(registry):
 
     tools = [
         ToolDefinition(
-            name="dax_intelligence",
+            name="05_DAX_Intelligence",
             description=(
-                "[03-DAX Intelligence] Comprehensive DAX analysis with optimization recommendations.\n\n"
+                "[05-DAX Intelligence] Comprehensive DAX analysis with optimization recommendations.\n\n"
                 "Provides complete analysis including:\n"
                 "• Context Transition Analysis: Complexity scores, nesting levels, transition details\n"
                 "• Anti-Pattern Detection: SQLBI research articles, pattern matches, recommendations\n"
@@ -1361,11 +1361,11 @@ def register_dax_handlers(registry):
             handler=handle_dax_intelligence,
             input_schema=TOOL_SCHEMAS.get('dax_intelligence', {}),
             category="dax",
-            sort_order=21
+            sort_order=50  # 05 = DAX Intelligence
         ),
     ]
 
     for tool in tools:
         registry.register(tool)
 
-    logger.info(f"Registered {len(tools)} DAX Intelligence handler (Tool 03)")
+    logger.info(f"Registered {len(tools)} DAX Intelligence handler (Tool 05)")

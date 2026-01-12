@@ -20,30 +20,8 @@ def register_calculation_group_operations_handler(registry):
     """Register calculation group operations handler"""
 
     tool = ToolDefinition(
-        name="calculation_group_operations",
-        description=(
-            "Unified calculation group operations handler supporting ALL CRUD operations.\n"
-            "\n"
-            "━━━ READ OPERATIONS ━━━\n"
-            "• list: List all calculation groups → operation='list'\n"
-            "  Example: {'operation': 'list'}\n"
-            "\n"
-            "• list_items: List calculation items in a group → operation='list_items', group_name=X\n"
-            "  Example: {'operation': 'list_items', 'group_name': 'Time Intelligence'}\n"
-            "\n"
-            "━━━ CREATE OPERATION ━━━\n"
-            "• create: Create new calculation group → operation='create', group_name=X, items=[...]\n"
-            "  Required: group_name, items (array of {name, expression, ordinal})\n"
-            "  Optional: description, precedence\n"
-            "  Example: {'operation': 'create', 'group_name': 'Time Intelligence', 'items': [{'name': 'YTD', 'expression': 'TOTALYTD([Value], Calendar[Date])', 'ordinal': 1}]}\n"
-            "\n"
-            "━━━ DELETE OPERATION ━━━\n"
-            "• delete: Delete calculation group → operation='delete', group_name=X\n"
-            "  Required: group_name\n"
-            "  Example: {'operation': 'delete', 'group_name': 'Old Group'}\n"
-            "\n"
-            "USE ALL OPERATIONS AS NEEDED - don't skip CREATE/DELETE!"
-        ),
+        name="02_Calculation_Group_Operations",
+        description="Unified calculation group CRUD: list, list_items, create, delete.",
         handler=handle_calculation_group_operations,
         input_schema={
             "type": "object",
@@ -150,7 +128,7 @@ def register_calculation_group_operations_handler(registry):
             ]
         },
         category="model_operations",
-        sort_order=16
+        sort_order=24  # 02 = Model Operations
     )
 
     registry.register(tool)

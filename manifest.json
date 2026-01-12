@@ -25,144 +25,188 @@
   },
   "tools": [
     {
-      "name": "detect_powerbi_desktop",
-      "description": "[Connection] Detect running Power BI Desktop instances"
+      "name": "01_Detect_PBI_Instances",
+      "description": "[01_Connection] Detect running Power BI Desktop instances"
     },
     {
-      "name": "connect_to_powerbi",
-      "description": "[Connection] Connect to Power BI Desktop (auto-detect or specify model_index)"
+      "name": "01_Connect_To_Instance",
+      "description": "[01_Connection] Connect to Power BI Desktop (auto-detect or specify model_index)"
     },
     {
-      "name": "search_objects",
-      "description": "[Schema] Search across tables, columns, and measures by name"
+      "name": "02_Table_Operations",
+      "description": "[02_Model_Operations] Unified table operations (CRUD)"
     },
     {
-      "name": "search_string",
-      "description": "[Schema] Search inside measure DAX expressions"
+      "name": "02_Column_Operations",
+      "description": "[02_Model_Operations] Unified column operations (CRUD)"
     },
     {
-      "name": "column_operations",
-      "description": "[Schema] Unified column operations (CRUD)"
+      "name": "02_Measure_Operations",
+      "description": "[02_Model_Operations] Unified measure operations (CRUD)"
     },
     {
-      "name": "measure_operations",
-      "description": "[Schema] Unified measure operations (CRUD)"
+      "name": "02_Relationship_Operations",
+      "description": "[02_Model_Operations] Unified relationship operations (CRUD)"
     },
     {
-      "name": "relationship_operations",
-      "description": "[Schema] Unified relationship operations (CRUD)"
+      "name": "02_Calculation_Group_Operations",
+      "description": "[02_Model_Operations] Calculation group CRUD"
     },
     {
-      "name": "tmdl_operations",
-      "description": "[TMDL] TMDL automation"
+      "name": "02_Role_Operations",
+      "description": "[02_Model_Operations] RLS/OLS role operations"
     },
     {
-      "name": "calculation_group_operations",
-      "description": "[Model Operations] Calculation group CRUD"
+      "name": "02_TMDL_Operations",
+      "description": "[02_Model_Operations] TMDL automation"
     },
     {
-      "name": "role_operations",
-      "description": "[Model Operations] RLS/OLS role operations"
+      "name": "03_Batch_Operations",
+      "description": "[03_Batch_Transactions] Batch operations with transaction support"
     },
     {
-      "name": "batch_operations",
-      "description": "[Model Operations] Batch operations with transaction support"
+      "name": "03_Manage_Transactions",
+      "description": "[03_Batch_Transactions] ACID transactions"
     },
     {
-      "name": "manage_transactions",
-      "description": "[Model Operations] ACID transactions"
+      "name": "04_Run_DAX",
+      "description": "[04_Query_Search] Execute DAX query"
     },
     {
-      "name": "run_dax",
-      "description": "[DAX] Execute DAX query"
+      "name": "04_Get_Data_Sources",
+      "description": "[04_Query_Search] List data sources"
     },
     {
-      "name": "dax_intelligence",
-      "description": "[DAX] Comprehensive DAX analysis"
+      "name": "04_Get_M_Expressions",
+      "description": "[04_Query_Search] List M/Power Query expressions"
     },
     {
-      "name": "analyze_measure_dependencies",
-      "description": "[DAX] Measure dependency tree"
+      "name": "04_Search_Objects",
+      "description": "[04_Query_Search] Search across tables, columns, and measures by name"
     },
     {
-      "name": "get_measure_impact",
-      "description": "[DAX] Measure usage impact"
+      "name": "04_Search_String",
+      "description": "[04_Query_Search] Search inside measure DAX expressions"
     },
     {
-      "name": "column_usage_mapping",
-      "description": "[DAX] Usage analysis for measures and columns"
+      "name": "05_DAX_Intelligence",
+      "description": "[05_DAX_Intelligence] Comprehensive DAX analysis"
     },
     {
-      "name": "export_dax_measures",
-      "description": "[DAX] Export all DAX measures to CSV"
+      "name": "05_Analyze_Dependencies",
+      "description": "[05_DAX_Intelligence] Measure dependency tree"
     },
     {
-      "name": "get_data_sources",
-      "description": "[Data Sources] List data sources"
+      "name": "05_Get_Measure_Impact",
+      "description": "[05_DAX_Intelligence] Measure usage impact"
     },
     {
-      "name": "get_m_expressions",
-      "description": "[Data Sources] List M/Power Query expressions"
+      "name": "05_Export_DAX_Measures",
+      "description": "[05_DAX_Intelligence] Export all DAX measures to CSV"
     },
     {
-      "name": "simple_analysis",
-      "description": "[Analysis] Fast model analysis"
+      "name": "05_Column_Usage_Mapping",
+      "description": "[05_DAX_Intelligence] Usage analysis for measures and columns"
     },
     {
-      "name": "full_analysis",
-      "description": "[Analysis] Comprehensive analysis"
+      "name": "06_Simple_Analysis",
+      "description": "[06_Analysis] Fast model analysis"
     },
     {
-      "name": "generate_model_documentation_word",
-      "description": "[Documentation] Generate Word documentation"
+      "name": "06_Full_Analysis",
+      "description": "[06_Analysis] Comprehensive analysis"
     },
     {
-      "name": "update_model_documentation_word",
-      "description": "[Documentation] Update Word documentation"
+      "name": "06_Compare_PBI_Models",
+      "description": "[06_Analysis] Compare models"
     },
     {
-      "name": "compare_pbi_models",
-      "description": "[Comparison] Compare models"
+      "name": "07_Analyze_PBIP_Repository",
+      "description": "[07_PBIP_Analysis] Offline PBIP analysis"
     },
     {
-      "name": "analyze_pbip_repository",
-      "description": "[PBIP Analysis] Offline PBIP analysis"
+      "name": "07_Report_Info",
+      "description": "[07_PBIP_Analysis] Report visual and filter information"
     },
     {
-      "name": "11_Dependency_Analysis_HTML_PBIP",
-      "description": "[PBIP Analysis] Interactive dependency analysis with measure/column browser"
+      "name": "07_PBIP_Dependency_Analysis",
+      "description": "[07_PBIP_Analysis] Interactive dependency analysis with measure/column browser"
     },
     {
-      "name": "12_Slicer_Operations_Analysis_HTML_PBIP",
-      "description": "[PBIP Analysis] Slicer operations and configuration analysis"
+      "name": "07_Slicer_Operations",
+      "description": "[07_PBIP_Analysis] Slicer operations and configuration analysis"
     },
     {
-      "name": "13_Aggregation_Analysis_HTML_PBIP",
-      "description": "[PBIP Analysis] Analyze aggregation tables, measures, and visual usage"
+      "name": "07_Analyze_Aggregation",
+      "description": "[07_PBIP_Analysis] Analyze aggregation tables, measures, and visual usage"
     },
     {
-      "name": "14_Visual_Filter_Analysis_PBIP",
-      "description": "[PBIP Analysis] Report visual and filter information"
+      "name": "07_Analyze_Bookmarks",
+      "description": "[07_PBIP_Analysis] Analyze bookmarks with categories, complexity, and orphan detection"
     },
     {
-      "name": "15_Bookmark_Analysis_HTML_PBIP",
-      "description": "[PBIP Analysis] Analyze bookmarks with categories, complexity, and orphan detection"
+      "name": "07_Analyze_Theme_Compliance",
+      "description": "[07_PBIP_Analysis] Analyze visual theme compliance with color/font validation"
     },
     {
-      "name": "16_Theme_Compliance_HTML_PBIP",
-      "description": "[PBIP Analysis] Analyze visual theme compliance with color/font validation"
+      "name": "08_Generate_Documentation_Word",
+      "description": "[08_Documentation] Generate Word documentation"
     },
     {
-      "name": "export_hybrid_analysis",
-      "description": "[Hybrid Analysis] Export TMDL + metadata"
+      "name": "08_Update_Documentation_Word",
+      "description": "[08_Documentation] Update Word documentation"
     },
     {
-      "name": "analyze_hybrid_model",
-      "description": "[Hybrid Analysis] Analyze exported model"
+      "name": "09_Debug_Visual",
+      "description": "[09_Debug] Visual debugger - discovers pages/visuals, shows filter context, executes queries"
     },
     {
-      "name": "show_user_guide",
-      "description": "[Help] Show user guide"
+      "name": "09_Compare_Measures",
+      "description": "[09_Debug] Compare original vs optimized measure with same filter context"
+    },
+    {
+      "name": "09_Get_Visual_Filters",
+      "description": "[09_Debug] Get complete filter context for a visual"
+    },
+    {
+      "name": "09_List_Slicers",
+      "description": "[09_Debug] List all slicers with their saved selections"
+    },
+    {
+      "name": "09_Drill_To_Detail",
+      "description": "[09_Debug] Show underlying rows with filter context applied"
+    },
+    {
+      "name": "09_Set_PBIP_Path",
+      "description": "[09_Debug] Manually set PBIP folder path"
+    },
+    {
+      "name": "09_Get_Debug_Status",
+      "description": "[09_Debug] Show debug capabilities status"
+    },
+    {
+      "name": "09_Analyze_Measure",
+      "description": "[09_Debug] Analyze measure DAX, detect anti-patterns, and suggest fixes"
+    },
+    {
+      "name": "09_Validate",
+      "description": "[09_Debug] Validation: cross_visual, expected_value, filter_permutation tests"
+    },
+    {
+      "name": "09_Profile",
+      "description": "[09_Debug] Performance profiling: page, filter_matrix"
+    },
+    {
+      "name": "09_Document",
+      "description": "[09_Debug] Documentation: page, report, measure_lineage, filter_lineage"
+    },
+    {
+      "name": "09_Advanced_Analysis",
+      "description": "[09_Debug] Advanced: decompose, contribution, trend, root_cause, export"
+    },
+    {
+      "name": "10_Show_User_Guide",
+      "description": "[10_Help] Show user guide"
     }
   ],
   "keywords": [

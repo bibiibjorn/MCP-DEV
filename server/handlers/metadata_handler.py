@@ -172,7 +172,7 @@ def register_metadata_handlers(registry):
     """Register all metadata-related handlers"""
     tools = [
         ToolDefinition(
-            name="search_objects",
+            name="04_Search_Objects",
             description=(
                 "Search across tables, columns, and measures BY NAME. USE THIS WHEN:\n"
                 "• User asks 'find tables/columns/measures with name X' or 'search for objects named Y'\n"
@@ -199,10 +199,10 @@ def register_metadata_handlers(registry):
                 "required": []
             },
             category="metadata",
-            sort_order=10
+            sort_order=43  # 04 = Query & Search
         ),
         ToolDefinition(
-            name="search_string",
+            name="04_Search_String",
             description=(
                 "Search inside measure DAX expressions and/or names. USE THIS WHEN:\n"
                 "• User asks 'find measures that use CALCULATE' or 'which measures contain SUM'\n"
@@ -229,7 +229,7 @@ def register_metadata_handlers(registry):
                 "required": ["search_text"]
             },
             category="metadata",
-            sort_order=11
+            sort_order=44  # 04 = Query & Search
         ),
     ]
 

@@ -17,6 +17,9 @@ from core.validation.error_handler import ErrorHandler
 
 logger = logging.getLogger(__name__)
 
+# Visual types that are slicers (standard slicer + advanced/chiclet slicers)
+SLICER_VISUAL_TYPES = {'slicer', 'advancedSlicerVisual'}
+
 
 def _normalize_path(path: str) -> str:
     """Normalize path to handle Unix-style paths on Windows"""
@@ -99,9 +102,9 @@ def _extract_slicer_info(visual_data: Dict, file_path: Path) -> Optional[Dict]:
     """Extract slicer information from visual.json"""
     visual = visual_data.get('visual', {})
 
-    # Check if it's a slicer
+    # Check if it's a slicer (standard or advanced/chiclet)
     visual_type = visual.get('visualType', '')
-    if visual_type != 'slicer':
+    if visual_type not in SLICER_VISUAL_TYPES:
         return None
 
     # Extract field information
@@ -540,12 +543,12 @@ def register_slicer_operations_handler(registry):
     from server.tool_schemas import TOOL_SCHEMAS
 
     tool = ToolDefinition(
-        name="slicer_operations",
+        name="07_Slicer_Operations",
         description="[PBIP] Configure Power BI slicer settings - list slicers with current values, change to single-select with All selected",
         handler=handle_slicer_operations,
         input_schema=TOOL_SCHEMAS.get('slicer_operations', {}),
         category="pbip",
-        sort_order=120
+        sort_order=73  # 07 = PBIP Analysis
     )
     registry.register(tool)
 

@@ -49,20 +49,20 @@ def register_documentation_handlers(registry):
 
     tools = [
         ToolDefinition(
-            name="generate_model_documentation_word",
+            name="08_Generate_Documentation_Word",
             description="Generate Word documentation report",
             handler=handle_generate_model_documentation_word,
             input_schema=TOOL_SCHEMAS.get('generate_model_documentation_word', {}),
             category="documentation",
-            sort_order=60
+            sort_order=80  # 08 = Documentation
         ),
         ToolDefinition(
-            name="update_model_documentation_word",
+            name="08_Update_Documentation_Word",
             description="Update Word documentation report",
             handler=handle_update_model_documentation_word,
             input_schema=TOOL_SCHEMAS.get('update_model_documentation_word', {}),
             category="documentation",
-            sort_order=61
+            sort_order=81  # 08 = Documentation
         ),
     ]
 

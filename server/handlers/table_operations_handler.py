@@ -21,55 +21,7 @@ def register_table_operations_handler(registry):
 
     tool = ToolDefinition(
         name="02_Table_Operations",
-        description=(
-            "Unified table operations handler supporting ALL CRUD operations.\n"
-            "\n"
-            "━━━ READ OPERATIONS ━━━\n"
-            "• list: List all tables with counts → operation='list'\n"
-            "  Example: {'operation': 'list'}\n"
-            "\n"
-            "• describe: Get table details (columns, measures, relationships) → operation='describe', table_name=X\n"
-            "  Example: {'operation': 'describe', 'table_name': 'Sales'}\n"
-            "\n"
-            "• preview: Show sample data (simple) → operation='preview', table_name=X, max_rows=N\n"
-            "  Example: {'operation': 'preview', 'table_name': 'Sales', 'max_rows': 10}\n"
-            "\n"
-            "• sample_data: Get sample data (enhanced) → operation='sample_data', table_name=X\n"
-            "  Supports column selection, ordering, and pagination.\n"
-            "  Example: {'operation': 'sample_data', 'table_name': 'Sales', 'max_rows': 20}\n"
-            "  Example with columns: {'operation': 'sample_data', 'table_name': 'Sales', 'columns': ['CustomerName', 'Amount']}\n"
-            "  Example with ordering: {'operation': 'sample_data', 'table_name': 'Sales', 'order_by': 'Amount', 'order_direction': 'desc'}\n"
-            "\n"
-            "━━━ CREATE OPERATION ━━━\n"
-            "• create: Create new table → operation='create', table_name=X\n"
-            "  Required: table_name\n"
-            "  Optional: description, expression (for calculated table), hidden\n"
-            "  Example: {'operation': 'create', 'table_name': 'NewTable', 'description': 'My new table'}\n"
-            "  Example (calculated): {'operation': 'create', 'table_name': 'TopCustomers', 'expression': 'TOPN(100, Customer, [Revenue], DESC)'}\n"
-            "\n"
-            "━━━ UPDATE OPERATION ━━━\n"
-            "• update: Update existing table → operation='update', table_name=X\n"
-            "  Required: table_name\n"
-            "  Optional: description, expression, hidden, new_name\n"
-            "  Example: {'operation': 'update', 'table_name': 'Sales', 'description': 'Updated description', 'hidden': true}\n"
-            "\n"
-            "━━━ DELETE OPERATION ━━━\n"
-            "• delete: Delete table → operation='delete', table_name=X\n"
-            "  Required: table_name\n"
-            "  Example: {'operation': 'delete', 'table_name': 'OldTable'}\n"
-            "\n"
-            "━━━ RENAME OPERATION ━━━\n"
-            "• rename: Rename table → operation='rename', table_name=X, new_name=Y\n"
-            "  Required: table_name, new_name\n"
-            "  Example: {'operation': 'rename', 'table_name': 'Sales', 'new_name': 'SalesData'}\n"
-            "\n"
-            "━━━ REFRESH OPERATION ━━━\n"
-            "• refresh: Refresh table data → operation='refresh', table_name=X\n"
-            "  Required: table_name\n"
-            "  Example: {'operation': 'refresh', 'table_name': 'Sales'}\n"
-            "\n"
-            "USE ALL OPERATIONS AS NEEDED - don't skip CREATE/UPDATE/DELETE/RENAME!"
-        ),
+        description="Unified table CRUD: list, describe, preview, sample_data, create, update, delete, rename, refresh.",
         handler=handle_table_operations,
         input_schema={
             "type": "object",
@@ -81,8 +33,8 @@ def register_table_operations_handler(registry):
                         "Operation to perform (MUST USE ALL OPERATIONS - don't skip CRUD!):\n"
                         "• 'list' - List all tables\n"
                         "• 'describe' - Get table details with columns/measures/relationships\n"
-                        "• 'preview' - Show sample data rows (simple)\n"
-                        "• 'sample_data' - Get sample data (enhanced: column selection, ordering)\n"
+                        "• 'preview' - Show sample data rows (alias for sample_data with defaults)\n"
+                        "• 'sample_data' - Get sample data with optional column selection and ordering\n"
                         "• 'create' - CREATE new table (requires: table_name; optional: description, expression, hidden)\n"
                         "• 'update' - UPDATE table properties (requires: table_name; optional: description, expression, hidden, new_name)\n"
                         "• 'delete' - DELETE table (requires: table_name)\n"
@@ -227,7 +179,7 @@ def register_table_operations_handler(registry):
             ]
         },
         category="metadata",
-        sort_order=10
+        sort_order=20
     )
 
     registry.register(tool)

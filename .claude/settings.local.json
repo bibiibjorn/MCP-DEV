@@ -123,7 +123,18 @@
       "Bash(wc:*)",
       "Bash(sort:*)",
       "Bash(start \"\" \"c:\\\\Users\\\\bjorn.braet\\\\powerbi-mcp-servers\\\\exports\\\\test_agg_analysis\\\\G01-FamillyOffices_AggAnalysis.html\")",
-      "Bash(start \"\" \"c:\\\\Users\\\\bjorn.braet\\\\powerbi-mcp-servers\\\\exports\\\\test_expandable_hits\\\\G01-FamillyOffices_AggAnalysis.html\")"
+      "Bash(start \"\" \"c:\\\\Users\\\\bjorn.braet\\\\powerbi-mcp-servers\\\\exports\\\\test_expandable_hits\\\\G01-FamillyOffices_AggAnalysis.html\")",
+      "Bash(git -C \"c:/Users/bjorn.braet/powerbi-mcp-servers/MCP-PowerBi-Finvision\" log --oneline -5)",
+      "Bash(git -C \"c:/Users/bjorn.braet/powerbi-mcp-servers/MCP-PowerBi-Finvision\" show 5668048 --stat --name-only)",
+      "Bash(git -C \"c:/Users/bjorn.braet/powerbi-mcp-servers/MCP-PowerBi-Finvision\" show 5668048:src/__version__.py)",
+      "Bash(git -C \"c:/Users/bjorn.braet/powerbi-mcp-servers/MCP-PowerBi-Finvision\" show:*)",
+      "Bash(cmd.exe /c \"build\\\\package.bat\")",
+      "Bash(start \"\" \"c:\\\\Users\\\\bjorn.braet\\\\powerbi-mcp-servers\\\\exports\\\\test_redesign\\\\G01-FamillyOffices_PBIP_Analysis_20251231_155413.html\")",
+      "Bash(start \"\" \"c:\\\\Users\\\\bjorn.braet\\\\powerbi-mcp-servers\\\\exports\\\\test_filter_pane\\\\pbip_dependency_diagram.html\")",
+      "Bash(git reset:*)",
+      "Bash(py -3.13 -m venv:*)",
+      "Bash(\"/c/Users/bjorn.braet/powerbi-mcp-servers/MCP-Sample Data/venv/Scripts/python.exe\" -m pip install --upgrade pip)",
+      "Bash(\"/c/Users/bjorn.braet/powerbi-mcp-servers/MCP-Sample Data/venv/Scripts/pip.exe\" install -r \"/c/Users/bjorn.braet/powerbi-mcp-servers/MCP-Sample Data/requirements.txt\")"
     ],
     "deny": [],
     "ask": []

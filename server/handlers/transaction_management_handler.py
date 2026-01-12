@@ -20,7 +20,7 @@ def register_transaction_management_handler(registry):
     """Register transaction management handler"""
 
     tool = ToolDefinition(
-        name="manage_transactions",
+        name="03_Manage_Transactions",
         description="Manage ACID transactions for atomic model changes with rollback support",
         handler=handle_manage_transactions,
         input_schema={
@@ -43,7 +43,7 @@ def register_transaction_management_handler(registry):
             "required": ["operation"]
         },
         category="model_operations",
-        sort_order=19
+        sort_order=31  # 03 = Batch & Transactions
     )
 
     registry.register(tool)

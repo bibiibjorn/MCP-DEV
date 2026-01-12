@@ -52,6 +52,27 @@ def handle_connect_to_powerbi(args: Dict[str, Any]) -> Dict[str, Any]:
             connection_state.set_connection_manager(connection_manager)
             connection_state.initialize_managers()
 
+            # Store PBIP/PBIX file information for visual debugger integration
+            try:
+                if model_index < len(instances):
+                    instance = instances[model_index]
+                    pbip_folder = instance.get('pbip_folder_path')
+                    file_path = instance.get('file_full_path')
+                    file_type = instance.get('file_type')
+
+                    if pbip_folder or file_path:
+                        connection_state.set_pbip_info(
+                            pbip_folder_path=pbip_folder,
+                            file_full_path=file_path,
+                            file_type=file_type,
+                            source='auto-detected'
+                        )
+                        result['pbip_info'] = connection_state.get_pbip_info()
+                        if pbip_folder:
+                            logger.info(f"PBIP folder auto-detected: {pbip_folder}")
+            except Exception as pbip_error:
+                logger.warning(f"Failed to store PBIP info (non-critical): {pbip_error}")
+
             # PERFORMANCE: Pre-warm table mapping cache to eliminate first-request latency
             try:
                 qe = connection_state.query_executor
@@ -73,8 +94,8 @@ def register_connection_handlers(registry):
     """Register connection handlers"""
     tools = [
         ToolDefinition(
-            name="detect_powerbi_desktop",
-            description="Detect running Power BI Desktop instances",
+            name="01_Detect_PBI_Instances",
+            description="[01_Connection] Detect running Power BI Desktop instances",
             handler=handle_detect_powerbi_desktop,
             input_schema={
                 "type": "object",
@@ -87,11 +108,11 @@ def register_connection_handlers(registry):
                 ]
             },
             category="connection",
-            sort_order=0
+            sort_order=10
         ),
         ToolDefinition(
-            name="connect_to_powerbi",
-            description="Connect to Power BI Desktop (auto-detect or specify model_index)",
+            name="01_Connect_To_Instance",
+            description="[01_Connection] Connect to Power BI Desktop (auto-detect or specify model_index)",
             handler=handle_connect_to_powerbi,
             input_schema={
                 "type": "object",
@@ -110,7 +131,7 @@ def register_connection_handlers(registry):
                 ]
             },
             category="connection",
-            sort_order=1
+            sort_order=11
         ),
     ]
 

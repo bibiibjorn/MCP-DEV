@@ -448,12 +448,12 @@ def register_report_info_handler(registry):
     from server.tool_schemas import TOOL_SCHEMAS
 
     tool = ToolDefinition(
-        name="report_info",
+        name="07_Report_Info",
         description="[PBIP] Get report structure info - all pages, filters on all pages, filter pane filters per page, and visual items per page",
         handler=handle_report_info,
         input_schema=TOOL_SCHEMAS.get('report_info', {}),
         category="pbip",
-        sort_order=130
+        sort_order=71  # 07 = PBIP Analysis
     )
     registry.register(tool)
 

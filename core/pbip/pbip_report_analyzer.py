@@ -351,14 +351,55 @@ class PbirReportAnalyzer:
 
         return visuals
 
+    # Visual types that are UI/layout elements, not data-bearing visuals
+    UI_VISUAL_TYPES = {
+        "shape", "basicShape", "image", "textbox",
+        "button", "actionButton",
+        "bookmarkNavigator", "pageNavigator", "navigatorButton",
+        "visualGroup", "group",
+        "slicer", "advancedSlicerVisual",
+        "multiRowCard",  # Multi-row cards are typically label/context displays
+    }
+
+    # Visual types that display actual data
+    DATA_VISUAL_TYPES = {
+        "pivotTable", "matrix", "table", "tableEx",
+        "barChart", "clusteredBarChart", "stackedBarChart", "hundredPercentStackedBarChart",
+        "columnChart", "clusteredColumnChart", "stackedColumnChart", "hundredPercentStackedColumnChart",
+        "lineChart", "areaChart", "stackedAreaChart", "lineStackedColumnComboChart", "lineClusteredColumnComboChart",
+        "pieChart", "donutChart", "treemap", "funnel",
+        "scatterChart", "bubbleChart",
+        "map", "filledMap", "azureMap", "shapeMap",
+        "gauge", "kpi", "card", "multiRowCard",
+        "waterfallChart", "ribbonChart", "decompositionTree",
+        "aiVisualization", "keyInfluencers", "qnaVisual",
+        "scriptVisual", "pythonVisual", "rScript",
+    }
+
     def _parse_visual_json(self, visual_json: str) -> Optional[Dict[str, Any]]:
         """Parse a single visual JSON file."""
         try:
             data = load_json(visual_json)
 
+            # Determine visual type - check for visual groups first
+            visual_type = ""
+            is_visual_group = False
+
+            if "visualGroup" in data:
+                # This is a visual group (container)
+                visual_type = "visualGroup"
+                is_visual_group = True
+            else:
+                visual_type = data.get("visual", {}).get("visualType", "")
+
+            # Determine if this is a data-bearing visual
+            is_data_visual = self._is_data_visual(visual_type, data)
+
             visual = {
                 "id": data.get("name", ""),
-                "visual_type": data.get("visual", {}).get("visualType", ""),
+                "visual_type": visual_type,
+                "is_visual_group": is_visual_group,
+                "is_data_visual": is_data_visual,
                 "position": data.get("position", {}),
                 "fields": {"columns": [], "measures": [], "hierarchies": []},
                 "filters": []
@@ -390,6 +431,61 @@ class PbirReportAnalyzer:
         except Exception as e:
             self.logger.error(f"Error parsing visual {visual_json}: {e}")
             return None
+
+    def _is_data_visual(self, visual_type: str, data: Dict) -> bool:
+        """
+        Determine if a visual is a data-bearing visual vs UI element.
+
+        Data visuals display analytical data (charts, tables, matrices).
+        UI/context visuals are layout elements or simple info displays.
+
+        Args:
+            visual_type: The visual type string
+            data: The full visual JSON data
+
+        Returns:
+            True if this is a data-bearing visual
+        """
+        # Visual groups are never data visuals
+        if "visualGroup" in data:
+            return False
+
+        # Empty type with no visual property is a group/container
+        if not visual_type:
+            return False
+
+        # Check against known UI types
+        if visual_type.lower() in {t.lower() for t in self.UI_VISUAL_TYPES}:
+            return False
+
+        # Special handling for card visuals - single-field cards showing context (date, user)
+        # are UI elements, cards with actual measures are data visuals
+        # Note: multiRowCard is always UI (in UI_VISUAL_TYPES) since they're used for labels
+        visual_type_lower = visual_type.lower()
+        if visual_type_lower == "card":
+            visual_data = data.get("visual", {})
+            query = visual_data.get("query", {})
+            fields = self._extract_visual_fields(query)
+            # Cards with measures are data visuals, pure column cards are context/UI
+            return len(fields.get("measures", [])) > 0
+
+        # Check against known data visual types
+        if visual_type_lower in {t.lower() for t in self.DATA_VISUAL_TYPES}:
+            return True
+
+        # For unknown types, check if it has data bindings
+        visual_data = data.get("visual", {})
+        query = visual_data.get("query", {})
+        query_state = query.get("queryState", {})
+
+        # If it has query projections, it's likely a data visual
+        has_projections = any(
+            proj_type in query_state
+            for proj_type in ["Category", "Y", "Values", "Rows", "Columns",
+                            "Legend", "X", "Size", "Details"]
+        )
+
+        return has_projections
 
     def _extract_visual_fields(self, query: Dict) -> Dict[str, List]:
         """

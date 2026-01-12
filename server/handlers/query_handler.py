@@ -7,7 +7,6 @@ import logging
 from server.registry import ToolDefinition
 from core.infrastructure.connection_state import connection_state
 from core.validation.error_handler import ErrorHandler
-from core.infrastructure.limits_manager import get_limits
 
 logger = logging.getLogger(__name__)
 
@@ -35,75 +34,6 @@ def handle_run_dax(args: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     return result
-
-def handle_get_column_value_distribution(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Get column value distribution (top N)"""
-    if not connection_state.is_connected():
-        return ErrorHandler.handle_not_connected()
-
-    agent_policy = connection_state.agent_policy
-    if not agent_policy:
-        return ErrorHandler.handle_manager_unavailable('agent_policy')
-
-    table = args.get('table')
-    column = args.get('column')
-
-    if not table or not column:
-        return {'success': False, 'error': 'table and column parameters required'}
-
-    top_n = args.get('top_n', 10)
-
-    # Create DAX query to get value distribution
-    query = f'''
-    EVALUATE
-    TOPN(
-        {top_n},
-        SUMMARIZECOLUMNS(
-            '{table}'[{column}],
-            "Count", COUNTROWS('{table}')
-        ),
-        [Count],
-        DESC
-    )
-    '''
-
-    return agent_policy.safe_run_dax(
-        connection_state=connection_state,
-        query=query,
-        mode='auto',
-        max_rows=top_n
-    )
-
-def handle_get_column_summary(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Get column summary statistics"""
-    if not connection_state.is_connected():
-        return ErrorHandler.handle_not_connected()
-
-    agent_policy = connection_state.agent_policy
-    if not agent_policy:
-        return ErrorHandler.handle_manager_unavailable('agent_policy')
-
-    table = args.get('table')
-    column = args.get('column')
-
-    if not table or not column:
-        return {'success': False, 'error': 'table and column parameters required'}
-
-    # Create DAX query to get column statistics
-    query = f'''
-    EVALUATE
-    ROW(
-        "DistinctCount", COUNTROWS(DISTINCT('{table}'[{column}])),
-        "TotalCount", COUNTROWS('{table}'),
-        "BlankCount", COUNTBLANK('{table}'[{column}])
-    )
-    '''
-
-    return agent_policy.safe_run_dax(
-        connection_state=connection_state,
-        query=query,
-        mode='auto'
-    )
 
 def handle_get_data_sources(args: Dict[str, Any]) -> Dict[str, Any]:
     """List data sources with fallback to TOM"""
@@ -138,33 +68,11 @@ def handle_get_m_expressions(args: Dict[str, Any]) -> Dict[str, Any]:
 
     return result
 
-def handle_list_relationships(args: Dict[str, Any]) -> Dict[str, Any]:
-    """List relationships with optional active_only filter"""
-    if not connection_state.is_connected():
-        return ErrorHandler.handle_not_connected()
-
-    qe = connection_state.query_executor
-    if not qe:
-        return ErrorHandler.handle_manager_unavailable('query_executor')
-
-    active_only = args.get('active_only', False)
-
-    # Use INFO query to get relationships
-    result = qe.execute_info_query("RELATIONSHIPS")
-
-    if result.get('success') and active_only:
-        rows = result.get('rows', [])
-        # Filter for active relationships only
-        active_rows = [r for r in rows if r.get('IsActive') or r.get('[IsActive]')]
-        result['rows'] = active_rows
-
-    return result
-
 def register_query_handlers(registry):
     """Register all query execution handlers"""
     tools = [
         ToolDefinition(
-            name="run_dax",
+            name="04_Run_DAX",
             description="Execute DAX query with auto limits",
             handler=handle_run_dax,
             input_schema={
@@ -189,10 +97,10 @@ def register_query_handlers(registry):
                 "required": ["query"]
             },
             category="query",
-            sort_order=20
+            sort_order=40  # 04 = Query & Search
         ),
         ToolDefinition(
-            name="get_data_sources",
+            name="04_Get_Data_Sources",
             description="List data sources with fallback to TOM",
             handler=handle_get_data_sources,
             input_schema={
@@ -201,10 +109,10 @@ def register_query_handlers(registry):
                 "required": []
             },
             category="query",
-            sort_order=30
+            sort_order=41  # 04 = Query & Search
         ),
         ToolDefinition(
-            name="get_m_expressions",
+            name="04_Get_M_Expressions",
             description="List M/Power Query expressions",
             handler=handle_get_m_expressions,
             input_schema={
@@ -218,7 +126,7 @@ def register_query_handlers(registry):
                 "required": []
             },
             category="query",
-            sort_order=31
+            sort_order=42  # 04 = Query & Search
         ),
     ]
 

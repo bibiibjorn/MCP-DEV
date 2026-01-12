@@ -110,6 +110,9 @@ class PowerBIDesktopDetector:
                 if pid in msmdsrv_pids:
                     # Try to get the actual .pbix filename from PBIDesktop.exe command line
                     db_name = f"Port {port}"  # Default fallback
+                    file_full_path = None  # Full path to .pbix or .pbip file
+                    pbip_folder_path = None  # For PBIP projects, the folder containing the project
+                    file_type = None  # 'pbix' or 'pbip'
                     try:
                         import psutil
                         import os
@@ -127,22 +130,35 @@ class PowerBIDesktopDetector:
                             # Look for .pbix or .pbip file in command line arguments
                             for arg in cmdline:
                                 if '.pbix' in arg.lower() or '.pbip' in arg.lower():
-                                    # Extract just the filename from the full path
-                                    if os.path.exists(arg):
-                                        db_name = os.path.basename(arg)
+                                    # Store the full path
+                                    file_full_path = arg
+                                    db_name = os.path.basename(arg)
+
+                                    # Determine file type and derive PBIP folder
+                                    if '.pbip' in arg.lower():
+                                        file_type = 'pbip'
+                                        # PBIP folder is the parent directory of the .pbip file
+                                        # e.g., C:\Projects\MyReport.Report\MyReport.pbip -> C:\Projects\MyReport.Report
+                                        pbip_folder_path = os.path.dirname(arg)
+                                        logger.info(f"Found PBIP project for port {port}: {db_name}, folder: {pbip_folder_path}")
                                     else:
-                                        # Try to extract filename even if path doesn't exist
-                                        db_name = os.path.basename(arg)
-                                    logger.info(f"Found Power BI file for port {port}: {db_name}")
+                                        file_type = 'pbix'
+                                        logger.info(f"Found PBIX file for port {port}: {db_name}")
                                     break
 
                             # If still not found, search in full command line string
                             if db_name == f"Port {port}":
                                 cmdline_str = ' '.join(cmdline)
-                                # Look for both .pbix and .pbip files
-                                match = re.search(r'([^"\s\\\/]+\.pbi[xp])', cmdline_str, re.IGNORECASE)
+                                # Look for both .pbix and .pbip files - capture full path
+                                match = re.search(r'([^\s"]+\.pbi[xp])', cmdline_str, re.IGNORECASE)
                                 if match:
-                                    db_name = match.group(1)
+                                    file_full_path = match.group(1)
+                                    db_name = os.path.basename(file_full_path)
+                                    if '.pbip' in file_full_path.lower():
+                                        file_type = 'pbip'
+                                        pbip_folder_path = os.path.dirname(file_full_path)
+                                    else:
+                                        file_type = 'pbix'
                                     logger.info(f"Found Power BI file for port {port}: {db_name} (regex)")
                                 else:
                                     logger.warning(f"No .pbix or .pbip found for port {port}. Cmdline: {cmdline_str[:200]}")
@@ -156,7 +172,10 @@ class PowerBIDesktopDetector:
                         'workspace': f'msmdsrv_pid_{pid}',
                         'path': f'localhost:{port}',
                         'connection_string': f'Data Source=localhost:{port}',
-                        'display_name': db_name if db_name else f'Power BI Desktop (Port {port})'
+                        'display_name': db_name if db_name else f'Power BI Desktop (Port {port})',
+                        'file_full_path': file_full_path,  # Full path to .pbix/.pbip file
+                        'pbip_folder_path': pbip_folder_path,  # Folder for PBIP projects (None for PBIX)
+                        'file_type': file_type  # 'pbix', 'pbip', or None
                     })
 
             # Sort by port (highest first - usually most recent)

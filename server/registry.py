@@ -53,25 +53,16 @@ class HandlerRegistry:
         return list(self._handlers.values())
 
     def get_all_tools_as_mcp(self):
-        """Get all tools as MCP Tool objects with numbered names from manifest mapping"""
+        """Get all tools as MCP Tool objects"""
         from mcp.types import Tool
-
-        # Import the reverse mapping from dispatcher
-        from server.dispatch import ToolDispatcher
-
-        # Create reverse mapping (internal name -> numbered name)
-        reverse_map = {v: k for k, v in ToolDispatcher.TOOL_NAME_MAP.items()}
 
         tools = []
         # Sort by sort_order, then by name
         sorted_defs = sorted(self._handlers.values(), key=lambda x: (x.sort_order, x.name))
 
         for tool_def in sorted_defs:
-            # Use numbered name if available, otherwise use internal name
-            mcp_name = reverse_map.get(tool_def.name, tool_def.name)
-
             tools.append(Tool(
-                name=mcp_name,  # Use numbered name from manifest
+                name=tool_def.name,
                 description=tool_def.description,
                 inputSchema=tool_def.input_schema
             ))

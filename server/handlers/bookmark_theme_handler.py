@@ -212,20 +212,20 @@ def register_bookmark_theme_handlers(registry):
 
     tools = [
         ToolDefinition(
-            name="analyze_bookmarks",
+            name="07_Analyze_Bookmarks",
             description="Analyze bookmarks in a PBIP report with HTML output",
             handler=handle_analyze_bookmarks,
             input_schema=TOOL_SCHEMAS.get('analyze_bookmarks', {}),
             category="pbip",
-            sort_order=90
+            sort_order=75  # 07 = PBIP Analysis
         ),
         ToolDefinition(
-            name="analyze_theme_compliance",
+            name="07_Analyze_Theme_Compliance",
             description="Analyze theme compliance in a PBIP report with HTML output",
             handler=handle_theme_compliance,
             input_schema=TOOL_SCHEMAS.get('analyze_theme_compliance', {}),
             category="pbip",
-            sort_order=91
+            sort_order=76  # 07 = PBIP Analysis
         ),
     ]
 

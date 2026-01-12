@@ -20,7 +20,7 @@ def register_batch_operations_handler(registry):
     """Register batch operations handler"""
 
     tool = ToolDefinition(
-        name="batch_operations",
+        name="03_Batch_Operations",
         description="Execute batch operations on model objects with transaction support (3-5x faster than individual operations)",
         handler=handle_batch_operations,
         input_schema={
@@ -144,7 +144,7 @@ def register_batch_operations_handler(registry):
             ]
         },
         category="model_operations",
-        sort_order=18
+        sort_order=30  # 03 = Batch & Transactions
     )
 
     registry.register(tool)

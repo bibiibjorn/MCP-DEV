@@ -5,51 +5,6 @@ This keeps tool schemas compact while providing full docs on-demand.
 """
 
 TOOL_DOCS = {
-    # Hybrid Analysis Tools
-    'analyze_hybrid_model': {
-        'doc_url': 'docs/HYBRID_ANALYSIS_GUIDE.md#operations',
-        'summary': 'Analyze exported hybrid model data (TMDL + metadata + sample data)',
-        'key_points': [
-            'All file I/O is handled internally by the tool',
-            'Returns complete data without needing additional Read/Glob/Grep tools',
-            'Use operation="read_metadata" for comprehensive analysis with relationships',
-            'Supports find_objects, get_object_definition (DAX), analyze_dependencies, and more'
-        ],
-        'operations': {
-            'read_metadata': 'Full metadata + relationships list parsed from TMDL + expert analysis',
-            'find_objects': 'Search all TMDL files internally',
-            'get_object_definition': 'Get complete DAX expression from TMDL',
-            'analyze_dependencies': 'Analyze object dependencies',
-            'analyze_performance': 'Performance analysis',
-            'get_sample_data': 'Read sample data from parquet files internally',
-            'get_unused_columns': 'Read JSON metadata for unused columns',
-            'get_report_dependencies': 'Read JSON metadata for report dependencies',
-            'smart_analyze': 'Natural language query analysis'
-        },
-        'warnings': [
-            'CRITICAL: Do not use Read, Glob, or Grep tools - this tool returns complete data',
-            'All relationships are already parsed from TMDL and included in responses'
-        ]
-    },
-
-    'export_hybrid_analysis': {
-        'doc_url': 'docs/HYBRID_ANALYSIS_GUIDE.md#export',
-        'summary': 'Export hybrid analysis combining TMDL files with live model metadata',
-        'key_points': [
-            'Combines PBIP TMDL files with live Power BI model metadata',
-            'Exports sample data to parquet files',
-            'Auto-detects Power BI Desktop connection if not specified',
-            'Creates symlink or copy of TMDL files'
-        ],
-        'defaults': {
-            'output_dir': '[ModelName]_analysis folder next to PBIP',
-            'include_sample_data': True,
-            'sample_rows': 1000,
-            'sample_compression': 'snappy',
-            'tmdl_strategy': 'symlink'
-        }
-    },
-
     # Analysis Tools
     'simple_analysis': {
         'doc_url': 'docs/AGENTIC_ROUTING_GUIDE.md#simple-analysis',
