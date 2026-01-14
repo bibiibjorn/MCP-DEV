@@ -1,0 +1,228 @@
+{
+  "templates": [
+    {
+      "template_id": "gauge_donut",
+      "name": "Donut Chart",
+      "category": "gauges",
+      "subcategory": "donut",
+      "description": "Simple donut chart showing single value as percentage of whole.",
+      "complexity": "intermediate",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='35' fill='none' stroke='%23E5E7EB' stroke-width='15'/><circle cx='50' cy='50' r='35' fill='none' stroke='%230EA5E9' stroke-width='15' stroke-dasharray='154 220' transform='rotate(-90,50,50)'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _maxValue = {{max_value}}\nVAR _pct = MIN(MAX(_value / _maxValue, 0), 1)\nVAR _size = {{size}}\nVAR _thickness = {{thickness}}\nVAR _radius = (_size / 2) - (_thickness / 2)\nVAR _circumference = 2 * 3.14159 * _radius\nVAR _dashArray = FORMAT(_pct * _circumference, \"0.0\") & \" \" & FORMAT(_circumference, \"0.0\")\nVAR _center = _size / 2\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _size & \" \" & _size & \"'><circle cx='\" & _center & \"' cy='\" & _center & \"' r='\" & _radius & \"' fill='none' stroke='{{color_background}}' stroke-width='\" & _thickness & \"'/><circle cx='\" & _center & \"' cy='\" & _center & \"' r='\" & _radius & \"' fill='none' stroke='{{color_fill}}' stroke-width='\" & _thickness & \"' stroke-dasharray='\" & _dashArray & \"' transform='rotate(-90,\" & _center & \",\" & _center & \")'/></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Current value measure"
+        },
+        {
+          "name": "max_value",
+          "type": "scalar",
+          "required": false,
+          "default": 1,
+          "description": "Maximum value"
+        },
+        {
+          "name": "size",
+          "type": "scalar",
+          "required": false,
+          "default": 100,
+          "description": "SVG size"
+        },
+        {
+          "name": "thickness",
+          "type": "scalar",
+          "required": false,
+          "default": 15,
+          "description": "Donut ring thickness"
+        },
+        {
+          "name": "color_fill",
+          "type": "color",
+          "required": false,
+          "default": "%230EA5E9",
+          "description": "Filled segment color"
+        },
+        {
+          "name": "color_background",
+          "type": "color",
+          "required": false,
+          "default": "%23E5E7EB",
+          "description": "Empty segment color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card"],
+      "tags": ["gauge", "donut", "pie", "percentage"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "gauge_donut_labeled",
+      "name": "Donut Chart with Label",
+      "category": "gauges",
+      "subcategory": "donut",
+      "description": "Donut chart with value or percentage displayed in center.",
+      "complexity": "intermediate",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='35' fill='none' stroke='%23E5E7EB' stroke-width='15'/><circle cx='50' cy='50' r='35' fill='none' stroke='%230EA5E9' stroke-width='15' stroke-dasharray='154 220' transform='rotate(-90,50,50)'/><text x='50' y='55' text-anchor='middle' font-size='18' font-weight='bold' fill='%23374151'>70%</text></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _maxValue = {{max_value}}\nVAR _pct = MIN(MAX(_value / _maxValue, 0), 1)\nVAR _size = {{size}}\nVAR _thickness = {{thickness}}\nVAR _radius = (_size / 2) - (_thickness / 2)\nVAR _circumference = 2 * 3.14159 * _radius\nVAR _dashArray = FORMAT(_pct * _circumference, \"0.0\") & \" \" & FORMAT(_circumference, \"0.0\")\nVAR _center = _size / 2\nVAR _labelText = FORMAT(_pct * 100, \"0\") & \"%25\"\nVAR _fontSize = _size / 5\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _size & \" \" & _size & \"'><circle cx='\" & _center & \"' cy='\" & _center & \"' r='\" & _radius & \"' fill='none' stroke='{{color_background}}' stroke-width='\" & _thickness & \"'/><circle cx='\" & _center & \"' cy='\" & _center & \"' r='\" & _radius & \"' fill='none' stroke='{{color_fill}}' stroke-width='\" & _thickness & \"' stroke-dasharray='\" & _dashArray & \"' transform='rotate(-90,\" & _center & \",\" & _center & \")'/><text x='\" & _center & \"' y='\" & (_center + _fontSize * 0.35) & \"' text-anchor='middle' font-size='\" & _fontSize & \"' font-weight='bold' fill='{{color_text}}'>\" & _labelText & \"</text></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Current value measure"
+        },
+        {
+          "name": "max_value",
+          "type": "scalar",
+          "required": false,
+          "default": 1,
+          "description": "Maximum value"
+        },
+        {
+          "name": "size",
+          "type": "scalar",
+          "required": false,
+          "default": 100,
+          "description": "SVG size"
+        },
+        {
+          "name": "thickness",
+          "type": "scalar",
+          "required": false,
+          "default": 15,
+          "description": "Donut ring thickness"
+        },
+        {
+          "name": "color_fill",
+          "type": "color",
+          "required": false,
+          "default": "%230EA5E9",
+          "description": "Filled segment color"
+        },
+        {
+          "name": "color_background",
+          "type": "color",
+          "required": false,
+          "default": "%23E5E7EB",
+          "description": "Empty segment color"
+        },
+        {
+          "name": "color_text",
+          "type": "color",
+          "required": false,
+          "default": "%23374151",
+          "description": "Center label color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card"],
+      "tags": ["gauge", "donut", "labeled", "percentage"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "gauge_donut_conditional",
+      "name": "Conditional Donut Chart",
+      "category": "gauges",
+      "subcategory": "donut",
+      "description": "Donut chart that changes color based on value thresholds.",
+      "complexity": "intermediate",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='35' fill='none' stroke='%23E5E7EB' stroke-width='15'/><circle cx='50' cy='50' r='35' fill='none' stroke='%23F59E0B' stroke-width='15' stroke-dasharray='110 220' transform='rotate(-90,50,50)'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _maxValue = {{max_value}}\nVAR _pct = MIN(MAX(_value / _maxValue, 0), 1)\nVAR _thresholdLow = {{threshold_low}}\nVAR _thresholdHigh = {{threshold_high}}\nVAR _size = {{size}}\nVAR _thickness = {{thickness}}\nVAR _radius = (_size / 2) - (_thickness / 2)\nVAR _circumference = 2 * 3.14159 * _radius\nVAR _dashArray = FORMAT(_pct * _circumference, \"0.0\") & \" \" & FORMAT(_circumference, \"0.0\")\nVAR _center = _size / 2\nVAR _fillColor =\n    SWITCH(\n        TRUE(),\n        _pct < _thresholdLow, \"{{color_bad}}\",\n        _pct < _thresholdHigh, \"{{color_warning}}\",\n        \"{{color_good}}\"\n    )\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _size & \" \" & _size & \"'><circle cx='\" & _center & \"' cy='\" & _center & \"' r='\" & _radius & \"' fill='none' stroke='{{color_background}}' stroke-width='\" & _thickness & \"'/><circle cx='\" & _center & \"' cy='\" & _center & \"' r='\" & _radius & \"' fill='none' stroke='\" & _fillColor & \"' stroke-width='\" & _thickness & \"' stroke-dasharray='\" & _dashArray & \"' transform='rotate(-90,\" & _center & \",\" & _center & \")'/></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Current value measure"
+        },
+        {
+          "name": "max_value",
+          "type": "scalar",
+          "required": false,
+          "default": 1,
+          "description": "Maximum value"
+        },
+        {
+          "name": "threshold_low",
+          "type": "scalar",
+          "required": false,
+          "default": 0.33,
+          "description": "Below this = bad color"
+        },
+        {
+          "name": "threshold_high",
+          "type": "scalar",
+          "required": false,
+          "default": 0.67,
+          "description": "Above this = good color"
+        },
+        {
+          "name": "size",
+          "type": "scalar",
+          "required": false,
+          "default": 100,
+          "description": "SVG size"
+        },
+        {
+          "name": "thickness",
+          "type": "scalar",
+          "required": false,
+          "default": 15,
+          "description": "Ring thickness"
+        },
+        {
+          "name": "color_good",
+          "type": "color",
+          "required": false,
+          "default": "%2316A34A",
+          "description": "Good state color"
+        },
+        {
+          "name": "color_warning",
+          "type": "color",
+          "required": false,
+          "default": "%23F59E0B",
+          "description": "Warning state color"
+        },
+        {
+          "name": "color_bad",
+          "type": "color",
+          "required": false,
+          "default": "%23DC2626",
+          "description": "Bad state color"
+        },
+        {
+          "name": "color_background",
+          "type": "color",
+          "required": false,
+          "default": "%23E5E7EB",
+          "description": "Background color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card"],
+      "tags": ["gauge", "donut", "conditional", "threshold"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    }
+  ]
+}

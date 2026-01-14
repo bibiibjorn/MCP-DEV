@@ -332,4 +332,13 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Server stopped by user")
+    except Exception as e:
+        logger.critical(f"Server crashed: {e}", exc_info=True)
+        # Flush all log handlers to ensure error is written
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        raise

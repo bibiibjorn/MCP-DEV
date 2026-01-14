@@ -1,0 +1,149 @@
+{
+  "templates": [
+    {
+      "template_id": "sparkline_area",
+      "name": "Area Sparkline",
+      "category": "sparklines",
+      "subcategory": "area",
+      "description": "Filled area chart sparkline showing trend with shaded region.",
+      "complexity": "advanced",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 40'><polygon points='5,35 5,30 20,25 35,32 50,20 65,22 80,15 95,18 110,10 110,35' fill='%230EA5E9' opacity='0.3'/><polyline points='5,30 20,25 35,32 50,20 65,22 80,15 95,18 110,10' fill='none' stroke='%230EA5E9' stroke-width='2'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _data = {{data_table}}\nVAR _valueCol = {{value_column}}\nVAR _width = {{width}}\nVAR _height = {{height}}\nVAR _padding = 5\nVAR _chartWidth = _width - (2 * _padding)\nVAR _chartHeight = _height - (2 * _padding)\nVAR _minVal = MINX(_data, _valueCol)\nVAR _maxVal = MAXX(_data, _valueCol)\nVAR _range = IF(_maxVal = _minVal, 1, _maxVal - _minVal)\nVAR _count = COUNTROWS(_data)\nVAR _xStep = _chartWidth / MAX(_count - 1, 1)\nVAR _baseline = _height - _padding\nVAR _dataWithCoords =\n    ADDCOLUMNS(\n        ADDCOLUMNS(_data, \"@idx\", ROWNUMBER(_data)),\n        \"@x\", _padding + ([\"@idx\"] - 1) * _xStep,\n        \"@y\", _padding + _chartHeight - ((_valueCol - _minVal) / _range * _chartHeight)\n    )\nVAR _linePoints =\n    CONCATENATEX(_dataWithCoords, FORMAT([\"@x\"], \"0.0\") & \",\" & FORMAT([\"@y\"], \"0.0\"), \" \", [\"@idx\"], ASC)\nVAR _areaPoints = FORMAT(_padding, \"0\") & \",\" & FORMAT(_baseline, \"0\") & \" \" & _linePoints & \" \" & FORMAT(_padding + (_count - 1) * _xStep, \"0\") & \",\" & FORMAT(_baseline, \"0\")\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _width & \" \" & _height & \"'><polygon points='\" & _areaPoints & \"' fill='{{fill_color}}' opacity='{{fill_opacity}}'/><polyline points='\" & _linePoints & \"' fill='none' stroke='{{stroke_color}}' stroke-width='{{stroke_width}}'/></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "data_table",
+          "type": "table",
+          "required": true,
+          "description": "Table expression returning the data points"
+        },
+        {
+          "name": "value_column",
+          "type": "column",
+          "required": true,
+          "description": "Column containing the values to plot"
+        },
+        {
+          "name": "width",
+          "type": "scalar",
+          "required": false,
+          "default": 120,
+          "description": "SVG width"
+        },
+        {
+          "name": "height",
+          "type": "scalar",
+          "required": false,
+          "default": 40,
+          "description": "SVG height"
+        },
+        {
+          "name": "stroke_color",
+          "type": "color",
+          "required": false,
+          "default": "%230EA5E9",
+          "description": "Line color"
+        },
+        {
+          "name": "fill_color",
+          "type": "color",
+          "required": false,
+          "default": "%230EA5E9",
+          "description": "Fill area color"
+        },
+        {
+          "name": "fill_opacity",
+          "type": "scalar",
+          "required": false,
+          "default": 0.3,
+          "description": "Fill opacity (0-1)"
+        },
+        {
+          "name": "stroke_width",
+          "type": "scalar",
+          "required": false,
+          "default": 2,
+          "description": "Line thickness"
+        }
+      ],
+      "supported_visuals": ["table", "matrix"],
+      "tags": ["sparkline", "area", "filled", "trend"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "sparkline_area_gradient",
+      "name": "Area Sparkline with Gradient",
+      "category": "sparklines",
+      "subcategory": "area",
+      "description": "Area sparkline with vertical gradient fill for enhanced visual appeal.",
+      "complexity": "advanced",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 40'><defs><linearGradient id='grad' x1='0' y1='0' x2='0' y2='1'><stop offset='0%' stop-color='%230EA5E9' stop-opacity='0.5'/><stop offset='100%' stop-color='%230EA5E9' stop-opacity='0'/></linearGradient></defs><polygon points='5,35 5,30 20,25 35,32 50,20 65,22 80,15 95,18 110,10 110,35' fill='url(%23grad)'/><polyline points='5,30 20,25 35,32 50,20 65,22 80,15 95,18 110,10' fill='none' stroke='%230EA5E9' stroke-width='2'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _data = {{data_table}}\nVAR _valueCol = {{value_column}}\nVAR _width = {{width}}\nVAR _height = {{height}}\nVAR _padding = 5\nVAR _chartWidth = _width - (2 * _padding)\nVAR _chartHeight = _height - (2 * _padding)\nVAR _minVal = MINX(_data, _valueCol)\nVAR _maxVal = MAXX(_data, _valueCol)\nVAR _range = IF(_maxVal = _minVal, 1, _maxVal - _minVal)\nVAR _count = COUNTROWS(_data)\nVAR _xStep = _chartWidth / MAX(_count - 1, 1)\nVAR _baseline = _height - _padding\nVAR _dataWithCoords =\n    ADDCOLUMNS(\n        ADDCOLUMNS(_data, \"@idx\", ROWNUMBER(_data)),\n        \"@x\", _padding + ([\"@idx\"] - 1) * _xStep,\n        \"@y\", _padding + _chartHeight - ((_valueCol - _minVal) / _range * _chartHeight)\n    )\nVAR _linePoints =\n    CONCATENATEX(_dataWithCoords, FORMAT([\"@x\"], \"0.0\") & \",\" & FORMAT([\"@y\"], \"0.0\"), \" \", [\"@idx\"], ASC)\nVAR _areaPoints = FORMAT(_padding, \"0\") & \",\" & FORMAT(_baseline, \"0\") & \" \" & _linePoints & \" \" & FORMAT(_padding + (_count - 1) * _xStep, \"0\") & \",\" & FORMAT(_baseline, \"0\")\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _width & \" \" & _height & \"'><defs><linearGradient id='areaGrad' x1='0' y1='0' x2='0' y2='1'><stop offset='0%25' stop-color='{{fill_color}}' stop-opacity='0.5'/><stop offset='100%25' stop-color='{{fill_color}}' stop-opacity='0'/></linearGradient></defs><polygon points='\" & _areaPoints & \"' fill='url(%23areaGrad)'/><polyline points='\" & _linePoints & \"' fill='none' stroke='{{stroke_color}}' stroke-width='{{stroke_width}}'/></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "data_table",
+          "type": "table",
+          "required": true,
+          "description": "Table expression returning the data points"
+        },
+        {
+          "name": "value_column",
+          "type": "column",
+          "required": true,
+          "description": "Column containing the values to plot"
+        },
+        {
+          "name": "width",
+          "type": "scalar",
+          "required": false,
+          "default": 120,
+          "description": "SVG width"
+        },
+        {
+          "name": "height",
+          "type": "scalar",
+          "required": false,
+          "default": 40,
+          "description": "SVG height"
+        },
+        {
+          "name": "stroke_color",
+          "type": "color",
+          "required": false,
+          "default": "%230EA5E9",
+          "description": "Line color"
+        },
+        {
+          "name": "fill_color",
+          "type": "color",
+          "required": false,
+          "default": "%230EA5E9",
+          "description": "Gradient fill color"
+        },
+        {
+          "name": "stroke_width",
+          "type": "scalar",
+          "required": false,
+          "default": 2,
+          "description": "Line thickness"
+        }
+      ],
+      "supported_visuals": ["table", "matrix"],
+      "tags": ["sparkline", "area", "gradient", "modern"],
+      "source": "Custom design",
+      "version": "1.0.0"
+    }
+  ]
+}

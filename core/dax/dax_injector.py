@@ -86,7 +86,8 @@ class DAXInjector:
         dax_expression: str,
         display_folder: Optional[str] = None,
         description: Optional[str] = None,
-        format_string: Optional[str] = None
+        format_string: Optional[str] = None,
+        data_category: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Create or update a DAX measure.
@@ -98,6 +99,7 @@ class DAXInjector:
             display_folder: Optional display folder for organization
             description: Optional measure description
             format_string: Optional format string (e.g., "#,##0.00")
+            data_category: Optional data category (e.g., "ImageUrl" for SVG visuals)
 
         Returns:
             Result dictionary with success status and details
@@ -185,6 +187,9 @@ class DAXInjector:
                 if format_string is not None:
                     measure.FormatString = format_string
 
+                if data_category is not None:
+                    measure.DataCategory = data_category
+
                 action = "updated"
                 logger.info(f"Updated measure '{measure_name}' in table '{table_name}'")
 
@@ -209,6 +214,9 @@ class DAXInjector:
                 if format_string:
                     measure.FormatString = format_string
 
+                if data_category:
+                    measure.DataCategory = data_category
+
                 table.Measures.Add(measure)
                 action = "created"
                 logger.info(f"Created measure '{measure_name}' in table '{table_name}'")
@@ -225,6 +233,7 @@ class DAXInjector:
                 "display_folder": display_folder,
                 "description": description,
                 "format_string": format_string,
+                "data_category": data_category,
                 "message": f"Successfully {action} measure '{measure_name}' in table '{table_name}'"
             }
 
@@ -608,6 +617,8 @@ class DAXInjector:
                 new_measure.DisplayFolder = measure.DisplayFolder
             if hasattr(measure, 'FormatString') and measure.FormatString:
                 new_measure.FormatString = measure.FormatString
+            if hasattr(measure, 'DataCategory') and measure.DataCategory:
+                new_measure.DataCategory = measure.DataCategory
 
             # Remove from source and add to target
             src_table.Measures.Remove(measure)

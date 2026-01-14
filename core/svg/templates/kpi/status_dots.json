@@ -1,0 +1,193 @@
+{
+  "templates": [
+    {
+      "template_id": "kpi_status_dot",
+      "name": "Status Dot",
+      "category": "kpi",
+      "subcategory": "status_dots",
+      "description": "Simple filled status dot that changes color based on value thresholds.",
+      "complexity": "basic",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='30' fill='%230EA5E9'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _low = {{threshold_low}}\nVAR _high = {{threshold_high}}\nVAR _color =\n    SWITCH(\n        TRUE(),\n        _value < _low, \"{{color_bad}}\",\n        _value < _high, \"{{color_warning}}\",\n        \"{{color_good}}\"\n    )\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='30' fill='\" & _color & \"'/></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Measure to evaluate"
+        },
+        {
+          "name": "threshold_low",
+          "type": "scalar",
+          "required": true,
+          "default": 0.5,
+          "description": "Below this = bad"
+        },
+        {
+          "name": "threshold_high",
+          "type": "scalar",
+          "required": true,
+          "default": 0.8,
+          "description": "Above this = good"
+        },
+        {
+          "name": "color_bad",
+          "type": "color",
+          "required": false,
+          "default": "%23DC2626",
+          "description": "Bad state color"
+        },
+        {
+          "name": "color_warning",
+          "type": "color",
+          "required": false,
+          "default": "%23F59E0B",
+          "description": "Warning state color"
+        },
+        {
+          "name": "color_good",
+          "type": "color",
+          "required": false,
+          "default": "%2316A34A",
+          "description": "Good state color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card", "slicer"],
+      "tags": ["kpi", "status", "dot", "indicator"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "kpi_status_dot_outline",
+      "name": "Status Dot Outline",
+      "category": "kpi",
+      "subcategory": "status_dots",
+      "description": "Outlined status dot with hollow center. Lighter visual impact than filled.",
+      "complexity": "basic",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='30' fill='none' stroke='%230EA5E9' stroke-width='6'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _low = {{threshold_low}}\nVAR _high = {{threshold_high}}\nVAR _color =\n    SWITCH(\n        TRUE(),\n        _value < _low, \"{{color_bad}}\",\n        _value < _high, \"{{color_warning}}\",\n        \"{{color_good}}\"\n    )\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='30' fill='none' stroke='\" & _color & \"' stroke-width='6'/></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Measure to evaluate"
+        },
+        {
+          "name": "threshold_low",
+          "type": "scalar",
+          "required": true,
+          "default": 0.5,
+          "description": "Below this = bad"
+        },
+        {
+          "name": "threshold_high",
+          "type": "scalar",
+          "required": true,
+          "default": 0.8,
+          "description": "Above this = good"
+        },
+        {
+          "name": "color_bad",
+          "type": "color",
+          "required": false,
+          "default": "%23DC2626",
+          "description": "Bad state color"
+        },
+        {
+          "name": "color_warning",
+          "type": "color",
+          "required": false,
+          "default": "%23F59E0B",
+          "description": "Warning state color"
+        },
+        {
+          "name": "color_good",
+          "type": "color",
+          "required": false,
+          "default": "%2316A34A",
+          "description": "Good state color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card", "slicer"],
+      "tags": ["kpi", "status", "dot", "outline", "hollow"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "kpi_status_dot_glow",
+      "name": "Status Dot with Glow",
+      "category": "kpi",
+      "subcategory": "status_dots",
+      "description": "Status dot with a glowing effect for emphasis.",
+      "complexity": "intermediate",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='35' fill='%2316A34A' opacity='0.3'/><circle cx='50' cy='50' r='25' fill='%2316A34A'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _low = {{threshold_low}}\nVAR _high = {{threshold_high}}\nVAR _color =\n    SWITCH(\n        TRUE(),\n        _value < _low, \"{{color_bad}}\",\n        _value < _high, \"{{color_warning}}\",\n        \"{{color_good}}\"\n    )\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='35' fill='\" & _color & \"' opacity='0.3'/><circle cx='50' cy='50' r='25' fill='\" & _color & \"'/></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Measure to evaluate"
+        },
+        {
+          "name": "threshold_low",
+          "type": "scalar",
+          "required": true,
+          "default": 0.5,
+          "description": "Below this = bad"
+        },
+        {
+          "name": "threshold_high",
+          "type": "scalar",
+          "required": true,
+          "default": 0.8,
+          "description": "Above this = good"
+        },
+        {
+          "name": "color_bad",
+          "type": "color",
+          "required": false,
+          "default": "%23DC2626",
+          "description": "Bad state color"
+        },
+        {
+          "name": "color_warning",
+          "type": "color",
+          "required": false,
+          "default": "%23F59E0B",
+          "description": "Warning state color"
+        },
+        {
+          "name": "color_good",
+          "type": "color",
+          "required": false,
+          "default": "%2316A34A",
+          "description": "Good state color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card", "slicer"],
+      "tags": ["kpi", "status", "dot", "glow", "emphasis"],
+      "source": "Custom design",
+      "version": "1.0.0"
+    }
+  ]
+}

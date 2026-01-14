@@ -914,6 +914,149 @@ class PbipHtmlGenerator:
         .alert--danger .alert__icon {{ color: var(--danger); }}
         .alert--info .alert__icon {{ color: var(--info); }}
 
+        /* === UNUSED SUMMARY TEXTAREA === */
+        .unused-summary-container {{
+            margin-top: var(--space-md);
+        }}
+
+        .unused-summary-textarea {{
+            width: 100%;
+            min-height: 400px;
+            max-height: 600px;
+            padding: var(--space-md);
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            background: var(--cream);
+            border: 1px solid var(--clay);
+            border-radius: var(--radius-md);
+            resize: vertical;
+            color: var(--ink);
+        }}
+
+        .unused-summary-textarea:focus {{
+            outline: none;
+            border-color: var(--terracotta);
+            box-shadow: 0 0 0 3px rgba(188, 108, 37, 0.1);
+        }}
+
+        .success-state {{
+            text-align: center;
+            padding: var(--space-lg);
+            color: var(--success);
+            font-weight: 500;
+        }}
+
+        .success-state--large {{
+            padding: var(--space-xl);
+        }}
+
+        .success-state__icon {{
+            font-size: 48px;
+            margin-bottom: var(--space-md);
+        }}
+
+        .success-state__title {{
+            color: var(--success);
+            margin-bottom: var(--space-sm);
+        }}
+
+        .success-state__text {{
+            color: var(--stone);
+            font-weight: normal;
+        }}
+
+        /* === USAGE MATRIX === */
+        .usage-filter-select {{
+            padding: var(--space-xs) var(--space-sm);
+            border: 1px solid var(--clay);
+            border-radius: var(--radius-sm);
+            background: var(--cream);
+            color: var(--ink);
+            font-size: 13px;
+            cursor: pointer;
+        }}
+
+        .usage-filter-select:focus {{
+            outline: none;
+            border-color: var(--terracotta);
+        }}
+
+        .usage-matrix-section {{
+            margin-bottom: var(--space-xl);
+        }}
+
+        .usage-matrix-title {{
+            margin-bottom: var(--space-md);
+            color: var(--ink);
+            font-size: 16px;
+            font-weight: 600;
+        }}
+
+        .usage-matrix-container {{
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid var(--clay);
+            border-radius: var(--radius-md);
+        }}
+
+        .usage-matrix-table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }}
+
+        .usage-matrix-table thead {{
+            position: sticky;
+            top: 0;
+            background: var(--clay);
+            z-index: 1;
+        }}
+
+        .usage-matrix-table th {{
+            padding: var(--space-sm) var(--space-md);
+            text-align: left;
+            font-weight: 600;
+            color: var(--ink);
+            border-bottom: 2px solid var(--stone);
+        }}
+
+        .usage-matrix-table td {{
+            padding: var(--space-sm) var(--space-md);
+            border-bottom: 1px solid var(--sand);
+        }}
+
+        .usage-matrix-table tbody tr:hover {{
+            background: var(--sand);
+        }}
+
+        .usage-matrix-table tbody tr.unused-row {{
+            background: rgba(155, 44, 44, 0.05);
+        }}
+
+        .usage-matrix-table tbody tr.unused-row:hover {{
+            background: rgba(155, 44, 44, 0.1);
+        }}
+
+        .status-badge {{
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: var(--radius-sm);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }}
+
+        .status-badge--used {{
+            background: rgba(96, 108, 56, 0.15);
+            color: var(--success);
+        }}
+
+        .status-badge--unused {{
+            background: rgba(155, 44, 44, 0.15);
+            color: var(--danger);
+        }}
+
         .alert__content {{
             flex: 1;
         }}
@@ -5310,6 +5453,78 @@ class PbipHtmlGenerator:
                         </div>
                     </div>
                 </div>
+
+                <!-- Complete Usage Matrix -->
+                <div class="card">
+                    <div class="card__header">
+                        <h3 class="card__title">Complete Usage Matrix</h3>
+                        <div class="card__actions">
+                            <select v-model="usageMatrixFilter" class="usage-filter-select">
+                                <option value="all">Show All</option>
+                                <option value="used">Used Only</option>
+                                <option value="unused">Unused Only</option>
+                            </select>
+                            <button @click="copyUsageMatrix" class="btn btn--small btn--primary">Copy to Clipboard</button>
+                        </div>
+                    </div>
+                    <div class="card__body">
+                        <!-- Measures Matrix -->
+                        <div class="usage-matrix-section">
+                            <h4 class="usage-matrix-title">Measures ({{{{ filteredMeasuresMatrix.length }}}})</h4>
+                            <div class="usage-matrix-container">
+                                <table class="usage-matrix-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Display Folder</th>
+                                            <th>Table</th>
+                                            <th>Measure Name</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="item in filteredMeasuresMatrix" :key="item.fullName" :class="{{'unused-row': !item.isUsed}}">
+                                            <td>{{{{ item.displayFolder || 'No Folder' }}}}</td>
+                                            <td>{{{{ item.table }}}}</td>
+                                            <td>{{{{ item.name }}}}</td>
+                                            <td>
+                                                <span :class="['status-badge', item.isUsed ? 'status-badge--used' : 'status-badge--unused']">
+                                                    {{{{ item.isUsed ? 'Used' : 'Unused' }}}}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Columns Matrix -->
+                        <div class="usage-matrix-section">
+                            <h4 class="usage-matrix-title">Columns ({{{{ filteredColumnsMatrix.length }}}})</h4>
+                            <div class="usage-matrix-container">
+                                <table class="usage-matrix-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Table</th>
+                                            <th>Column Name</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="item in filteredColumnsMatrix" :key="item.fullName" :class="{{'unused-row': !item.isUsed}}">
+                                            <td>{{{{ item.table }}}}</td>
+                                            <td>{{{{ item.name }}}}</td>
+                                            <td>
+                                                <span :class="['status-badge', item.isUsed ? 'status-badge--used' : 'status-badge--unused']">
+                                                    {{{{ item.isUsed ? 'Used' : 'Unused' }}}}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Best Practices Tab -->
@@ -5773,6 +5988,7 @@ class PbipHtmlGenerator:
                     collapsedUnusedMeasureFolders: {{}},
                     collapsedUnusedColumnTables: {{}},
                     collapsedFieldParams: {{}},
+                    usageMatrixFilter: 'all',
 
                     // Dependencies tab
                     selectedDependencyKey: null,
@@ -6236,6 +6452,77 @@ class PbipHtmlGenerator:
                     }});
 
                     return sortedTables;
+                }},
+
+                allMeasuresMatrix() {{
+                    const measures = [];
+                    const unusedSet = new Set(this.dependencies.unused_measures || []);
+                    const tables = this.modelData.tables || [];
+
+                    tables.forEach(table => {{
+                        (table.measures || []).forEach(measure => {{
+                            const fullName = `${{table.name}}[${{measure.name}}]`;
+                            measures.push({{
+                                table: table.name,
+                                name: measure.name,
+                                fullName: fullName,
+                                displayFolder: measure.display_folder || '',
+                                isUsed: !unusedSet.has(fullName)
+                            }});
+                        }});
+                    }});
+
+                    // Sort by display folder, then by name
+                    return measures.sort((a, b) => {{
+                        const folderCompare = (a.displayFolder || '').localeCompare(b.displayFolder || '');
+                        if (folderCompare !== 0) return folderCompare;
+                        return a.name.localeCompare(b.name);
+                    }});
+                }},
+
+                filteredMeasuresMatrix() {{
+                    const all = this.allMeasuresMatrix;
+                    if (this.usageMatrixFilter === 'used') {{
+                        return all.filter(m => m.isUsed);
+                    }} else if (this.usageMatrixFilter === 'unused') {{
+                        return all.filter(m => !m.isUsed);
+                    }}
+                    return all;
+                }},
+
+                allColumnsMatrix() {{
+                    const columns = [];
+                    const unusedSet = new Set(this.dependencies.unused_columns || []);
+                    const tables = this.modelData.tables || [];
+
+                    tables.forEach(table => {{
+                        (table.columns || []).forEach(column => {{
+                            const fullName = `${{table.name}}[${{column.name}}]`;
+                            columns.push({{
+                                table: table.name,
+                                name: column.name,
+                                fullName: fullName,
+                                isUsed: !unusedSet.has(fullName)
+                            }});
+                        }});
+                    }});
+
+                    // Sort by table, then by name
+                    return columns.sort((a, b) => {{
+                        const tableCompare = a.table.localeCompare(b.table);
+                        if (tableCompare !== 0) return tableCompare;
+                        return a.name.localeCompare(b.name);
+                    }});
+                }},
+
+                filteredColumnsMatrix() {{
+                    const all = this.allColumnsMatrix;
+                    if (this.usageMatrixFilter === 'used') {{
+                        return all.filter(c => c.isUsed);
+                    }} else if (this.usageMatrixFilter === 'unused') {{
+                        return all.filter(c => !c.isUsed);
+                    }}
+                    return all;
                 }},
 
                 fieldParametersList() {{
@@ -7701,6 +7988,51 @@ class PbipHtmlGenerator:
                     Object.keys(this.unusedMeasuresByFolder).forEach(folderName => {{
                         this.collapsedUnusedMeasureFolders[folderName] = true;
                     }});
+                }},
+
+                copyUsageMatrix() {{
+                    // Build tab-separated values for measures
+                    const lines = [];
+
+                    // Measures section
+                    lines.push('MEASURES');
+                    lines.push('Display Folder\\tTable\\tMeasure Name\\tStatus');
+                    this.filteredMeasuresMatrix.forEach(m => {{
+                        lines.push(`${{m.displayFolder || 'No Folder'}}\\t${{m.table}}\\t${{m.name}}\\t${{m.isUsed ? 'Used' : 'Unused'}}`);
+                    }});
+
+                    lines.push('');
+
+                    // Columns section
+                    lines.push('COLUMNS');
+                    lines.push('Table\\tColumn Name\\tStatus');
+                    this.filteredColumnsMatrix.forEach(c => {{
+                        lines.push(`${{c.table}}\\t${{c.name}}\\t${{c.isUsed ? 'Used' : 'Unused'}}`);
+                    }});
+
+                    const text = lines.join('\\n');
+
+                    if (navigator.clipboard && navigator.clipboard.writeText) {{
+                        navigator.clipboard.writeText(text).then(() => {{
+                            alert('Copied to clipboard! You can paste this into Excel or a text editor.');
+                        }}).catch(err => {{
+                            console.error('Failed to copy: ', err);
+                            this.fallbackCopy(text);
+                        }});
+                    }} else {{
+                        this.fallbackCopy(text);
+                    }}
+                }},
+
+                fallbackCopy(text) {{
+                    // Fallback for older browsers
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    alert('Copied to clipboard!');
                 }},
 
                 expandAllUnusedColumns() {{

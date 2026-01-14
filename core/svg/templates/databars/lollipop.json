@@ -1,0 +1,163 @@
+{
+  "templates": [
+    {
+      "template_id": "databar_lollipop",
+      "name": "Lollipop Chart",
+      "category": "databars",
+      "subcategory": "lollipop",
+      "description": "Horizontal lollipop chart with line stem and circle head showing value position.",
+      "complexity": "basic",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 20'><line x1='0' y1='10' x2='84' y2='10' stroke='%230EA5E9' stroke-width='2'/><circle cx='84' cy='10' r='6' fill='%230EA5E9'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _maxValue = {{max_value}}\nVAR _pct = MIN(MAX(_value / _maxValue, 0), 1)\nVAR _width = {{width}}\nVAR _height = {{height}}\nVAR _radius = {{circle_radius}}\nVAR _centerY = _height / 2\nVAR _endX = _radius + (_width - (2 * _radius)) * _pct\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _width & \" \" & _height & \"'><line x1='\" & _radius & \"' y1='\" & _centerY & \"' x2='\" & FORMAT(_endX, \"0.0\") & \"' y2='\" & _centerY & \"' stroke='{{color_stem}}' stroke-width='{{stem_width}}'/><circle cx='\" & FORMAT(_endX, \"0.0\") & \"' cy='\" & _centerY & \"' r='\" & _radius & \"' fill='{{color_head}}'/></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Value to display"
+        },
+        {
+          "name": "max_value",
+          "type": "scalar",
+          "required": true,
+          "description": "Maximum value for scaling"
+        },
+        {
+          "name": "width",
+          "type": "scalar",
+          "required": false,
+          "default": 120,
+          "description": "Total width"
+        },
+        {
+          "name": "height",
+          "type": "scalar",
+          "required": false,
+          "default": 20,
+          "description": "Total height"
+        },
+        {
+          "name": "circle_radius",
+          "type": "scalar",
+          "required": false,
+          "default": 6,
+          "description": "Circle head radius"
+        },
+        {
+          "name": "stem_width",
+          "type": "scalar",
+          "required": false,
+          "default": 2,
+          "description": "Line stem thickness"
+        },
+        {
+          "name": "color_head",
+          "type": "color",
+          "required": false,
+          "default": "%230EA5E9",
+          "description": "Circle head color"
+        },
+        {
+          "name": "color_stem",
+          "type": "color",
+          "required": false,
+          "default": "%230EA5E9",
+          "description": "Line stem color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix"],
+      "tags": ["databar", "lollipop", "dot", "minimal"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "databar_lollipop_variance",
+      "name": "Variance Lollipop",
+      "category": "databars",
+      "subcategory": "lollipop",
+      "description": "Centered lollipop showing positive/negative variance from center.",
+      "complexity": "intermediate",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 20'><line x1='60' y1='2' x2='60' y2='18' stroke='%23D1D5DB' stroke-width='1'/><line x1='60' y1='10' x2='96' y2='10' stroke='%2316A34A' stroke-width='2'/><circle cx='96' cy='10' r='5' fill='%2316A34A'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _maxAbsValue = {{max_abs_value}}\nVAR _pct = MIN(MAX(ABS(_value) / _maxAbsValue, 0), 1)\nVAR _width = {{width}}\nVAR _height = {{height}}\nVAR _radius = {{circle_radius}}\nVAR _centerX = _width / 2\nVAR _centerY = _height / 2\nVAR _halfWidth = (_width / 2) - _radius\nVAR _offset = _pct * _halfWidth\nVAR _endX = IF(_value >= 0, _centerX + _offset, _centerX - _offset)\nVAR _color = IF(_value >= 0, \"{{color_positive}}\", \"{{color_negative}}\")\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _width & \" \" & _height & \"'><line x1='\" & _centerX & \"' y1='2' x2='\" & _centerX & \"' y2='\" & (_height - 2) & \"' stroke='{{color_axis}}' stroke-width='1'/><line x1='\" & _centerX & \"' y1='\" & _centerY & \"' x2='\" & FORMAT(_endX, \"0.0\") & \"' y2='\" & _centerY & \"' stroke='\" & _color & \"' stroke-width='{{stem_width}}'/><circle cx='\" & FORMAT(_endX, \"0.0\") & \"' cy='\" & _centerY & \"' r='\" & _radius & \"' fill='\" & _color & \"'/></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Variance value (positive or negative)"
+        },
+        {
+          "name": "max_abs_value",
+          "type": "scalar",
+          "required": true,
+          "description": "Maximum absolute value for scaling"
+        },
+        {
+          "name": "width",
+          "type": "scalar",
+          "required": false,
+          "default": 120,
+          "description": "Total width"
+        },
+        {
+          "name": "height",
+          "type": "scalar",
+          "required": false,
+          "default": 20,
+          "description": "Total height"
+        },
+        {
+          "name": "circle_radius",
+          "type": "scalar",
+          "required": false,
+          "default": 5,
+          "description": "Circle head radius"
+        },
+        {
+          "name": "stem_width",
+          "type": "scalar",
+          "required": false,
+          "default": 2,
+          "description": "Line stem thickness"
+        },
+        {
+          "name": "color_positive",
+          "type": "color",
+          "required": false,
+          "default": "%2316A34A",
+          "description": "Positive value color"
+        },
+        {
+          "name": "color_negative",
+          "type": "color",
+          "required": false,
+          "default": "%23DC2626",
+          "description": "Negative value color"
+        },
+        {
+          "name": "color_axis",
+          "type": "color",
+          "required": false,
+          "default": "%23D1D5DB",
+          "description": "Center axis color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix"],
+      "tags": ["databar", "lollipop", "variance", "centered"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    }
+  ]
+}

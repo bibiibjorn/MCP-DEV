@@ -1,0 +1,228 @@
+{
+  "templates": [
+    {
+      "template_id": "kpi_checkmark",
+      "name": "Checkmark / Cross",
+      "category": "kpi",
+      "subcategory": "checkmarks",
+      "description": "Simple checkmark (pass) or cross (fail) based on boolean condition.",
+      "complexity": "basic",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='%2316A34A'/><path d='M30 50 L45 65 L70 35' stroke='white' stroke-width='8' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _threshold = {{threshold}}\nVAR _isPassing = _value >= _threshold\nVAR _checkmark = \"<circle cx='50' cy='50' r='40' fill='{{color_pass}}'/><path d='M30 50 L45 65 L70 35' stroke='white' stroke-width='8' fill='none' stroke-linecap='round' stroke-linejoin='round'/>\"\nVAR _cross = \"<circle cx='50' cy='50' r='40' fill='{{color_fail}}'/><path d='M35 35 L65 65 M65 35 L35 65' stroke='white' stroke-width='8' fill='none' stroke-linecap='round'/>\"\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>\" & IF(_isPassing, _checkmark, _cross) & \"</svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Measure to evaluate"
+        },
+        {
+          "name": "threshold",
+          "type": "scalar",
+          "required": false,
+          "default": 0,
+          "description": "Threshold for pass/fail (>= threshold = pass)"
+        },
+        {
+          "name": "color_pass",
+          "type": "color",
+          "required": false,
+          "default": "%2316A34A",
+          "description": "Color for passing state (default: green)"
+        },
+        {
+          "name": "color_fail",
+          "type": "color",
+          "required": false,
+          "default": "%23DC2626",
+          "description": "Color for failing state (default: red)"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card", "slicer"],
+      "tags": ["kpi", "checkmark", "pass-fail", "boolean", "validation"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "kpi_checkmark_simple",
+      "name": "Simple Checkmark",
+      "category": "kpi",
+      "subcategory": "checkmarks",
+      "description": "Minimal checkmark or cross without background circle.",
+      "complexity": "basic",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M20 50 L40 70 L80 30' stroke='%2316A34A' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _threshold = {{threshold}}\nVAR _isPassing = _value >= _threshold\nVAR _checkmark = \"<path d='M20 50 L40 70 L80 30' stroke='{{color_pass}}' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/>\"\nVAR _cross = \"<path d='M25 25 L75 75 M75 25 L25 75' stroke='{{color_fail}}' stroke-width='10' fill='none' stroke-linecap='round'/>\"\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>\" & IF(_isPassing, _checkmark, _cross) & \"</svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Measure to evaluate"
+        },
+        {
+          "name": "threshold",
+          "type": "scalar",
+          "required": false,
+          "default": 0,
+          "description": "Threshold for pass/fail"
+        },
+        {
+          "name": "color_pass",
+          "type": "color",
+          "required": false,
+          "default": "%2316A34A",
+          "description": "Color for checkmark"
+        },
+        {
+          "name": "color_fail",
+          "type": "color",
+          "required": false,
+          "default": "%23DC2626",
+          "description": "Color for cross"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card", "slicer"],
+      "tags": ["kpi", "checkmark", "minimal", "simple"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "kpi_checkmark_three_state",
+      "name": "Three-State Checkmark",
+      "category": "kpi",
+      "subcategory": "checkmarks",
+      "description": "Check (good), warning triangle (warning), or cross (bad) based on thresholds.",
+      "complexity": "intermediate",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><polygon points='50,15 90,85 10,85' fill='%23F59E0B'/><text x='50' y='72' text-anchor='middle' font-size='40' font-weight='bold' fill='white'>!</text></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _lowThreshold = {{threshold_low}}\nVAR _highThreshold = {{threshold_high}}\nVAR _checkmark = \"<circle cx='50' cy='50' r='40' fill='{{color_good}}'/><path d='M30 50 L45 65 L70 35' stroke='white' stroke-width='8' fill='none' stroke-linecap='round' stroke-linejoin='round'/>\"\nVAR _warning = \"<polygon points='50,15 90,85 10,85' fill='{{color_warning}}'/><text x='50' y='72' text-anchor='middle' font-size='40' font-weight='bold' fill='white'>!</text>\"\nVAR _cross = \"<circle cx='50' cy='50' r='40' fill='{{color_bad}}'/><path d='M35 35 L65 65 M65 35 L35 65' stroke='white' stroke-width='8' fill='none' stroke-linecap='round'/>\"\nVAR _icon =\n    SWITCH(\n        TRUE(),\n        _value >= _highThreshold, _checkmark,\n        _value >= _lowThreshold, _warning,\n        _cross\n    )\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>\" & _icon & \"</svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Measure to evaluate"
+        },
+        {
+          "name": "threshold_low",
+          "type": "scalar",
+          "required": true,
+          "default": 0.5,
+          "description": "Below this = bad (cross)"
+        },
+        {
+          "name": "threshold_high",
+          "type": "scalar",
+          "required": true,
+          "default": 0.8,
+          "description": "Above this = good (checkmark)"
+        },
+        {
+          "name": "color_good",
+          "type": "color",
+          "required": false,
+          "default": "%2316A34A",
+          "description": "Good state color"
+        },
+        {
+          "name": "color_warning",
+          "type": "color",
+          "required": false,
+          "default": "%23F59E0B",
+          "description": "Warning state color"
+        },
+        {
+          "name": "color_bad",
+          "type": "color",
+          "required": false,
+          "default": "%23DC2626",
+          "description": "Bad state color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card", "slicer"],
+      "tags": ["kpi", "checkmark", "three-state", "warning", "validation"],
+      "source": "Custom design",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "kpi_icon_badge",
+      "name": "Icon Badge",
+      "category": "kpi",
+      "subcategory": "checkmarks",
+      "description": "Badge-style indicator with icon and optional text label.",
+      "complexity": "intermediate",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 30'><rect x='0' y='0' width='80' height='30' rx='15' fill='%2316A34A'/><path d='M12 15 L17 20 L27 10' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/><text x='45' y='20' font-size='12' fill='white' font-weight='bold'>OK</text></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _threshold = {{threshold}}\nVAR _isPassing = _value >= _threshold\nVAR _passLabel = \"{{label_pass}}\"\nVAR _failLabel = \"{{label_fail}}\"\nVAR _passBadge = \"<rect x='0' y='0' width='80' height='30' rx='15' fill='{{color_pass}}'/><path d='M12 15 L17 20 L27 10' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/><text x='45' y='20' font-size='12' fill='white' font-weight='bold'>\" & _passLabel & \"</text>\"\nVAR _failBadge = \"<rect x='0' y='0' width='80' height='30' rx='15' fill='{{color_fail}}'/><path d='M12 10 L22 20 M22 10 L12 20' stroke='white' stroke-width='3' fill='none' stroke-linecap='round'/><text x='45' y='20' font-size='12' fill='white' font-weight='bold'>\" & _failLabel & \"</text>\"\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 30'>\" & IF(_isPassing, _passBadge, _failBadge) & \"</svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Measure to evaluate"
+        },
+        {
+          "name": "threshold",
+          "type": "scalar",
+          "required": false,
+          "default": 0,
+          "description": "Threshold for pass/fail"
+        },
+        {
+          "name": "label_pass",
+          "type": "string",
+          "required": false,
+          "default": "OK",
+          "description": "Label for passing state"
+        },
+        {
+          "name": "label_fail",
+          "type": "string",
+          "required": false,
+          "default": "FAIL",
+          "description": "Label for failing state"
+        },
+        {
+          "name": "color_pass",
+          "type": "color",
+          "required": false,
+          "default": "%2316A34A",
+          "description": "Badge color for pass"
+        },
+        {
+          "name": "color_fail",
+          "type": "color",
+          "required": false,
+          "default": "%23DC2626",
+          "description": "Badge color for fail"
+        }
+      ],
+      "supported_visuals": ["table", "matrix"],
+      "tags": ["kpi", "badge", "label", "status", "icon"],
+      "source": "Custom design",
+      "version": "1.0.0"
+    }
+  ]
+}

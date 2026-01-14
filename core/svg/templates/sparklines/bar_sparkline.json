@@ -1,0 +1,135 @@
+{
+  "templates": [
+    {
+      "template_id": "sparkline_bar_vertical",
+      "name": "Vertical Bar Sparkline",
+      "category": "sparklines",
+      "subcategory": "bar",
+      "description": "Vertical bar chart sparkline showing values as columns.",
+      "complexity": "advanced",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 40'><rect x='5' y='15' width='10' height='20' fill='%230EA5E9'/><rect x='20' y='10' width='10' height='25' fill='%230EA5E9'/><rect x='35' y='20' width='10' height='15' fill='%230EA5E9'/><rect x='50' y='5' width='10' height='30' fill='%230EA5E9'/><rect x='65' y='12' width='10' height='23' fill='%230EA5E9'/><rect x='80' y='8' width='10' height='27' fill='%230EA5E9'/><rect x='95' y='18' width='10' height='17' fill='%230EA5E9'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _data = {{data_table}}\nVAR _valueCol = {{value_column}}\nVAR _width = {{width}}\nVAR _height = {{height}}\nVAR _padding = 5\nVAR _gap = {{bar_gap}}\nVAR _count = COUNTROWS(_data)\nVAR _chartHeight = _height - (2 * _padding)\nVAR _barWidth = (_width - (2 * _padding) - ((_count - 1) * _gap)) / _count\nVAR _minVal = MINX(_data, _valueCol)\nVAR _maxVal = MAXX(_data, _valueCol)\nVAR _range = IF(_maxVal = _minVal, 1, _maxVal - _minVal)\nVAR _bars =\n    CONCATENATEX(\n        ADDCOLUMNS(\n            ADDCOLUMNS(_data, \"@idx\", ROWNUMBER(_data)),\n            \"@x\", _padding + ([\"@idx\"] - 1) * (_barWidth + _gap),\n            \"@barHeight\", ((_valueCol - _minVal) / _range) * _chartHeight,\n            \"@y\", _padding + _chartHeight - ((_valueCol - _minVal) / _range) * _chartHeight\n        ),\n        \"<rect x='\" & FORMAT([\"@x\"], \"0.0\") & \"' y='\" & FORMAT([\"@y\"], \"0.0\") & \"' width='\" & FORMAT(_barWidth, \"0.0\") & \"' height='\" & FORMAT([\"@barHeight\"], \"0.0\") & \"' fill='{{bar_color}}'/>\",\n        \"\",\n        [\"@idx\"], ASC\n    )\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _width & \" \" & _height & \"'>\" & _bars & \"</svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "data_table",
+          "type": "table",
+          "required": true,
+          "description": "Table expression returning the data points"
+        },
+        {
+          "name": "value_column",
+          "type": "column",
+          "required": true,
+          "description": "Column containing the values"
+        },
+        {
+          "name": "width",
+          "type": "scalar",
+          "required": false,
+          "default": 120,
+          "description": "SVG width"
+        },
+        {
+          "name": "height",
+          "type": "scalar",
+          "required": false,
+          "default": 40,
+          "description": "SVG height"
+        },
+        {
+          "name": "bar_gap",
+          "type": "scalar",
+          "required": false,
+          "default": 2,
+          "description": "Gap between bars"
+        },
+        {
+          "name": "bar_color",
+          "type": "color",
+          "required": false,
+          "default": "%230EA5E9",
+          "description": "Bar fill color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix"],
+      "tags": ["sparkline", "bar", "column", "vertical"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "sparkline_bar_colored",
+      "name": "Colored Bar Sparkline",
+      "category": "sparklines",
+      "subcategory": "bar",
+      "description": "Vertical bar sparkline with positive/negative coloring.",
+      "complexity": "advanced",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 40'><rect x='5' y='20' width='10' height='10' fill='%2316A34A'/><rect x='20' y='20' width='10' height='15' fill='%2316A34A'/><rect x='35' y='20' width='10' height='5' fill='%23DC2626' transform='translate(0,5)'/><rect x='50' y='5' width='10' height='15' fill='%2316A34A'/><rect x='65' y='20' width='10' height='8' fill='%23DC2626' transform='translate(0,8)'/><rect x='80' y='20' width='10' height='12' fill='%2316A34A'/><rect x='95' y='20' width='10' height='3' fill='%23DC2626' transform='translate(0,3)'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _data = {{data_table}}\nVAR _valueCol = {{value_column}}\nVAR _width = {{width}}\nVAR _height = {{height}}\nVAR _padding = 5\nVAR _gap = {{bar_gap}}\nVAR _count = COUNTROWS(_data)\nVAR _chartHeight = _height - (2 * _padding)\nVAR _barWidth = (_width - (2 * _padding) - ((_count - 1) * _gap)) / _count\nVAR _maxAbsVal = MAXX(_data, ABS(_valueCol))\nVAR _baseline = _height / 2\nVAR _halfChart = _chartHeight / 2\nVAR _bars =\n    CONCATENATEX(\n        ADDCOLUMNS(\n            ADDCOLUMNS(_data, \"@idx\", ROWNUMBER(_data)),\n            \"@x\", _padding + ([\"@idx\"] - 1) * (_barWidth + _gap),\n            \"@barHeight\", ABS(_valueCol) / _maxAbsVal * _halfChart,\n            \"@y\", IF(_valueCol >= 0, _baseline - (ABS(_valueCol) / _maxAbsVal * _halfChart), _baseline),\n            \"@color\", IF(_valueCol >= 0, \"{{color_positive}}\", \"{{color_negative}}\")\n        ),\n        \"<rect x='\" & FORMAT([\"@x\"], \"0.0\") & \"' y='\" & FORMAT([\"@y\"], \"0.0\") & \"' width='\" & FORMAT(_barWidth, \"0.0\") & \"' height='\" & FORMAT([\"@barHeight\"], \"0.0\") & \"' fill='\" & [\"@color\"] & \"'/>\",\n        \"\",\n        [\"@idx\"], ASC\n    )\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _width & \" \" & _height & \"'>\" & _bars & \"</svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "data_table",
+          "type": "table",
+          "required": true,
+          "description": "Table expression returning the data points"
+        },
+        {
+          "name": "value_column",
+          "type": "column",
+          "required": true,
+          "description": "Column containing the values (positive/negative)"
+        },
+        {
+          "name": "width",
+          "type": "scalar",
+          "required": false,
+          "default": 120,
+          "description": "SVG width"
+        },
+        {
+          "name": "height",
+          "type": "scalar",
+          "required": false,
+          "default": 40,
+          "description": "SVG height"
+        },
+        {
+          "name": "bar_gap",
+          "type": "scalar",
+          "required": false,
+          "default": 2,
+          "description": "Gap between bars"
+        },
+        {
+          "name": "color_positive",
+          "type": "color",
+          "required": false,
+          "default": "%2316A34A",
+          "description": "Color for positive values"
+        },
+        {
+          "name": "color_negative",
+          "type": "color",
+          "required": false,
+          "default": "%23DC2626",
+          "description": "Color for negative values"
+        }
+      ],
+      "supported_visuals": ["table", "matrix"],
+      "tags": ["sparkline", "bar", "positive-negative", "variance"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    }
+  ]
+}

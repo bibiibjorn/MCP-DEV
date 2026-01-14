@@ -1,0 +1,144 @@
+{
+  "templates": [
+    {
+      "template_id": "advanced_timeline",
+      "name": "Timeline Progress Indicator",
+      "category": "advanced",
+      "subcategory": "timeline",
+      "description": "Horizontal timeline showing progress through dated milestones.",
+      "complexity": "advanced",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 150 30'><line x1='10' y1='15' x2='140' y2='15' stroke='%23E5E7EB' stroke-width='3'/><line x1='10' y1='15' x2='90' y2='15' stroke='%230EA5E9' stroke-width='3'/><circle cx='10' cy='15' r='6' fill='%230EA5E9'/><circle cx='50' cy='15' r='6' fill='%230EA5E9'/><circle cx='90' cy='15' r='6' fill='%230EA5E9'/><circle cx='130' cy='15' r='6' fill='%23E5E7EB' stroke='%23D1D5DB' stroke-width='2'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _currentPhase = {{current_phase}}\nVAR _totalPhases = {{total_phases}}\nVAR _width = {{width}}\nVAR _height = {{height}}\nVAR _padding = 10\nVAR _radius = 6\nVAR _lineY = _height / 2\nVAR _usableWidth = _width - (2 * _padding)\nVAR _spacing = _usableWidth / MAX(_totalPhases - 1, 1)\nVAR _progressX = _padding + (MIN(_currentPhase, _totalPhases) - 1) * _spacing\nVAR _bgLine = \"<line x1='\" & _padding & \"' y1='\" & _lineY & \"' x2='\" & (_width - _padding) & \"' y2='\" & _lineY & \"' stroke='{{color_incomplete}}' stroke-width='3'/>\"\nVAR _progressLine = \"<line x1='\" & _padding & \"' y1='\" & _lineY & \"' x2='\" & FORMAT(_progressX, \"0\") & \"' y2='\" & _lineY & \"' stroke='{{color_complete}}' stroke-width='3'/>\"\nVAR _nodes =\n    CONCATENATEX(\n        GENERATESERIES(1, _totalPhases),\n        VAR _idx = [Value]\n        VAR _cx = _padding + (_idx - 1) * _spacing\n        VAR _isComplete = _idx <= _currentPhase\n        VAR _fill = IF(_isComplete, \"{{color_complete}}\", \"{{color_incomplete}}\")\n        VAR _stroke = IF(_isComplete, \"\", \" stroke='{{color_border}}' stroke-width='2'\")\n        RETURN \"<circle cx='\" & FORMAT(_cx, \"0\") & \"' cy='\" & _lineY & \"' r='\" & _radius & \"' fill='\" & _fill & \"'\" & _stroke & \"/>\",\n        \"\"\n    )\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _width & \" \" & _height & \"'>\" & _bgLine & _progressLine & _nodes & \"</svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "current_phase",
+          "type": "measure",
+          "required": true,
+          "description": "Current phase number (1-based)"
+        },
+        {
+          "name": "total_phases",
+          "type": "scalar",
+          "required": false,
+          "default": 4,
+          "description": "Total number of phases/milestones"
+        },
+        {
+          "name": "width",
+          "type": "scalar",
+          "required": false,
+          "default": 150,
+          "description": "Total width"
+        },
+        {
+          "name": "height",
+          "type": "scalar",
+          "required": false,
+          "default": 30,
+          "description": "Total height"
+        },
+        {
+          "name": "color_complete",
+          "type": "color",
+          "required": false,
+          "default": "%230EA5E9",
+          "description": "Completed phase color"
+        },
+        {
+          "name": "color_incomplete",
+          "type": "color",
+          "required": false,
+          "default": "%23E5E7EB",
+          "description": "Incomplete phase color"
+        },
+        {
+          "name": "color_border",
+          "type": "color",
+          "required": false,
+          "default": "%23D1D5DB",
+          "description": "Incomplete node border color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix"],
+      "tags": ["advanced", "timeline", "progress", "phases", "milestones"],
+      "source": "Custom design",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "advanced_heatmap_cell",
+      "name": "Heatmap Cell",
+      "category": "advanced",
+      "subcategory": "timeline",
+      "description": "Single heatmap cell with gradient background color based on value intensity.",
+      "complexity": "intermediate",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 50 30'><rect x='0' y='0' width='50' height='30' fill='%230EA5E9' opacity='0.7'/><text x='25' y='20' text-anchor='middle' font-size='12' fill='white' font-weight='bold'>70%</text></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _maxValue = {{max_value}}\nVAR _pct = MIN(MAX(_value / _maxValue, 0), 1)\nVAR _width = {{width}}\nVAR _height = {{height}}\nVAR _opacity = 0.2 + (_pct * 0.8)\nVAR _showLabel = {{show_label}}\nVAR _labelText = FORMAT(_pct * 100, \"0\") & \"%25\"\nVAR _textColor = IF(_pct > 0.5, \"white\", \"{{color_text_dark}}\")\nVAR _label = IF(_showLabel, \"<text x='\" & (_width / 2) & \"' y='\" & (_height * 0.65) & \"' text-anchor='middle' font-size='\" & (_height * 0.4) & \"' fill='\" & _textColor & \"' font-weight='bold'>\" & _labelText & \"</text>\", \"\")\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _width & \" \" & _height & \"'><rect x='0' y='0' width='\" & _width & \"' height='\" & _height & \"' fill='{{color_fill}}' opacity='\" & FORMAT(_opacity, \"0.00\") & \"'/>\" & _label & \"</svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Value determining intensity"
+        },
+        {
+          "name": "max_value",
+          "type": "scalar",
+          "required": false,
+          "default": 1,
+          "description": "Maximum value for scaling"
+        },
+        {
+          "name": "width",
+          "type": "scalar",
+          "required": false,
+          "default": 50,
+          "description": "Cell width"
+        },
+        {
+          "name": "height",
+          "type": "scalar",
+          "required": false,
+          "default": 30,
+          "description": "Cell height"
+        },
+        {
+          "name": "show_label",
+          "type": "scalar",
+          "required": false,
+          "default": 1,
+          "description": "Show percentage label (1=yes, 0=no)"
+        },
+        {
+          "name": "color_fill",
+          "type": "color",
+          "required": false,
+          "default": "%230EA5E9",
+          "description": "Base fill color"
+        },
+        {
+          "name": "color_text_dark",
+          "type": "color",
+          "required": false,
+          "default": "%23374151",
+          "description": "Text color for light backgrounds"
+        }
+      ],
+      "supported_visuals": ["table", "matrix"],
+      "tags": ["advanced", "heatmap", "intensity", "cell", "gradient"],
+      "source": "Custom design",
+      "version": "1.0.0"
+    }
+  ]
+}

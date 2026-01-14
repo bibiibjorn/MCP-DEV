@@ -1,0 +1,240 @@
+{
+  "templates": [
+    {
+      "template_id": "advanced_composite_kpi",
+      "name": "Composite KPI Card",
+      "category": "advanced",
+      "subcategory": "composite",
+      "description": "Combined KPI display showing value, trend arrow, and mini progress bar in one compact visual.",
+      "complexity": "advanced",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 50'><text x='10' y='25' font-size='18' font-weight='bold' fill='%23374151'>85%</text><polygon points='75,10 85,25 80,25 80,35 70,35 70,25 65,25' fill='%2316A34A'/><rect x='10' y='35' width='100' height='8' rx='4' fill='%23E5E7EB'/><rect x='10' y='35' width='85' height='8' rx='4' fill='%230EA5E9'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _currentValue = {{current_value_measure}}\nVAR _previousValue = {{previous_value_measure}}\nVAR _maxValue = {{max_value}}\nVAR _pct = MIN(MAX(_currentValue / _maxValue, 0), 1)\nVAR _change = _currentValue - _previousValue\nVAR _width = {{width}}\nVAR _height = {{height}}\nVAR _barHeight = 8\nVAR _barY = _height - _barHeight - 5\nVAR _barWidth = _width - 20\nVAR _filledWidth = _pct * _barWidth\nVAR _valueText = FORMAT(_pct * 100, \"0\") & \"%25\"\nVAR _arrowColor = IF(_change >= 0, \"{{color_positive}}\", \"{{color_negative}}\")\nVAR _upArrow = \"<polygon points='75,10 85,25 80,25 80,35 70,35 70,25 65,25' fill='\" & _arrowColor & \"'/>\"\nVAR _downArrow = \"<polygon points='75,35 85,20 80,20 80,10 70,10 70,20 65,20' fill='\" & _arrowColor & \"'/>\"\nVAR _arrow = IF(_change >= 0, _upArrow, _downArrow)\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _width & \" \" & _height & \"'><text x='10' y='25' font-size='18' font-weight='bold' fill='{{color_value}}'>\" & _valueText & \"</text>\" & _arrow & \"<rect x='10' y='\" & _barY & \"' width='\" & _barWidth & \"' height='\" & _barHeight & \"' rx='4' fill='{{color_bar_background}}'/><rect x='10' y='\" & _barY & \"' width='\" & FORMAT(_filledWidth, \"0.0\") & \"' height='\" & _barHeight & \"' rx='4' fill='{{color_bar_fill}}'/></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "current_value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Current period value measure"
+        },
+        {
+          "name": "previous_value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Previous period value for trend"
+        },
+        {
+          "name": "max_value",
+          "type": "scalar",
+          "required": false,
+          "default": 1,
+          "description": "Maximum value for percentage"
+        },
+        {
+          "name": "width",
+          "type": "scalar",
+          "required": false,
+          "default": 120,
+          "description": "Total width"
+        },
+        {
+          "name": "height",
+          "type": "scalar",
+          "required": false,
+          "default": 50,
+          "description": "Total height"
+        },
+        {
+          "name": "color_value",
+          "type": "color",
+          "required": false,
+          "default": "%23374151",
+          "description": "Value text color"
+        },
+        {
+          "name": "color_positive",
+          "type": "color",
+          "required": false,
+          "default": "%2316A34A",
+          "description": "Positive trend color"
+        },
+        {
+          "name": "color_negative",
+          "type": "color",
+          "required": false,
+          "default": "%23DC2626",
+          "description": "Negative trend color"
+        },
+        {
+          "name": "color_bar_fill",
+          "type": "color",
+          "required": false,
+          "default": "%230EA5E9",
+          "description": "Progress bar fill color"
+        },
+        {
+          "name": "color_bar_background",
+          "type": "color",
+          "required": false,
+          "default": "%23E5E7EB",
+          "description": "Progress bar background"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card"],
+      "tags": ["advanced", "composite", "kpi", "trend", "progress"],
+      "source": "Custom design",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "advanced_trend_with_value",
+      "name": "Value with Trend Indicator",
+      "category": "advanced",
+      "subcategory": "composite",
+      "description": "Display value with integrated trend arrow and change percentage.",
+      "complexity": "intermediate",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 30'><text x='5' y='22' font-size='16' font-weight='bold' fill='%23374151'>$1.2M</text><polygon points='70,8 78,18 75,18 75,24 65,24 65,18 62,18' fill='%2316A34A'/><text x='82' y='20' font-size='10' fill='%2316A34A'>+5%</text></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _currentValue = {{current_value_measure}}\nVAR _changePercent = {{change_percent_measure}}\nVAR _width = {{width}}\nVAR _height = {{height}}\nVAR _valueText = FORMAT(_currentValue, \"{{value_format}}\")\nVAR _changeText = IF(_changePercent >= 0, \"+\", \"\") & FORMAT(_changePercent * 100, \"0\") & \"%25\"\nVAR _color = IF(_changePercent >= 0, \"{{color_positive}}\", \"{{color_negative}}\")\nVAR _arrowY = _height * 0.25\nVAR _arrowHeight = _height * 0.5\nVAR _upArrow = \"<polygon points='70,\" & _arrowY & \" 78,\" & (_arrowY + _arrowHeight * 0.6) & \" 75,\" & (_arrowY + _arrowHeight * 0.6) & \" 75,\" & (_arrowY + _arrowHeight) & \" 65,\" & (_arrowY + _arrowHeight) & \" 65,\" & (_arrowY + _arrowHeight * 0.6) & \" 62,\" & (_arrowY + _arrowHeight * 0.6) & \"' fill='\" & _color & \"'/>\"\nVAR _downArrow = \"<polygon points='70,\" & (_arrowY + _arrowHeight) & \" 78,\" & (_arrowY + _arrowHeight * 0.4) & \" 75,\" & (_arrowY + _arrowHeight * 0.4) & \" 75,\" & _arrowY & \" 65,\" & _arrowY & \" 65,\" & (_arrowY + _arrowHeight * 0.4) & \" 62,\" & (_arrowY + _arrowHeight * 0.4) & \"' fill='\" & _color & \"'/>\"\nVAR _arrow = IF(_changePercent >= 0, _upArrow, _downArrow)\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _width & \" \" & _height & \"'><text x='5' y='\" & (_height * 0.7) & \"' font-size='\" & (_height * 0.5) & \"' font-weight='bold' fill='{{color_value}}'>\" & _valueText & \"</text>\" & _arrow & \"<text x='82' y='\" & (_height * 0.65) & \"' font-size='\" & (_height * 0.3) & \"' fill='\" & _color & \"'>\" & _changeText & \"</text></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "current_value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Current value measure"
+        },
+        {
+          "name": "change_percent_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Change percentage as decimal (e.g., 0.05 for 5%)"
+        },
+        {
+          "name": "value_format",
+          "type": "string",
+          "required": false,
+          "default": "0.0",
+          "description": "DAX format string for value"
+        },
+        {
+          "name": "width",
+          "type": "scalar",
+          "required": false,
+          "default": 100,
+          "description": "Total width"
+        },
+        {
+          "name": "height",
+          "type": "scalar",
+          "required": false,
+          "default": 30,
+          "description": "Total height"
+        },
+        {
+          "name": "color_value",
+          "type": "color",
+          "required": false,
+          "default": "%23374151",
+          "description": "Value text color"
+        },
+        {
+          "name": "color_positive",
+          "type": "color",
+          "required": false,
+          "default": "%2316A34A",
+          "description": "Positive change color"
+        },
+        {
+          "name": "color_negative",
+          "type": "color",
+          "required": false,
+          "default": "%23DC2626",
+          "description": "Negative change color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card"],
+      "tags": ["advanced", "value", "trend", "change", "percentage"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "advanced_pictogram",
+      "name": "Pictogram Chart",
+      "category": "advanced",
+      "subcategory": "composite",
+      "description": "Row of icon shapes (circles) representing percentage through filled vs empty icons.",
+      "complexity": "intermediate",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 20'><circle cx='10' cy='10' r='7' fill='%230EA5E9'/><circle cx='30' cy='10' r='7' fill='%230EA5E9'/><circle cx='50' cy='10' r='7' fill='%230EA5E9'/><circle cx='70' cy='10' r='7' fill='%230EA5E9'/><circle cx='90' cy='10' r='7' fill='%23E5E7EB'/><circle cx='110' cy='10' r='7' fill='%23E5E7EB'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _maxValue = {{max_value}}\nVAR _pct = MIN(MAX(_value / _maxValue, 0), 1)\nVAR _totalIcons = {{icon_count}}\nVAR _filledIcons = ROUND(_pct * _totalIcons, 0)\nVAR _iconRadius = {{icon_radius}}\nVAR _spacing = {{icon_spacing}}\nVAR _width = (_totalIcons * (2 * _iconRadius + _spacing)) - _spacing\nVAR _height = 2 * _iconRadius + 4\nVAR _centerY = _height / 2\nVAR _icons =\n    CONCATENATEX(\n        GENERATESERIES(1, _totalIcons),\n        VAR _idx = [Value]\n        VAR _cx = _iconRadius + (_idx - 1) * (2 * _iconRadius + _spacing)\n        VAR _isFilled = _idx <= _filledIcons\n        VAR _color = IF(_isFilled, \"{{color_filled}}\", \"{{color_empty}}\")\n        RETURN \"<circle cx='\" & FORMAT(_cx, \"0\") & \"' cy='\" & _centerY & \"' r='\" & _iconRadius & \"' fill='\" & _color & \"'/>\",\n        \"\"\n    )\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _width & \" \" & _height & \"'>\" & _icons & \"</svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Current value measure"
+        },
+        {
+          "name": "max_value",
+          "type": "scalar",
+          "required": false,
+          "default": 1,
+          "description": "Maximum value"
+        },
+        {
+          "name": "icon_count",
+          "type": "scalar",
+          "required": false,
+          "default": 10,
+          "description": "Number of icons to display"
+        },
+        {
+          "name": "icon_radius",
+          "type": "scalar",
+          "required": false,
+          "default": 7,
+          "description": "Icon radius"
+        },
+        {
+          "name": "icon_spacing",
+          "type": "scalar",
+          "required": false,
+          "default": 6,
+          "description": "Spacing between icons"
+        },
+        {
+          "name": "color_filled",
+          "type": "color",
+          "required": false,
+          "default": "%230EA5E9",
+          "description": "Filled icon color"
+        },
+        {
+          "name": "color_empty",
+          "type": "color",
+          "required": false,
+          "default": "%23E5E7EB",
+          "description": "Empty icon color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix"],
+      "tags": ["advanced", "pictogram", "icons", "percentage", "infographic"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    }
+  ]
+}

@@ -1,0 +1,200 @@
+{
+  "templates": [
+    {
+      "template_id": "gauge_radial",
+      "name": "Radial Gauge",
+      "category": "gauges",
+      "subcategory": "radial",
+      "description": "Circular gauge showing progress around a ring. Classic gauge visualization.",
+      "complexity": "intermediate",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='none' stroke='%23E5E7EB' stroke-width='10'/><circle cx='50' cy='50' r='40' fill='none' stroke='%230EA5E9' stroke-width='10' stroke-dasharray='175 251' transform='rotate(-90,50,50)'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _maxValue = {{max_value}}\nVAR _pct = MIN(MAX(_value / _maxValue, 0), 1)\nVAR _size = {{size}}\nVAR _strokeWidth = {{stroke_width}}\nVAR _radius = (_size / 2) - (_strokeWidth / 2)\nVAR _circumference = 2 * 3.14159 * _radius\nVAR _dashArray = FORMAT(_pct * _circumference, \"0.0\") & \" \" & FORMAT(_circumference, \"0.0\")\nVAR _center = _size / 2\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _size & \" \" & _size & \"'><circle cx='\" & _center & \"' cy='\" & _center & \"' r='\" & _radius & \"' fill='none' stroke='{{color_background}}' stroke-width='\" & _strokeWidth & \"'/><circle cx='\" & _center & \"' cy='\" & _center & \"' r='\" & _radius & \"' fill='none' stroke='{{color_fill}}' stroke-width='\" & _strokeWidth & \"' stroke-dasharray='\" & _dashArray & \"' transform='rotate(-90,\" & _center & \",\" & _center & \")' stroke-linecap='round'/></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Current value measure"
+        },
+        {
+          "name": "max_value",
+          "type": "scalar",
+          "required": false,
+          "default": 1,
+          "description": "Maximum value"
+        },
+        {
+          "name": "size",
+          "type": "scalar",
+          "required": false,
+          "default": 100,
+          "description": "SVG size (square)"
+        },
+        {
+          "name": "stroke_width",
+          "type": "scalar",
+          "required": false,
+          "default": 10,
+          "description": "Ring thickness"
+        },
+        {
+          "name": "color_fill",
+          "type": "color",
+          "required": false,
+          "default": "%230EA5E9",
+          "description": "Progress arc color"
+        },
+        {
+          "name": "color_background",
+          "type": "color",
+          "required": false,
+          "default": "%23E5E7EB",
+          "description": "Background ring color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card"],
+      "tags": ["gauge", "radial", "circular", "ring"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "gauge_radial_labeled",
+      "name": "Radial Gauge with Center Label",
+      "category": "gauges",
+      "subcategory": "radial",
+      "description": "Radial gauge with percentage displayed in the center.",
+      "complexity": "intermediate",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='none' stroke='%23E5E7EB' stroke-width='10'/><circle cx='50' cy='50' r='40' fill='none' stroke='%230EA5E9' stroke-width='10' stroke-dasharray='175 251' transform='rotate(-90,50,50)'/><text x='50' y='55' text-anchor='middle' font-size='20' font-weight='bold' fill='%23374151'>70%</text></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _maxValue = {{max_value}}\nVAR _pct = MIN(MAX(_value / _maxValue, 0), 1)\nVAR _size = {{size}}\nVAR _strokeWidth = {{stroke_width}}\nVAR _radius = (_size / 2) - (_strokeWidth / 2)\nVAR _circumference = 2 * 3.14159 * _radius\nVAR _dashArray = FORMAT(_pct * _circumference, \"0.0\") & \" \" & FORMAT(_circumference, \"0.0\")\nVAR _center = _size / 2\nVAR _pctText = FORMAT(_pct * 100, \"0\") & \"%25\"\nVAR _fontSize = _size / 5\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _size & \" \" & _size & \"'><circle cx='\" & _center & \"' cy='\" & _center & \"' r='\" & _radius & \"' fill='none' stroke='{{color_background}}' stroke-width='\" & _strokeWidth & \"'/><circle cx='\" & _center & \"' cy='\" & _center & \"' r='\" & _radius & \"' fill='none' stroke='{{color_fill}}' stroke-width='\" & _strokeWidth & \"' stroke-dasharray='\" & _dashArray & \"' transform='rotate(-90,\" & _center & \",\" & _center & \")' stroke-linecap='round'/><text x='\" & _center & \"' y='\" & (_center + _fontSize * 0.35) & \"' text-anchor='middle' font-size='\" & _fontSize & \"' font-weight='bold' fill='{{color_text}}'>\" & _pctText & \"</text></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Current value measure"
+        },
+        {
+          "name": "max_value",
+          "type": "scalar",
+          "required": false,
+          "default": 1,
+          "description": "Maximum value"
+        },
+        {
+          "name": "size",
+          "type": "scalar",
+          "required": false,
+          "default": 100,
+          "description": "SVG size"
+        },
+        {
+          "name": "stroke_width",
+          "type": "scalar",
+          "required": false,
+          "default": 10,
+          "description": "Ring thickness"
+        },
+        {
+          "name": "color_fill",
+          "type": "color",
+          "required": false,
+          "default": "%230EA5E9",
+          "description": "Progress arc color"
+        },
+        {
+          "name": "color_background",
+          "type": "color",
+          "required": false,
+          "default": "%23E5E7EB",
+          "description": "Background ring color"
+        },
+        {
+          "name": "color_text",
+          "type": "color",
+          "required": false,
+          "default": "%23374151",
+          "description": "Center text color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card"],
+      "tags": ["gauge", "radial", "labeled", "percentage"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "gauge_semicircle",
+      "name": "Semi-Circle Gauge",
+      "category": "gauges",
+      "subcategory": "radial",
+      "description": "Half-circle gauge commonly used for speedometer-style displays.",
+      "complexity": "intermediate",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'><path d='M10 50 A 40 40 0 0 1 90 50' fill='none' stroke='%23E5E7EB' stroke-width='10' stroke-linecap='round'/><path d='M10 50 A 40 40 0 0 1 70 15' fill='none' stroke='%230EA5E9' stroke-width='10' stroke-linecap='round'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _maxValue = {{max_value}}\nVAR _pct = MIN(MAX(_value / _maxValue, 0), 1)\nVAR _width = {{width}}\nVAR _strokeWidth = {{stroke_width}}\nVAR _height = _width * 0.6\nVAR _radius = (_width / 2) - _strokeWidth\nVAR _centerX = _width / 2\nVAR _centerY = _height - (_strokeWidth / 2)\nVAR _halfCircumference = 3.14159 * _radius\nVAR _dashArray = FORMAT(_pct * _halfCircumference, \"0.0\") & \" \" & FORMAT(_halfCircumference, \"0.0\")\nVAR _bgPath = \"M\" & _strokeWidth & \" \" & _centerY & \" A \" & _radius & \" \" & _radius & \" 0 0 1 \" & (_width - _strokeWidth) & \" \" & _centerY\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _width & \" \" & _height & \"'><path d='\" & _bgPath & \"' fill='none' stroke='{{color_background}}' stroke-width='\" & _strokeWidth & \"' stroke-linecap='round'/><path d='\" & _bgPath & \"' fill='none' stroke='{{color_fill}}' stroke-width='\" & _strokeWidth & \"' stroke-linecap='round' stroke-dasharray='\" & _dashArray & \"'/></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Current value measure"
+        },
+        {
+          "name": "max_value",
+          "type": "scalar",
+          "required": false,
+          "default": 1,
+          "description": "Maximum value"
+        },
+        {
+          "name": "width",
+          "type": "scalar",
+          "required": false,
+          "default": 100,
+          "description": "Total width"
+        },
+        {
+          "name": "stroke_width",
+          "type": "scalar",
+          "required": false,
+          "default": 10,
+          "description": "Arc thickness"
+        },
+        {
+          "name": "color_fill",
+          "type": "color",
+          "required": false,
+          "default": "%230EA5E9",
+          "description": "Progress arc color"
+        },
+        {
+          "name": "color_background",
+          "type": "color",
+          "required": false,
+          "default": "%23E5E7EB",
+          "description": "Background arc color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card"],
+      "tags": ["gauge", "semicircle", "speedometer", "half"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    }
+  ]
+}

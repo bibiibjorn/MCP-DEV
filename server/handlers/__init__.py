@@ -37,6 +37,9 @@ from server.handlers.role_operations_handler import register_role_operations_han
 from server.handlers.batch_operations_handler import register_batch_operations_handler
 from server.handlers.transaction_management_handler import register_transaction_management_handler
 
+# SVG Visual Generation
+from server.handlers.svg_handler import register_svg_operations_handler
+
 def register_all_handlers(registry):
     """Register all handlers with the registry"""
     # Register all proper handlers (no more bridge!)
@@ -76,6 +79,9 @@ def register_all_handlers(registry):
     register_bookmark_theme_handlers(registry)
     register_debug_handlers(registry)
     # Workflow handlers are internalized and not registered as public tools
+
+    # SVG Visual Generation
+    register_svg_operations_handler(registry)
 
 __all__ = [
     'register_all_handlers',

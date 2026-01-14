@@ -1,0 +1,187 @@
+{
+  "templates": [
+    {
+      "template_id": "databar_bullet",
+      "name": "Bullet Chart",
+      "category": "databars",
+      "subcategory": "bullet",
+      "description": "Stephen Few's bullet chart showing actual value against qualitative ranges and a target marker.",
+      "complexity": "intermediate",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 24'><rect x='0' y='4' width='120' height='16' fill='%23E5E7EB'/><rect x='0' y='4' width='84' height='16' fill='%23D1D5DB'/><rect x='0' y='4' width='48' height='16' fill='%23A1A1AA'/><rect x='0' y='8' width='72' height='8' fill='%23374151'/><line x1='96' y1='2' x2='96' y2='22' stroke='%23DC2626' stroke-width='3'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _actual = {{actual_measure}}\nVAR _target = {{target_measure}}\nVAR _maxValue = {{max_value}}\nVAR _width = {{width}}\nVAR _height = {{height}}\nVAR _pctActual = MIN(MAX(_actual / _maxValue, 0), 1)\nVAR _pctTarget = MIN(MAX(_target / _maxValue, 0), 1)\nVAR _poor = {{threshold_poor}}\nVAR _satisfactory = {{threshold_satisfactory}}\nVAR _pctPoor = _poor / _maxValue\nVAR _pctSatisfactory = _satisfactory / _maxValue\nVAR _actualWidth = _pctActual * _width\nVAR _targetX = _pctTarget * _width\nVAR _barHeight = _height * 0.35\nVAR _barY = (_height - _barHeight) / 2\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _width & \" \" & _height & \"'><rect x='0' y='2' width='\" & _width & \"' height='\" & (_height - 4) & \"' fill='{{color_good_range}}'/><rect x='0' y='2' width='\" & FORMAT(_pctSatisfactory * _width, \"0.0\") & \"' height='\" & (_height - 4) & \"' fill='{{color_satisfactory_range}}'/><rect x='0' y='2' width='\" & FORMAT(_pctPoor * _width, \"0.0\") & \"' height='\" & (_height - 4) & \"' fill='{{color_poor_range}}'/><rect x='0' y='\" & _barY & \"' width='\" & FORMAT(_actualWidth, \"0.0\") & \"' height='\" & _barHeight & \"' fill='{{color_actual}}'/><line x1='\" & FORMAT(_targetX, \"0.0\") & \"' y1='1' x2='\" & FORMAT(_targetX, \"0.0\") & \"' y2='\" & (_height - 1) & \"' stroke='{{color_target}}' stroke-width='3'/></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "actual_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Actual value measure"
+        },
+        {
+          "name": "target_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Target value measure"
+        },
+        {
+          "name": "max_value",
+          "type": "scalar",
+          "required": true,
+          "description": "Maximum value for scaling"
+        },
+        {
+          "name": "threshold_poor",
+          "type": "scalar",
+          "required": true,
+          "description": "Below this = poor (darkest range)"
+        },
+        {
+          "name": "threshold_satisfactory",
+          "type": "scalar",
+          "required": true,
+          "description": "Below this = satisfactory (medium range)"
+        },
+        {
+          "name": "width",
+          "type": "scalar",
+          "required": false,
+          "default": 120,
+          "description": "Total width"
+        },
+        {
+          "name": "height",
+          "type": "scalar",
+          "required": false,
+          "default": 24,
+          "description": "Total height"
+        },
+        {
+          "name": "color_poor_range",
+          "type": "color",
+          "required": false,
+          "default": "%23A1A1AA",
+          "description": "Poor performance range color"
+        },
+        {
+          "name": "color_satisfactory_range",
+          "type": "color",
+          "required": false,
+          "default": "%23D1D5DB",
+          "description": "Satisfactory range color"
+        },
+        {
+          "name": "color_good_range",
+          "type": "color",
+          "required": false,
+          "default": "%23E5E7EB",
+          "description": "Good performance range color"
+        },
+        {
+          "name": "color_actual",
+          "type": "color",
+          "required": false,
+          "default": "%23374151",
+          "description": "Actual value bar color"
+        },
+        {
+          "name": "color_target",
+          "type": "color",
+          "required": false,
+          "default": "%23DC2626",
+          "description": "Target marker color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix"],
+      "tags": ["databar", "bullet", "target", "ranges", "performance"],
+      "source": "Stephen Few bullet chart",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "databar_actual_vs_target",
+      "name": "Actual vs Target Bar",
+      "category": "databars",
+      "subcategory": "bullet",
+      "description": "Simplified comparison bar showing actual value with target line overlay.",
+      "complexity": "basic",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 20'><rect x='0' y='5' width='120' height='10' rx='2' fill='%23E5E7EB'/><rect x='0' y='5' width='72' height='10' rx='2' fill='%230EA5E9'/><line x1='96' y1='2' x2='96' y2='18' stroke='%23374151' stroke-width='2' stroke-dasharray='4,2'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _actual = {{actual_measure}}\nVAR _target = {{target_measure}}\nVAR _maxValue = {{max_value}}\nVAR _width = {{width}}\nVAR _height = {{height}}\nVAR _pctActual = MIN(MAX(_actual / _maxValue, 0), 1)\nVAR _pctTarget = MIN(MAX(_target / _maxValue, 0), 1)\nVAR _actualWidth = _pctActual * _width\nVAR _targetX = _pctTarget * _width\nVAR _barHeight = _height * 0.5\nVAR _barY = (_height - _barHeight) / 2\nVAR _barColor = IF(_actual >= _target, \"{{color_above_target}}\", \"{{color_below_target}}\")\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _width & \" \" & _height & \"'><rect x='0' y='\" & _barY & \"' width='\" & _width & \"' height='\" & _barHeight & \"' rx='2' fill='{{color_background}}'/><rect x='0' y='\" & _barY & \"' width='\" & FORMAT(_actualWidth, \"0.0\") & \"' height='\" & _barHeight & \"' rx='2' fill='\" & _barColor & \"'/><line x1='\" & FORMAT(_targetX, \"0.0\") & \"' y1='2' x2='\" & FORMAT(_targetX, \"0.0\") & \"' y2='\" & (_height - 2) & \"' stroke='{{color_target}}' stroke-width='2' stroke-dasharray='4,2'/></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "actual_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Actual value measure"
+        },
+        {
+          "name": "target_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Target value measure"
+        },
+        {
+          "name": "max_value",
+          "type": "scalar",
+          "required": true,
+          "description": "Maximum value for scaling"
+        },
+        {
+          "name": "width",
+          "type": "scalar",
+          "required": false,
+          "default": 120,
+          "description": "Total width"
+        },
+        {
+          "name": "height",
+          "type": "scalar",
+          "required": false,
+          "default": 20,
+          "description": "Total height"
+        },
+        {
+          "name": "color_above_target",
+          "type": "color",
+          "required": false,
+          "default": "%2316A34A",
+          "description": "Bar color when above target"
+        },
+        {
+          "name": "color_below_target",
+          "type": "color",
+          "required": false,
+          "default": "%23DC2626",
+          "description": "Bar color when below target"
+        },
+        {
+          "name": "color_target",
+          "type": "color",
+          "required": false,
+          "default": "%23374151",
+          "description": "Target line color"
+        },
+        {
+          "name": "color_background",
+          "type": "color",
+          "required": false,
+          "default": "%23E5E7EB",
+          "description": "Background track color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix"],
+      "tags": ["databar", "actual", "target", "comparison"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    }
+  ]
+}

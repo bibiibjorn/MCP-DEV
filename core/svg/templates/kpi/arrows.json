@@ -1,0 +1,186 @@
+{
+  "templates": [
+    {
+      "template_id": "kpi_arrow_up_down",
+      "name": "Up/Down Arrow",
+      "category": "kpi",
+      "subcategory": "arrows",
+      "description": "Directional arrow showing up (positive), down (negative), or flat (neutral) trend.",
+      "complexity": "basic",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M50 10 L90 70 L65 70 L65 90 L35 90 L35 70 L10 70 Z' fill='%2316A34A'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _threshold = {{threshold}}\nVAR _upArrow = \"<path d='M50 10 L90 70 L65 70 L65 90 L35 90 L35 70 L10 70 Z' fill='{{color_positive}}'/>\"\nVAR _downArrow = \"<path d='M50 90 L90 30 L65 30 L65 10 L35 10 L35 30 L10 30 Z' fill='{{color_negative}}'/>\"\nVAR _flatArrow = \"<rect x='10' y='40' width='80' height='20' rx='3' fill='{{color_neutral}}'/>\"\nVAR _arrow =\n    SWITCH(\n        TRUE(),\n        _value > _threshold, _upArrow,\n        _value < -_threshold, _downArrow,\n        _flatArrow\n    )\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>\" & _arrow & \"</svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Measure to evaluate (typically a growth/change measure)"
+        },
+        {
+          "name": "threshold",
+          "type": "scalar",
+          "required": false,
+          "default": 0.01,
+          "description": "Threshold for determining up/down (default 1%)"
+        },
+        {
+          "name": "color_positive",
+          "type": "color",
+          "required": false,
+          "default": "%2316A34A",
+          "description": "Color for positive/up arrow"
+        },
+        {
+          "name": "color_negative",
+          "type": "color",
+          "required": false,
+          "default": "%23DC2626",
+          "description": "Color for negative/down arrow"
+        },
+        {
+          "name": "color_neutral",
+          "type": "color",
+          "required": false,
+          "default": "%236B7280",
+          "description": "Color for flat/neutral indicator"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card", "slicer"],
+      "tags": ["kpi", "trend", "arrow", "direction", "up-down"],
+      "source": "SQLBI patterns",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "kpi_arrow_trending",
+      "name": "Trending Arrow with Angle",
+      "category": "kpi",
+      "subcategory": "arrows",
+      "description": "Arrow that rotates based on trend magnitude. Steeper angle = stronger trend.",
+      "complexity": "intermediate",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><g transform='rotate(-45,50,50)'><path d='M20 50 L70 50 L70 40 L90 55 L70 70 L70 60 L20 60 Z' fill='%2316A34A'/></g></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _maxAngle = 45\nVAR _angle = MIN(MAX(_value * 100, -_maxAngle), _maxAngle) * -1\nVAR _color = IF(_value >= 0, \"{{color_positive}}\", \"{{color_negative}}\")\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><g transform='rotate(\" & _angle & \",50,50)'><path d='M20 50 L70 50 L70 40 L90 55 L70 70 L70 60 L20 60 Z' fill='\" & _color & \"'/></g></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Measure to evaluate (e.g., [YoY Growth %])"
+        },
+        {
+          "name": "color_positive",
+          "type": "color",
+          "required": false,
+          "default": "%2316A34A",
+          "description": "Color for positive trend"
+        },
+        {
+          "name": "color_negative",
+          "type": "color",
+          "required": false,
+          "default": "%23DC2626",
+          "description": "Color for negative trend"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card"],
+      "tags": ["kpi", "trend", "arrow", "angle", "gradient"],
+      "source": "Custom design",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "kpi_arrow_simple",
+      "name": "Simple Arrow",
+      "category": "kpi",
+      "subcategory": "arrows",
+      "description": "Minimal arrow indicator - just up or down, perfect for compact displays.",
+      "complexity": "basic",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 50 80'><path d='M25 5 L45 35 L35 35 L35 75 L15 75 L15 35 L5 35 Z' fill='%2316A34A'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _isPositive = _value >= 0\nVAR _upPath = \"<path d='M25 5 L45 35 L35 35 L35 75 L15 75 L15 35 L5 35 Z' fill='{{color_positive}}'/>\"\nVAR _downPath = \"<path d='M25 75 L45 45 L35 45 L35 5 L15 5 L15 45 L5 45 Z' fill='{{color_negative}}'/>\"\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 50 80'>\" & IF(_isPositive, _upPath, _downPath) & \"</svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Measure to evaluate"
+        },
+        {
+          "name": "color_positive",
+          "type": "color",
+          "required": false,
+          "default": "%2316A34A",
+          "description": "Color for positive"
+        },
+        {
+          "name": "color_negative",
+          "type": "color",
+          "required": false,
+          "default": "%23DC2626",
+          "description": "Color for negative"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card", "slicer"],
+      "tags": ["kpi", "arrow", "minimal", "compact"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "kpi_arrow_triangle",
+      "name": "Triangle Arrow",
+      "category": "kpi",
+      "subcategory": "arrows",
+      "description": "Simple triangle pointing up or down based on value.",
+      "complexity": "basic",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><polygon points='50,20 80,70 20,70' fill='%2316A34A'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _isPositive = _value >= 0\nVAR _upTriangle = \"<polygon points='50,20 80,70 20,70' fill='{{color_positive}}'/>\"\nVAR _downTriangle = \"<polygon points='50,80 80,30 20,30' fill='{{color_negative}}'/>\"\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>\" & IF(_isPositive, _upTriangle, _downTriangle) & \"</svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Measure to evaluate"
+        },
+        {
+          "name": "color_positive",
+          "type": "color",
+          "required": false,
+          "default": "%2316A34A",
+          "description": "Color for positive"
+        },
+        {
+          "name": "color_negative",
+          "type": "color",
+          "required": false,
+          "default": "%23DC2626",
+          "description": "Color for negative"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card", "slicer"],
+      "tags": ["kpi", "arrow", "triangle", "direction"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    }
+  ]
+}

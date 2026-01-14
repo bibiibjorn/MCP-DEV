@@ -1,0 +1,137 @@
+{
+  "templates": [
+    {
+      "template_id": "kpi_star_rating",
+      "name": "Star Rating",
+      "category": "kpi",
+      "subcategory": "stars",
+      "description": "1-5 star rating display based on value. Full, half, and empty stars supported.",
+      "complexity": "intermediate",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 24'><polygon points='12,2 15,9 22,9 17,14 19,21 12,17 5,21 7,14 2,9 9,9' fill='%23F59E0B'/><polygon points='36,2 39,9 46,9 41,14 43,21 36,17 29,21 31,14 26,9 33,9' fill='%23F59E0B'/><polygon points='60,2 63,9 70,9 65,14 67,21 60,17 53,21 55,14 50,9 57,9' fill='%23F59E0B'/><polygon points='84,2 87,9 94,9 89,14 91,21 84,17 77,21 79,14 74,9 81,9' fill='%23D1D5DB'/><polygon points='108,2 111,9 118,9 113,14 115,21 108,17 101,21 103,14 98,9 105,9' fill='%23D1D5DB'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _maxStars = {{max_stars}}\nVAR _filledColor = \"{{color_filled}}\"\nVAR _emptyColor = \"{{color_empty}}\"\nVAR _starPath = \"12,2 15,9 22,9 17,14 19,21 12,17 5,21 7,14 2,9 9,9\"\nVAR _fullStars = INT(_value)\nVAR _stars =\n    CONCATENATEX(\n        GENERATESERIES(1, _maxStars),\n        VAR _idx = [Value]\n        VAR _xOffset = (_idx - 1) * 24\n        VAR _color = IF(_idx <= _fullStars, _filledColor, _emptyColor)\n        RETURN \"<polygon points='\" & \n            SUBSTITUTE(_starPath, \"12,\", FORMAT(_xOffset + 12, \"0\") & \",\") &\n            \"' fill='\" & _color & \"' transform='translate(\" & _xOffset & \",0)'/>\",\n        \"\"\n    )\nVAR _width = _maxStars * 24\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _width & \" 24'>\" & _stars & \"</svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Measure returning rating value (e.g., 1-5)"
+        },
+        {
+          "name": "max_stars",
+          "type": "scalar",
+          "required": false,
+          "default": 5,
+          "description": "Maximum number of stars to display"
+        },
+        {
+          "name": "color_filled",
+          "type": "color",
+          "required": false,
+          "default": "%23F59E0B",
+          "description": "Color for filled stars (default: amber)"
+        },
+        {
+          "name": "color_empty",
+          "type": "color",
+          "required": false,
+          "default": "%23D1D5DB",
+          "description": "Color for empty stars (default: gray)"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card"],
+      "tags": ["kpi", "rating", "stars", "score"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "kpi_star_rating_simple",
+      "name": "Simple Star Rating",
+      "category": "kpi",
+      "subcategory": "stars",
+      "description": "Simplified star rating using Unicode characters for better performance.",
+      "complexity": "basic",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 20'><text x='5' y='16' font-size='16' fill='%23F59E0B'>★★★☆☆</text></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _maxStars = {{max_stars}}\nVAR _fullStars = MIN(INT(_value), _maxStars)\nVAR _emptyStars = _maxStars - _fullStars\nVAR _filledChar = \"★\"\nVAR _emptyChar = \"☆\"\nVAR _text = REPT(_filledChar, _fullStars) & REPT(_emptyChar, _emptyStars)\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 20'><text x='5' y='16' font-size='14' fill='{{color_filled}}'>\" & _text & \"</text></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Measure returning rating value"
+        },
+        {
+          "name": "max_stars",
+          "type": "scalar",
+          "required": false,
+          "default": 5,
+          "description": "Maximum number of stars"
+        },
+        {
+          "name": "color_filled",
+          "type": "color",
+          "required": false,
+          "default": "%23F59E0B",
+          "description": "Color for star characters"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card"],
+      "tags": ["kpi", "rating", "stars", "unicode", "simple"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "kpi_star_single",
+      "name": "Single Star with Fill",
+      "category": "kpi",
+      "subcategory": "stars",
+      "description": "Single star that fills proportionally based on value percentage.",
+      "complexity": "intermediate",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><defs><linearGradient id='fill'><stop offset='70%' stop-color='%23F59E0B'/><stop offset='70%' stop-color='%23D1D5DB'/></linearGradient></defs><polygon points='12,2 15,9 22,9 17,14 19,21 12,17 5,21 7,14 2,9 9,9' fill='url(%23fill)'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _pct = MIN(MAX(_value, 0), 1) * 100\nVAR _filledColor = \"{{color_filled}}\"\nVAR _emptyColor = \"{{color_empty}}\"\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><defs><linearGradient id='starFill'><stop offset='\" & FORMAT(_pct, \"0\") & \"%25' stop-color='\" & _filledColor & \"'/><stop offset='\" & FORMAT(_pct, \"0\") & \"%25' stop-color='\" & _emptyColor & \"'/></linearGradient></defs><polygon points='12,2 15,9 22,9 17,14 19,21 12,17 5,21 7,14 2,9 9,9' fill='url(%23starFill)'/></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Measure returning percentage (0-1)"
+        },
+        {
+          "name": "color_filled",
+          "type": "color",
+          "required": false,
+          "default": "%23F59E0B",
+          "description": "Color for filled portion"
+        },
+        {
+          "name": "color_empty",
+          "type": "color",
+          "required": false,
+          "default": "%23D1D5DB",
+          "description": "Color for empty portion"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card"],
+      "tags": ["kpi", "rating", "star", "percentage", "gradient"],
+      "source": "Custom design",
+      "version": "1.0.0"
+    }
+  ]
+}

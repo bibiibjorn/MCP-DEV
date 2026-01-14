@@ -1,0 +1,221 @@
+{
+  "templates": [
+    {
+      "template_id": "gauge_battery",
+      "name": "Battery Indicator",
+      "category": "gauges",
+      "subcategory": "battery",
+      "description": "Battery-style gauge showing fill level. Intuitive for capacity/remaining indicators.",
+      "complexity": "intermediate",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 50 24'><rect x='1' y='4' width='40' height='16' rx='3' fill='none' stroke='%23374151' stroke-width='2'/><rect x='41' y='8' width='4' height='8' rx='1' fill='%23374151'/><rect x='4' y='7' width='27' height='10' rx='1' fill='%2316A34A'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _maxValue = {{max_value}}\nVAR _pct = MIN(MAX(_value / _maxValue, 0), 1)\nVAR _width = {{width}}\nVAR _height = {{height}}\nVAR _bodyWidth = _width * 0.85\nVAR _bodyHeight = _height * 0.75\nVAR _bodyY = (_height - _bodyHeight) / 2\nVAR _terminalWidth = _width * 0.08\nVAR _terminalHeight = _bodyHeight * 0.5\nVAR _terminalY = (_height - _terminalHeight) / 2\nVAR _padding = 3\nVAR _fillWidth = (_bodyWidth - (2 * _padding)) * _pct\nVAR _fillColor =\n    SWITCH(\n        TRUE(),\n        _pct < 0.2, \"{{color_critical}}\",\n        _pct < 0.5, \"{{color_warning}}\",\n        \"{{color_good}}\"\n    )\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _width & \" \" & _height & \"'><rect x='1' y='\" & _bodyY & \"' width='\" & _bodyWidth & \"' height='\" & _bodyHeight & \"' rx='3' fill='none' stroke='{{color_outline}}' stroke-width='2'/><rect x='\" & (_bodyWidth + 1) & \"' y='\" & _terminalY & \"' width='\" & _terminalWidth & \"' height='\" & _terminalHeight & \"' rx='1' fill='{{color_outline}}'/><rect x='\" & (1 + _padding) & \"' y='\" & (_bodyY + _padding) & \"' width='\" & FORMAT(_fillWidth, \"0.0\") & \"' height='\" & (_bodyHeight - (2 * _padding)) & \"' rx='1' fill='\" & _fillColor & \"'/></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Current value measure"
+        },
+        {
+          "name": "max_value",
+          "type": "scalar",
+          "required": false,
+          "default": 1,
+          "description": "Maximum value"
+        },
+        {
+          "name": "width",
+          "type": "scalar",
+          "required": false,
+          "default": 50,
+          "description": "Total width"
+        },
+        {
+          "name": "height",
+          "type": "scalar",
+          "required": false,
+          "default": 24,
+          "description": "Total height"
+        },
+        {
+          "name": "color_good",
+          "type": "color",
+          "required": false,
+          "default": "%2316A34A",
+          "description": "Full/good level color"
+        },
+        {
+          "name": "color_warning",
+          "type": "color",
+          "required": false,
+          "default": "%23F59E0B",
+          "description": "Medium level color"
+        },
+        {
+          "name": "color_critical",
+          "type": "color",
+          "required": false,
+          "default": "%23DC2626",
+          "description": "Low level color"
+        },
+        {
+          "name": "color_outline",
+          "type": "color",
+          "required": false,
+          "default": "%23374151",
+          "description": "Battery outline color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card"],
+      "tags": ["gauge", "battery", "capacity", "level"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "gauge_battery_vertical",
+      "name": "Vertical Battery Indicator",
+      "category": "gauges",
+      "subcategory": "battery",
+      "description": "Vertical battery-style gauge for column-oriented displays.",
+      "complexity": "intermediate",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 50'><rect x='4' y='5' width='16' height='40' rx='3' fill='none' stroke='%23374151' stroke-width='2'/><rect x='8' y='1' width='8' height='4' rx='1' fill='%23374151'/><rect x='7' y='18' width='10' height='24' rx='1' fill='%2316A34A'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _maxValue = {{max_value}}\nVAR _pct = MIN(MAX(_value / _maxValue, 0), 1)\nVAR _width = {{width}}\nVAR _height = {{height}}\nVAR _bodyWidth = _width * 0.7\nVAR _bodyHeight = _height * 0.85\nVAR _bodyX = (_width - _bodyWidth) / 2\nVAR _terminalWidth = _bodyWidth * 0.5\nVAR _terminalHeight = _height * 0.08\nVAR _terminalX = (_width - _terminalWidth) / 2\nVAR _padding = 3\nVAR _fillHeight = (_bodyHeight - (2 * _padding)) * _pct\nVAR _fillY = (_height - _terminalHeight) - _padding - _fillHeight\nVAR _fillColor =\n    SWITCH(\n        TRUE(),\n        _pct < 0.2, \"{{color_critical}}\",\n        _pct < 0.5, \"{{color_warning}}\",\n        \"{{color_good}}\"\n    )\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _width & \" \" & _height & \"'><rect x='\" & _bodyX & \"' y='\" & _terminalHeight & \"' width='\" & _bodyWidth & \"' height='\" & _bodyHeight & \"' rx='3' fill='none' stroke='{{color_outline}}' stroke-width='2'/><rect x='\" & _terminalX & \"' y='0' width='\" & _terminalWidth & \"' height='\" & _terminalHeight & \"' rx='1' fill='{{color_outline}}'/><rect x='\" & (_bodyX + _padding) & \"' y='\" & FORMAT(_fillY, \"0.0\") & \"' width='\" & (_bodyWidth - (2 * _padding)) & \"' height='\" & FORMAT(_fillHeight, \"0.0\") & \"' rx='1' fill='\" & _fillColor & \"'/></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Current value measure"
+        },
+        {
+          "name": "max_value",
+          "type": "scalar",
+          "required": false,
+          "default": 1,
+          "description": "Maximum value"
+        },
+        {
+          "name": "width",
+          "type": "scalar",
+          "required": false,
+          "default": 24,
+          "description": "Total width"
+        },
+        {
+          "name": "height",
+          "type": "scalar",
+          "required": false,
+          "default": 50,
+          "description": "Total height"
+        },
+        {
+          "name": "color_good",
+          "type": "color",
+          "required": false,
+          "default": "%2316A34A",
+          "description": "Full/good level color"
+        },
+        {
+          "name": "color_warning",
+          "type": "color",
+          "required": false,
+          "default": "%23F59E0B",
+          "description": "Medium level color"
+        },
+        {
+          "name": "color_critical",
+          "type": "color",
+          "required": false,
+          "default": "%23DC2626",
+          "description": "Low level color"
+        },
+        {
+          "name": "color_outline",
+          "type": "color",
+          "required": false,
+          "default": "%23374151",
+          "description": "Battery outline color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card"],
+      "tags": ["gauge", "battery", "vertical", "capacity"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "gauge_thermometer",
+      "name": "Thermometer Gauge",
+      "category": "gauges",
+      "subcategory": "battery",
+      "description": "Thermometer-style vertical gauge with bulb at bottom.",
+      "complexity": "intermediate",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 60'><rect x='10' y='5' width='10' height='40' rx='5' fill='%23E5E7EB'/><circle cx='15' cy='50' r='8' fill='%23E5E7EB'/><rect x='12' y='20' width='6' height='25' fill='%23DC2626'/><circle cx='15' cy='50' r='6' fill='%23DC2626'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _maxValue = {{max_value}}\nVAR _pct = MIN(MAX(_value / _maxValue, 0), 1)\nVAR _width = {{width}}\nVAR _height = {{height}}\nVAR _tubeWidth = _width * 0.35\nVAR _tubeX = (_width - _tubeWidth) / 2\nVAR _bulbRadius = _width * 0.3\nVAR _bulbY = _height - _bulbRadius - 2\nVAR _tubeHeight = _bulbY - 5 - (_tubeWidth / 2)\nVAR _fillWidth = _tubeWidth * 0.6\nVAR _fillX = (_width - _fillWidth) / 2\nVAR _fillHeight = _tubeHeight * _pct\nVAR _fillY = 5 + (_tubeWidth / 2) + (_tubeHeight - _fillHeight)\nVAR _innerBulbRadius = _bulbRadius * 0.75\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _width & \" \" & _height & \"'><rect x='\" & _tubeX & \"' y='5' width='\" & _tubeWidth & \"' height='\" & _tubeHeight & \"' rx='\" & (_tubeWidth / 2) & \"' fill='{{color_background}}'/><circle cx='\" & (_width / 2) & \"' cy='\" & _bulbY & \"' r='\" & _bulbRadius & \"' fill='{{color_background}}'/><rect x='\" & _fillX & \"' y='\" & FORMAT(_fillY, \"0.0\") & \"' width='\" & _fillWidth & \"' height='\" & FORMAT(_fillHeight + (_bulbY - 5 - _tubeHeight), \"0.0\") & \"' fill='{{color_fill}}'/><circle cx='\" & (_width / 2) & \"' cy='\" & _bulbY & \"' r='\" & _innerBulbRadius & \"' fill='{{color_fill}}'/></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Current value measure"
+        },
+        {
+          "name": "max_value",
+          "type": "scalar",
+          "required": false,
+          "default": 1,
+          "description": "Maximum value"
+        },
+        {
+          "name": "width",
+          "type": "scalar",
+          "required": false,
+          "default": 30,
+          "description": "Total width"
+        },
+        {
+          "name": "height",
+          "type": "scalar",
+          "required": false,
+          "default": 60,
+          "description": "Total height"
+        },
+        {
+          "name": "color_fill",
+          "type": "color",
+          "required": false,
+          "default": "%23DC2626",
+          "description": "Mercury/fill color"
+        },
+        {
+          "name": "color_background",
+          "type": "color",
+          "required": false,
+          "default": "%23E5E7EB",
+          "description": "Thermometer background"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card"],
+      "tags": ["gauge", "thermometer", "temperature", "level"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    }
+  ]
+}

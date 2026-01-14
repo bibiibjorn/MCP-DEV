@@ -1,0 +1,190 @@
+{
+  "templates": [
+    {
+      "template_id": "databar_simple",
+      "name": "Simple Data Bar",
+      "category": "databars",
+      "subcategory": "simple",
+      "description": "Basic horizontal data bar proportional to value. Classic Excel-style data bar.",
+      "complexity": "basic",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 20'><rect x='0' y='5' width='84' height='10' rx='2' fill='%230EA5E9'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _maxValue = {{max_value}}\nVAR _pct = MIN(MAX(_value / _maxValue, 0), 1)\nVAR _width = {{width}}\nVAR _height = {{height}}\nVAR _barHeight = _height * 0.6\nVAR _barY = (_height - _barHeight) / 2\nVAR _barWidth = _pct * _width\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _width & \" \" & _height & \"'><rect x='0' y='\" & _barY & \"' width='\" & FORMAT(_barWidth, \"0.0\") & \"' height='\" & _barHeight & \"' rx='2' fill='{{bar_color}}'/></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Value to display as bar"
+        },
+        {
+          "name": "max_value",
+          "type": "scalar",
+          "required": true,
+          "description": "Maximum value for scaling"
+        },
+        {
+          "name": "width",
+          "type": "scalar",
+          "required": false,
+          "default": 120,
+          "description": "Total bar width"
+        },
+        {
+          "name": "height",
+          "type": "scalar",
+          "required": false,
+          "default": 20,
+          "description": "Total height"
+        },
+        {
+          "name": "bar_color",
+          "type": "color",
+          "required": false,
+          "default": "%230EA5E9",
+          "description": "Bar fill color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix"],
+      "tags": ["databar", "simple", "horizontal", "value"],
+      "source": "Excel data bar pattern",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "databar_labeled",
+      "name": "Data Bar with Label",
+      "category": "databars",
+      "subcategory": "simple",
+      "description": "Data bar with value label displayed to the right.",
+      "complexity": "basic",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 150 20'><rect x='0' y='5' width='84' height='10' rx='2' fill='%230EA5E9'/><text x='90' y='14' font-size='10' fill='%23374151'>84%</text></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _maxValue = {{max_value}}\nVAR _pct = MIN(MAX(_value / _maxValue, 0), 1)\nVAR _barWidth = {{bar_width}}\nVAR _height = {{height}}\nVAR _totalWidth = _barWidth + 40\nVAR _barHeight = _height * 0.6\nVAR _barY = (_height - _barHeight) / 2\nVAR _filledWidth = _pct * _barWidth\nVAR _labelText = FORMAT(_value, \"{{format_string}}\")\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _totalWidth & \" \" & _height & \"'><rect x='0' y='\" & _barY & \"' width='\" & FORMAT(_filledWidth, \"0.0\") & \"' height='\" & _barHeight & \"' rx='2' fill='{{bar_color}}'/><text x='\" & (_barWidth + 5) & \"' y='\" & (_height * 0.7) & \"' font-size='\" & (_height * 0.5) & \"' fill='{{label_color}}'>\" & _labelText & \"</text></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Value to display"
+        },
+        {
+          "name": "max_value",
+          "type": "scalar",
+          "required": true,
+          "description": "Maximum value for scaling"
+        },
+        {
+          "name": "bar_width",
+          "type": "scalar",
+          "required": false,
+          "default": 100,
+          "description": "Bar portion width"
+        },
+        {
+          "name": "height",
+          "type": "scalar",
+          "required": false,
+          "default": 20,
+          "description": "Total height"
+        },
+        {
+          "name": "format_string",
+          "type": "string",
+          "required": false,
+          "default": "0.0",
+          "description": "DAX format string for label"
+        },
+        {
+          "name": "bar_color",
+          "type": "color",
+          "required": false,
+          "default": "%230EA5E9",
+          "description": "Bar fill color"
+        },
+        {
+          "name": "label_color",
+          "type": "color",
+          "required": false,
+          "default": "%23374151",
+          "description": "Label text color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix"],
+      "tags": ["databar", "labeled", "value", "formatted"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "databar_background",
+      "name": "Data Bar with Background",
+      "category": "databars",
+      "subcategory": "simple",
+      "description": "Data bar with visible background track showing remaining capacity.",
+      "complexity": "basic",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 20'><rect x='0' y='5' width='120' height='10' rx='2' fill='%23E5E7EB'/><rect x='0' y='5' width='84' height='10' rx='2' fill='%230EA5E9'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _maxValue = {{max_value}}\nVAR _pct = MIN(MAX(_value / _maxValue, 0), 1)\nVAR _width = {{width}}\nVAR _height = {{height}}\nVAR _barHeight = _height * 0.6\nVAR _barY = (_height - _barHeight) / 2\nVAR _filledWidth = _pct * _width\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _width & \" \" & _height & \"'><rect x='0' y='\" & _barY & \"' width='\" & _width & \"' height='\" & _barHeight & \"' rx='2' fill='{{color_background}}'/><rect x='0' y='\" & _barY & \"' width='\" & FORMAT(_filledWidth, \"0.0\") & \"' height='\" & _barHeight & \"' rx='2' fill='{{bar_color}}'/></svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Value to display"
+        },
+        {
+          "name": "max_value",
+          "type": "scalar",
+          "required": true,
+          "description": "Maximum value for scaling"
+        },
+        {
+          "name": "width",
+          "type": "scalar",
+          "required": false,
+          "default": 120,
+          "description": "Total width"
+        },
+        {
+          "name": "height",
+          "type": "scalar",
+          "required": false,
+          "default": 20,
+          "description": "Total height"
+        },
+        {
+          "name": "bar_color",
+          "type": "color",
+          "required": false,
+          "default": "%230EA5E9",
+          "description": "Filled bar color"
+        },
+        {
+          "name": "color_background",
+          "type": "color",
+          "required": false,
+          "default": "%23E5E7EB",
+          "description": "Background track color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix"],
+      "tags": ["databar", "background", "track", "capacity"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    }
+  ]
+}

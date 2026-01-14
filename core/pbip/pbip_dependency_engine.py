@@ -362,80 +362,198 @@ class PbipDependencyEngine:
                 "filter_count": page_deps["filter_count"]
             }
 
+    def _normalize_key(self, key: str) -> str:
+        """
+        Normalize a Table[Column] or Table[Measure] key for consistent comparison.
+        Handles quoted table names and extra whitespace.
+        """
+        if not key:
+            return ""
+
+        # Remove leading/trailing quotes from the entire key
+        key = key.strip().strip("'\"")
+
+        # Parse Table[Name] format
+        if '[' in key and ']' in key:
+            bracket_idx = key.index('[')
+            table = key[:bracket_idx].strip().strip("'\"")
+            name = key[bracket_idx + 1:].rstrip(']').strip()
+            return f"{table}[{name}]"
+
+        return key
+
     def _find_unused_objects(self) -> Dict[str, List[str]]:
         """Find measures and columns not used anywhere."""
-        # Build set of used measures
-        used_measures = set()
+        # Build set of used measures (normalized keys for comparison)
+        used_measures_normalized = set()
+
+        # Build a mapping from normalized key to original key
+        all_measure_keys = {}  # normalized -> original
+        all_column_keys = {}   # normalized -> original
+
+        for table in self.model.get("tables", []):
+            table_name = table.get("name", "")
+
+            for measure in table.get("measures", []):
+                measure_key = f"{table_name}[{measure.get('name', '')}]"
+                normalized = self._normalize_key(measure_key)
+                all_measure_keys[normalized] = measure_key
+
+            for column in table.get("columns", []):
+                column_name = column.get("name", "")
+                column_key = f"{table_name}[{column_name}]"
+                normalized = self._normalize_key(column_key)
+                all_column_keys[normalized] = column_key
 
         # First, find measures directly used in visuals
         measures_in_visuals = set()
         if self.report:
             for visual_deps in self.visual_dependencies.values():
-                measures_in_visuals.update(visual_deps.get("measures", []))
+                for m in visual_deps.get("measures", []):
+                    measures_in_visuals.add(self._normalize_key(m))
+
+        # Also check page dependencies for measures in filters
+        if self.report:
+            for page_deps in self.page_dependencies.values():
+                for m in page_deps.get("measures", []):
+                    measures_in_visuals.add(self._normalize_key(m))
+
+        # Check filter pane for measures (report-level, page-level, visual-level filters)
+        if self.report and self.filter_pane_data:
+            # Report filters
+            for filt in self.filter_pane_data.get("report_filters", []):
+                if filt.get("field_type") == "Measure":
+                    field_key = filt.get("field_key", "")
+                    if field_key:
+                        measures_in_visuals.add(self._normalize_key(field_key))
+
+            # Page filters
+            for page_data in self.filter_pane_data.get("page_filters", {}).values():
+                for filt in page_data.get("filters", []):
+                    if filt.get("field_type") == "Measure":
+                        field_key = filt.get("field_key", "")
+                        if field_key:
+                            measures_in_visuals.add(self._normalize_key(field_key))
+
+            # Visual filters
+            for visual_data in self.filter_pane_data.get("visual_filters", {}).values():
+                for filt in visual_data.get("filters", []):
+                    if filt.get("field_type") == "Measure":
+                        field_key = filt.get("field_key", "")
+                        if field_key:
+                            measures_in_visuals.add(self._normalize_key(field_key))
 
         # Now recursively find all measures that these depend on (transitive closure)
         # If measure A is used in a visual and depends on measure B, then both A and B are used
-        def add_dependencies_recursively(measure_key: str):
+        def add_dependencies_recursively(measure_key_normalized: str):
             """Recursively add a measure and all its dependencies to used_measures."""
-            if measure_key in used_measures:
+            if measure_key_normalized in used_measures_normalized:
                 return  # Already processed
-            used_measures.add(measure_key)
+            used_measures_normalized.add(measure_key_normalized)
 
-            # Get dependencies of this measure (measures it depends on)
-            deps = self.measure_to_measure.get(measure_key, [])
+            # Find the original key to look up dependencies
+            # Check both normalized and original forms
+            deps = []
+            for orig_key, dep_list in self.measure_to_measure.items():
+                if self._normalize_key(orig_key) == measure_key_normalized:
+                    deps = dep_list
+                    break
+
             for dep_key in deps:
-                add_dependencies_recursively(dep_key)
+                add_dependencies_recursively(self._normalize_key(dep_key))
 
         # Process all measures that are directly used in visuals
         for measure_key in measures_in_visuals:
             add_dependencies_recursively(measure_key)
 
-        # ALSO mark as used any measure that is referenced by another measure
-        # (even if that other measure is not in visuals - it might be used in other reports or for testing)
-        # This ensures that base measures aren't incorrectly marked as unused
-        for measure_key in self.measure_to_measure_reverse.keys():
-            # This measure is referenced by at least one other measure
-            if measure_key not in used_measures:
-                used_measures.add(measure_key)
+        # ALSO mark as used any measure that is referenced by another used measure (transitive)
+        # A measure is used if any measure that uses it is itself used
+        changed = True
+        while changed:
+            changed = False
+            for orig_key in self.measure_to_measure_reverse.keys():
+                normalized = self._normalize_key(orig_key)
+                if normalized not in used_measures_normalized:
+                    # Check if any measure that uses this one is itself used
+                    users = self.measure_to_measure_reverse.get(orig_key, [])
+                    for user_key in users:
+                        if self._normalize_key(user_key) in used_measures_normalized:
+                            used_measures_normalized.add(normalized)
+                            changed = True
+                            break
 
-        # Build set of used columns
-        used_columns = set()
+        # Build set of used columns (normalized)
+        used_columns_normalized = set()
 
         # Used in measures (from DAX expressions)
         for deps in self.measure_to_column.values():
-            used_columns.update(deps)
+            for d in deps:
+                used_columns_normalized.add(self._normalize_key(d))
 
         # Used by other columns (calculated columns)
-        for column_key, measure_deps in self.column_to_measure.items():
-            if measure_deps:  # If this column is referenced by any measure/column
-                used_columns.add(column_key)
+        for column_key in self.column_to_measure.keys():
+            if self.column_to_measure[column_key]:  # If this column is referenced by any measure/column
+                used_columns_normalized.add(self._normalize_key(column_key))
 
         # Used in relationships
+        # TMDL parser stores from_column/to_column as full 'Table[Column]' references
         for rel in self.model.get("relationships", []):
-            from_table = rel.get("from_table", "")
-            from_col = rel.get("from_column", "") or rel.get("from_column_name", "")
-            to_table = rel.get("to_table", "")
-            to_col = rel.get("to_column", "") or rel.get("to_column_name", "")
+            # Handle the full Table[Column] format from TMDL parser
+            from_col = rel.get("from_column", "")
+            to_col = rel.get("to_column", "")
 
-            if from_table and from_col:
-                used_columns.add(f"{from_table}[{from_col}]")
-            if to_table and to_col:
-                used_columns.add(f"{to_table}[{to_col}]")
+            if from_col:
+                used_columns_normalized.add(self._normalize_key(from_col))
+            if to_col:
+                used_columns_normalized.add(self._normalize_key(to_col))
+
+            # Also handle legacy format with separate table/column fields
+            from_table = rel.get("from_table", "")
+            from_col_name = rel.get("from_column_name", "")
+            to_table = rel.get("to_table", "")
+            to_col_name = rel.get("to_column_name", "")
+
+            if from_table and from_col_name:
+                used_columns_normalized.add(self._normalize_key(f"{from_table}[{from_col_name}]"))
+            if to_table and to_col_name:
+                used_columns_normalized.add(self._normalize_key(f"{to_table}[{to_col_name}]"))
 
         # Used in visuals (directly in visual fields)
         if self.report:
             for visual_deps in self.visual_dependencies.values():
-                used_columns.update(visual_deps.get("columns", []))
+                for c in visual_deps.get("columns", []):
+                    used_columns_normalized.add(self._normalize_key(c))
 
-        # Also check page filters for column usage
+        # Check all filter pane usage for columns
+        if self.report and self.filter_pane_data:
+            # Report filters
+            for filt in self.filter_pane_data.get("report_filters", []):
+                if filt.get("field_type") == "Column":
+                    field_key = filt.get("field_key", "")
+                    if field_key:
+                        used_columns_normalized.add(self._normalize_key(field_key))
+
+            # Page filters
+            for page_data in self.filter_pane_data.get("page_filters", {}).values():
+                for filt in page_data.get("filters", []):
+                    if filt.get("field_type") == "Column":
+                        field_key = filt.get("field_key", "")
+                        if field_key:
+                            used_columns_normalized.add(self._normalize_key(field_key))
+
+            # Visual filters
+            for visual_data in self.filter_pane_data.get("visual_filters", {}).values():
+                for filt in visual_data.get("filters", []):
+                    if filt.get("field_type") == "Column":
+                        field_key = filt.get("field_key", "")
+                        if field_key:
+                            used_columns_normalized.add(self._normalize_key(field_key))
+
+        # Also check page dependencies filters (legacy format)
         if self.report:
             for page_deps in self.page_dependencies.values():
-                for filter_info in page_deps.get("filters", []):
-                    field = filter_info.get("field", {})
-                    table = field.get("table", "")
-                    column = field.get("name", "")
-                    if table and column:
-                        used_columns.add(f"{table}[{column}]")
+                for c in page_deps.get("columns", []):
+                    used_columns_normalized.add(self._normalize_key(c))
 
         # Check field parameter tables (they reference columns via NAMEOF in partition source)
         for table in self.model.get("tables", []):
@@ -449,29 +567,19 @@ class PbipDependencyEngine:
                     matches = re.findall(nameof_pattern, source)
                     for table_ref, col_ref in matches:
                         column_key = f"{table_ref}[{col_ref}]"
-                        used_columns.add(column_key)
+                        used_columns_normalized.add(self._normalize_key(column_key))
 
-        # Find unused
-        all_measures = []
-        all_columns = []
+        # Find unused by comparing normalized keys
+        unused_measures = []
+        unused_columns = []
 
-        for table in self.model.get("tables", []):
-            table_name = table.get("name", "")
+        for normalized, original in all_measure_keys.items():
+            if normalized not in used_measures_normalized:
+                unused_measures.append(original)
 
-            for measure in table.get("measures", []):
-                measure_key = f"{table_name}[{measure.get('name', '')}]"
-                all_measures.append(measure_key)
-
-            for column in table.get("columns", []):
-                column_name = column.get("name", "")
-                column_key = f"{table_name}[{column_name}]"
-
-                # Always include columns in the check (don't skip hidden or key columns)
-                # They may still be used in relationships or calculations
-                all_columns.append(column_key)
-
-        unused_measures = [m for m in all_measures if m not in used_measures]
-        unused_columns = [c for c in all_columns if c not in used_columns]
+        for normalized, original in all_column_keys.items():
+            if normalized not in used_columns_normalized:
+                unused_columns.append(original)
 
         return {
             "measures": unused_measures,

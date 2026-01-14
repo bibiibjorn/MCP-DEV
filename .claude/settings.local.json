@@ -134,7 +134,17 @@
       "Bash(git reset:*)",
       "Bash(py -3.13 -m venv:*)",
       "Bash(\"/c/Users/bjorn.braet/powerbi-mcp-servers/MCP-Sample Data/venv/Scripts/python.exe\" -m pip install --upgrade pip)",
-      "Bash(\"/c/Users/bjorn.braet/powerbi-mcp-servers/MCP-Sample Data/venv/Scripts/pip.exe\" install -r \"/c/Users/bjorn.braet/powerbi-mcp-servers/MCP-Sample Data/requirements.txt\")"
+      "Bash(\"/c/Users/bjorn.braet/powerbi-mcp-servers/MCP-Sample Data/venv/Scripts/pip.exe\" install -r \"/c/Users/bjorn.braet/powerbi-mcp-servers/MCP-Sample Data/requirements.txt\")",
+      "Bash(du:*)",
+      "Read(//c/Users/bjorn.braet/powerbi-mcp-servers/MCP-PowerBi-Finvision/**)",
+      "Bash(Get-ChildItem -Path \"venv\\\\Lib\\\\site-packages\" -Recurse -Directory -Filter \"tests\")",
+      "Bash(Remove-Item -Recurse -Force \"venv\\\\Lib\\\\site-packages\\\\isapi\\\\doc\" -ErrorAction SilentlyContinue)",
+      "Bash(Remove-Item -Recurse -Force \"venv\\\\Lib\\\\site-packages\\\\numpy\\\\doc\" -ErrorAction SilentlyContinue)",
+      "Bash(Write-Host \"Documentation removed\")",
+      "Bash(Remove-Item -Recurse -Force \"venv\\\\Lib\\\\site-packages\\\\adodbapi\\\\examples\" -ErrorAction SilentlyContinue)",
+      "Bash(Write-Host \"Examples removed\")",
+      "Bash(venv/Scripts/pip:*)",
+      "Bash(git log:*)"
     ],
     "deny": [],
     "ask": []

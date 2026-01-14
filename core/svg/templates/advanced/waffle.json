@@ -1,0 +1,116 @@
+{
+  "templates": [
+    {
+      "template_id": "advanced_waffle",
+      "name": "Waffle Chart",
+      "category": "advanced",
+      "subcategory": "waffle",
+      "description": "10x10 grid waffle chart showing percentage as filled squares. Great for showing proportions in a visually intuitive way.",
+      "complexity": "advanced",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='2' y='2' width='8' height='8' fill='%230EA5E9'/><rect x='12' y='2' width='8' height='8' fill='%230EA5E9'/><rect x='22' y='2' width='8' height='8' fill='%230EA5E9'/><rect x='32' y='2' width='8' height='8' fill='%230EA5E9'/><rect x='42' y='2' width='8' height='8' fill='%230EA5E9'/><rect x='52' y='2' width='8' height='8' fill='%23E5E7EB'/><rect x='62' y='2' width='8' height='8' fill='%23E5E7EB'/><rect x='72' y='2' width='8' height='8' fill='%23E5E7EB'/><rect x='82' y='2' width='8' height='8' fill='%23E5E7EB'/><rect x='92' y='2' width='8' height='8' fill='%23E5E7EB'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _maxValue = {{max_value}}\nVAR _pct = MIN(MAX(_value / _maxValue, 0), 1)\nVAR _size = {{size}}\nVAR _gridSize = {{grid_size}}\nVAR _totalSquares = _gridSize * _gridSize\nVAR _filledSquares = ROUND(_pct * _totalSquares, 0)\nVAR _gap = 2\nVAR _squareSize = (_size - ((_gridSize + 1) * _gap)) / _gridSize\nVAR _squares =\n    CONCATENATEX(\n        GENERATESERIES(1, _totalSquares),\n        VAR _idx = [Value]\n        VAR _row = INT((_idx - 1) / _gridSize)\n        VAR _col = MOD(_idx - 1, _gridSize)\n        VAR _x = _gap + _col * (_squareSize + _gap)\n        VAR _y = _gap + _row * (_squareSize + _gap)\n        VAR _isFilled = _idx <= _filledSquares\n        VAR _color = IF(_isFilled, \"{{color_filled}}\", \"{{color_empty}}\")\n        RETURN \"<rect x='\" & FORMAT(_x, \"0.0\") & \"' y='\" & FORMAT(_y, \"0.0\") & \"' width='\" & FORMAT(_squareSize, \"0.0\") & \"' height='\" & FORMAT(_squareSize, \"0.0\") & \"' rx='1' fill='\" & _color & \"'/>\",\n        \"\"\n    )\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _size & \" \" & _size & \"'>\" & _squares & \"</svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Current value measure"
+        },
+        {
+          "name": "max_value",
+          "type": "scalar",
+          "required": false,
+          "default": 1,
+          "description": "Maximum value (default 1 for percentage)"
+        },
+        {
+          "name": "size",
+          "type": "scalar",
+          "required": false,
+          "default": 100,
+          "description": "SVG size (square)"
+        },
+        {
+          "name": "grid_size",
+          "type": "scalar",
+          "required": false,
+          "default": 10,
+          "description": "Grid dimensions (10 = 10x10 = 100 squares)"
+        },
+        {
+          "name": "color_filled",
+          "type": "color",
+          "required": false,
+          "default": "%230EA5E9",
+          "description": "Filled square color"
+        },
+        {
+          "name": "color_empty",
+          "type": "color",
+          "required": false,
+          "default": "%23E5E7EB",
+          "description": "Empty square color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card"],
+      "tags": ["advanced", "waffle", "grid", "percentage", "proportion"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    },
+    {
+      "template_id": "advanced_waffle_small",
+      "name": "Small Waffle Chart",
+      "category": "advanced",
+      "subcategory": "waffle",
+      "description": "Compact 5x5 waffle chart for space-constrained displays.",
+      "complexity": "advanced",
+      "preview_svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 50 50'><rect x='2' y='2' width='8' height='8' fill='%230EA5E9'/><rect x='12' y='2' width='8' height='8' fill='%230EA5E9'/><rect x='22' y='2' width='8' height='8' fill='%230EA5E9'/><rect x='32' y='2' width='8' height='8' fill='%23E5E7EB'/><rect x='42' y='2' width='8' height='8' fill='%23E5E7EB'/></svg>",
+      "dax_template": "{{measure_name}} =\nVAR _value = {{value_measure}}\nVAR _maxValue = {{max_value}}\nVAR _pct = MIN(MAX(_value / _maxValue, 0), 1)\nVAR _size = 50\nVAR _gridSize = 5\nVAR _totalSquares = _gridSize * _gridSize\nVAR _filledSquares = ROUND(_pct * _totalSquares, 0)\nVAR _gap = 2\nVAR _squareSize = (_size - ((_gridSize + 1) * _gap)) / _gridSize\nVAR _squares =\n    CONCATENATEX(\n        GENERATESERIES(1, _totalSquares),\n        VAR _idx = [Value]\n        VAR _row = INT((_idx - 1) / _gridSize)\n        VAR _col = MOD(_idx - 1, _gridSize)\n        VAR _x = _gap + _col * (_squareSize + _gap)\n        VAR _y = _gap + _row * (_squareSize + _gap)\n        VAR _isFilled = _idx <= _filledSquares\n        VAR _color = IF(_isFilled, \"{{color_filled}}\", \"{{color_empty}}\")\n        RETURN \"<rect x='\" & FORMAT(_x, \"0.0\") & \"' y='\" & FORMAT(_y, \"0.0\") & \"' width='\" & FORMAT(_squareSize, \"0.0\") & \"' height='\" & FORMAT(_squareSize, \"0.0\") & \"' rx='1' fill='\" & _color & \"'/>\",\n        \"\"\n    )\nVAR _svg = \"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 \" & _size & \" \" & _size & \"'>\" & _squares & \"</svg>\"\nRETURN \"data:image/svg+xml;utf8,\" & _svg",
+      "parameters": [
+        {
+          "name": "measure_name",
+          "type": "string",
+          "required": true,
+          "description": "Name for the new SVG measure"
+        },
+        {
+          "name": "value_measure",
+          "type": "measure",
+          "required": true,
+          "description": "Current value measure"
+        },
+        {
+          "name": "max_value",
+          "type": "scalar",
+          "required": false,
+          "default": 1,
+          "description": "Maximum value"
+        },
+        {
+          "name": "color_filled",
+          "type": "color",
+          "required": false,
+          "default": "%230EA5E9",
+          "description": "Filled square color"
+        },
+        {
+          "name": "color_empty",
+          "type": "color",
+          "required": false,
+          "default": "%23E5E7EB",
+          "description": "Empty square color"
+        }
+      ],
+      "supported_visuals": ["table", "matrix", "card"],
+      "tags": ["advanced", "waffle", "compact", "small"],
+      "source": "Common pattern",
+      "version": "1.0.0"
+    }
+  ]
+}
