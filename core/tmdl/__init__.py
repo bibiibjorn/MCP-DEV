@@ -14,6 +14,7 @@ from .validator import TmdlValidator, ValidationResult, LintIssue
 from .bulk_editor import TmdlBulkEditor, ReplaceResult, RenameResult
 from .templates import TmdlTemplateLibrary, TemplateInfo, TmdlTemplate
 from .script_generator import TmdlScriptGenerator
+from .measure_migrator import TmdlMeasureMigrator, MigrationResult, MeasureInfo
 
 __all__ = [
     "TmdlValidator",
@@ -26,4 +27,7 @@ __all__ = [
     "TemplateInfo",
     "TmdlTemplate",
     "TmdlScriptGenerator",
+    "TmdlMeasureMigrator",
+    "MigrationResult",
+    "MeasureInfo",
 ]

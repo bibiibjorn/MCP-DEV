@@ -146,6 +146,18 @@ class PbipDependencyEngine:
             )
             return
 
+        # Build a lookup of measure names to their tables for resolving unqualified refs
+        measure_name_to_tables = {}
+        for table in self.model.get("tables", []):
+            table_name = table.get("name", "")
+            for measure in table.get("measures", []):
+                meas_name = measure.get("name", "")
+                if meas_name:
+                    normalized_name = meas_name.lower().strip()
+                    if normalized_name not in measure_name_to_tables:
+                        measure_name_to_tables[normalized_name] = []
+                    measure_name_to_tables[normalized_name].append(table_name)
+
         for table in self.model.get("tables", []):
             table_name = table.get("name", "")
 
@@ -163,10 +175,21 @@ class PbipDependencyEngine:
                 # Extract measure dependencies
                 measure_deps = []
                 for ref_table, ref_measure in refs.get("measures", []):
-                    if ref_table and ref_measure:
+                    if ref_measure:
+                        # Handle empty table name by resolving from our lookup
+                        if not ref_table:
+                            normalized_ref = ref_measure.lower().strip()
+                            tables = measure_name_to_tables.get(normalized_ref, [])
+                            if tables:
+                                # Use the first matching table (usually measures are in one table)
+                                ref_table = tables[0]
+                            else:
+                                # Unknown measure - skip
+                                continue
+
                         ref_key = f"{ref_table}[{ref_measure}]"
-                        # Don't add self-references
-                        if ref_key != measure_key:
+                        # Don't add self-references (case-insensitive)
+                        if self._normalize_key(ref_key) != self._normalize_key(measure_key):
                             measure_deps.append(ref_key)
 
                 if measure_deps:
@@ -365,7 +388,7 @@ class PbipDependencyEngine:
     def _normalize_key(self, key: str) -> str:
         """
         Normalize a Table[Column] or Table[Measure] key for consistent comparison.
-        Handles quoted table names and extra whitespace.
+        Handles quoted table names, extra whitespace, and case differences.
         """
         if not key:
             return ""
@@ -376,11 +399,11 @@ class PbipDependencyEngine:
         # Parse Table[Name] format
         if '[' in key and ']' in key:
             bracket_idx = key.index('[')
-            table = key[:bracket_idx].strip().strip("'\"")
-            name = key[bracket_idx + 1:].rstrip(']').strip()
+            table = key[:bracket_idx].strip().strip("'\"").lower()
+            name = key[bracket_idx + 1:].rstrip(']').strip().lower()
             return f"{table}[{name}]"
 
-        return key
+        return key.lower()
 
     def _find_unused_objects(self) -> Dict[str, List[str]]:
         """Find measures and columns not used anywhere."""

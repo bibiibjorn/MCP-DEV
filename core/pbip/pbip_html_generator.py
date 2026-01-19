@@ -986,18 +986,102 @@ class PbipHtmlGenerator:
             margin-bottom: var(--space-xl);
         }}
 
-        .usage-matrix-title {{
+        .usage-matrix-header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
             margin-bottom: var(--space-md);
+        }}
+
+        .usage-matrix-title {{
+            margin: 0;
             color: var(--ink);
             font-size: 16px;
             font-weight: 600;
         }}
 
+        .usage-matrix-actions {{
+            display: flex;
+            gap: var(--space-xs);
+        }}
+
         .usage-matrix-container {{
-            max-height: 400px;
+            max-height: 500px;
             overflow-y: auto;
             border: 1px solid var(--clay);
             border-radius: var(--radius-md);
+        }}
+
+        /* Collapsible Groups */
+        .collapsible-group {{
+            border-bottom: 1px solid var(--sand);
+        }}
+
+        .collapsible-group:last-child {{
+            border-bottom: none;
+        }}
+
+        .collapsible-header {{
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            padding: var(--space-sm) var(--space-md);
+            background: var(--clay);
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.2s ease;
+        }}
+
+        .collapsible-header:hover {{
+            background: var(--sand);
+        }}
+
+        .collapsible-header.collapsed {{
+            background: var(--cream);
+        }}
+
+        .collapsible-icon {{
+            font-size: 10px;
+            color: var(--stone);
+            width: 12px;
+            text-align: center;
+        }}
+
+        .collapsible-title {{
+            font-weight: 600;
+            color: var(--ink);
+            flex: 1;
+        }}
+
+        .collapsible-count {{
+            color: var(--stone);
+            font-size: 12px;
+        }}
+
+        .collapsible-stats {{
+            display: flex;
+            gap: var(--space-sm);
+            font-size: 11px;
+        }}
+
+        .collapsible-stats .stat-used {{
+            color: var(--pine);
+        }}
+
+        .collapsible-stats .stat-unused {{
+            color: var(--rust);
+        }}
+
+        .collapsible-content {{
+            background: var(--cream);
+        }}
+
+        .collapsible-content .usage-matrix-table {{
+            margin: 0;
+        }}
+
+        .collapsible-content .usage-matrix-table thead {{
+            background: var(--sand);
         }}
 
         .usage-matrix-table {{
@@ -5468,59 +5552,93 @@ class PbipHtmlGenerator:
                         </div>
                     </div>
                     <div class="card__body">
-                        <!-- Measures Matrix -->
+                        <!-- Measures Matrix - Grouped by Display Folder -->
                         <div class="usage-matrix-section">
-                            <h4 class="usage-matrix-title">Measures ({{{{ filteredMeasuresMatrix.length }}}})</h4>
+                            <div class="usage-matrix-header">
+                                <h4 class="usage-matrix-title">Measures ({{{{ filteredMeasuresMatrix.length }}}})</h4>
+                                <div class="usage-matrix-actions">
+                                    <button @click="expandAllMeasureFolders" class="btn btn--small btn--secondary">Expand All</button>
+                                    <button @click="collapseAllMeasureFolders" class="btn btn--small btn--secondary">Collapse All</button>
+                                </div>
+                            </div>
                             <div class="usage-matrix-container">
-                                <table class="usage-matrix-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Display Folder</th>
-                                            <th>Table</th>
-                                            <th>Measure Name</th>
-                                            <th>Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr v-for="item in filteredMeasuresMatrix" :key="item.fullName" :class="{{'unused-row': !item.isUsed}}">
-                                            <td>{{{{ item.displayFolder || 'No Folder' }}}}</td>
-                                            <td>{{{{ item.table }}}}</td>
-                                            <td>{{{{ item.name }}}}</td>
-                                            <td>
-                                                <span :class="['status-badge', item.isUsed ? 'status-badge--used' : 'status-badge--unused']">
-                                                    {{{{ item.isUsed ? 'Used' : 'Unused' }}}}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                                <div v-for="(measures, folderName) in filteredMeasuresGroupedByFolder" :key="folderName" class="collapsible-group">
+                                    <div class="collapsible-header" :class="{{collapsed: collapsedMeasureFolders[folderName]}}" @click="toggleMeasureFolder(folderName)">
+                                        <span class="collapsible-icon">{{{{ collapsedMeasureFolders[folderName] ? '▶' : '▼' }}}}</span>
+                                        <span class="collapsible-title">{{{{ folderName || 'No Folder' }}}}</span>
+                                        <span class="collapsible-count">({{{{ measures.length }}}})</span>
+                                        <span class="collapsible-stats">
+                                            <span class="stat-used">{{{{ measures.filter(m => m.isUsed).length }}}} used</span>
+                                            <span class="stat-unused">{{{{ measures.filter(m => !m.isUsed).length }}}} unused</span>
+                                        </span>
+                                    </div>
+                                    <div v-show="!collapsedMeasureFolders[folderName]" class="collapsible-content">
+                                        <table class="usage-matrix-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Table</th>
+                                                    <th>Measure Name</th>
+                                                    <th>Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr v-for="item in measures" :key="item.fullName" :class="{{'unused-row': !item.isUsed}}">
+                                                    <td>{{{{ item.table }}}}</td>
+                                                    <td>{{{{ item.name }}}}</td>
+                                                    <td>
+                                                        <span :class="['status-badge', item.isUsed ? 'status-badge--used' : 'status-badge--unused']">
+                                                            {{{{ item.isUsed ? 'Used' : 'Unused' }}}}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                        <!-- Columns Matrix -->
+                        <!-- Columns Matrix - Grouped by Table -->
                         <div class="usage-matrix-section">
-                            <h4 class="usage-matrix-title">Columns ({{{{ filteredColumnsMatrix.length }}}})</h4>
+                            <div class="usage-matrix-header">
+                                <h4 class="usage-matrix-title">Columns ({{{{ filteredColumnsMatrix.length }}}})</h4>
+                                <div class="usage-matrix-actions">
+                                    <button @click="expandAllColumnTables" class="btn btn--small btn--secondary">Expand All</button>
+                                    <button @click="collapseAllColumnTables" class="btn btn--small btn--secondary">Collapse All</button>
+                                </div>
+                            </div>
                             <div class="usage-matrix-container">
-                                <table class="usage-matrix-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Table</th>
-                                            <th>Column Name</th>
-                                            <th>Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr v-for="item in filteredColumnsMatrix" :key="item.fullName" :class="{{'unused-row': !item.isUsed}}">
-                                            <td>{{{{ item.table }}}}</td>
-                                            <td>{{{{ item.name }}}}</td>
-                                            <td>
-                                                <span :class="['status-badge', item.isUsed ? 'status-badge--used' : 'status-badge--unused']">
-                                                    {{{{ item.isUsed ? 'Used' : 'Unused' }}}}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                                <div v-for="(columns, tableName) in filteredColumnsGroupedByTable" :key="tableName" class="collapsible-group">
+                                    <div class="collapsible-header" :class="{{collapsed: collapsedColumnTables[tableName]}}" @click="toggleColumnTable(tableName)">
+                                        <span class="collapsible-icon">{{{{ collapsedColumnTables[tableName] ? '▶' : '▼' }}}}</span>
+                                        <span class="collapsible-title">{{{{ tableName }}}}</span>
+                                        <span class="collapsible-count">({{{{ columns.length }}}})</span>
+                                        <span class="collapsible-stats">
+                                            <span class="stat-used">{{{{ columns.filter(c => c.isUsed).length }}}} used</span>
+                                            <span class="stat-unused">{{{{ columns.filter(c => !c.isUsed).length }}}} unused</span>
+                                        </span>
+                                    </div>
+                                    <div v-show="!collapsedColumnTables[tableName]" class="collapsible-content">
+                                        <table class="usage-matrix-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Column Name</th>
+                                                    <th>Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr v-for="item in columns" :key="item.fullName" :class="{{'unused-row': !item.isUsed}}">
+                                                    <td>{{{{ item.name }}}}</td>
+                                                    <td>
+                                                        <span :class="['status-badge', item.isUsed ? 'status-badge--used' : 'status-badge--unused']">
+                                                            {{{{ item.isUsed ? 'Used' : 'Unused' }}}}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -5989,6 +6107,8 @@ class PbipHtmlGenerator:
                     collapsedUnusedColumnTables: {{}},
                     collapsedFieldParams: {{}},
                     usageMatrixFilter: 'all',
+                    collapsedMeasureFolders: {{}},
+                    collapsedColumnTables: {{}},
 
                     // Dependencies tab
                     selectedDependencyKey: null,
@@ -6456,18 +6576,20 @@ class PbipHtmlGenerator:
 
                 allMeasuresMatrix() {{
                     const measures = [];
-                    const unusedSet = new Set(this.dependencies.unused_measures || []);
+                    // Build case-insensitive set of unused measures
+                    const unusedSet = new Set((this.dependencies.unused_measures || []).map(m => m.toLowerCase()));
                     const tables = this.modelData.tables || [];
 
                     tables.forEach(table => {{
                         (table.measures || []).forEach(measure => {{
                             const fullName = `${{table.name}}[${{measure.name}}]`;
+                            const fullNameLower = fullName.toLowerCase();
                             measures.push({{
                                 table: table.name,
                                 name: measure.name,
                                 fullName: fullName,
                                 displayFolder: measure.display_folder || '',
-                                isUsed: !unusedSet.has(fullName)
+                                isUsed: !unusedSet.has(fullNameLower)
                             }});
                         }});
                     }});
@@ -6490,19 +6612,38 @@ class PbipHtmlGenerator:
                     return all;
                 }},
 
+                filteredMeasuresGroupedByFolder() {{
+                    const grouped = {{}};
+                    this.filteredMeasuresMatrix.forEach(measure => {{
+                        const folder = measure.displayFolder || 'No Folder';
+                        if (!grouped[folder]) {{
+                            grouped[folder] = [];
+                        }}
+                        grouped[folder].push(measure);
+                    }});
+                    // Sort folders
+                    const sorted = {{}};
+                    Object.keys(grouped).sort((a, b) => a.localeCompare(b)).forEach(key => {{
+                        sorted[key] = grouped[key];
+                    }});
+                    return sorted;
+                }},
+
                 allColumnsMatrix() {{
                     const columns = [];
-                    const unusedSet = new Set(this.dependencies.unused_columns || []);
+                    // Build case-insensitive set of unused columns
+                    const unusedSet = new Set((this.dependencies.unused_columns || []).map(c => c.toLowerCase()));
                     const tables = this.modelData.tables || [];
 
                     tables.forEach(table => {{
                         (table.columns || []).forEach(column => {{
                             const fullName = `${{table.name}}[${{column.name}}]`;
+                            const fullNameLower = fullName.toLowerCase();
                             columns.push({{
                                 table: table.name,
                                 name: column.name,
                                 fullName: fullName,
-                                isUsed: !unusedSet.has(fullName)
+                                isUsed: !unusedSet.has(fullNameLower)
                             }});
                         }});
                     }});
@@ -6523,6 +6664,23 @@ class PbipHtmlGenerator:
                         return all.filter(c => !c.isUsed);
                     }}
                     return all;
+                }},
+
+                filteredColumnsGroupedByTable() {{
+                    const grouped = {{}};
+                    this.filteredColumnsMatrix.forEach(column => {{
+                        const table = column.table || 'Unknown Table';
+                        if (!grouped[table]) {{
+                            grouped[table] = [];
+                        }}
+                        grouped[table].push(column);
+                    }});
+                    // Sort tables
+                    const sorted = {{}};
+                    Object.keys(grouped).sort((a, b) => a.localeCompare(b)).forEach(key => {{
+                        sorted[key] = grouped[key];
+                    }});
+                    return sorted;
                 }},
 
                 fieldParametersList() {{
@@ -7990,6 +8148,40 @@ class PbipHtmlGenerator:
                     }});
                 }},
 
+                // Usage Matrix - Measures by Folder
+                toggleMeasureFolder(folderName) {{
+                    this.collapsedMeasureFolders[folderName] = !this.collapsedMeasureFolders[folderName];
+                }},
+
+                expandAllMeasureFolders() {{
+                    Object.keys(this.filteredMeasuresGroupedByFolder).forEach(folderName => {{
+                        this.collapsedMeasureFolders[folderName] = false;
+                    }});
+                }},
+
+                collapseAllMeasureFolders() {{
+                    Object.keys(this.filteredMeasuresGroupedByFolder).forEach(folderName => {{
+                        this.collapsedMeasureFolders[folderName] = true;
+                    }});
+                }},
+
+                // Usage Matrix - Columns by Table
+                toggleColumnTable(tableName) {{
+                    this.collapsedColumnTables[tableName] = !this.collapsedColumnTables[tableName];
+                }},
+
+                expandAllColumnTables() {{
+                    Object.keys(this.filteredColumnsGroupedByTable).forEach(tableName => {{
+                        this.collapsedColumnTables[tableName] = false;
+                    }});
+                }},
+
+                collapseAllColumnTables() {{
+                    Object.keys(this.filteredColumnsGroupedByTable).forEach(tableName => {{
+                        this.collapsedColumnTables[tableName] = true;
+                    }});
+                }},
+
                 copyUsageMatrix() {{
                     // Build tab-separated values for measures
                     const lines = [];
@@ -8700,6 +8892,19 @@ class PbipHtmlGenerator:
                 if (this.unusedColumnsByTable && typeof this.unusedColumnsByTable === 'object') {{
                     Object.keys(this.unusedColumnsByTable).forEach(tableName => {{
                         this.collapsedUnusedColumnTables[tableName] = false;
+                    }});
+                }}
+
+                // Initialize usage matrix collapsed states - start with all folders/tables collapsed
+                if (this.filteredMeasuresGroupedByFolder && typeof this.filteredMeasuresGroupedByFolder === 'object') {{
+                    Object.keys(this.filteredMeasuresGroupedByFolder).forEach(folderName => {{
+                        this.collapsedMeasureFolders[folderName] = true;
+                    }});
+                }}
+
+                if (this.filteredColumnsGroupedByTable && typeof this.filteredColumnsGroupedByTable === 'object') {{
+                    Object.keys(this.filteredColumnsGroupedByTable).forEach(tableName => {{
+                        this.collapsedColumnTables[tableName] = true;
                     }});
                 }}
 

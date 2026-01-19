@@ -124,8 +124,8 @@ def handle_analyze_pbip_repository(args: Dict[str, Any]) -> Dict[str, Any]:
                     logger.warning(f"Failed to parse report: {e}")
                     report_data = None
 
-        # Step 4: Analyze dependencies
-        dep_engine = PbipDependencyEngine(model_data)
+        # Step 4: Analyze dependencies (pass report_data for visual usage tracking)
+        dep_engine = PbipDependencyEngine(model_data, report_data)
         dependencies = dep_engine.analyze_all_dependencies()
 
         # Step 5: Run enhanced analysis
