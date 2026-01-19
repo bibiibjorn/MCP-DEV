@@ -48,15 +48,17 @@ class FilterExpression:
 
 # Field parameter table detection patterns
 # These tables have composite keys and cause errors when used in filters
+# NOTE: Only 'sf ' (slicer field) prefix indicates field parameters.
+# The 's ' prefix is for regular selection/disconnected slicer tables (NOT field parameters).
+# True field parameters have SystemFlags="2" or contain NAMEOF() in their DAX.
 FIELD_PARAMETER_PATTERNS = [
     'sf filter',     # Field parameter filter tables (sf Filter 1, sf Filter X)
     'sf row',        # Row drill field parameters (sf Row Drill)
     'sf slicer',     # Slicer field parameters (sf Slicer 1, sf Slicer X)
     'sf column',     # Column field parameters (sf Column X)
-    's filter',      # Alternative naming (s Filter)
-    's row',         # Alternative naming (s Row)
-    's slicer',      # Alternative naming (s Slicer)
-    's column',      # Alternative naming (s Column)
+    'sf period',     # Period field parameters (sf Period Slicer)
+    'sf time',       # Time field parameters (sf Time Series)
+    'mf ',           # Measure field parameters (mf Return (%), mf Performance)
     'field parameter',
     'fieldparameter',
     '_fp_',          # Alternative naming pattern
@@ -111,16 +113,15 @@ def is_field_parameter_table(table_name: str) -> bool:
             return True
 
     # Check for specific naming conventions with space after prefix
-    # Tables like "sf Filter 1", "sf Row Drill", "sf Slicer 1", "s Field Parameter"
-    prefixes = ['sf ', "'sf ", 's ', "'s "]
+    # Only 'sf ' (slicer field) prefix indicates field parameters
+    # Tables like "sf Filter 1", "sf Row Drill", "sf Slicer 1"
+    # NOTE: 's ' prefix is for regular selection tables (s Period View, s Reporting Currency)
+    # which are NOT field parameters - they're disconnected slicer tables
+    prefixes = ['sf ', "'sf ", 'mf ', "'mf "]
     for prefix in prefixes:
         if table_lower.startswith(prefix):
-            # Further check if it's followed by known field param keywords
-            remainder = table_lower[len(prefix):]
-            field_param_keywords = ['filter', 'row', 'slicer', 'column', 'field', 'drill']
-            for keyword in field_param_keywords:
-                if remainder.startswith(keyword):
-                    return True
+            # sf/mf prefix tables are field parameters
+            return True
 
     # Check for field parameter indicator (often have 'Fields' suffix)
     if table_lower.endswith(' fields') or table_lower.endswith('fields'):

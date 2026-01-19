@@ -70,6 +70,7 @@ class AnomalyDetector:
 
     # Configurable thresholds
     NULL_THRESHOLD_PCT = 0.5      # Warn if >50% nulls
+    NULL_PRESENCE_PCT = 0.1       # Info if >10% nulls (presence check)
     IQR_MULTIPLIER = 1.5          # Standard IQR outlier detection
     MIN_ROWS_FOR_STATS = 5        # Minimum rows for statistical analysis
     HIGH_VARIANCE_CV = 2.0        # Coefficient of variation threshold
@@ -77,8 +78,20 @@ class AnomalyDetector:
     # Columns that should typically be non-negative
     NON_NEGATIVE_KEYWORDS = [
         'sales', 'revenue', 'amount', 'count', 'quantity', 'total',
-        'price', 'cost', 'profit', 'units', 'volume'
+        'price', 'cost', 'profit', 'units', 'volume',
+        # Financial keywords
+        'nav', 'asset', 'balance', 'aum', 'market value', 'net asset'
     ]
+
+    # Columns that represent percentages/rates (should typically be bounded)
+    PERCENTAGE_KEYWORDS = [
+        '%', 'pct', 'percent', 'return', 'rate', 'yield', 'growth',
+        'mwr', 'twr', 'irr', 'margin', 'ratio'
+    ]
+
+    # Reasonable bounds for percentage values (in decimal form, e.g., 1.0 = 100%)
+    PERCENTAGE_LOWER_BOUND = -2.0   # -200% (extreme but possible for some metrics)
+    PERCENTAGE_UPPER_BOUND = 5.0    # 500% (very extreme return)
 
     def __init__(self):
         """Initialize the anomaly detector."""
@@ -174,6 +187,15 @@ class AnomalyDetector:
             return Anomaly(
                 type='null_concentration',
                 severity='warning',
+                column=col_name,
+                description=f'{null_count}/{total} ({null_pct:.0%}) values are NULL',
+                details={'null_count': null_count, 'null_pct': round(null_pct, 2), 'total': total}
+            )
+        elif null_pct > self.NULL_PRESENCE_PCT:
+            # Info-level alert for notable null presence (>10%)
+            return Anomaly(
+                type='null_presence',
+                severity='info',
                 column=col_name,
                 description=f'{null_count}/{total} ({null_pct:.0%}) values are NULL',
                 details={'null_count': null_count, 'null_pct': round(null_pct, 2), 'total': total}
@@ -290,6 +312,28 @@ class AnomalyDetector:
                     details={
                         'negative_count': len(negative_values),
                         'examples': sorted(negative_values)[:5]
+                    }
+                ))
+
+        # Check for extreme percentage values
+        is_percentage = any(kw in col_lower for kw in self.PERCENTAGE_KEYWORDS)
+
+        if is_percentage:
+            extreme_low = [v for v in numeric_values if v < self.PERCENTAGE_LOWER_BOUND]
+            extreme_high = [v for v in numeric_values if v > self.PERCENTAGE_UPPER_BOUND]
+
+            if extreme_low or extreme_high:
+                anomalies.append(Anomaly(
+                    type='extreme_percentage',
+                    severity='warning',
+                    column=col_name,
+                    description=f'Extreme percentage values detected: {len(extreme_low)} below {self.PERCENTAGE_LOWER_BOUND*100:.0f}%, {len(extreme_high)} above {self.PERCENTAGE_UPPER_BOUND*100:.0f}%',
+                    details={
+                        'extreme_low_count': len(extreme_low),
+                        'extreme_high_count': len(extreme_high),
+                        'examples_low': sorted(extreme_low)[:5] if extreme_low else [],
+                        'examples_high': sorted(extreme_high, reverse=True)[:5] if extreme_high else [],
+                        'bounds': {'lower': self.PERCENTAGE_LOWER_BOUND, 'upper': self.PERCENTAGE_UPPER_BOUND}
                     }
                 ))
 

@@ -80,13 +80,16 @@ class SemanticFilterClassifier:
             return False
 
         try:
-            # Step 1: Query columns to detect composite keys
+            # Step 1: Query tables for SystemFlags=2 (definitive field parameter indicator)
+            self._detect_field_params_from_system_flags()
+
+            # Step 2: Query columns to detect composite keys
             self._detect_composite_key_tables()
 
-            # Step 2: Query measures for SWITCH(SELECTEDVALUE(...)) patterns
+            # Step 3: Query measures for SWITCH(SELECTEDVALUE(...)) patterns
             self._detect_field_params_from_measures()
 
-            # Step 3: Query calculated tables for NAMEOF patterns
+            # Step 4: Query calculated tables for NAMEOF patterns
             self._detect_field_params_from_expressions()
 
             self._model_analyzed = True
@@ -99,6 +102,25 @@ class SemanticFilterClassifier:
         except Exception as e:
             logger.warning(f"Error during semantic model analysis: {e}")
             return False
+
+    def _detect_field_params_from_system_flags(self) -> None:
+        """Detect field parameter tables using SystemFlags=2 from TABLES DMV."""
+        try:
+            result = self.qe.execute_info_query("TABLES")
+            if not result.get('success'):
+                return
+
+            for table in result.get('rows', []):
+                table_name = table.get('Name', table.get('[Name]', ''))
+                # SystemFlags=2 is the definitive indicator of a field parameter table
+                system_flags = table.get('SystemFlags', table.get('[SystemFlags]', 0))
+
+                if system_flags == 2 and table_name:
+                    self._field_param_tables.add(table_name)
+                    logger.debug(f"Detected field param table (SystemFlags=2): {table_name}")
+
+        except Exception as e:
+            logger.debug(f"Error detecting field params from SystemFlags: {e}")
 
     def _detect_composite_key_tables(self) -> None:
         """Detect tables with composite keys from column metadata."""

@@ -126,10 +126,11 @@ def _check_pbip_freshness(pbip_folder: str, threshold_minutes: int = 5) -> Optio
     latest_mtime = 0
 
     # Check key PBIP files for most recent modification
-    patterns = ['**/*.json', '**/*.tmdl']
+    # Use rglob which already searches recursively, so just use the extension pattern
+    patterns = ['*.json', '*.tmdl']
 
     for pattern in patterns:
-        for file_path in pbip_path.rglob(pattern.lstrip('**/')):
+        for file_path in pbip_path.rglob(pattern):
             try:
                 mtime = file_path.stat().st_mtime
                 if mtime > latest_mtime:
@@ -720,87 +721,6 @@ def handle_compare_measures(args: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error in compare_measures: {e}", exc_info=True)
         return ErrorHandler.handle_unexpected_error('compare_measures', e)
-
-
-def handle_get_visual_filters(args: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Get the complete filter context for a visual without executing.
-
-    Shows all filters from report, page, visual, and slicers.
-    """
-    try:
-        page_name = args.get('page_name')
-        visual_id = args.get('visual_id')
-        visual_name = args.get('visual_name')
-        include_slicers = args.get('include_slicers', True)
-        compact = args.get('compact', True)
-
-        if not page_name:
-            return {'success': False, 'error': 'page_name required'}
-
-        builder, error = _get_visual_query_builder()
-        if error:
-            return {'success': False, 'error': error}
-
-        # Load column types from model for accurate type detection
-        if connection_state.is_connected():
-            qe = connection_state.query_executor
-            if qe:
-                builder.load_column_types(qe)
-
-        visual_info, filter_context = builder.get_visual_filter_context(
-            page_name, visual_id, visual_name, include_slicers
-        )
-
-        all_filters = filter_context.all_filters()
-
-        if not visual_info:
-            # If no specific visual, just show page/report filters
-            if compact:
-                return {
-                    'success': True,
-                    'filters': [f.dax for f in all_filters if f.dax],
-                    'count': len(all_filters)
-                }
-            else:
-                return {
-                    'success': True,
-                    'visual': None,
-                    'filter_context': filter_context.to_dict(),
-                    'total_filters': len(all_filters)
-                }
-
-        if compact:
-            # Compact: just return DAX expressions grouped by level
-            return {
-                'success': True,
-                'visual': {'id': visual_info.visual_id, 'name': visual_info.visual_name},
-                'filters': _compact_filter_context(filter_context.to_dict(), True),
-                'dax': [f.dax for f in all_filters if f.dax]
-            }
-        else:
-            return {
-                'success': True,
-                'visual': {
-                    'id': visual_info.visual_id,
-                    'name': visual_info.visual_name,
-                    'type': visual_info.visual_type,
-                    'page': visual_info.page_name
-                },
-                'filter_context': filter_context.to_dict(),
-                'filter_summary': {
-                    'report': len(filter_context.report_filters),
-                    'page': len(filter_context.page_filters),
-                    'visual': len(filter_context.visual_filters),
-                    'slicer': len(filter_context.slicer_filters),
-                    'total': len(all_filters)
-                },
-                'combined_filter_dax': [f.dax for f in all_filters]
-            }
-
-    except Exception as e:
-        logger.error(f"Error in get_visual_filters: {e}", exc_info=True)
-        return ErrorHandler.handle_unexpected_error('get_visual_filters', e)
 
 
 def handle_list_slicers(args: Dict[str, Any]) -> Dict[str, Any]:
@@ -1572,7 +1492,7 @@ def register_debug_handlers(registry):
     tools = [
         ToolDefinition(
             name="09_Debug_Visual",
-            description="[09_Debug] Visual debugger - discovers pages/visuals, shows complete filter context, executes queries. Self-contained.",
+            description="[09_Debug] Visual debugger - discovers pages/visuals, shows complete filter context, executes queries. Use execute_query=false to get filters only without execution.",
             handler=handle_debug_visual,
             input_schema={
                 "type": "object",
@@ -1599,7 +1519,7 @@ def register_debug_handlers(registry):
                     },
                     "execute_query": {
                         "type": "boolean",
-                        "description": "Execute the generated query against live model (default: true)"
+                        "description": "Execute the generated query against live model (default: true). Set false to get filter context only."
                     },
                     "filters": {
                         "type": "array",
@@ -1661,39 +1581,6 @@ def register_debug_handlers(registry):
             },
             category="debug",
             sort_order=91  # 09 = Debug
-        ),
-        ToolDefinition(
-            name="09_Get_Visual_Filters",
-            description="[09_Debug] Get the complete filter context for a visual without executing. Shows all filters from report, page, visual, and slicers.",
-            handler=handle_get_visual_filters,
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "page_name": {
-                        "type": "string",
-                        "description": "Display name of the page"
-                    },
-                    "visual_id": {
-                        "type": "string",
-                        "description": "ID of the visual (optional)"
-                    },
-                    "visual_name": {
-                        "type": "string",
-                        "description": "Name of the visual (optional)"
-                    },
-                    "include_slicers": {
-                        "type": "boolean",
-                        "description": "Include slicer selections (default: true)"
-                    },
-                    "compact": {
-                        "type": "boolean",
-                        "description": "Compact output for reduced token usage (default: true)"
-                    }
-                },
-                "required": ["page_name"]
-            },
-            category="debug",
-            sort_order=92  # 09 = Debug
         ),
         ToolDefinition(
             name="09_List_Slicers",

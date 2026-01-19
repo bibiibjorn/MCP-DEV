@@ -158,15 +158,11 @@
     },
     {
       "name": "09_Debug_Visual",
-      "description": "[09_Debug] Visual debugger - discovers pages/visuals, shows filter context, executes queries"
+      "description": "[09_Debug] Visual debugger - discovers pages/visuals, shows filter context, executes queries. Use execute_query=false for filters only."
     },
     {
       "name": "09_Compare_Measures",
       "description": "[09_Debug] Compare original vs optimized measure with same filter context"
-    },
-    {
-      "name": "09_Get_Visual_Filters",
-      "description": "[09_Debug] Get complete filter context for a visual"
     },
     {
       "name": "09_List_Slicers",
