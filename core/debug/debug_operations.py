@@ -174,6 +174,112 @@ class DebugOperations:
             'has_discrepancies': len(discrepancies) > 0
         }
 
+    def _execute_with_smart_retry(
+        self,
+        query: str,
+        filters: List,
+        rebuild_query_func,
+        top_n: int = 100
+    ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
+        """
+        Execute query with automatic retry on composite key error.
+
+        On composite key error:
+        1. Identify field_parameter filters
+        2. Rebuild query excluding them
+        3. Retry execution
+        4. Return result with retry info
+
+        Args:
+            query: DAX query to execute
+            filters: List of FilterExpression objects
+            rebuild_query_func: Function to rebuild query with reduced filters
+            top_n: Max rows to return
+
+        Returns:
+            Tuple of (execution_result, retry_info or None)
+        """
+        from .filter_to_dax import FilterClassification
+
+        if not self.qe:
+            return {'success': False, 'error': 'Not connected to Power BI model'}, None
+
+        # First attempt with full query
+        exec_result = self.qe.validate_and_execute_dax(query, top_n=top_n)
+
+        if exec_result.get('success'):
+            return exec_result, None
+
+        error_msg = exec_result.get('error', '').lower()
+
+        # Check for composite key / ambiguous relationship errors
+        retry_patterns = [
+            'composite',
+            'multiple columns',
+            'ambiguous',
+            'cannot determine',
+            'more than one',
+            'duplicate key'
+        ]
+
+        should_retry = any(pattern in error_msg for pattern in retry_patterns)
+
+        if not should_retry:
+            return exec_result, None
+
+        # Identify field parameter filters to exclude
+        field_param_filters = [
+            f for f in filters
+            if getattr(f, 'classification', '') == FilterClassification.FIELD_PARAMETER
+            or getattr(f, 'is_field_parameter', False)
+        ]
+
+        if not field_param_filters:
+            # No field parameters to exclude, can't help
+            return exec_result, None
+
+        # Build excluded filter descriptions for reporting
+        excluded_descriptions = [
+            f"'{f.table}'[{f.column}]" for f in field_param_filters
+        ]
+
+        self.logger.info(
+            f"Composite key error detected, retrying without {len(field_param_filters)} "
+            f"field parameter filters: {excluded_descriptions}"
+        )
+
+        # Filter out field parameter filters
+        reduced_filters = [
+            f for f in filters
+            if f not in field_param_filters
+        ]
+
+        # Rebuild query with reduced filters
+        try:
+            reduced_query = rebuild_query_func(reduced_filters)
+        except Exception as e:
+            self.logger.warning(f"Failed to rebuild query: {e}")
+            return exec_result, None
+
+        # Retry with reduced query
+        retry_result = self.qe.validate_and_execute_dax(reduced_query, top_n=top_n)
+
+        retry_info = {
+            'retried': True,
+            'original_error': exec_result.get('error'),
+            'excluded_filters': excluded_descriptions,
+            'reason': 'Composite key error resolved by excluding field parameter filters'
+        }
+
+        if retry_result.get('success'):
+            retry_info['success'] = True
+            retry_info['note'] = 'Results may differ from visual due to excluded field parameters'
+        else:
+            retry_info['success'] = False
+            retry_info['retry_error'] = retry_result.get('error')
+
+        return retry_result, retry_info
+
     def _find_discrepancies(
         self,
         results: List[ValidationResult],
@@ -504,7 +610,9 @@ class DebugOperations:
         self,
         page_name: str,
         iterations: int = 3,
-        include_slicers: bool = True
+        include_slicers: bool = True,
+        parallel: bool = True,
+        max_workers: int = 4
     ) -> Dict[str, Any]:
         """
         Profile all visuals on a page to identify slow visuals.
@@ -513,6 +621,8 @@ class DebugOperations:
             page_name: Page to profile
             iterations: Number of times to run each visual for averaging
             include_slicers: Include slicer filters
+            parallel: Use parallel execution (default True)
+            max_workers: Max concurrent queries (default 4)
 
         Returns:
             Page profile with timing and issues
@@ -524,13 +634,21 @@ class DebugOperations:
         if not visuals:
             return {'success': False, 'error': f'No visuals found on page "{page_name}"'}
 
+        # Filter to data visuals only (exclude slicers)
+        data_visuals = [v for v in visuals if not v.get('is_slicer')]
+
+        if not data_visuals:
+            return {
+                'success': True,
+                'page': page_name,
+                'visuals_profiled': 0,
+                'message': 'No data visuals to profile (page contains only slicers/UI elements)'
+            }
+
         results: List[ProfileResult] = []
-        total_time = 0
 
-        for visual in visuals:
-            if visual.get('is_slicer'):
-                continue
-
+        def _profile_single_visual(visual: Dict) -> Optional[ProfileResult]:
+            """Profile a single visual (thread-safe)."""
             try:
                 query_result = self.builder.build_visual_query(
                     page_name=page_name,
@@ -539,9 +657,8 @@ class DebugOperations:
                 )
 
                 if not query_result or not query_result.dax_query:
-                    continue
+                    return None
 
-                # Run multiple iterations
                 times = []
                 row_count = 0
 
@@ -551,13 +668,12 @@ class DebugOperations:
                     )
                     if exec_result.get('success'):
                         times.append(exec_result.get('execution_time_ms', 0))
-                        row_count = len(exec_result.get('rows', []))
+                        row_count = max(row_count, len(exec_result.get('rows', [])))
 
                 if not times:
-                    continue
+                    return None
 
                 avg_time = sum(times) / len(times)
-                total_time += avg_time
 
                 # Identify issues
                 issues = []
@@ -565,8 +681,10 @@ class DebugOperations:
                     issues.append(f'Slow query ({avg_time:.0f}ms > 2000ms)')
                 if row_count > 1000:
                     issues.append(f'Large result set ({row_count} rows)')
+                if max(times) > min(times) * 2 and len(times) > 1:
+                    issues.append(f'High variance ({min(times):.0f}-{max(times):.0f}ms)')
 
-                results.append(ProfileResult(
+                return ProfileResult(
                     visual_id=visual['id'],
                     visual_name=visual.get('friendly_name', visual['id']),
                     visual_type=visual.get('type', 'unknown'),
@@ -578,17 +696,49 @@ class DebugOperations:
                     row_count=row_count,
                     filter_count=len(query_result.filter_context.all_filters()),
                     issues=issues
-                ))
-
+                )
             except Exception as e:
                 self.logger.warning(f"Error profiling visual {visual['id']}: {e}")
+                return None
+
+        # Execute profiling
+        execution_mode = 'sequential'
+
+        if parallel and len(data_visuals) > 1:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            execution_mode = 'parallel'
+
+            with ThreadPoolExecutor(max_workers=min(max_workers, len(data_visuals))) as executor:
+                futures = {
+                    executor.submit(_profile_single_visual, v): v
+                    for v in data_visuals
+                }
+
+                for future in as_completed(futures):
+                    try:
+                        result = future.result()
+                        if result:
+                            results.append(result)
+                    except Exception as e:
+                        visual = futures[future]
+                        self.logger.warning(f"Future failed for visual {visual.get('id')}: {e}")
+        else:
+            # Sequential execution
+            for visual in data_visuals:
+                result = _profile_single_visual(visual)
+                if result:
+                    results.append(result)
 
         # Sort by avg time descending
         results.sort(key=lambda x: x.avg_time_ms, reverse=True)
 
+        total_time = sum(r.avg_time_ms for r in results)
+
         # Generate recommendations
         recommendations = []
         slow_visuals = [r for r in results if r.avg_time_ms > 1000]
+
         if slow_visuals:
             recommendations.append(
                 f'Optimize {len(slow_visuals)} slow visual(s): ' +
@@ -600,12 +750,19 @@ class DebugOperations:
                 f'Page total load time ({total_time:.0f}ms) exceeds 5s target'
             )
 
+        large_results = [r for r in results if r.row_count > 500]
+        if large_results:
+            recommendations.append(
+                f'{len(large_results)} visual(s) return large result sets - consider aggregation'
+            )
+
         return {
             'success': True,
             'page': page_name,
             'visuals_profiled': len(results),
             'total_time_ms': round(total_time, 1),
             'avg_time_per_visual_ms': round(total_time / len(results), 1) if results else 0,
+            'execution_mode': execution_mode,
             'results': [
                 {
                     'visual_id': r.visual_id,

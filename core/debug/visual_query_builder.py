@@ -191,6 +191,32 @@ class VisualQueryBuilder:
         self._measure_cache: Dict[str, MeasureDefinition] = {}  # Cache measure definitions
         self._all_measures_loaded: bool = False  # Flag for batch measure loading
 
+        # Advanced analysis components (lazy initialized)
+        self._semantic_classifier = None
+        self._relationship_resolver = None
+        self._aggregation_matcher = None
+
+    def _init_semantic_classifier(self):
+        """Lazy initialize semantic classifier."""
+        if self._semantic_classifier is None and self._query_executor:
+            from .semantic_classifier import SemanticFilterClassifier
+            self._semantic_classifier = SemanticFilterClassifier(self._query_executor)
+        return self._semantic_classifier
+
+    def _init_relationship_resolver(self):
+        """Lazy initialize relationship resolver."""
+        if self._relationship_resolver is None and self._query_executor:
+            from .relationship_resolver import RelationshipResolver
+            self._relationship_resolver = RelationshipResolver(self._query_executor)
+        return self._relationship_resolver
+
+    def _init_aggregation_matcher(self):
+        """Lazy initialize aggregation matcher."""
+        if self._aggregation_matcher is None and self._query_executor:
+            from .aggregation_matcher import AggregationMatcher
+            self._aggregation_matcher = AggregationMatcher(self._query_executor)
+        return self._aggregation_matcher
+
     def load_column_types(self, query_executor) -> int:
         """
         Load column data types from the connected model.

@@ -6,6 +6,9 @@ Combines PBIP analysis with live model query execution.
 """
 
 import logging
+import os
+import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from server.registry import ToolDefinition
@@ -19,9 +22,19 @@ def _compact_response(data: Dict[str, Any], compact: bool = True) -> Dict[str, A
     """
     Optimize response for token usage when compact=True.
     Removes empty values, shortens verbose fields, removes redundant data.
+    Preserves important diagnostic fields like anomalies and warnings.
     """
     if not compact:
         return data
+
+    # Fields to preserve even in compact mode (important diagnostic info)
+    PRESERVE_FIELDS = {
+        'anomalies', 'pbip_warning', 'relationship_hints',
+        'aggregation_info', 'retry_info', 'execution_mode'
+    }
+
+    # Fields to skip in compact mode (verbose/redundant)
+    SKIP_FIELDS = {'original', 'selected_values_raw', 'hint', 'recommendations'}
 
     def clean_dict(d: Dict) -> Dict:
         """Recursively remove empty/None values and shorten verbose fields."""
@@ -30,9 +43,16 @@ def _compact_response(data: Dict[str, Any], compact: bool = True) -> Dict[str, A
             # Skip empty values
             if v is None or v == '' or v == [] or v == {}:
                 continue
-            # Skip redundant/verbose fields in compact mode
-            if k in ('original', 'selected_values_raw', 'hint', 'recommendations'):
+
+            # Always preserve important diagnostic fields
+            if k in PRESERVE_FIELDS:
+                result[k] = v
                 continue
+
+            # Skip redundant/verbose fields in compact mode
+            if k in SKIP_FIELDS:
+                continue
+
             # Recursively clean nested dicts
             if isinstance(v, dict):
                 cleaned = clean_dict(v)
@@ -88,6 +108,52 @@ def _compact_filter_context(filter_breakdown: Dict, compact: bool = True) -> Dic
     return result
 
 
+def _check_pbip_freshness(pbip_folder: str, threshold_minutes: int = 5) -> Optional[Dict[str, Any]]:
+    """
+    Check if PBIP files have been modified recently.
+
+    Args:
+        pbip_folder: Path to the PBIP folder
+        threshold_minutes: Warn if files are older than this (default 5 minutes)
+
+    Returns:
+        Warning dict if stale, None if fresh
+    """
+    if not pbip_folder or not os.path.exists(pbip_folder):
+        return None
+
+    pbip_path = Path(pbip_folder)
+    latest_mtime = 0
+
+    # Check key PBIP files for most recent modification
+    patterns = ['**/*.json', '**/*.tmdl']
+
+    for pattern in patterns:
+        for file_path in pbip_path.rglob(pattern.lstrip('**/')):
+            try:
+                mtime = file_path.stat().st_mtime
+                if mtime > latest_mtime:
+                    latest_mtime = mtime
+            except OSError:
+                continue
+
+    if latest_mtime == 0:
+        return None
+
+    age_seconds = time.time() - latest_mtime
+    age_minutes = age_seconds / 60
+
+    if age_minutes > threshold_minutes:
+        return {
+            'stale': True,
+            'age_minutes': round(age_minutes, 1),
+            'message': f'PBIP files are {round(age_minutes, 1)} minutes old. Save your report for accurate slicer state.',
+            'hint': 'Use filters parameter to override with current values if needed.'
+        }
+
+    return None
+
+
 def _get_visual_query_builder():
     """Get VisualQueryBuilder instance with auto-detected PBIP path."""
     pbip_folder = connection_state.get_pbip_folder_path()
@@ -123,6 +189,9 @@ def handle_debug_visual(args: Dict[str, Any]) -> Dict[str, Any]:
         builder, error = _get_visual_query_builder()
         if error:
             return {'success': False, 'error': error}
+
+        # Check PBIP freshness
+        pbip_freshness = _check_pbip_freshness(connection_state.get_pbip_folder_path())
 
         # If page_name not provided, list available pages
         if not page_name:
@@ -203,6 +272,24 @@ def handle_debug_visual(args: Dict[str, Any]) -> Dict[str, Any]:
 
         # Use classification attribute for proper categorization
         from core.debug.filter_to_dax import FilterClassification
+
+        # Enhance classification with semantic analysis when connected
+        if connection_state.is_connected():
+            try:
+                semantic_classifier = builder._init_semantic_classifier()
+                if semantic_classifier:
+                    for f in all_filters:
+                        if f.table:
+                            sc = semantic_classifier.classify(f.table, f.column)
+                            # Upgrade classification if semantic confidence is higher
+                            if sc.confidence > 0.80:
+                                if sc.classification == 'field_parameter':
+                                    f.classification = FilterClassification.FIELD_PARAMETER
+                                elif sc.classification == 'ui_control':
+                                    f.classification = FilterClassification.UI_CONTROL
+            except Exception as se:
+                logger.debug(f"Semantic classification enhancement skipped: {se}")
+
         data_filters = [f for f in all_filters if getattr(f, 'classification', 'data') == FilterClassification.DATA]
         field_param_filters = [f for f in all_filters if getattr(f, 'classification', 'data') == FilterClassification.FIELD_PARAMETER]
         ui_control_filters = [f for f in all_filters if getattr(f, 'classification', 'data') == FilterClassification.UI_CONTROL]
@@ -241,6 +328,10 @@ def handle_debug_visual(args: Dict[str, Any]) -> Dict[str, Any]:
             'measure': result.measure_name
         }
 
+        # Add PBIP freshness warning if applicable
+        if pbip_freshness:
+            response['pbip_warning'] = pbip_freshness
+
         # Only include pbip_path in verbose mode
         if not compact:
             response['pbip_path'] = connection_state.pbip_path
@@ -271,7 +362,7 @@ def handle_debug_visual(args: Dict[str, Any]) -> Dict[str, Any]:
         # Include measure definitions only in verbose mode
         if not compact and result.measure_definitions:
             response['measure_definitions'] = [
-                {'name': m.name, 'expression': m.expression[:200] + '...' if len(m.expression) > 200 else m.expression}
+                {'name': m.name, 'expression': m.expression[:800] + '... [truncated]' if len(m.expression) > 800 else m.expression}
                 for m in result.measure_definitions
             ]
 
@@ -375,12 +466,91 @@ def handle_debug_visual(args: Dict[str, Any]) -> Dict[str, Any]:
                     'slicers': slicers_without_selection
                 }]
 
+        # Advanced analysis: relationship hints and aggregation recommendations
+        if connection_state.is_connected():
+            qe = connection_state.query_executor
+            if qe:
+                # Get tables involved in the query
+                measure_tables = list(set(
+                    getattr(m, 'table', '') for m in (result.measure_definitions or [])
+                    if getattr(m, 'table', '')
+                ))
+                filter_tables = list(set(f.table for f in all_filters if f.table))
+                grouping_tables = list(set(
+                    col.split('[')[0].strip("'\"") for col in (result.visual_info.columns or [])
+                    if '[' in col
+                ))
+
+                # Relationship analysis
+                try:
+                    relationship_resolver = builder._init_relationship_resolver()
+                    if relationship_resolver:
+                        hints = relationship_resolver.analyze_query_tables(
+                            measure_tables, filter_tables, grouping_tables
+                        )
+                        if hints:
+                            response['relationship_hints'] = [
+                                {
+                                    'type': h.type,
+                                    'tables': f"{h.from_table} -> {h.to_table}",
+                                    'suggestion': h.dax_modifier if h.dax_modifier else h.reason,
+                                    'severity': h.severity
+                                }
+                                for h in hints[:3]  # Limit to 3 most relevant
+                            ]
+                except Exception as re:
+                    logger.debug(f"Relationship analysis skipped: {re}")
+
+                # Aggregation matching
+                try:
+                    aggregation_matcher = builder._init_aggregation_matcher()
+                    if aggregation_matcher:
+                        grouping_cols = result.visual_info.columns or []
+                        filter_cols = [f"'{f.table}'[{f.column}]" for f in data_filters if f.table and f.column]
+                        agg_match = aggregation_matcher.find_matching_aggregation(grouping_cols, filter_cols)
+                        if agg_match:
+                            response['aggregation_info'] = {
+                                'available': True,
+                                'table': agg_match.agg_table,
+                                'confidence': agg_match.match_confidence,
+                                'recommendation': agg_match.recommendation
+                            }
+                except Exception as ae:
+                    logger.debug(f"Aggregation analysis skipped: {ae}")
+
         # Execute query if requested and connected
         if execute_query and connection_state.is_connected():
             try:
                 qe = connection_state.query_executor
                 if qe:
+                    # First attempt
                     exec_result = qe.validate_and_execute_dax(query_to_execute, top_n=100)
+
+                    # Smart retry on composite key errors
+                    if not exec_result.get('success'):
+                        error_msg = exec_result.get('error', '').lower()
+                        retry_patterns = ['composite', 'multiple columns', 'ambiguous', 'cannot determine']
+
+                        if any(p in error_msg for p in retry_patterns) and field_param_filters:
+                            # Retry without field parameter filters
+                            logger.info(f"Composite key error, retrying without {len(field_param_filters)} field param filters")
+
+                            measures = result.visual_info.measures or [result.measure_name]
+                            measures = [m if m.startswith('[') else f'[{m}]' for m in measures]
+                            columns = result.visual_info.columns or []
+
+                            reduced_query = builder._build_visual_dax_query(measures, columns, data_filters)
+                            retry_result = qe.validate_and_execute_dax(reduced_query, top_n=100)
+
+                            if retry_result.get('success'):
+                                exec_result = retry_result
+                                response['retry_info'] = {
+                                    'retried': True,
+                                    'original_error': error_msg[:100],
+                                    'excluded': [f"'{f.table}'[{f.column}]" for f in field_param_filters],
+                                    'note': 'Results may differ from visual due to excluded field parameters'
+                                }
+
                     if exec_result.get('success'):
                         rows = exec_result.get('rows', [])
                         response['result'] = {
@@ -393,6 +563,16 @@ def handle_debug_visual(args: Dict[str, Any]) -> Dict[str, Any]:
                             response['result']['note'] = 'no_rows'
                         elif all(all(v is None for v in row.values()) for row in rows):
                             response['result']['note'] = 'all_null'
+
+                        # Anomaly detection on results
+                        if rows and len(rows) > 1:
+                            try:
+                                from core.debug.anomaly_detector import analyze_results
+                                anomaly_report = analyze_results(rows)
+                                if anomaly_report:
+                                    response['anomalies'] = anomaly_report
+                            except Exception as ae:
+                                logger.debug(f"Anomaly detection skipped: {ae}")
                     else:
                         response['result'] = {'error': exec_result.get('error')}
             except Exception as e:

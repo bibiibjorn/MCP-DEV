@@ -144,7 +144,12 @@
       "Bash(Remove-Item -Recurse -Force \"venv\\\\Lib\\\\site-packages\\\\adodbapi\\\\examples\" -ErrorAction SilentlyContinue)",
       "Bash(Write-Host \"Examples removed\")",
       "Bash(venv/Scripts/pip:*)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(for pkg in pandas numpy docx2pdf pyyaml et-xmlfile authlib docutils werkzeug)",
+      "Bash(do echo \"=== $pkg ===\")",
+      "Bash(done)",
+      "Bash(cmd //c \"rename venv venv_backup_old\")",
+      "Bash(tasklist:*)"
     ],
     "deny": [],
     "ask": []
