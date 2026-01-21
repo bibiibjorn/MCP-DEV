@@ -275,6 +275,13 @@ def handle_debug_visual(args: Dict[str, Any]) -> Dict[str, Any]:
         from core.debug.filter_to_dax import FilterClassification
 
         # Enhance classification with semantic analysis when connected
+        # Only upgrade to field_parameter if detected via RELIABLE methods:
+        # - nameof_pattern: Table contains NAMEOF() expressions (definitive)
+        # - switch_pattern: Measures use SWITCH(SELECTEDVALUE(...)) (definitive)
+        # - system_flags: SystemFlags=2 from DMV (definitive)
+        # NOT composite_key (many dimension tables have composite keys legitimately)
+        RELIABLE_FIELD_PARAM_METHODS = {'nameof_pattern', 'switch_pattern', 'system_flags'}
+
         if connection_state.is_connected():
             try:
                 semantic_classifier = builder._init_semantic_classifier()
@@ -282,12 +289,13 @@ def handle_debug_visual(args: Dict[str, Any]) -> Dict[str, Any]:
                     for f in all_filters:
                         if f.table:
                             sc = semantic_classifier.classify(f.table, f.column)
-                            # Upgrade classification if semantic confidence is higher
-                            if sc.confidence > 0.80:
-                                if sc.classification == 'field_parameter':
+                            # Only upgrade to field_parameter if detected via reliable methods
+                            if sc.classification == 'field_parameter':
+                                if sc.detection_method in RELIABLE_FIELD_PARAM_METHODS and sc.confidence > 0.80:
                                     f.classification = FilterClassification.FIELD_PARAMETER
-                                elif sc.classification == 'ui_control':
-                                    f.classification = FilterClassification.UI_CONTROL
+                                # Skip composite_key and naming_convention - too many false positives
+                            elif sc.classification == 'ui_control' and sc.confidence > 0.80:
+                                f.classification = FilterClassification.UI_CONTROL
             except Exception as se:
                 logger.debug(f"Semantic classification enhancement skipped: {se}")
 

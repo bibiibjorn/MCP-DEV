@@ -13,6 +13,7 @@ from server.handlers.documentation_handler import register_documentation_handler
 from server.handlers.comparison_handler import register_comparison_handlers
 from server.handlers.pbip_handler import register_pbip_handlers
 from server.handlers.slicer_operations_handler import register_slicer_operations_handler
+from server.handlers.visual_operations_handler import register_visual_operations_handler
 from server.handlers.report_info_handler import register_report_info_handler
 from server.handlers.tmdl_handler import register_tmdl_operations_handler
 from server.handlers.dax_context_handler import register_dax_handlers
@@ -70,6 +71,7 @@ def register_all_handlers(registry):
     register_comparison_handlers(registry)
     register_pbip_handlers(registry)
     register_slicer_operations_handler(registry)
+    register_visual_operations_handler(registry)
     register_report_info_handler(registry)
     register_tmdl_operations_handler(registry)
     register_dax_handlers(registry)

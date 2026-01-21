@@ -15,7 +15,8 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Anomaly:
     """Represents a detected anomaly in query results."""
-    type: str           # 'outlier', 'null_concentration', 'unexpected_value', 'empty_result', 'variance'
+    type: str           # 'outlier', 'null_concentration', 'null_presence', 'unexpected_negative',
+                        # 'extreme_percentage', 'extreme_outlier', 'empty_result', 'variance'
     severity: str       # 'info', 'warning', 'critical'
     column: str         # Column where anomaly was detected ('*' for row-level)
     description: str    # Human-readable description
@@ -61,11 +62,14 @@ class AnomalyDetector:
     Detects anomalies in query result sets.
 
     Detection types:
-    - Empty results
+    - Empty results (no rows returned)
     - Statistical outliers (IQR method)
-    - Null concentration (>50% nulls)
-    - Unexpected values (negative amounts, etc.)
-    - High variance in numeric columns
+    - Null concentration (>50% nulls in a column)
+    - Null presence (>10% nulls, info level)
+    - Unexpected negative values (in columns like NAV, asset, balance)
+    - Extreme percentage values (e.g., -902% MWR, 544% return)
+    - Extreme outliers (>100x median, regardless of column name)
+    - High variance in numeric columns (coefficient of variation > 2.0)
     """
 
     # Configurable thresholds
@@ -89,9 +93,20 @@ class AnomalyDetector:
         'mwr', 'twr', 'irr', 'margin', 'ratio'
     ]
 
-    # Reasonable bounds for percentage values (in decimal form, e.g., 1.0 = 100%)
-    PERCENTAGE_LOWER_BOUND = -2.0   # -200% (extreme but possible for some metrics)
-    PERCENTAGE_UPPER_BOUND = 5.0    # 500% (very extreme return)
+    # Reasonable bounds for percentage values
+    # Support both decimal form (1.0 = 100%) and percentage form (-902 = -902%)
+    # Decimal form bounds (for values like 0.05 = 5%, 1.5 = 150%)
+    PERCENTAGE_LOWER_BOUND_DECIMAL = -2.0   # -200% in decimal form
+    PERCENTAGE_UPPER_BOUND_DECIMAL = 5.0    # 500% in decimal form
+
+    # Percentage form bounds (for values like -902 = -902%, 544 = 544%)
+    # These are more common in financial reports
+    PERCENTAGE_LOWER_BOUND_PCT = -200   # -200% in percentage form
+    PERCENTAGE_UPPER_BOUND_PCT = 500    # 500% in percentage form
+
+    # Extreme value thresholds (for any numeric column)
+    # Values beyond these are almost always anomalies
+    EXTREME_VALUE_MULTIPLIER = 100  # Values > 100x median are extreme
 
     def __init__(self):
         """Initialize the anomaly detector."""
@@ -304,38 +319,94 @@ class AnomalyDetector:
             negative_values = [v for v in numeric_values if v < 0]
 
             if negative_values:
+                # Severity based on magnitude - very negative values are critical
+                max_negative = min(negative_values)
+                severity = 'critical' if max_negative < -100000 else 'warning'
+
                 anomalies.append(Anomaly(
-                    type='unexpected_value',
-                    severity='warning',
+                    type='unexpected_negative',
+                    severity=severity,
                     column=col_name,
-                    description=f'{len(negative_values)} negative values in {col_name}',
+                    description=f'{len(negative_values)} negative values in {col_name} (min: {max_negative:,.0f})',
                     details={
                         'negative_count': len(negative_values),
+                        'min_value': max_negative,
                         'examples': sorted(negative_values)[:5]
                     }
                 ))
 
-        # Check for extreme percentage values
+        # Check for extreme percentage values - support both decimal and percentage forms
         is_percentage = any(kw in col_lower for kw in self.PERCENTAGE_KEYWORDS)
 
         if is_percentage:
-            extreme_low = [v for v in numeric_values if v < self.PERCENTAGE_LOWER_BOUND]
-            extreme_high = [v for v in numeric_values if v > self.PERCENTAGE_UPPER_BOUND]
+            # Determine if values are in decimal form (e.g., 0.05) or percentage form (e.g., 5)
+            # Heuristic: if most absolute values < 10, assume decimal form
+            abs_values = [abs(v) for v in numeric_values if v != 0]
+            if abs_values:
+                median_abs = sorted(abs_values)[len(abs_values) // 2]
+                is_decimal_form = median_abs < 10
 
-            if extreme_low or extreme_high:
-                anomalies.append(Anomaly(
-                    type='extreme_percentage',
-                    severity='warning',
-                    column=col_name,
-                    description=f'Extreme percentage values detected: {len(extreme_low)} below {self.PERCENTAGE_LOWER_BOUND*100:.0f}%, {len(extreme_high)} above {self.PERCENTAGE_UPPER_BOUND*100:.0f}%',
-                    details={
-                        'extreme_low_count': len(extreme_low),
-                        'extreme_high_count': len(extreme_high),
-                        'examples_low': sorted(extreme_low)[:5] if extreme_low else [],
-                        'examples_high': sorted(extreme_high, reverse=True)[:5] if extreme_high else [],
-                        'bounds': {'lower': self.PERCENTAGE_LOWER_BOUND, 'upper': self.PERCENTAGE_UPPER_BOUND}
-                    }
-                ))
+                if is_decimal_form:
+                    # Decimal form: 1.0 = 100%
+                    lower_bound = self.PERCENTAGE_LOWER_BOUND_DECIMAL
+                    upper_bound = self.PERCENTAGE_UPPER_BOUND_DECIMAL
+                    bound_label = f'{lower_bound*100:.0f}%/{upper_bound*100:.0f}%'
+                else:
+                    # Percentage form: 100 = 100%
+                    lower_bound = self.PERCENTAGE_LOWER_BOUND_PCT
+                    upper_bound = self.PERCENTAGE_UPPER_BOUND_PCT
+                    bound_label = f'{lower_bound}%/{upper_bound}%'
+
+                extreme_low = [v for v in numeric_values if v < lower_bound]
+                extreme_high = [v for v in numeric_values if v > upper_bound]
+
+                if extreme_low or extreme_high:
+                    # Severity: critical if values are extremely out of bounds
+                    worst_low = min(extreme_low) if extreme_low else 0
+                    worst_high = max(extreme_high) if extreme_high else 0
+                    severity = 'critical' if (worst_low < lower_bound * 3 or worst_high > upper_bound * 2) else 'warning'
+
+                    anomalies.append(Anomaly(
+                        type='extreme_percentage',
+                        severity=severity,
+                        column=col_name,
+                        description=f'Extreme percentage values: {len(extreme_low)} below {lower_bound}{"%" if not is_decimal_form else ""}, {len(extreme_high)} above {upper_bound}{"%" if not is_decimal_form else ""} (bounds: {bound_label})',
+                        details={
+                            'extreme_low_count': len(extreme_low),
+                            'extreme_high_count': len(extreme_high),
+                            'examples_low': sorted(extreme_low)[:5] if extreme_low else [],
+                            'examples_high': sorted(extreme_high, reverse=True)[:5] if extreme_high else [],
+                            'bounds': {'lower': lower_bound, 'upper': upper_bound},
+                            'value_form': 'decimal' if is_decimal_form else 'percentage'
+                        }
+                    ))
+
+        # Check for extreme values regardless of column name (universal check)
+        # This catches outliers that don't match keyword patterns
+        if len(numeric_values) >= 3:
+            sorted_vals = sorted(numeric_values)
+            median = sorted_vals[len(sorted_vals) // 2]
+
+            if median != 0:
+                # Find values that are extremely far from the median
+                extreme_outliers = []
+                for v in numeric_values:
+                    ratio = abs(v / median) if median != 0 else abs(v)
+                    if ratio > self.EXTREME_VALUE_MULTIPLIER:
+                        extreme_outliers.append(v)
+
+                if extreme_outliers:
+                    anomalies.append(Anomaly(
+                        type='extreme_outlier',
+                        severity='warning',
+                        column=col_name,
+                        description=f'{len(extreme_outliers)} extreme outliers (>{self.EXTREME_VALUE_MULTIPLIER}x median of {median:,.2f})',
+                        details={
+                            'outlier_count': len(extreme_outliers),
+                            'median': round(median, 4),
+                            'examples': sorted(extreme_outliers, key=lambda x: abs(x), reverse=True)[:5]
+                        }
+                    ))
 
         return anomalies
 

@@ -209,6 +209,11 @@ def _extract_slicer_info(visual_data: Dict, file_path: Path) -> Optional[Dict]:
     except ValueError:
         rel_path = str(file_path)
 
+    # Limit selected_values to prevent large responses
+    MAX_SELECTED_VALUES = 5
+    total_selected_count = len(selected_values)
+    limited_selected_values = selected_values[:MAX_SELECTED_VALUES]
+
     return {
         'file_path': str(file_path),
         'relative_path': rel_path,
@@ -222,7 +227,9 @@ def _extract_slicer_info(visual_data: Dict, file_path: Path) -> Optional[Dict]:
         'strict_single_select': strict_single_select,
         'select_all_checkbox': select_all_checkbox,
         'is_inverted_selection': is_inverted_selection,
-        'selected_values': selected_values,
+        'selected_values': limited_selected_values,
+        'selected_values_count': total_selected_count,
+        'selected_values_truncated': total_selected_count > MAX_SELECTED_VALUES,
         'has_filter': bool(current_filter)
     }
 
@@ -417,6 +424,34 @@ def handle_slicer_operations(args: Dict[str, Any]) -> Dict[str, Any]:
                 'count': 0
             }
 
+        # Check for summary_only mode (default: True to reduce response size)
+        summary_only = args.get('summary_only', True)
+
+        if summary_only:
+            # Return condensed slicer info to reduce response size
+            condensed_slicers = []
+            for slicer in slicers:
+                condensed = {
+                    'display_name': slicer['display_name'],
+                    'page_name': slicer.get('page_name', ''),
+                    'field_reference': slicer['field_reference'],
+                    'selection_mode': slicer['selection_mode'],
+                    'visual_name': slicer['visual_name']  # Needed for configure operation
+                }
+                # Only include selected values info if there are any
+                if slicer.get('selected_values_count', 0) > 0:
+                    condensed['selected_count'] = slicer['selected_values_count']
+                condensed_slicers.append(condensed)
+
+            return {
+                'success': True,
+                'message': f'Found {len(slicers)} slicer(s) matching criteria',
+                'slicers': condensed_slicers,
+                'count': len(slicers),
+                'summary_only': True,
+                'hint': 'Use summary_only=false for full details including file paths'
+            }
+
         return {
             'success': True,
             'message': f'Found {len(slicers)} slicer(s) matching criteria',
@@ -455,25 +490,15 @@ def handle_slicer_operations(args: Dict[str, Any]) -> Dict[str, Any]:
             }
 
             if dry_run:
-                # Just report what would change
+                # Just report what would change - condensed format
+                status = 'would_change' if before_state['selection_mode'] != 'single_select_all' else 'already_configured'
                 changes.append({
-                    'file_path': str(file_path),
-                    'relative_path': slicer['relative_path'],
-                    'page_name': slicer.get('page_name', ''),
-                    'page_id': slicer.get('page_id', ''),
                     'display_name': slicer['display_name'],
+                    'page_name': slicer.get('page_name', ''),
                     'field_reference': slicer['field_reference'],
-                    'before': before_state,
-                    'after': {
-                        'selection_mode': 'single_select_all',
-                        'single_select': True,
-                        'strict_single_select': True,
-                        'select_all_checkbox': True,
-                        'is_inverted_selection': True,
-                        'selected_values': [],
-                        'has_filter': False
-                    },
-                    'status': 'would_change' if before_state['selection_mode'] != 'single_select_all' else 'already_configured'
+                    'before_mode': before_state['selection_mode'],
+                    'after_mode': 'single_select_all',
+                    'status': status
                 })
             else:
                 # Load, modify, and save
@@ -491,22 +516,11 @@ def handle_slicer_operations(args: Dict[str, Any]) -> Dict[str, Any]:
                 # Save changes
                 if _save_json_file(file_path, modified_data):
                     changes.append({
-                        'file_path': str(file_path),
-                        'relative_path': slicer['relative_path'],
-                        'page_name': slicer.get('page_name', ''),
-                        'page_id': slicer.get('page_id', ''),
                         'display_name': slicer['display_name'],
+                        'page_name': slicer.get('page_name', ''),
                         'field_reference': slicer['field_reference'],
-                        'before': before_state,
-                        'after': {
-                            'selection_mode': 'single_select_all',
-                            'single_select': True,
-                            'strict_single_select': True,
-                            'select_all_checkbox': True,
-                            'is_inverted_selection': True,
-                            'selected_values': [],
-                            'has_filter': False
-                        },
+                        'before_mode': before_state['selection_mode'],
+                        'after_mode': 'single_select_all',
                         'status': 'changed'
                     })
                 else:

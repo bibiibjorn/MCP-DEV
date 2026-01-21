@@ -264,18 +264,15 @@ class SemanticFilterClassifier:
             self._cache[cache_key] = result
             return result
 
-        # Check composite key tables (high confidence)
-        if table_clean in self._composite_key_tables:
-            result = SemanticClassification(
-                table=table,
-                column=column,
-                classification='field_parameter',
-                confidence=0.85,
-                detection_method='composite_key',
-                references=[]
-            )
-            self._cache[cache_key] = result
-            return result
+        # Note: Composite key detection is NO LONGER used for field parameter classification
+        # Many dimension tables (d Family, d Asset, etc.) have composite keys legitimately
+        # and should NOT be classified as field parameters.
+        # Composite keys are only relevant when combined with other signals (NAMEOF, SWITCH).
+        # The code below is kept for reference but disabled:
+        #
+        # if table_clean in self._composite_key_tables:
+        #     result = SemanticClassification(...)
+        #     return result
 
         # Check UI control tables
         if table_clean in self._ui_control_tables:

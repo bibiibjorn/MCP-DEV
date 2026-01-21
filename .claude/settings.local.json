@@ -149,7 +149,8 @@
       "Bash(do echo \"=== $pkg ===\")",
       "Bash(done)",
       "Bash(cmd //c \"rename venv venv_backup_old\")",
-      "Bash(tasklist:*)"
+      "Bash(tasklist:*)",
+      "Bash(xxd:*)"
     ],
     "deny": [],
     "ask": []

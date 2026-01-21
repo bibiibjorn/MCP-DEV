@@ -893,6 +893,11 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
                 "type": "boolean",
                 "description": "For configure_single_select: if true, shows what would change without making actual changes. Default: false",
                 "default": False
+            },
+            "summary_only": {
+                "type": "boolean",
+                "description": "For list operation: if true (default), returns condensed slicer info (display_name, page, field, mode). Set to false for full details including file paths.",
+                "default": True
             }
         },
         "required": ["pbip_path"],
@@ -941,6 +946,187 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
                 "pbip_path": "C:/repos/MyProject",
                 "operation": "list",
                 "entity": "d Family"
+            }
+        ]
+    },
+
+    # Visual Operations (Tool 08) - PBIP Visual Editing
+    'visual_operations': {
+        "type": "object",
+        "properties": {
+            "pbip_path": {
+                "type": "string",
+                "description": "Path to PBIP project folder, .Report folder, or definition folder containing the report visuals"
+            },
+            "operation": {
+                "type": "string",
+                "enum": ["list", "update_position", "replace_measure"],
+                "description": "Operation: 'list' finds visuals and shows their current configuration, 'update_position' changes position/size of matching visuals, 'replace_measure' replaces a measure in visuals while keeping display name. Default: 'list'",
+                "default": "list"
+            },
+            "display_title": {
+                "type": "string",
+                "description": "Filter by visual display title (case-insensitive partial match). Example: 'BN - Bank' or 'Sales Chart'"
+            },
+            "visual_type": {
+                "type": "string",
+                "description": "Filter by visual type (case-insensitive). Example: 'slicer', 'barChart', 'lineChart', 'card', 'bookmarkNavigator'"
+            },
+            "visual_name": {
+                "type": "string",
+                "description": "Filter by exact visual name/ID (case-insensitive). Example: '9043e76ba97c39cbb4a8'"
+            },
+            "page_name": {
+                "type": "string",
+                "description": "Filter by page name (case-insensitive partial match). Example: 'Dashboard' or 'Overview'"
+            },
+            "include_hidden": {
+                "type": "boolean",
+                "description": "Include hidden visuals in results (default: true)",
+                "default": True
+            },
+            "x": {
+                "type": "number",
+                "description": "New horizontal position (for update_position operation)"
+            },
+            "y": {
+                "type": "number",
+                "description": "New vertical position (for update_position operation)"
+            },
+            "width": {
+                "type": "number",
+                "description": "New width (for update_position operation)"
+            },
+            "height": {
+                "type": "number",
+                "description": "New height (for update_position operation)"
+            },
+            "z": {
+                "type": "integer",
+                "description": "New z-order/layer position (for update_position operation)"
+            },
+            "dry_run": {
+                "type": "boolean",
+                "description": "For update_position: if true, shows what would change without making actual changes. Default: false",
+                "default": False
+            },
+            "summary_only": {
+                "type": "boolean",
+                "description": "For list operation: if true (default), returns condensed visual info. Set to false for full details including file paths.",
+                "default": True
+            },
+            "source_entity": {
+                "type": "string",
+                "description": "For replace_measure: The table/entity containing the measure to find (e.g., 'm Measure')"
+            },
+            "source_property": {
+                "type": "string",
+                "description": "For replace_measure: The measure property name to find and replace (e.g., 'm00. Amount in selected currency')"
+            },
+            "target_entity": {
+                "type": "string",
+                "description": "For replace_measure: The new table/entity for the replacement measure (e.g., 'd Asset Attribute')"
+            },
+            "target_property": {
+                "type": "string",
+                "description": "For replace_measure: The new measure property name (e.g., 'Amount Selected Currency - Cards')"
+            },
+            "new_display_name": {
+                "type": "string",
+                "description": "For replace_measure: Optional new display name for the column header. If not provided, keeps the existing display name."
+            }
+        },
+        "required": ["pbip_path"],
+        "examples": [
+            {
+                "_description": "List all visuals in the report",
+                "pbip_path": "C:/repos/MyProject/MyProject.Report",
+                "operation": "list"
+            },
+            {
+                "_description": "Find visuals by display title",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "list",
+                "display_title": "BN - Bank"
+            },
+            {
+                "_description": "List all slicers in the report",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "list",
+                "visual_type": "slicer"
+            },
+            {
+                "_description": "List visuals on a specific page",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "list",
+                "page_name": "Dashboard"
+            },
+            {
+                "_description": "Preview position changes - show what would change without modifying",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "update_position",
+                "display_title": "BN - Bank",
+                "x": 458,
+                "y": 82,
+                "width": 178,
+                "height": 200,
+                "dry_run": True
+            },
+            {
+                "_description": "Resize and move all 'BN - Bank' visuals across all pages",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "update_position",
+                "display_title": "BN - Bank",
+                "x": 458,
+                "y": 82,
+                "width": 178,
+                "height": 200
+            },
+            {
+                "_description": "Change only the size of matching visuals (keep position)",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "update_position",
+                "display_title": "BN - Bank",
+                "width": 178,
+                "height": 200
+            },
+            {
+                "_description": "Move visuals to new position (keep size)",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "update_position",
+                "display_title": "BN - Bank",
+                "x": 458,
+                "y": 82
+            },
+            {
+                "_description": "Update visuals of specific type on specific page",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "update_position",
+                "visual_type": "card",
+                "page_name": "Overview",
+                "height": 100,
+                "width": 200
+            },
+            {
+                "_description": "Replace measure in ALL visuals (tables and matrices) on Card pages - no visual_type filter to search all",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "replace_measure",
+                "page_name": "Card",
+                "source_entity": "m Measure",
+                "source_property": "m00. Amount in selected currency",
+                "target_entity": "d Asset Attribute",
+                "target_property": "Amount Selected Currency - Cards",
+                "dry_run": True
+            },
+            {
+                "_description": "Replace measure and change the display name",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "replace_measure",
+                "source_entity": "m Measure",
+                "source_property": "m00. Amount in selected currency",
+                "target_entity": "d Asset Attribute",
+                "target_property": "Amount Selected Currency - Cards",
+                "new_display_name": "Amount (Cards)"
             }
         ]
     },
