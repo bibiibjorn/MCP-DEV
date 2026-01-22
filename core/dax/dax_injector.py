@@ -78,6 +78,55 @@ class DAXInjector:
             connection: Active ADOMD connection
         """
         self.connection = connection
+        self._connection_manager = None  # Optional reference for reconnection support
+
+    def set_connection_manager(self, connection_manager):
+        """
+        Set reference to connection manager for reconnection support.
+
+        Args:
+            connection_manager: ConnectionManager instance
+        """
+        self._connection_manager = connection_manager
+        logger.debug("DAX injector linked to connection manager for reconnection support")
+
+    def _verify_connection(self) -> Dict[str, Any]:
+        """
+        Verify connection is alive, attempt reconnection if needed.
+
+        Returns:
+            Dict with 'success' (bool) and optional 'error' (str)
+        """
+        try:
+            # Check if ADOMD connection is open
+            if self.connection and hasattr(self.connection, 'State'):
+                state = self.connection.State.ToString()
+                if state == 'Open':
+                    return {'success': True}
+
+            # Connection not open - try reconnection if manager available
+            if self._connection_manager:
+                logger.warning("DAX Injector: Connection not open, attempting reconnection...")
+                result = self._connection_manager.ensure_connected(max_retries=3)
+                if result.get('connected'):
+                    # Update our connection reference
+                    self.connection = self._connection_manager.get_connection()
+                    logger.info("DAX Injector: Reconnection successful")
+                    return {'success': True, 'reconnected': True}
+                else:
+                    return {
+                        'success': False,
+                        'error': result.get('error', 'Connection lost and reconnection failed')
+                    }
+
+            return {
+                'success': False,
+                'error': 'Connection not open and no connection manager for reconnection'
+            }
+
+        except Exception as e:
+            logger.error(f"Error verifying connection: {e}")
+            return {'success': False, 'error': str(e)}
 
     def upsert_measure(
         self,
@@ -109,6 +158,20 @@ class DAXInjector:
                 "success": False,
                 "error": "AMO not available - cannot inject measures",
                 "error_type": "amo_unavailable"
+            }
+
+        # Verify connection before AMO operations
+        conn_check = self._verify_connection()
+        if not conn_check.get('success'):
+            return {
+                "success": False,
+                "error": conn_check.get('error', 'Connection lost'),
+                "error_type": "connection_lost",
+                "suggestions": [
+                    "The connection to Power BI Desktop was lost",
+                    "Ensure Power BI Desktop is still running",
+                    "Try reconnecting using 01_Connect_To_Instance"
+                ]
             }
 
         # Basic identifier validation similar to Tabular MCP approach
@@ -295,6 +358,15 @@ class DAXInjector:
                 "error_type": "amo_unavailable"
             }
 
+        # Verify connection before AMO operations
+        conn_check = self._verify_connection()
+        if not conn_check.get('success'):
+            return {
+                "success": False,
+                "error": conn_check.get('error', 'Connection lost'),
+                "error_type": "connection_lost"
+            }
+
         # Validate identifiers early
         def _valid_identifier(s: Optional[str]) -> bool:
             return bool(s) and len(str(s).strip()) > 0 and len(str(s)) <= 128 and '\0' not in str(s)
@@ -401,6 +473,15 @@ class DAXInjector:
                 "success": False,
                 "error": "AMO not available",
                 "error_type": "amo_unavailable"
+            }
+
+        # Verify connection before AMO operations
+        conn_check = self._verify_connection()
+        if not conn_check.get('success'):
+            return {
+                "success": False,
+                "error": conn_check.get('error', 'Connection lost'),
+                "error_type": "connection_lost"
             }
 
         def _valid_identifier(s: Optional[str]) -> bool:
@@ -517,6 +598,15 @@ class DAXInjector:
                 "success": False,
                 "error": "AMO not available",
                 "error_type": "amo_unavailable"
+            }
+
+        # Verify connection before AMO operations
+        conn_check = self._verify_connection()
+        if not conn_check.get('success'):
+            return {
+                "success": False,
+                "error": conn_check.get('error', 'Connection lost'),
+                "error_type": "connection_lost"
             }
 
         def _valid_identifier(s: Optional[str]) -> bool:

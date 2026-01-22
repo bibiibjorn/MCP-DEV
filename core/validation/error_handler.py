@@ -264,6 +264,78 @@ class ErrorHandler:
             ],
             context=context
         ).to_dict()
+
+    @staticmethod
+    def handle_connection_lost(operation_name: str = None, partial_results: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Standard response when connection is lost during an operation.
+
+        Args:
+            operation_name: Name of the operation that was interrupted
+            partial_results: Any partial results from the interrupted operation
+
+        Returns:
+            Error response with reconnection guidance
+        """
+        context = {
+            'likely_cause': 'Connection to Power BI Desktop was lost during operation',
+            'recovery_steps': [
+                '1. Verify Power BI Desktop is still running',
+                '2. Check if the model is still open',
+                '3. Use 01_Connect_To_Instance to reconnect',
+                '4. Retry the failed operation'
+            ],
+            'auto_reconnect': 'The server will attempt automatic reconnection on next operation'
+        }
+
+        if operation_name:
+            context['interrupted_operation'] = operation_name
+
+        if partial_results:
+            context['partial_results'] = partial_results
+
+        return ErrorResponse(
+            error='Connection lost during operation',
+            error_type='connection_lost',
+            suggestions=[
+                'The connection to Power BI Desktop was unexpectedly closed',
+                'Use 01_Connect_To_Instance to re-establish the connection',
+                'If this happens frequently, check Power BI Desktop stability'
+            ],
+            context=context
+        ).to_dict()
+
+    @staticmethod
+    def handle_reconnection_failed(attempts: int = 3) -> Dict[str, Any]:
+        """
+        Standard response when automatic reconnection fails.
+
+        Args:
+            attempts: Number of reconnection attempts made
+
+        Returns:
+            Error response with recovery guidance
+        """
+        return ErrorResponse(
+            error=f'Failed to reconnect after {attempts} attempts',
+            error_type='reconnection_failed',
+            suggestions=[
+                'The server attempted automatic reconnection but failed',
+                'Manually reconnect using 01_Connect_To_Instance',
+                'Verify Power BI Desktop is running with model open'
+            ],
+            context={
+                'reconnection_attempts': attempts,
+                'likely_cause': 'Power BI Desktop may have been closed or crashed',
+                'recovery_steps': [
+                    '1. Ensure Power BI Desktop is running',
+                    '2. Ensure a .pbix file is open',
+                    '3. Wait for the model to fully load',
+                    '4. Use 01_Detect_PBI_Instances to verify instance availability',
+                    '5. Use 01_Connect_To_Instance to establish new connection'
+                ]
+            }
+        ).to_dict()
     
     @staticmethod
     def handle_validation_error(error: Exception) -> Dict[str, Any]:

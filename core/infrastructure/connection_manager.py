@@ -590,6 +590,107 @@ class ConnectionManager:
                 self.active_instance = None
                 self.connection_string = None
 
+    def reconnect(self, max_retries: int = 3, retry_delay: float = 0.5) -> Dict[str, Any]:
+        """
+        Attempt to reconnect to the last connected instance.
+        Uses exponential backoff for retries.
+
+        Args:
+            max_retries: Maximum number of reconnection attempts (default 3)
+            retry_delay: Initial delay between retries in seconds (default 0.5)
+
+        Returns:
+            Connection result dictionary
+        """
+        import time
+
+        if not self.connection_string:
+            return {
+                'success': False,
+                'error': 'No previous connection to reconnect to',
+                'error_type': 'no_previous_connection'
+            }
+
+        # Store instance info for potential restoration
+        saved_instance = self.active_instance
+
+        for attempt in range(max_retries):
+            try:
+                # Close existing connection if any
+                if self.active_connection:
+                    try:
+                        self.active_connection.Close()
+                    except Exception:
+                        pass
+                    self.active_connection = None
+
+                # Create new connection
+                self.active_connection = AdomdConnection(self.connection_string)
+                self.active_connection.Open()
+
+                # Verify connection is healthy
+                if self.active_connection.State.ToString() == 'Open':
+                    logger.info(f"Reconnected successfully on attempt {attempt + 1}")
+                    return {
+                        'success': True,
+                        'reconnected': True,
+                        'attempt': attempt + 1,
+                        'instance': self.active_instance,
+                        'message': f'Successfully reconnected on attempt {attempt + 1}'
+                    }
+
+            except Exception as e:
+                logger.warning(f"Reconnection attempt {attempt + 1} failed: {e}")
+
+                # Exponential backoff
+                if attempt < max_retries - 1:
+                    sleep_time = retry_delay * (2 ** attempt)
+                    time.sleep(sleep_time)
+
+        # All retries failed
+        logger.error(f"Failed to reconnect after {max_retries} attempts")
+        return {
+            'success': False,
+            'error': f'Failed to reconnect after {max_retries} attempts',
+            'error_type': 'reconnection_failed',
+            'attempts': max_retries
+        }
+
+    def ensure_connected(self, max_retries: int = 3) -> Dict[str, Any]:
+        """
+        Ensure connection is open, attempting reconnection if needed.
+
+        Args:
+            max_retries: Maximum reconnection attempts if connection is lost
+
+        Returns:
+            Dict with 'connected' (bool) and optional error info
+        """
+        # Check if currently connected
+        if self.is_connected():
+            return {'connected': True, 'reconnected': False}
+
+        # Not connected - try to reconnect if we have a previous connection
+        if self.connection_string:
+            logger.info("Connection lost, attempting to reconnect...")
+            result = self.reconnect(max_retries=max_retries)
+            if result.get('success'):
+                return {'connected': True, 'reconnected': True}
+            else:
+                return {
+                    'connected': False,
+                    'reconnected': False,
+                    'error': result.get('error'),
+                    'error_type': result.get('error_type')
+                }
+
+        return {
+            'connected': False,
+            'reconnected': False,
+            'error': 'No active or previous connection',
+            'error_type': 'no_connection'
+        }
+
     def connect_by_stable_id(self, port: int, database_id: str) -> Dict[str, Any]:
         """
         Connect to a Power BI instance using stable ID (port:databaseId)

@@ -80,6 +80,66 @@ class ConnectionState:
                 self.connection_manager is not None and
                 self.connection_manager.is_connected())
 
+    def verify_connection(self, auto_reconnect: bool = True) -> Dict[str, Any]:
+        """
+        Verify connection is alive and optionally attempt reconnection.
+
+        Args:
+            auto_reconnect: If True, attempt to reconnect on connection loss
+
+        Returns:
+            Dict with:
+            - connected: bool - whether connection is healthy
+            - reconnected: bool - whether a reconnection was performed
+            - error: str - error message if not connected
+        """
+        if not self.connection_manager:
+            return {
+                'connected': False,
+                'reconnected': False,
+                'error': 'Connection manager not initialized'
+            }
+
+        # Check if currently connected
+        if self.connection_manager.is_connected():
+            return {'connected': True, 'reconnected': False}
+
+        # Not connected
+        if not auto_reconnect:
+            return {
+                'connected': False,
+                'reconnected': False,
+                'error': 'Connection lost and auto_reconnect is disabled'
+            }
+
+        # Attempt reconnection
+        logger.info("Connection lost, attempting reconnection...")
+        result = self.connection_manager.reconnect(max_retries=3, retry_delay=0.5)
+
+        if result.get('success'):
+            # Invalidate any cached connection states
+            if self.query_executor and hasattr(self.query_executor, 'invalidate_connection_cache'):
+                self.query_executor.invalidate_connection_cache()
+            logger.info("Connection restored successfully")
+            return {'connected': True, 'reconnected': True}
+        else:
+            self._is_connected = False
+            return {
+                'connected': False,
+                'reconnected': False,
+                'error': result.get('error', 'Reconnection failed')
+            }
+
+    def ensure_connected(self) -> Dict[str, Any]:
+        """
+        Ensure connection is alive, attempting reconnection if needed.
+        Alias for verify_connection(auto_reconnect=True).
+
+        Returns:
+            Dict with connection status
+        """
+        return self.verify_connection(auto_reconnect=True)
+
     def set_connection_manager(self, connection_manager):
         """Set the connection manager instance."""
         self.connection_manager = connection_manager
@@ -273,6 +333,9 @@ class ConnectionState:
                 # Initialize other managers
                 if not self.dax_injector or force_reinit:
                     self.dax_injector = DAXInjector(conn)
+                    # Link to connection manager for reconnection support
+                    if self.connection_manager and hasattr(self.dax_injector, 'set_connection_manager'):
+                        self.dax_injector.set_connection_manager(self.connection_manager)
                     logger.debug("[OK] DAX injector initialized")
 
                 if not self.dependency_analyzer or force_reinit:
@@ -281,6 +344,9 @@ class ConnectionState:
 
                 if not self.bulk_operations or force_reinit:
                     self.bulk_operations = BulkOperationsManager(self.dax_injector)
+                    # Link to connection manager for reconnection support
+                    if self.connection_manager and hasattr(self.bulk_operations, 'set_connection_manager'):
+                        self.bulk_operations.set_connection_manager(self.connection_manager)
                     logger.debug("[OK] Bulk operations initialized")
 
                 if not self.calc_group_manager or force_reinit:

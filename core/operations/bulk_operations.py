@@ -5,7 +5,7 @@ Handles batch operations for measures and other objects
 
 import json
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +16,42 @@ class BulkOperationsManager:
     def __init__(self, dax_injector):
         """Initialize with DAX injector."""
         self.dax_injector = dax_injector
+        self._connection_manager = None
+
+    def set_connection_manager(self, connection_manager):
+        """
+        Set reference to connection manager for reconnection support.
+
+        Args:
+            connection_manager: ConnectionManager instance
+        """
+        self._connection_manager = connection_manager
+        # Also set on DAX injector for its internal use
+        if self.dax_injector and hasattr(self.dax_injector, 'set_connection_manager'):
+            self.dax_injector.set_connection_manager(connection_manager)
+        logger.debug("Bulk operations manager linked to connection manager")
+
+    def _check_connection(self) -> Dict[str, Any]:
+        """
+        Check if connection is alive, attempt reconnection if needed.
+
+        Returns:
+            Dict with 'connected' (bool) and optional 'error' (str)
+        """
+        if not self._connection_manager:
+            # No connection manager, assume connected (fallback behavior)
+            return {'connected': True}
+
+        result = self._connection_manager.ensure_connected(max_retries=3)
+        if result.get('connected'):
+            if result.get('reconnected'):
+                logger.info("Bulk operations: Connection was restored")
+            return {'connected': True, 'reconnected': result.get('reconnected', False)}
+
+        return {
+            'connected': False,
+            'error': result.get('error', 'Connection lost')
+        }
 
     def bulk_create_measures(self, measures: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
@@ -39,11 +75,47 @@ class BulkOperationsManager:
                 'error': 'No measures provided'
             }
 
+        # Check connection before starting batch
+        conn_check = self._check_connection()
+        if not conn_check.get('connected'):
+            return {
+                'success': False,
+                'error': conn_check.get('error', 'Connection lost'),
+                'error_type': 'connection_lost',
+                'suggestions': [
+                    'Connection to Power BI Desktop was lost before batch could start',
+                    'Ensure Power BI Desktop is running',
+                    'Try reconnecting using 01_Connect_To_Instance'
+                ]
+            }
+
         results = []
         success_count = 0
         error_count = 0
+        connection_lost = False
+        reconnection_count = 0
 
         for idx, measure_def in enumerate(measures):
+            # Check connection every 5 items to detect loss early (balance performance vs reliability)
+            if idx > 0 and idx % 5 == 0:
+                conn_check = self._check_connection()
+                if not conn_check.get('connected'):
+                    connection_lost = True
+                    # Mark remaining items as skipped
+                    for remaining_idx in range(idx, len(measures)):
+                        remaining_measure = measures[remaining_idx].get('measure', f'item_{remaining_idx}')
+                        results.append({
+                            'index': remaining_idx,
+                            'measure': remaining_measure,
+                            'success': False,
+                            'error': 'Skipped: connection lost',
+                            'skipped': True
+                        })
+                        error_count += 1
+                    break
+                elif conn_check.get('reconnected'):
+                    reconnection_count += 1
+
             try:
                 table = measure_def.get('table')
                 measure = measure_def.get('measure')
@@ -80,23 +152,71 @@ class BulkOperationsManager:
                     })
                 else:
                     error_count += 1
-                    results.append({
-                        'index': idx,
-                        'measure': measure,
-                        'table': table,
-                        'success': False,
-                        'error': result.get('error', 'Unknown error')
-                    })
+                    error_type = result.get('error_type', '')
+
+                    # Check if this was a connection loss
+                    if error_type == 'connection_lost':
+                        connection_lost = True
+                        results.append({
+                            'index': idx,
+                            'measure': measure,
+                            'table': table,
+                            'success': False,
+                            'error': 'Connection lost during operation'
+                        })
+                        # Mark remaining items as skipped
+                        for remaining_idx in range(idx + 1, len(measures)):
+                            remaining_measure = measures[remaining_idx].get('measure', f'item_{remaining_idx}')
+                            results.append({
+                                'index': remaining_idx,
+                                'measure': remaining_measure,
+                                'success': False,
+                                'error': 'Skipped: connection lost',
+                                'skipped': True
+                            })
+                            error_count += 1
+                        break
+                    else:
+                        results.append({
+                            'index': idx,
+                            'measure': measure,
+                            'table': table,
+                            'success': False,
+                            'error': result.get('error', 'Unknown error')
+                        })
 
             except Exception as e:
                 error_count += 1
-                results.append({
-                    'index': idx,
-                    'success': False,
-                    'error': str(e)
-                })
+                error_str = str(e).lower()
 
-        return {
+                # Check if exception indicates connection loss
+                if any(x in error_str for x in ['connection', 'closed', 'disconnected', 'timeout']):
+                    connection_lost = True
+                    results.append({
+                        'index': idx,
+                        'success': False,
+                        'error': f'Connection error: {str(e)}'
+                    })
+                    # Mark remaining items as skipped
+                    for remaining_idx in range(idx + 1, len(measures)):
+                        remaining_measure = measures[remaining_idx].get('measure', f'item_{remaining_idx}')
+                        results.append({
+                            'index': remaining_idx,
+                            'measure': remaining_measure,
+                            'success': False,
+                            'error': 'Skipped: connection lost',
+                            'skipped': True
+                        })
+                        error_count += 1
+                    break
+                else:
+                    results.append({
+                        'index': idx,
+                        'success': False,
+                        'error': str(e)
+                    })
+
+        response = {
             'success': error_count == 0,
             'total_measures': len(measures),
             'success_count': success_count,
@@ -104,6 +224,15 @@ class BulkOperationsManager:
             'results': results,
             'summary': f"Created {success_count}/{len(measures)} measures successfully"
         }
+
+        if connection_lost:
+            response['connection_lost'] = True
+            response['warning'] = 'Batch operation was interrupted due to connection loss'
+
+        if reconnection_count > 0:
+            response['reconnections'] = reconnection_count
+
+        return response
 
     def bulk_update_display_folders(
         self,
@@ -122,14 +251,38 @@ class BulkOperationsManager:
         Returns:
             Batch operation results
         """
+        # Check connection before starting batch
+        conn_check = self._check_connection()
+        if not conn_check.get('connected'):
+            return {
+                'success': False,
+                'error': conn_check.get('error', 'Connection lost'),
+                'error_type': 'connection_lost'
+            }
+
         results = []
         success_count = 0
+        error_count = 0
+        connection_lost = False
 
-        for measure in measures:
+        for idx, measure in enumerate(measures):
+            # Check connection every 5 items
+            if idx > 0 and idx % 5 == 0:
+                conn_check = self._check_connection()
+                if not conn_check.get('connected'):
+                    connection_lost = True
+                    # Mark remaining items as skipped
+                    for remaining_idx in range(idx, len(measures)):
+                        results.append({
+                            'measure': measures[remaining_idx],
+                            'success': False,
+                            'error': 'Skipped: connection lost',
+                            'skipped': True
+                        })
+                        error_count += 1
+                    break
+
             try:
-                # Get current measure definition
-                # We need to retrieve expression to update
-                # For now, just set display folder
                 result = self.dax_injector.upsert_measure(
                     table_name=table,
                     measure_name=measure,
@@ -144,26 +297,53 @@ class BulkOperationsManager:
                         'success': True
                     })
                 else:
-                    results.append({
-                        'measure': measure,
-                        'success': False,
-                        'error': result.get('error')
-                    })
+                    error_count += 1
+                    if result.get('error_type') == 'connection_lost':
+                        connection_lost = True
+                        results.append({
+                            'measure': measure,
+                            'success': False,
+                            'error': 'Connection lost'
+                        })
+                        # Mark remaining items as skipped
+                        for remaining_idx in range(idx + 1, len(measures)):
+                            results.append({
+                                'measure': measures[remaining_idx],
+                                'success': False,
+                                'error': 'Skipped: connection lost',
+                                'skipped': True
+                            })
+                            error_count += 1
+                        break
+                    else:
+                        results.append({
+                            'measure': measure,
+                            'success': False,
+                            'error': result.get('error')
+                        })
 
             except Exception as e:
+                error_count += 1
                 results.append({
                     'measure': measure,
                     'success': False,
                     'error': str(e)
                 })
 
-        return {
-            'success': success_count == len(measures),
+        response = {
+            'success': error_count == 0,
             'total_measures': len(measures),
             'success_count': success_count,
+            'error_count': error_count,
             'display_folder': display_folder,
             'results': results
         }
+
+        if connection_lost:
+            response['connection_lost'] = True
+            response['warning'] = 'Batch operation was interrupted due to connection loss'
+
+        return response
 
     def bulk_delete_measures(
         self,
@@ -178,14 +358,44 @@ class BulkOperationsManager:
         Returns:
             Batch operation results
         """
+        # Check connection before starting batch
+        conn_check = self._check_connection()
+        if not conn_check.get('connected'):
+            return {
+                'success': False,
+                'error': conn_check.get('error', 'Connection lost'),
+                'error_type': 'connection_lost'
+            }
+
         results = []
         success_count = 0
+        error_count = 0
+        connection_lost = False
 
-        for measure_def in measures:
+        for idx, measure_def in enumerate(measures):
+            # Check connection every 5 items
+            if idx > 0 and idx % 5 == 0:
+                conn_check = self._check_connection()
+                if not conn_check.get('connected'):
+                    connection_lost = True
+                    # Mark remaining items as skipped
+                    for remaining_idx in range(idx, len(measures)):
+                        remaining_def = measures[remaining_idx]
+                        results.append({
+                            'table': remaining_def.get('table'),
+                            'measure': remaining_def.get('measure'),
+                            'success': False,
+                            'error': 'Skipped: connection lost',
+                            'skipped': True
+                        })
+                        error_count += 1
+                    break
+
             table = measure_def.get('table')
             measure = measure_def.get('measure')
 
             if not table or not measure:
+                error_count += 1
                 results.append({
                     'table': table,
                     'measure': measure,
@@ -205,14 +415,37 @@ class BulkOperationsManager:
                         'success': True
                     })
                 else:
-                    results.append({
-                        'table': table,
-                        'measure': measure,
-                        'success': False,
-                        'error': result.get('error')
-                    })
+                    error_count += 1
+                    if result.get('error_type') == 'connection_lost':
+                        connection_lost = True
+                        results.append({
+                            'table': table,
+                            'measure': measure,
+                            'success': False,
+                            'error': 'Connection lost'
+                        })
+                        # Mark remaining items as skipped
+                        for remaining_idx in range(idx + 1, len(measures)):
+                            remaining_def = measures[remaining_idx]
+                            results.append({
+                                'table': remaining_def.get('table'),
+                                'measure': remaining_def.get('measure'),
+                                'success': False,
+                                'error': 'Skipped: connection lost',
+                                'skipped': True
+                            })
+                            error_count += 1
+                        break
+                    else:
+                        results.append({
+                            'table': table,
+                            'measure': measure,
+                            'success': False,
+                            'error': result.get('error')
+                        })
 
             except Exception as e:
+                error_count += 1
                 results.append({
                     'table': table,
                     'measure': measure,
@@ -220,12 +453,19 @@ class BulkOperationsManager:
                     'error': str(e)
                 })
 
-        return {
-            'success': success_count == len(measures),
+        response = {
+            'success': error_count == 0,
             'total_measures': len(measures),
             'success_count': success_count,
+            'error_count': error_count,
             'results': results
         }
+
+        if connection_lost:
+            response['connection_lost'] = True
+            response['warning'] = 'Batch operation was interrupted due to connection loss'
+
+        return response
 
     def import_measures_from_json(self, json_data: str) -> Dict[str, Any]:
         """

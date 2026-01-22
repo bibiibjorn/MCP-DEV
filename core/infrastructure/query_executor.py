@@ -126,7 +126,7 @@ class OptimizedQueryExecutor:
         # Connection health caching (OPTIMIZATION: avoid expensive CLR interop calls)
         self._last_connection_check = 0
         self._connection_healthy = False
-        self._connection_check_ttl = 5.0  # seconds - cache connection health for 5 seconds
+        self._connection_check_ttl = 1.0  # seconds - reduced from 5s to 1s for better connection loss detection
 
     @property
     def connection(self):
@@ -154,25 +154,29 @@ class OptimizedQueryExecutor:
         """
         return self.connection
 
-    def _verify_connection_open(self):
+    def _verify_connection_open(self, force_check: bool = False):
         """
         Verify that the current connection is open and healthy.
         Uses caching to avoid expensive CLR interop calls on every query.
+
+        Args:
+            force_check: If True, bypass cache and perform actual verification
 
         Returns:
             Tuple of (is_open: bool, error_message: str or None)
         """
         try:
-            # OPTIMIZATION: Check cache first to avoid expensive CLR interop
             now = time.time()
-            if now - self._last_connection_check < self._connection_check_ttl:
+
+            # OPTIMIZATION: Check cache first to avoid expensive CLR interop (unless force_check)
+            if not force_check and now - self._last_connection_check < self._connection_check_ttl:
                 if self._connection_healthy:
                     return True, None
                 else:
                     # Cached unhealthy state - still return it if TTL not expired
                     return False, "Connection not healthy (cached)"
 
-            # Cache expired or first check - perform actual verification
+            # Cache expired, force_check, or first check - perform actual verification
             conn = self.connection
             if not conn:
                 self._connection_healthy = False
@@ -200,6 +204,28 @@ class OptimizedQueryExecutor:
             self._connection_healthy = False
             self._last_connection_check = time.time()
             return False, f"Connection check failed: {e}"
+
+    def invalidate_connection_cache(self):
+        """
+        Invalidate the connection health cache, forcing the next check to verify.
+        Call this after operations that may affect connection state.
+        """
+        self._last_connection_check = 0
+        self._connection_healthy = False
+
+    def verify_connection_health(self) -> Dict[str, Any]:
+        """
+        Force a connection health check bypassing the cache.
+        Useful for critical operations that need to ensure connection is alive.
+
+        Returns:
+            Dict with 'healthy' (bool) and optional 'error' (str)
+        """
+        is_open, error = self._verify_connection_open(force_check=True)
+        result = {'healthy': is_open}
+        if error:
+            result['error'] = error
+        return result
 
     def set_connection_state(self, connection_state):
         """
