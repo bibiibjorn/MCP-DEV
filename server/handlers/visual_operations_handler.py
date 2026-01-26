@@ -6,6 +6,8 @@ Operations:
 - list: Find and list visuals matching criteria with their current configuration
 - update_position: Update position and/or size of matching visuals
 - replace_measure: Replace a measure in visuals while keeping the display name
+- sync_visual: Sync a visual (including visual groups with children) from source page to matching visuals on other pages
+- update_visual_config: Update visual formatting properties (axis settings, labels, colors, etc.)
 """
 from typing import Dict, Any, List, Optional
 import logging
@@ -346,6 +348,84 @@ def _update_visual_position(
     return visual_data
 
 
+def _find_child_visuals(parent_name: str, visuals_path: Path) -> List[Dict]:
+    """
+    Find all child visuals that belong to a parent group.
+
+    Args:
+        parent_name: The visual name/ID of the parent group
+        visuals_path: Path to the visuals folder for the page
+
+    Returns:
+        List of dicts with 'name', 'path', and 'data' for each child visual
+    """
+    children = []
+
+    if not visuals_path.exists():
+        return children
+
+    for visual_folder in visuals_path.iterdir():
+        if not visual_folder.is_dir():
+            continue
+
+        visual_json_path = visual_folder / "visual.json"
+        if not visual_json_path.exists():
+            continue
+
+        visual_data = _load_json_file(visual_json_path)
+        if not visual_data:
+            continue
+
+        # Check if this visual belongs to the parent group
+        if visual_data.get('parentGroupName') == parent_name:
+            children.append({
+                'name': visual_data.get('name', visual_folder.name),
+                'path': visual_json_path,
+                'data': visual_data
+            })
+
+    return children
+
+
+def _sync_visual_content(
+    source_data: Dict,
+    target_data: Dict,
+    sync_position: bool = False
+) -> Dict:
+    """
+    Sync visual content from source to target, preserving target's identity.
+
+    Args:
+        source_data: The source visual.json data to copy from
+        target_data: The target visual.json data to update
+        sync_position: If True, also copy position. If False, preserve target's position.
+
+    Returns:
+        Updated target_data with synced content
+    """
+    import copy
+
+    # Deep copy source to avoid modifying original
+    synced_data = copy.deepcopy(source_data)
+
+    # Always preserve target's identity (name/ID)
+    synced_data['name'] = target_data.get('name')
+
+    # Preserve target's parentGroupName if it exists
+    if 'parentGroupName' in target_data:
+        synced_data['parentGroupName'] = target_data['parentGroupName']
+    elif 'parentGroupName' in synced_data:
+        del synced_data['parentGroupName']
+
+    # Handle position syncing
+    if not sync_position:
+        # Preserve target's position
+        if 'position' in target_data:
+            synced_data['position'] = target_data['position']
+
+    return synced_data
+
+
 def _replace_measure_in_visual(
     visual_data: Dict,
     source_entity: str,
@@ -431,6 +511,174 @@ def _replace_measure_in_visual(
         'modified': modified,
         'changes': changes
     }
+
+
+def _update_visual_config_property(
+    visual_data: Dict,
+    config_type: str,
+    property_name: str,
+    property_value: Any,
+    selector_metadata: Optional[str] = None,
+    value_type: str = "auto"
+) -> Dict[str, Any]:
+    """
+    Update a visual configuration property.
+
+    Args:
+        visual_data: The visual.json data
+        config_type: Object type to modify (e.g., 'categoryAxis', 'valueAxis', 'labels', 'legend')
+        property_name: The property to update (e.g., 'fontSize', 'labelDisplayUnits', 'labelOverflow')
+        property_value: The new value to set
+        selector_metadata: Optional selector to match specific series (e.g., 'm Measure.WF2-Blank')
+        value_type: How to format the value - 'auto', 'literal', 'boolean', 'number', 'string'
+
+    Returns:
+        Dict with 'modified': bool, 'change': description of the change
+    """
+    visual = visual_data.get('visual', {})
+    objects = visual.setdefault('objects', {})
+
+    # Ensure the config_type exists as an array
+    if config_type not in objects:
+        objects[config_type] = []
+
+    config_array = objects[config_type]
+
+    # Format the value based on type
+    def format_value(val, vtype):
+        if vtype == "auto":
+            # Auto-detect type
+            if isinstance(val, bool):
+                return {"expr": {"Literal": {"Value": "true" if val else "false"}}}
+            elif isinstance(val, (int, float)):
+                # Numbers get D suffix in Power BI
+                return {"expr": {"Literal": {"Value": f"{val}D"}}}
+            elif isinstance(val, str):
+                # Check if it's already formatted (ends with D, L, or is a quoted string)
+                if val.endswith('D') or val.endswith('L') or (val.startswith("'") and val.endswith("'")):
+                    return {"expr": {"Literal": {"Value": val}}}
+                elif val.lower() in ['true', 'false']:
+                    return {"expr": {"Literal": {"Value": val.lower()}}}
+                else:
+                    # Assume it's a pre-formatted Power BI value
+                    return {"expr": {"Literal": {"Value": val}}}
+        elif vtype == "literal":
+            return {"expr": {"Literal": {"Value": str(val)}}}
+        elif vtype == "boolean":
+            return {"expr": {"Literal": {"Value": "true" if val else "false"}}}
+        elif vtype == "number":
+            return {"expr": {"Literal": {"Value": f"{val}D"}}}
+        elif vtype == "string":
+            return {"expr": {"Literal": {"Value": f"'{val}'"}}}
+        return {"expr": {"Literal": {"Value": str(val)}}}
+
+    formatted_value = format_value(property_value, value_type)
+
+    # Find the right entry to modify
+    target_entry = None
+    target_index = -1
+
+    if selector_metadata:
+        # Look for entry with matching selector
+        for i, entry in enumerate(config_array):
+            selector = entry.get('selector', {})
+            if selector.get('metadata') == selector_metadata:
+                target_entry = entry
+                target_index = i
+                break
+
+        # If not found, create a new entry with the selector
+        if target_entry is None:
+            target_entry = {
+                "properties": {},
+                "selector": {"metadata": selector_metadata}
+            }
+            config_array.append(target_entry)
+            target_index = len(config_array) - 1
+    else:
+        # Use the first entry without a selector, or create one
+        for i, entry in enumerate(config_array):
+            if 'selector' not in entry or not entry.get('selector'):
+                target_entry = entry
+                target_index = i
+                break
+
+        if target_entry is None:
+            if len(config_array) > 0:
+                # Use the first entry
+                target_entry = config_array[0]
+                target_index = 0
+            else:
+                # Create a new entry
+                target_entry = {"properties": {}}
+                config_array.append(target_entry)
+                target_index = 0
+
+    # Update the property
+    properties = target_entry.setdefault('properties', {})
+    old_value = properties.get(property_name)
+    properties[property_name] = formatted_value
+
+    return {
+        'modified': True,
+        'change': {
+            'config_type': config_type,
+            'property_name': property_name,
+            'selector_metadata': selector_metadata,
+            'old_value': old_value,
+            'new_value': formatted_value,
+            'entry_index': target_index
+        }
+    }
+
+
+def _remove_visual_config_property(
+    visual_data: Dict,
+    config_type: str,
+    property_name: str,
+    selector_metadata: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Remove a visual configuration property (for cases where removing means 'Auto').
+
+    Args:
+        visual_data: The visual.json data
+        config_type: Object type (e.g., 'categoryAxis', 'valueAxis', 'labels')
+        property_name: The property to remove
+        selector_metadata: Optional selector to match specific series
+
+    Returns:
+        Dict with 'modified': bool, 'change': description of the change
+    """
+    visual = visual_data.get('visual', {})
+    objects = visual.get('objects', {})
+
+    if config_type not in objects:
+        return {'modified': False, 'change': None}
+
+    config_array = objects[config_type]
+
+    for entry in config_array:
+        selector = entry.get('selector', {})
+        selector_match = selector.get('metadata') == selector_metadata if selector_metadata else ('selector' not in entry or not entry.get('selector'))
+
+        if selector_match:
+            properties = entry.get('properties', {})
+            if property_name in properties:
+                old_value = properties.pop(property_name)
+                return {
+                    'modified': True,
+                    'change': {
+                        'config_type': config_type,
+                        'property_name': property_name,
+                        'selector_metadata': selector_metadata,
+                        'old_value': old_value,
+                        'new_value': None,
+                        'action': 'removed'
+                    }
+                }
+
+    return {'modified': False, 'change': None}
 
 
 def handle_visual_operations(args: Dict[str, Any]) -> Dict[str, Any]:
@@ -786,10 +1034,396 @@ def handle_visual_operations(args: Dict[str, Any]) -> Dict[str, Any]:
 
         return result
 
+    elif operation == 'sync_visual':
+        # Sync a visual (and its children if a group) from source page to matching visuals on other pages
+        source_visual_name = args.get('source_visual_name')
+        source_page = args.get('source_page')
+        sync_position = args.get('sync_position', True)
+        sync_children = args.get('sync_children', True)
+        dry_run = args.get('dry_run', False)
+        target_pages = args.get('target_pages')  # Optional: list of page names to sync to
+        # New parameters for flexible target matching
+        target_display_title = args.get('target_display_title')  # Match targets by display title
+        target_visual_type = args.get('target_visual_type')  # Match targets by visual type
+
+        # Validate required parameters
+        if not source_visual_name and not display_title:
+            return {
+                'success': False,
+                'error': 'sync_visual requires either source_visual_name or display_title parameter to identify the source visual'
+            }
+
+        # Find source visual
+        source_visuals = _find_visuals(
+            definition_path,
+            visual_name=source_visual_name,
+            display_title=display_title if not source_visual_name else None,
+            page_name=source_page,
+            include_hidden=True
+        )
+
+        if not source_visuals:
+            search_criteria = source_visual_name or display_title
+            return {
+                'success': False,
+                'error': f'No source visual found matching: {search_criteria}. Use operation "list" to see available visuals.'
+            }
+
+        # Determine source visual
+        source_visual = None
+        if source_page:
+            # Find visual on specific source page
+            for v in source_visuals:
+                if source_page.lower() in v.get('page_name', '').lower():
+                    source_visual = v
+                    break
+            if not source_visual:
+                return {
+                    'success': False,
+                    'error': f'Source visual not found on page matching: {source_page}'
+                }
+        else:
+            # Use the first found visual as source
+            source_visual = source_visuals[0]
+
+        source_page_name = source_visual.get('page_name', '')
+        source_file_path = Path(source_visual['file_path'])
+        source_visuals_path = source_file_path.parent.parent  # Go up from visual.json -> visual_folder -> visuals
+        source_visual_id = source_visual.get('visual_name', '')  # The actual visual ID
+
+        # Load source visual data
+        source_data = _load_json_file(source_file_path)
+        if not source_data:
+            return {
+                'success': False,
+                'error': f'Failed to load source visual from: {source_file_path}'
+            }
+
+        # Check if source is a visual group and find children
+        source_children = []
+        is_group = 'visualGroup' in source_data.get('visual', {})
+        if is_group and sync_children:
+            source_children = _find_child_visuals(source_visual_id, source_visuals_path)
+
+        # Find target visuals
+        # If target_display_title or target_visual_type is specified, use those for matching
+        # Otherwise, fall back to matching by visual_name (original behavior)
+        if target_display_title or target_visual_type:
+            # Flexible matching: find visuals by title/type on other pages
+            all_potential_targets = _find_visuals(
+                definition_path,
+                display_title=target_display_title,
+                visual_type=target_visual_type,
+                include_hidden=True
+            )
+            target_visuals = []
+            for v in all_potential_targets:
+                # Skip the source visual itself (same page)
+                if v.get('page_name', '') == source_page_name:
+                    continue
+                # Filter by target_pages if specified
+                if target_pages:
+                    if not any(tp.lower() in v.get('page_name', '').lower() for tp in target_pages):
+                        continue
+                target_visuals.append(v)
+        else:
+            # Original behavior: find visuals with same visual_name on other pages
+            all_matching_visuals = _find_visuals(
+                definition_path,
+                visual_name=source_visual_id,
+                include_hidden=True
+            )
+            target_visuals = []
+            for v in all_matching_visuals:
+                if v.get('page_name', '') != source_page_name:
+                    # Filter by target_pages if specified
+                    if target_pages:
+                        if not any(tp.lower() in v.get('page_name', '').lower() for tp in target_pages):
+                            continue
+                    target_visuals.append(v)
+
+        if not target_visuals:
+            hint = ''
+            if not target_display_title and not target_visual_type:
+                hint = ' Tip: Use target_display_title or target_visual_type to match visuals by title/type instead of visual ID.'
+            return {
+                'success': True,
+                'message': f'Source visual found on page "{source_page_name}", but no matching visuals found on other pages to sync to.{hint}',
+                'source': {
+                    'visual_name': source_visual_id,
+                    'display_title': source_visual.get('display_title'),
+                    'visual_type': source_visual.get('visual_type'),
+                    'page': source_page_name,
+                    'is_group': is_group,
+                    'children_count': len(source_children) if is_group else 0
+                },
+                'targets_found': 0
+            }
+
+        # Perform sync
+        changes = []
+        errors = []
+
+        for target_visual in target_visuals:
+            target_file_path = Path(target_visual['file_path'])
+            target_visuals_path = target_file_path.parent.parent
+            target_page_name = target_visual.get('page_name', '')
+
+            target_visual_id = target_visual.get('visual_name', '')
+
+            # Load target visual data
+            target_data = _load_json_file(target_file_path)
+            if not target_data:
+                errors.append({
+                    'page': target_page_name,
+                    'visual_name': target_visual_id,
+                    'error': 'Failed to load target visual'
+                })
+                continue
+
+            # Sync the main visual
+            synced_data = _sync_visual_content(source_data, target_data, sync_position)
+
+            change_record = {
+                'page': target_page_name,
+                'target_visual_name': target_visual_id,
+                'target_display_title': target_visual.get('display_title'),
+                'visual_type': target_visual.get('visual_type', 'unknown'),
+                'position_synced': sync_position,
+                'children_synced': [],
+                'status': 'would_sync' if dry_run else 'synced'
+            }
+
+            if not dry_run:
+                if not _save_json_file(target_file_path, synced_data):
+                    errors.append({
+                        'page': target_page_name,
+                        'visual_name': target_visual_id,
+                        'error': 'Failed to save synced visual'
+                    })
+                    continue
+
+            # Sync children if this is a group
+            if is_group and sync_children and source_children:
+                for source_child in source_children:
+                    child_name = source_child['name']
+
+                    # Find matching child on target page
+                    target_child_path = target_visuals_path / child_name / "visual.json"
+                    if not target_child_path.exists():
+                        change_record['children_synced'].append({
+                            'name': child_name,
+                            'status': 'skipped_not_found'
+                        })
+                        continue
+
+                    target_child_data = _load_json_file(target_child_path)
+                    if not target_child_data:
+                        change_record['children_synced'].append({
+                            'name': child_name,
+                            'status': 'skipped_load_failed'
+                        })
+                        continue
+
+                    # Sync child content
+                    synced_child = _sync_visual_content(
+                        source_child['data'],
+                        target_child_data,
+                        sync_position
+                    )
+
+                    if not dry_run:
+                        if _save_json_file(target_child_path, synced_child):
+                            change_record['children_synced'].append({
+                                'name': child_name,
+                                'status': 'synced'
+                            })
+                        else:
+                            change_record['children_synced'].append({
+                                'name': child_name,
+                                'status': 'save_failed'
+                            })
+                    else:
+                        change_record['children_synced'].append({
+                            'name': child_name,
+                            'status': 'would_sync'
+                        })
+
+            changes.append(change_record)
+
+        # Build a descriptive source identifier for the message
+        source_desc = source_visual.get('display_title') or source_visual_id
+        result = {
+            'success': len(errors) == 0,
+            'operation': 'sync_visual',
+            'dry_run': dry_run,
+            'message': f'{"Would sync" if dry_run else "Synced"} visual "{source_desc}" from "{source_page_name}" to {len(changes)} page(s)',
+            'source': {
+                'visual_name': source_visual_id,
+                'display_title': source_visual.get('display_title'),
+                'visual_type': source_visual.get('visual_type'),
+                'page': source_page_name,
+                'is_group': is_group,
+                'children_count': len(source_children) if is_group else 0
+            },
+            'target_matching': {
+                'by_display_title': target_display_title,
+                'by_visual_type': target_visual_type
+            } if (target_display_title or target_visual_type) else 'by_visual_name',
+            'sync_position': sync_position,
+            'sync_children': sync_children,
+            'changes': changes,
+            'changes_count': len(changes)
+        }
+
+        if errors:
+            result['errors'] = errors
+            result['errors_count'] = len(errors)
+            result['message'] += f' with {len(errors)} error(s)'
+
+        return result
+
+    elif operation == 'update_visual_config':
+        # Update visual formatting/configuration properties
+        config_type = args.get('config_type')  # e.g., 'categoryAxis', 'valueAxis', 'labels', 'legend'
+        property_name = args.get('property_name')  # e.g., 'fontSize', 'labelDisplayUnits', 'labelOverflow'
+        property_value = args.get('property_value')  # The new value
+        selector_metadata = args.get('selector_metadata')  # Optional: for series-specific settings
+        value_type = args.get('value_type', 'auto')  # How to format: 'auto', 'literal', 'boolean', 'number', 'string'
+        remove_property = args.get('remove_property', False)  # Set to True to remove the property (for 'Auto' settings)
+        dry_run = args.get('dry_run', False)
+
+        # Support for batch updates - array of config changes
+        config_updates = args.get('config_updates')  # Array of {config_type, property_name, property_value, selector_metadata}
+
+        # Validate parameters
+        if not config_updates:
+            if not config_type or not property_name:
+                return {
+                    'success': False,
+                    'error': 'update_visual_config requires either: (config_type + property_name + property_value) OR config_updates array'
+                }
+            if property_value is None and not remove_property:
+                return {
+                    'success': False,
+                    'error': 'property_value is required unless remove_property is True'
+                }
+            # Convert single update to array format
+            config_updates = [{
+                'config_type': config_type,
+                'property_name': property_name,
+                'property_value': property_value,
+                'selector_metadata': selector_metadata,
+                'value_type': value_type,
+                'remove_property': remove_property
+            }]
+
+        # Find matching visuals
+        visuals = _find_visuals(
+            definition_path,
+            display_title=display_title,
+            visual_type=visual_type,
+            visual_name=visual_name,
+            page_name=page_name,
+            include_hidden=include_hidden
+        )
+
+        if not visuals:
+            return {
+                'success': False,
+                'error': 'No visuals found matching the criteria. Use operation "list" to see available visuals.'
+            }
+
+        changes = []
+        errors = []
+
+        for visual in visuals:
+            file_path = Path(visual['file_path'])
+
+            # Load visual data
+            visual_data = _load_json_file(file_path)
+            if not visual_data:
+                errors.append({
+                    'file_path': str(file_path),
+                    'error': 'Failed to load visual.json'
+                })
+                continue
+
+            visual_changes = []
+            visual_modified = False
+
+            # Apply all config updates
+            for update in config_updates:
+                update_config_type = update.get('config_type')
+                update_property_name = update.get('property_name')
+                update_property_value = update.get('property_value')
+                update_selector = update.get('selector_metadata')
+                update_value_type = update.get('value_type', 'auto')
+                update_remove = update.get('remove_property', False)
+
+                if update_remove:
+                    result = _remove_visual_config_property(
+                        visual_data,
+                        update_config_type,
+                        update_property_name,
+                        update_selector
+                    )
+                else:
+                    result = _update_visual_config_property(
+                        visual_data,
+                        update_config_type,
+                        update_property_name,
+                        update_property_value,
+                        update_selector,
+                        update_value_type
+                    )
+
+                if result['modified']:
+                    visual_modified = True
+                    visual_changes.append(result['change'])
+
+            if visual_modified:
+                change_record = {
+                    'display_title': visual['display_title'],
+                    'page_name': visual.get('page_name', ''),
+                    'visual_name': visual['visual_name'],
+                    'visual_type': visual['visual_type'],
+                    'config_changes': visual_changes,
+                    'status': 'would_change' if dry_run else 'changed'
+                }
+
+                if not dry_run:
+                    if _save_json_file(file_path, visual_data):
+                        change_record['status'] = 'changed'
+                    else:
+                        change_record['status'] = 'error'
+                        errors.append({
+                            'file_path': str(file_path),
+                            'error': 'Failed to save changes'
+                        })
+
+                changes.append(change_record)
+
+        result = {
+            'success': len(errors) == 0,
+            'operation': 'update_visual_config',
+            'dry_run': dry_run,
+            'message': f'{"Would update" if dry_run else "Updated"} config in {len(changes)} visual(s)',
+            'changes': changes,
+            'changes_count': len(changes)
+        }
+
+        if errors:
+            result['errors'] = errors
+            result['errors_count'] = len(errors)
+            result['message'] += f' with {len(errors)} error(s)'
+
+        return result
+
     else:
         return {
             'success': False,
-            'error': f'Unknown operation: {operation}. Valid operations: list, update_position, replace_measure'
+            'error': f'Unknown operation: {operation}. Valid operations: list, update_position, replace_measure, sync_visual, update_visual_config'
         }
 
 
@@ -799,7 +1433,7 @@ def register_visual_operations_handler(registry):
 
     tool = ToolDefinition(
         name="08_Visual_Operations",
-        description="[PBIP] Edit Power BI visual properties - list visuals, resize/reposition visuals, replace measures in visuals",
+        description="[PBIP] Edit Power BI visual properties - list visuals, resize/reposition visuals, replace measures, sync visuals across pages",
         handler=handle_visual_operations,
         input_schema=TOOL_SCHEMAS.get('visual_operations', {}),
         category="pbip",

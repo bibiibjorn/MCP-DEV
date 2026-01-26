@@ -150,7 +150,8 @@
       "Bash(done)",
       "Bash(cmd //c \"rename venv venv_backup_old\")",
       "Bash(tasklist:*)",
-      "Bash(xxd:*)"
+      "Bash(xxd:*)",
+      "Read(//c/Users/bjorn.braet/Local Repo/G01-FamillyOffices/**)"
     ],
     "deny": [],
     "ask": []

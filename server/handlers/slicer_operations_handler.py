@@ -1,10 +1,13 @@
 """
 Slicer Operations Handler
-Tool 13: Configure Power BI slicer settings in PBIP files
+Tool 13: Configure Power BI slicer/visual settings in PBIP files
 
 Operations:
 - list: Find and list slicers matching criteria with their current configuration
 - configure_single_select: Change slicer to single-select with "All" selected
+- list_interactions: List visual interactions (cross-filtering settings) from page.json
+- set_interaction: Set interaction type between two visuals on a page
+- bulk_set_interactions: Set multiple interactions at once
 """
 from typing import Dict, Any, List, Optional
 import logging
@@ -316,6 +319,421 @@ def _find_slicers(definition_path: Path, display_name: Optional[str], entity: Op
     return matching_slicers
 
 
+# ============================================
+# Visual Interaction Helper Functions
+# ============================================
+
+def _get_visual_display_info(visuals_path: Path) -> Dict[str, Dict]:
+    """
+    Build a cache of visual name -> display info for all visuals on a page.
+    Returns dict: {visual_name: {'display_title': str, 'visual_type': str}}
+    """
+    visual_info_cache: Dict[str, Dict] = {}
+
+    if not visuals_path.exists():
+        return visual_info_cache
+
+    for visual_folder in visuals_path.iterdir():
+        if not visual_folder.is_dir():
+            continue
+
+        visual_json_path = visual_folder / "visual.json"
+        if not visual_json_path.exists():
+            continue
+
+        visual_data = _load_json_file(visual_json_path)
+        if not visual_data:
+            continue
+
+        visual_name = visual_data.get('name', visual_folder.name)
+        visual_type = visual_data.get('visual', {}).get('visualType', 'unknown')
+
+        # Get display title
+        display_title = None
+        vc_objects = visual_data.get('visual', {}).get('visualContainerObjects', {})
+        title_config = vc_objects.get('title', [])
+        if title_config and len(title_config) > 0:
+            title_props = title_config[0].get('properties', {})
+            title_text = title_props.get('text', {})
+            if 'expr' in title_text:
+                literal = title_text['expr'].get('Literal', {})
+                value = literal.get('Value', '')
+                if value.startswith("'") and value.endswith("'"):
+                    display_title = value[1:-1]
+                else:
+                    display_title = value
+
+        visual_info_cache[visual_name] = {
+            'display_title': display_title or visual_name,
+            'visual_type': visual_type
+        }
+
+    return visual_info_cache
+
+
+def _get_page_interactions(page_folder: Path) -> List[Dict]:
+    """
+    Get visual interactions from a page's page.json file.
+    Returns list of interaction dicts with source, target, type.
+    """
+    page_json_path = page_folder / "page.json"
+    if not page_json_path.exists():
+        return []
+
+    page_data = _load_json_file(page_json_path)
+    if not page_data:
+        return []
+
+    return page_data.get('visualInteractions', [])
+
+
+def _set_page_interactions(page_folder: Path, interactions: List[Dict]) -> bool:
+    """
+    Set visual interactions in a page's page.json file.
+    Returns True if successful.
+    """
+    page_json_path = page_folder / "page.json"
+    if not page_json_path.exists():
+        return False
+
+    page_data = _load_json_file(page_json_path)
+    if not page_data:
+        return False
+
+    page_data['visualInteractions'] = interactions
+    return _save_json_file(page_json_path, page_data)
+
+
+def _find_interactions(
+    definition_path: Path,
+    page_name: Optional[str] = None,
+    source_visual: Optional[str] = None,
+    target_visual: Optional[str] = None,
+    interaction_type: Optional[str] = None,
+    include_visual_info: bool = True
+) -> Dict[str, Any]:
+    """
+    Find visual interactions across all pages matching criteria.
+
+    Args:
+        definition_path: Path to PBIP definition folder
+        page_name: Filter by page name (case-insensitive partial match)
+        source_visual: Filter by source visual name or display title
+        target_visual: Filter by target visual name or display title
+        interaction_type: Filter by interaction type (NoFilter, Filter, Highlight)
+        include_visual_info: Include visual display titles in results
+
+    Returns:
+        Dict with pages and their interactions
+    """
+    pages_path = definition_path / "pages"
+    if not pages_path.exists():
+        return {'pages': [], 'total_interactions': 0}
+
+    result_pages = []
+    total_interactions = 0
+
+    for page_folder in pages_path.iterdir():
+        if not page_folder.is_dir():
+            continue
+
+        # Skip if filtering by page name and no match
+        page_id = page_folder.name
+        page_display_name = _get_page_display_name(page_folder)
+
+        if page_name and page_name.lower() not in page_display_name.lower():
+            continue
+
+        # Get interactions for this page
+        interactions = _get_page_interactions(page_folder)
+        if not interactions:
+            continue
+
+        # Build visual info cache if needed for filtering or display
+        visual_info_cache: Dict[str, Dict] = {}
+        if include_visual_info or source_visual or target_visual:
+            visuals_path = page_folder / "visuals"
+            visual_info_cache = _get_visual_display_info(visuals_path)
+
+        # Filter and enrich interactions
+        filtered_interactions = []
+        for interaction in interactions:
+            source_id = interaction.get('source', '')
+            target_id = interaction.get('target', '')
+            int_type = interaction.get('type', '')
+
+            # Apply filters
+            if interaction_type and int_type.lower() != interaction_type.lower():
+                continue
+
+            # Filter by source visual
+            if source_visual:
+                source_info = visual_info_cache.get(source_id, {})
+                source_title = source_info.get('display_title', source_id)
+                if (source_visual.lower() not in source_id.lower() and
+                    source_visual.lower() not in source_title.lower()):
+                    continue
+
+            # Filter by target visual
+            if target_visual:
+                target_info = visual_info_cache.get(target_id, {})
+                target_title = target_info.get('display_title', target_id)
+                if (target_visual.lower() not in target_id.lower() and
+                    target_visual.lower() not in target_title.lower()):
+                    continue
+
+            # Build interaction record
+            int_record: Dict[str, Any] = {
+                'source': source_id,
+                'target': target_id,
+                'type': int_type
+            }
+
+            # Add visual info if requested
+            if include_visual_info:
+                source_info = visual_info_cache.get(source_id, {})
+                target_info = visual_info_cache.get(target_id, {})
+                int_record['source_title'] = source_info.get('display_title', source_id)
+                int_record['source_type'] = source_info.get('visual_type', 'unknown')
+                int_record['target_title'] = target_info.get('display_title', target_id)
+                int_record['target_type'] = target_info.get('visual_type', 'unknown')
+
+            filtered_interactions.append(int_record)
+
+        if filtered_interactions:
+            result_pages.append({
+                'page_id': page_id,
+                'page_name': page_display_name,
+                'interactions': filtered_interactions,
+                'interaction_count': len(filtered_interactions)
+            })
+            total_interactions += len(filtered_interactions)
+
+    return {
+        'pages': result_pages,
+        'total_interactions': total_interactions,
+        'page_count': len(result_pages)
+    }
+
+
+def _set_interaction(
+    definition_path: Path,
+    page_name: str,
+    source_visual: str,
+    target_visual: str,
+    interaction_type: str
+) -> Dict[str, Any]:
+    """
+    Set an interaction between two visuals on a page.
+
+    Args:
+        definition_path: Path to PBIP definition folder
+        page_name: Page name to modify (case-insensitive partial match)
+        source_visual: Source visual name/ID
+        target_visual: Target visual name/ID
+        interaction_type: Interaction type (NoFilter, Filter, Highlight)
+
+    Returns:
+        Dict with success status and details
+    """
+    # Validate interaction type
+    valid_types = {'NoFilter', 'Filter', 'Highlight'}
+    if interaction_type not in valid_types:
+        return {
+            'success': False,
+            'error': f'Invalid interaction_type: {interaction_type}. Must be one of: {", ".join(valid_types)}'
+        }
+
+    pages_path = definition_path / "pages"
+    if not pages_path.exists():
+        return {'success': False, 'error': 'No pages folder found'}
+
+    # Find matching page
+    matching_page = None
+    for page_folder in pages_path.iterdir():
+        if not page_folder.is_dir():
+            continue
+
+        page_display_name = _get_page_display_name(page_folder)
+        if page_name.lower() in page_display_name.lower():
+            matching_page = page_folder
+            break
+
+    if not matching_page:
+        return {'success': False, 'error': f'No page found matching: {page_name}'}
+
+    # Verify visuals exist on page
+    visuals_path = matching_page / "visuals"
+    visual_info_cache = _get_visual_display_info(visuals_path)
+
+    # Resolve visual names (could be display title or ID)
+    source_id = None
+    target_id = None
+
+    for visual_id, info in visual_info_cache.items():
+        if visual_id == source_visual or info.get('display_title', '').lower() == source_visual.lower():
+            source_id = visual_id
+        if visual_id == target_visual or info.get('display_title', '').lower() == target_visual.lower():
+            target_id = visual_id
+
+    if not source_id:
+        return {'success': False, 'error': f'Source visual not found: {source_visual}'}
+    if not target_id:
+        return {'success': False, 'error': f'Target visual not found: {target_visual}'}
+
+    # Get current interactions
+    interactions = _get_page_interactions(matching_page)
+
+    # Find and update or add interaction
+    found = False
+    for interaction in interactions:
+        if interaction.get('source') == source_id and interaction.get('target') == target_id:
+            old_type = interaction.get('type')
+            interaction['type'] = interaction_type
+            found = True
+            break
+
+    if not found:
+        interactions.append({
+            'source': source_id,
+            'target': target_id,
+            'type': interaction_type
+        })
+
+    # Save updated interactions
+    if _set_page_interactions(matching_page, interactions):
+        return {
+            'success': True,
+            'page_name': _get_page_display_name(matching_page),
+            'source_visual': source_id,
+            'target_visual': target_id,
+            'interaction_type': interaction_type,
+            'action': 'updated' if found else 'added'
+        }
+    else:
+        return {'success': False, 'error': 'Failed to save page.json'}
+
+
+def _bulk_set_interactions(
+    definition_path: Path,
+    page_name: str,
+    interactions: List[Dict[str, str]],
+    replace_all: bool = False
+) -> Dict[str, Any]:
+    """
+    Set multiple interactions at once on a page.
+
+    Args:
+        definition_path: Path to PBIP definition folder
+        page_name: Page name to modify
+        interactions: List of {source, target, type} dicts
+        replace_all: If True, replace all existing interactions. If False, merge/update.
+
+    Returns:
+        Dict with success status and details
+    """
+    valid_types = {'NoFilter', 'Filter', 'Highlight'}
+
+    pages_path = definition_path / "pages"
+    if not pages_path.exists():
+        return {'success': False, 'error': 'No pages folder found'}
+
+    # Find matching page
+    matching_page = None
+    for page_folder in pages_path.iterdir():
+        if not page_folder.is_dir():
+            continue
+        page_display_name = _get_page_display_name(page_folder)
+        if page_name.lower() in page_display_name.lower():
+            matching_page = page_folder
+            break
+
+    if not matching_page:
+        return {'success': False, 'error': f'No page found matching: {page_name}'}
+
+    # Get visual info for name resolution
+    visuals_path = matching_page / "visuals"
+    visual_info_cache = _get_visual_display_info(visuals_path)
+
+    # Resolve and validate interactions
+    resolved_interactions = []
+    errors = []
+
+    for i, int_spec in enumerate(interactions):
+        source = int_spec.get('source', '')
+        target = int_spec.get('target', '')
+        int_type = int_spec.get('type', '')
+
+        if int_type not in valid_types:
+            errors.append(f'Interaction {i}: Invalid type "{int_type}"')
+            continue
+
+        # Resolve source
+        source_id = None
+        for visual_id, info in visual_info_cache.items():
+            if visual_id == source or info.get('display_title', '').lower() == source.lower():
+                source_id = visual_id
+                break
+
+        if not source_id:
+            errors.append(f'Interaction {i}: Source visual not found: {source}')
+            continue
+
+        # Resolve target
+        target_id = None
+        for visual_id, info in visual_info_cache.items():
+            if visual_id == target or info.get('display_title', '').lower() == target.lower():
+                target_id = visual_id
+                break
+
+        if not target_id:
+            errors.append(f'Interaction {i}: Target visual not found: {target}')
+            continue
+
+        resolved_interactions.append({
+            'source': source_id,
+            'target': target_id,
+            'type': int_type
+        })
+
+    if errors and not resolved_interactions:
+        return {'success': False, 'errors': errors}
+
+    # Get current interactions (if merging)
+    if replace_all:
+        final_interactions = resolved_interactions
+    else:
+        current_interactions = _get_page_interactions(matching_page)
+
+        # Build lookup for efficient merge
+        interaction_lookup = {}
+        for interaction in current_interactions:
+            key = f"{interaction.get('source')}|{interaction.get('target')}"
+            interaction_lookup[key] = interaction
+
+        # Update/add resolved interactions
+        for interaction in resolved_interactions:
+            key = f"{interaction['source']}|{interaction['target']}"
+            interaction_lookup[key] = interaction
+
+        final_interactions = list(interaction_lookup.values())
+
+    # Save
+    if _set_page_interactions(matching_page, final_interactions):
+        result = {
+            'success': True,
+            'page_name': _get_page_display_name(matching_page),
+            'interactions_set': len(resolved_interactions),
+            'total_interactions': len(final_interactions),
+            'replace_mode': replace_all
+        }
+        if errors:
+            result['warnings'] = errors
+        return result
+    else:
+        return {'success': False, 'error': 'Failed to save page.json'}
+
+
 def _configure_single_select_all(visual_data: Dict) -> Dict:
     """
     Configure a slicer for single-select with "All" selected.
@@ -545,10 +963,143 @@ def handle_slicer_operations(args: Dict[str, Any]) -> Dict[str, Any]:
 
         return result
 
+    elif operation == 'list_interactions':
+        # List visual interactions from page.json files
+        page_name_filter = args.get('page_name')
+        source_visual = args.get('source_visual')
+        target_visual = args.get('target_visual')
+        interaction_type = args.get('interaction_type')
+        include_visual_info = args.get('include_visual_info', True)
+        summary_only = args.get('summary_only', True)
+
+        result = _find_interactions(
+            definition_path,
+            page_name=page_name_filter,
+            source_visual=source_visual,
+            target_visual=target_visual,
+            interaction_type=interaction_type,
+            include_visual_info=include_visual_info
+        )
+
+        if result['total_interactions'] == 0:
+            return {
+                'success': True,
+                'message': 'No visual interactions found matching the criteria',
+                'pages': [],
+                'total_interactions': 0,
+                'hint': 'Visual interactions define cross-filtering behavior. Default behavior is "Filter" - NoFilter/Highlight are only stored when explicitly set.'
+            }
+
+        # Summary mode: condense output for large datasets
+        if summary_only:
+            # Group by page and summarize
+            summary_pages = []
+            for page in result['pages']:
+                # Count interaction types
+                type_counts = {}
+                for interaction in page['interactions']:
+                    int_type = interaction.get('type', 'Unknown')
+                    type_counts[int_type] = type_counts.get(int_type, 0) + 1
+
+                summary_pages.append({
+                    'page_name': page['page_name'],
+                    'interaction_count': page['interaction_count'],
+                    'by_type': type_counts,
+                    'interactions': page['interactions'][:10] if len(page['interactions']) > 10 else page['interactions'],
+                    'truncated': len(page['interactions']) > 10
+                })
+
+            return {
+                'success': True,
+                'message': f'Found {result["total_interactions"]} interaction(s) across {result["page_count"]} page(s)',
+                'pages': summary_pages,
+                'total_interactions': result['total_interactions'],
+                'page_count': result['page_count'],
+                'summary_only': True,
+                'hint': 'Use summary_only=false for full interaction list'
+            }
+
+        return {
+            'success': True,
+            'message': f'Found {result["total_interactions"]} interaction(s) across {result["page_count"]} page(s)',
+            'pages': result['pages'],
+            'total_interactions': result['total_interactions'],
+            'page_count': result['page_count']
+        }
+
+    elif operation == 'set_interaction':
+        # Set a single interaction between two visuals
+        page_name_param = args.get('page_name')
+        source_visual = args.get('source_visual')
+        target_visual = args.get('target_visual')
+        interaction_type = args.get('interaction_type')
+        dry_run = args.get('dry_run', False)
+
+        # Validate required parameters
+        if not all([page_name_param, source_visual, target_visual, interaction_type]):
+            return {
+                'success': False,
+                'error': 'set_interaction requires: page_name, source_visual, target_visual, interaction_type'
+            }
+
+        if dry_run:
+            return {
+                'success': True,
+                'dry_run': True,
+                'message': f'Would set interaction: {source_visual} -> {target_visual} = {interaction_type} on page matching "{page_name_param}"'
+            }
+
+        result = _set_interaction(
+            definition_path,
+            page_name=page_name_param,
+            source_visual=source_visual,
+            target_visual=target_visual,
+            interaction_type=interaction_type
+        )
+
+        return result
+
+    elif operation == 'bulk_set_interactions':
+        # Set multiple interactions at once
+        page_name_param = args.get('page_name')
+        interactions_list = args.get('interactions', [])
+        replace_all = args.get('replace_all', False)
+        dry_run = args.get('dry_run', False)
+
+        if not page_name_param:
+            return {
+                'success': False,
+                'error': 'bulk_set_interactions requires: page_name'
+            }
+
+        if not interactions_list:
+            return {
+                'success': False,
+                'error': 'bulk_set_interactions requires: interactions (array of {source, target, type})'
+            }
+
+        if dry_run:
+            return {
+                'success': True,
+                'dry_run': True,
+                'message': f'Would set {len(interactions_list)} interaction(s) on page matching "{page_name_param}"',
+                'replace_all': replace_all,
+                'interactions_preview': interactions_list[:5] if len(interactions_list) > 5 else interactions_list
+            }
+
+        result = _bulk_set_interactions(
+            definition_path,
+            page_name=page_name_param,
+            interactions=interactions_list,
+            replace_all=replace_all
+        )
+
+        return result
+
     else:
         return {
             'success': False,
-            'error': f'Unknown operation: {operation}. Valid operations: list, configure_single_select'
+            'error': f'Unknown operation: {operation}. Valid operations: list, configure_single_select, list_interactions, set_interaction, bulk_set_interactions'
         }
 
 
@@ -558,7 +1109,7 @@ def register_slicer_operations_handler(registry):
 
     tool = ToolDefinition(
         name="07_Slicer_Operations",
-        description="[PBIP] Configure Power BI slicer settings - list slicers with current values, change to single-select with All selected",
+        description="[PBIP] Configure Power BI slicer settings and visual interactions - list slicers, configure single-select, list/set cross-filtering interactions between visuals",
         handler=handle_slicer_operations,
         input_schema=TOOL_SCHEMAS.get('slicer_operations', {}),
         category="pbip",

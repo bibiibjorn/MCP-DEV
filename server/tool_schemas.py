@@ -863,7 +863,7 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
         ]
     },
 
-    # Slicer Operations (Tool 13) - PBIP Slicer Configuration
+    # Slicer Operations (Tool 13) - PBIP Slicer Configuration & Visual Interactions
     'slicer_operations': {
         "type": "object",
         "properties": {
@@ -873,8 +873,8 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
             },
             "operation": {
                 "type": "string",
-                "enum": ["list", "configure_single_select"],
-                "description": "Operation: 'list' finds slicers and shows their current configuration/values, 'configure_single_select' changes matching slicers to single-select with All selected. Default: 'list'",
+                "enum": ["list", "configure_single_select", "list_interactions", "set_interaction", "bulk_set_interactions"],
+                "description": "Operation: 'list' finds slicers and shows their current configuration/values, 'configure_single_select' changes matching slicers to single-select with All selected, 'list_interactions' lists visual cross-filtering interactions from page.json, 'set_interaction' sets interaction between two visuals, 'bulk_set_interactions' sets multiple interactions at once. Default: 'list'",
                 "default": "list"
             },
             "display_name": {
@@ -891,13 +891,53 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
             },
             "dry_run": {
                 "type": "boolean",
-                "description": "For configure_single_select: if true, shows what would change without making actual changes. Default: false",
+                "description": "For configure_single_select, set_interaction, bulk_set_interactions: if true, shows what would change without making actual changes. Default: false",
                 "default": False
             },
             "summary_only": {
                 "type": "boolean",
-                "description": "For list operation: if true (default), returns condensed slicer info (display_name, page, field, mode). Set to false for full details including file paths.",
+                "description": "For list and list_interactions: if true (default), returns condensed info. Set to false for full details.",
                 "default": True
+            },
+            "page_name": {
+                "type": "string",
+                "description": "For interaction operations: Filter/target by page name (case-insensitive partial match). Required for set_interaction and bulk_set_interactions."
+            },
+            "source_visual": {
+                "type": "string",
+                "description": "For interaction operations: Source visual name/ID or display title. Required for set_interaction."
+            },
+            "target_visual": {
+                "type": "string",
+                "description": "For interaction operations: Target visual name/ID or display title. Required for set_interaction."
+            },
+            "interaction_type": {
+                "type": "string",
+                "enum": ["NoFilter", "Filter", "Highlight"],
+                "description": "For interaction operations: Interaction type - 'NoFilter' (no filtering), 'Filter' (cross-filter), 'Highlight' (cross-highlight). Note: 'Filter' is the default behavior so only NoFilter/Highlight are stored."
+            },
+            "include_visual_info": {
+                "type": "boolean",
+                "description": "For list_interactions: Include visual display titles and types in results (default: true)",
+                "default": True
+            },
+            "interactions": {
+                "type": "array",
+                "description": "For bulk_set_interactions: Array of interaction definitions [{source, target, type}]",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "source": {"type": "string", "description": "Source visual name/ID or display title"},
+                        "target": {"type": "string", "description": "Target visual name/ID or display title"},
+                        "type": {"type": "string", "enum": ["NoFilter", "Filter", "Highlight"]}
+                    },
+                    "required": ["source", "target", "type"]
+                }
+            },
+            "replace_all": {
+                "type": "boolean",
+                "description": "For bulk_set_interactions: If true, replace all existing interactions. If false (default), merge/update.",
+                "default": False
             }
         },
         "required": ["pbip_path"],
@@ -946,6 +986,68 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
                 "pbip_path": "C:/repos/MyProject",
                 "operation": "list",
                 "entity": "d Family"
+            },
+            {
+                "_description": "List all visual interactions (cross-filtering settings) in the report",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "list_interactions"
+            },
+            {
+                "_description": "List interactions for a specific page",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "list_interactions",
+                "page_name": "Global Wealth"
+            },
+            {
+                "_description": "List interactions where a specific slicer is the source",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "list_interactions",
+                "source_visual": "Family Name"
+            },
+            {
+                "_description": "List only NoFilter interactions (disabled cross-filtering)",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "list_interactions",
+                "interaction_type": "NoFilter"
+            },
+            {
+                "_description": "Set interaction: disable filtering from slicer A to slicer B",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "set_interaction",
+                "page_name": "Global Wealth",
+                "source_visual": "Family Name",
+                "target_visual": "Entity Selection",
+                "interaction_type": "NoFilter"
+            },
+            {
+                "_description": "Set interaction: enable cross-filter from slicer to chart",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "set_interaction",
+                "page_name": "Dashboard",
+                "source_visual": "Category Slicer",
+                "target_visual": "Sales Chart",
+                "interaction_type": "Filter"
+            },
+            {
+                "_description": "Bulk set multiple interactions at once",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "bulk_set_interactions",
+                "page_name": "Global Wealth",
+                "interactions": [
+                    {"source": "Family Name", "target": "Asset Type", "type": "NoFilter"},
+                    {"source": "Family Name", "target": "Region", "type": "Filter"},
+                    {"source": "Entity Selection", "target": "Asset Type", "type": "NoFilter"}
+                ]
+            },
+            {
+                "_description": "Replace all interactions on a page with a new set",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "bulk_set_interactions",
+                "page_name": "Global Wealth",
+                "interactions": [
+                    {"source": "Family Name", "target": "Entity Selection", "type": "Filter"}
+                ],
+                "replace_all": True
             }
         ]
     },
@@ -960,8 +1062,8 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
             },
             "operation": {
                 "type": "string",
-                "enum": ["list", "update_position", "replace_measure"],
-                "description": "Operation: 'list' finds visuals and shows their current configuration, 'update_position' changes position/size of matching visuals, 'replace_measure' replaces a measure in visuals while keeping display name. Default: 'list'",
+                "enum": ["list", "update_position", "replace_measure", "sync_visual", "update_visual_config"],
+                "description": "Operation: 'list' finds visuals, 'update_position' changes position/size, 'replace_measure' replaces measures, 'sync_visual' syncs visual content from source to targets, 'update_visual_config' updates formatting properties (axis settings, labels, etc.). Default: 'list'",
                 "default": "list"
             },
             "display_title": {
@@ -1034,6 +1136,80 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
             "new_display_name": {
                 "type": "string",
                 "description": "For replace_measure: Optional new display name for the column header. If not provided, keeps the existing display name."
+            },
+            "source_visual_name": {
+                "type": "string",
+                "description": "For sync_visual: The visual name/ID of the source visual to sync from. Can use this OR display_title to identify source."
+            },
+            "source_page": {
+                "type": "string",
+                "description": "For sync_visual: Page name containing the source visual. If not specified, uses first found visual with matching name/title."
+            },
+            "target_display_title": {
+                "type": "string",
+                "description": "For sync_visual: Match target visuals by display title (case-insensitive partial match). Use this when target visuals have different IDs but same title."
+            },
+            "target_visual_type": {
+                "type": "string",
+                "description": "For sync_visual: Match target visuals by visual type (e.g., 'waterfallChart', 'slicer'). Use with target_display_title for precise matching."
+            },
+            "sync_position": {
+                "type": "boolean",
+                "description": "For sync_visual: If true (default), sync position and size. If false, only sync content/formatting.",
+                "default": True
+            },
+            "sync_children": {
+                "type": "boolean",
+                "description": "For sync_visual: If true (default), also sync all child visuals when syncing a visual group.",
+                "default": True
+            },
+            "target_pages": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "For sync_visual: Optional list of page names to sync to. If not specified, syncs to all pages with matching visual."
+            },
+            "config_type": {
+                "type": "string",
+                "description": "For update_visual_config: The object type to modify (e.g., 'categoryAxis', 'valueAxis', 'labels', 'legend', 'dataPoint', 'title', 'general'). Maps to visual.objects.{config_type} in visual.json."
+            },
+            "property_name": {
+                "type": "string",
+                "description": "For update_visual_config: The property to update (e.g., 'fontSize', 'labelDisplayUnits', 'labelOverflow', 'show', 'color')"
+            },
+            "property_value": {
+                "type": ["string", "number", "boolean"],
+                "description": "For update_visual_config: The new value. Use Power BI format: '8D' for numbers, 'true'/'false' for booleans, '1D' for Auto display units, '0D' for None"
+            },
+            "selector_metadata": {
+                "type": "string",
+                "description": "For update_visual_config: Optional selector to target specific series (e.g., 'm Measure.WF2-Blank'). Used for per-series formatting like labels on specific measures."
+            },
+            "value_type": {
+                "type": "string",
+                "enum": ["auto", "literal", "boolean", "number", "string"],
+                "description": "For update_visual_config: How to format the value. 'auto' (default) detects type, 'literal' uses value as-is, 'number' adds D suffix, 'string' adds quotes.",
+                "default": "auto"
+            },
+            "remove_property": {
+                "type": "boolean",
+                "description": "For update_visual_config: Set to true to remove the property (useful for resetting to Auto/default). Default: false",
+                "default": False
+            },
+            "config_updates": {
+                "type": "array",
+                "description": "For update_visual_config: Array of config changes to apply in batch. Each item: {config_type, property_name, property_value, selector_metadata?, value_type?, remove_property?}",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "config_type": {"type": "string"},
+                        "property_name": {"type": "string"},
+                        "property_value": {"type": ["string", "number", "boolean"]},
+                        "selector_metadata": {"type": "string"},
+                        "value_type": {"type": "string"},
+                        "remove_property": {"type": "boolean"}
+                    },
+                    "required": ["config_type", "property_name"]
+                }
             }
         },
         "required": ["pbip_path"],
@@ -1127,6 +1303,115 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
                 "target_entity": "d Asset Attribute",
                 "target_property": "Amount Selected Currency - Cards",
                 "new_display_name": "Amount (Cards)"
+            },
+            {
+                "_description": "Sync visual by display title - matches targets with same title across pages (RECOMMENDED)",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "sync_visual",
+                "display_title": "Revenue Waterfall",
+                "source_page": "Dashboard",
+                "target_display_title": "Revenue Waterfall",
+                "dry_run": True
+            },
+            {
+                "_description": "Sync waterfall chart content to all waterfall charts on other pages (match by type)",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "sync_visual",
+                "display_title": "Revenue Waterfall",
+                "source_page": "Dashboard",
+                "target_visual_type": "waterfallChart",
+                "sync_position": False
+            },
+            {
+                "_description": "Sync visual content only to Card pages (keep existing positions)",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "sync_visual",
+                "display_title": "My Slicer",
+                "source_page": "Overview",
+                "target_display_title": "My Slicer",
+                "target_pages": ["Card"],
+                "sync_position": False
+            },
+            {
+                "_description": "Sync visual with position to Overview pages only",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "sync_visual",
+                "display_title": "My Slicer",
+                "source_page": "Dashboard",
+                "target_display_title": "My Slicer",
+                "target_pages": ["Overview"],
+                "sync_position": True
+            },
+            {
+                "_description": "Sync a visual group (with children) from Dashboard to all other pages by visual ID",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "sync_visual",
+                "source_visual_name": "9043e76ba97c39cbb4a8",
+                "source_page": "Dashboard",
+                "sync_position": True,
+                "sync_children": True
+            },
+            {
+                "_description": "Update X-axis font size to 8 on all waterfall visuals",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "update_visual_config",
+                "display_title": "waterfall",
+                "config_type": "categoryAxis",
+                "property_name": "fontSize",
+                "property_value": "8D",
+                "dry_run": True
+            },
+            {
+                "_description": "Enable label overflow for WF2-Blank series in column charts",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "update_visual_config",
+                "visual_type": "columnChart",
+                "config_type": "labels",
+                "property_name": "labelOverflow",
+                "property_value": "true",
+                "selector_metadata": "m Measure.WF2-Blank"
+            },
+            {
+                "_description": "Set display units to Auto for WF1-Base labels",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "update_visual_config",
+                "visual_type": "columnChart",
+                "config_type": "labels",
+                "property_name": "labelDisplayUnits",
+                "property_value": "1D",
+                "selector_metadata": "m Measure.WF1-Base"
+            },
+            {
+                "_description": "Batch update multiple properties on waterfall visuals",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "update_visual_config",
+                "display_title": "waterfall",
+                "config_updates": [
+                    {"config_type": "categoryAxis", "property_name": "fontSize", "property_value": "8D"},
+                    {"config_type": "labels", "property_name": "labelOverflow", "property_value": "true", "selector_metadata": "m Measure.WF2-Blank"},
+                    {"config_type": "labels", "property_name": "labelDisplayUnits", "property_value": "1D", "selector_metadata": "m Measure.WF1-Base"},
+                    {"config_type": "labels", "property_name": "labelDisplayUnits", "property_value": "1D", "selector_metadata": "m Measure.WF5-Return Base"}
+                ]
+            },
+            {
+                "_description": "Remove labelDisplayUnits property to reset to Auto",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "update_visual_config",
+                "display_title": "Sales Chart",
+                "config_type": "labels",
+                "property_name": "labelDisplayUnits",
+                "remove_property": True,
+                "selector_metadata": "m Measure.Total Sales"
+            },
+            {
+                "_description": "Update value axis settings (hide axis, set display units)",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "update_visual_config",
+                "visual_type": "columnChart",
+                "config_updates": [
+                    {"config_type": "valueAxis", "property_name": "show", "property_value": "false"},
+                    {"config_type": "valueAxis", "property_name": "labelDisplayUnits", "property_value": "1000000D"}
+                ]
             }
         ]
     },
