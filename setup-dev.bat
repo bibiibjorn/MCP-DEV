@@ -153,13 +153,30 @@ for /f "tokens=*" %%i in ('!PYTHON_CMD! --version') do echo Found: %%i
 echo Using: !PYTHON_CMD!
 echo.
 
-:: Ask for clone location
+:: Ask for clone location using folder browser dialog
 set "defaultPath=%USERPROFILE%\repos"
 echo Where would you like to clone the repository?
-echo Default: %defaultPath%
-set /p "clonePath=Enter path (or press Enter for default): "
+echo.
+echo Opening folder browser dialog...
+echo (Default if cancelled: %defaultPath%)
+echo.
 
-if "%clonePath%"=="" set "clonePath=%defaultPath%"
+:: Use PowerShell to show a folder browser dialog
+for /f "usebackq delims=" %%i in (`powershell -ExecutionPolicy Bypass -Command ^
+    "Add-Type -AssemblyName System.Windows.Forms;" ^
+    "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog;" ^
+    "$dialog.Description = 'Select folder to clone MCP-DEV repository';" ^
+    "$dialog.RootFolder = 'MyComputer';" ^
+    "$dialog.SelectedPath = '%defaultPath%';" ^
+    "$dialog.ShowNewFolderButton = $true;" ^
+    "if ($dialog.ShowDialog() -eq 'OK') { $dialog.SelectedPath } else { '' }"`) do set "clonePath=%%i"
+
+if "%clonePath%"=="" (
+    echo No folder selected, using default: %defaultPath%
+    set "clonePath=%defaultPath%"
+) else (
+    echo Selected folder: %clonePath%
+)
 
 :: Create directory if it doesn't exist
 if not exist "%clonePath%" (

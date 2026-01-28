@@ -638,9 +638,9 @@ def build_pdf():
     elements.append(HRFlowable(width="100%", thickness=2, color=BORDER_COLOR, spaceBefore=5, spaceAfter=15))
 
     elements.append(create_info_box(
-        "<b>Claude</b> is Anthropic's frontier AI assistant, designed to be helpful, harmless, and honest. "
-        "With advanced reasoning capabilities, extended context windows, and deep technical expertise, "
-        "Claude is the ideal AI partner for complex Power BI development tasks.",
+        "<b>Claude</b> is Anthropic's most capable AI assistant, built on cutting-edge research in AI safety "
+        "and helpfulness. It combines deep technical knowledge with nuanced understanding, making it an ideal "
+        "partner for complex analytical and development tasks across any domain.",
         'info', styles
     ))
     elements.append(Spacer(1, 15))
@@ -652,59 +652,53 @@ def build_pdf():
     ))
 
     strengths = [
-        ("Advanced Reasoning", "Breaks down complex problems into logical steps, understands DAX context transitions, and provides detailed explanations"),
-        ("Extended Context", "Can hold entire Power BI models in memory - tables, measures, relationships - for comprehensive analysis"),
-        ("Code Excellence", "Writes production-quality DAX, M queries, Python, and PySpark with best practices built-in"),
-        ("Learning Partner", "Explains concepts, teaches patterns, and helps you grow your skills while solving problems"),
+        ("Advanced Reasoning", "Breaks down complex problems into logical steps, handles multi-step analysis, and provides clear explanations of its thinking"),
+        ("Extended Context", "Processes up to 200K tokens - entire codebases, long documents, or complex datasets in a single conversation"),
+        ("Code Excellence", "Writes production-quality code in 20+ languages including Python, TypeScript, SQL, DAX, and more with best practices built-in"),
+        ("Learning Partner", "Explains concepts at any level, teaches patterns, and helps you grow your skills while solving real problems"),
     ]
     elements.append(create_feature_grid(strengths, styles))
 
     elements.append(Spacer(1, 15))
 
-    # Capabilities section
+    # General Capabilities section
     elements.append(Paragraph(
-        f'<b><font color="{DARK_BLUE.hexval()}">Capabilities</font></b>',
+        f'<b><font color="{DARK_BLUE.hexval()}">What Claude Can Do</font></b>',
         styles['SubsectionHeading']
     ))
 
     capabilities = [
-        f'<font color="{SUCCESS_GREEN.hexval()}">&#8226;</font> <b>Natural Language Understanding</b> - Describe what you want in plain English, Claude translates to technical operations',
-        f'<font color="{SUCCESS_GREEN.hexval()}">&#8226;</font> <b>Multi-Step Reasoning</b> - Handles complex workflows: analyze model, identify issues, propose fixes, implement changes',
-        f'<font color="{SUCCESS_GREEN.hexval()}">&#8226;</font> <b>Code Generation & Review</b> - Writes, debugs, and optimizes DAX measures with explanations',
-        f'<font color="{SUCCESS_GREEN.hexval()}">&#8226;</font> <b>Documentation</b> - Auto-generates comprehensive model documentation in Word or Markdown',
-        f'<font color="{SUCCESS_GREEN.hexval()}">&#8226;</font> <b>Best Practices</b> - Applies 120+ industry rules to identify issues and suggest improvements',
+        f'<font color="{SUCCESS_GREEN.hexval()}">&#8226;</font> <b>Software Development</b> - Write, debug, refactor, and review code across any language or framework',
+        f'<font color="{SUCCESS_GREEN.hexval()}">&#8226;</font> <b>Data Analysis</b> - Analyze datasets, write queries, create visualizations, and extract insights',
+        f'<font color="{SUCCESS_GREEN.hexval()}">&#8226;</font> <b>Technical Writing</b> - Generate documentation, API specs, architecture diagrams, and technical guides',
+        f'<font color="{SUCCESS_GREEN.hexval()}">&#8226;</font> <b>Problem Solving</b> - Debug issues, optimize performance, design systems, and plan implementations',
+        f'<font color="{SUCCESS_GREEN.hexval()}">&#8226;</font> <b>Research & Learning</b> - Explain complex topics, summarize papers, and answer technical questions',
     ]
     for cap in capabilities:
         elements.append(Paragraph(cap, styles['BulletItem']))
 
     elements.append(Spacer(1, 15))
 
-    # Connectors section
+    # Available Interfaces
     elements.append(Paragraph(
-        f'<b><font color="{DARK_BLUE.hexval()}">Connectors & Integrations</font></b>',
+        f'<b><font color="{DARK_BLUE.hexval()}">Ways to Use Claude</font></b>',
         styles['SubsectionHeading']
     ))
 
-    elements.append(Paragraph(
-        "Through the Model Context Protocol (MCP), Claude can connect to a growing ecosystem of tools and services:",
-        styles['Body']
-    ))
-    elements.append(Spacer(1, 8))
-
-    connectors_data = [
-        [Paragraph('<b>Category</b>', ParagraphStyle('H', fontSize=9, textColor=colors.white)),
-         Paragraph('<b>Connectors</b>', ParagraphStyle('H', fontSize=9, textColor=colors.white)),
-         Paragraph('<b>What You Can Do</b>', ParagraphStyle('H', fontSize=9, textColor=colors.white))],
-        ['Power BI', 'MCP-PowerBI-Finvision', 'Analyze models, write DAX, debug visuals, generate docs'],
-        ['File Systems', 'Filesystem MCP', 'Read/write files, manage project structures'],
-        ['Databases', 'PostgreSQL, SQLite MCPs', 'Query databases, explore schemas, run analytics'],
-        ['Web & APIs', 'Fetch, Brave Search MCPs', 'Research documentation, fetch web content'],
-        ['Development', 'Git, GitHub MCPs', 'Manage repos, review PRs, track issues'],
-        ['Memory', 'Memory MCP', 'Remember context across conversations'],
+    cell_style = ParagraphStyle('Cell', fontSize=9, leading=11)
+    interfaces_data = [
+        [Paragraph('<b>Interface</b>', ParagraphStyle('H', fontSize=9, textColor=colors.white)),
+         Paragraph('<b>Best For</b>', ParagraphStyle('H', fontSize=9, textColor=colors.white)),
+         Paragraph('<b>Key Features</b>', ParagraphStyle('H', fontSize=9, textColor=colors.white))],
+        [Paragraph('Claude.ai', cell_style), Paragraph('General tasks, conversations', cell_style), Paragraph('Web interface, file uploads, artifacts, projects', cell_style)],
+        [Paragraph('Claude Desktop', cell_style), Paragraph('Power users, MCP integrations', cell_style), Paragraph('Native app, MCP server support, local tools', cell_style)],
+        [Paragraph('Claude Code (CLI)', cell_style), Paragraph('Developers, automation', cell_style), Paragraph('Terminal-based, git integration, agentic coding', cell_style)],
+        [Paragraph('API', cell_style), Paragraph('Applications, workflows', cell_style), Paragraph('Programmatic access, batch processing, custom apps', cell_style)],
+        [Paragraph('IDE Extensions', cell_style), Paragraph('In-editor assistance', cell_style), Paragraph('VS Code, JetBrains - code completion & chat', cell_style)],
     ]
 
-    connectors_table = Table(connectors_data, colWidths=[1.1*inch, 1.8*inch, 3*inch])
-    connectors_table.setStyle(TableStyle([
+    interfaces_table = Table(interfaces_data, colWidths=[1.4*inch, 1.7*inch, 2.8*inch])
+    interfaces_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), SECONDARY_BLUE),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTSIZE', (0, 0), (-1, -1), 9),
@@ -714,29 +708,29 @@ def build_pdf():
         ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
         ('LEFTPADDING', (0, 0), (-1, -1), 6),
     ]))
-    elements.append(connectors_table)
+    elements.append(interfaces_table)
 
     elements.append(Spacer(1, 15))
 
-    # Why Claude for Power BI
+    # Extensibility with MCP
     elements.append(Paragraph(
-        f'<b><font color="{DARK_BLUE.hexval()}">Why Claude for Power BI?</font></b>',
+        f'<b><font color="{DARK_BLUE.hexval()}">Extensibility with MCP</font></b>',
         styles['SubsectionHeading']
     ))
 
-    elements.append(create_conversation_example(
-        "I need a YTD calculation that respects my fiscal year starting in April",
-        "Understands fiscal year requirements, writes optimized DAX using CALCULATE and DATESYTD with proper fiscal year end date",
-        "Created: Sales YTD = CALCULATE([Total Sales], DATESYTD('Date'[Date], \"3/31\")) - with explanation of how fiscal year handling works",
-        styles
+    elements.append(Paragraph(
+        "Claude's capabilities can be extended through the <b>Model Context Protocol (MCP)</b> - an open standard "
+        "that allows Claude to connect to external tools and data sources. This guide focuses on one such extension: "
+        "<b>MCP-PowerBI-Finvision</b>, which gives Claude deep access to Power BI Desktop.",
+        styles['Body']
     ))
 
     elements.append(Spacer(1, 10))
 
     elements.append(create_info_box(
-        "Claude doesn't just write code - it <b>understands intent</b>. Ask for a \"YoY comparison\" and Claude knows you want "
-        "previous year values, growth percentages, and proper handling of incomplete periods. This contextual understanding "
-        "is what makes AI-assisted development so powerful.",
+        "With MCP, Claude goes from being a helpful assistant to an <b>active collaborator</b> that can read your files, "
+        "query your databases, interact with your tools, and execute operations on your behalf - all while maintaining "
+        "the safety and helpfulness that Claude is known for.",
         'tip', styles
     ))
 
@@ -868,13 +862,20 @@ def build_pdf():
 
     elements.append(Spacer(1, 15))
     elements.append(Paragraph(
-        f'<b><font color="{DARK_BLUE.hexval()}">Installation (2 Minutes)</font></b>',
+        f'<b><font color="{DARK_BLUE.hexval()}">Installation</font></b>',
         styles['SubsectionHeading']
     ))
 
     elements.extend(create_flow_diagram(
-        ["Download\n.mcpb", "Open\nClaude", "Settings >\nMCP", "Install\nfile", "Restart"],
+        ["Download\nrelease", "Extract\nfiles", "Run\nsetup.bat", "Restart\nClaude"],
         "Quick Install:"
+    ))
+
+    elements.append(Paragraph(
+        "The <b>setup.bat</b> script automatically configures Claude Desktop to use the MCP server. "
+        "It detects your Python installation, creates the virtual environment, installs dependencies, "
+        "and updates your Claude configuration file.",
+        styles['Body']
     ))
 
     elements.append(Spacer(1, 15))
@@ -2056,8 +2057,8 @@ def build_pdf():
 
     elements.append(Spacer(1, 15))
     elements.append(create_info_box(
-        f'<b>Stay Tuned!</b> The Fabric MCP Server is a natural evolution of this project. '
-        'When released, it will transform how teams interact with their entire Microsoft Fabric environment - '
+        f'<b>Stay Tuned!</b> The Fabric MCP Server will be released as a standalone companion project. '
+        'It will transform how teams interact with their entire Microsoft Fabric environment - '
         'making AI assistance available across the full data lifecycle, from ingestion to insights.',
         'tip', styles
     ))
