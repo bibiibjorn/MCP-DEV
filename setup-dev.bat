@@ -246,21 +246,8 @@ echo   Claude Desktop Configuration
 echo ========================================
 echo.
 
-:: Extract user folder from clone path to construct AppData path
-:: Clone path like C:\Users\username\repos -> user folder is C:\Users\username
-set "configPath="
-for /f "tokens=1,2,3,* delims=\" %%a in ("%clonePath%") do (
-    if /i "%%a"=="C:" if /i "%%b"=="Users" (
-        set "userFolder=%%a\%%b\%%c"
-        set "configPath=%%a\%%b\%%c\AppData\Roaming\Claude\claude_desktop_config.json"
-    )
-)
-
-:: Fallback to %APPDATA% if we couldn't extract from clone path
-if "%configPath%"=="" (
-    echo Could not deduce user folder from clone path.
-    set "configPath=%APPDATA%\Claude\claude_desktop_config.json"
-)
+:: Use %APPDATA% for config path (always resolves to current user's AppData\Roaming)
+set "configPath=%APPDATA%\Claude\claude_desktop_config.json"
 
 echo Detected config path: %configPath%
 

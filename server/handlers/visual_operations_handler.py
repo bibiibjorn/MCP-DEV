@@ -7,6 +7,7 @@ Operations:
 - update_position: Update position and/or size of matching visuals
 - replace_measure: Replace a measure in visuals while keeping the display name
 - sync_visual: Sync a visual (including visual groups with children) from source page to matching visuals on other pages
+- sync_column_widths: Sync only columnWidth settings from source matrix to target matrices (preserves all other visual properties)
 - update_visual_config: Update visual formatting properties (axis settings, labels, colors, etc.)
 """
 from typing import Dict, Any, List, Optional
@@ -424,6 +425,59 @@ def _sync_visual_content(
             synced_data['position'] = target_data['position']
 
     return synced_data
+
+
+def _sync_column_widths(
+    source_data: Dict,
+    target_data: Dict
+) -> Dict[str, Any]:
+    """
+    Sync only the columnWidth settings from source to target visual.
+
+    This is a targeted sync that ONLY copies the columnWidth array from
+    visual.objects.columnWidth, preserving everything else in the target visual.
+
+    Args:
+        source_data: The source visual.json data to copy columnWidth from
+        target_data: The target visual.json data to update
+
+    Returns:
+        Dict with 'modified': bool, 'target_data': updated target data,
+        'source_widths': the widths copied, 'previous_widths': the widths replaced
+    """
+    import copy
+
+    # Deep copy target to avoid modifying original
+    updated_target = copy.deepcopy(target_data)
+
+    # Get source columnWidth
+    source_visual = source_data.get('visual', {})
+    source_objects = source_visual.get('objects', {})
+    source_column_widths = source_objects.get('columnWidth', [])
+
+    if not source_column_widths:
+        return {
+            'modified': False,
+            'target_data': updated_target,
+            'source_widths': None,
+            'previous_widths': None,
+            'reason': 'Source visual has no columnWidth settings'
+        }
+
+    # Get target's current columnWidth for reporting
+    target_visual = updated_target.setdefault('visual', {})
+    target_objects = target_visual.setdefault('objects', {})
+    previous_widths = target_objects.get('columnWidth', [])
+
+    # Copy source columnWidth to target
+    target_objects['columnWidth'] = copy.deepcopy(source_column_widths)
+
+    return {
+        'modified': True,
+        'target_data': updated_target,
+        'source_widths': source_column_widths,
+        'previous_widths': previous_widths if previous_widths else None
+    }
 
 
 def _replace_measure_in_visual(
@@ -1283,6 +1337,206 @@ def handle_visual_operations(args: Dict[str, Any]) -> Dict[str, Any]:
 
         return result
 
+    elif operation == 'sync_column_widths':
+        # Sync only columnWidth settings from source matrix to target matrices
+        source_visual_name = args.get('source_visual_name')
+        source_page = args.get('source_page')
+        dry_run = args.get('dry_run', False)
+        target_pages = args.get('target_pages')  # Optional: list of page names to sync to
+        target_display_title = args.get('target_display_title')  # Match targets by display title
+        target_visual_type = args.get('target_visual_type')  # Match targets by visual type
+
+        # Validate required parameters - need to identify source visual
+        if not source_visual_name and not display_title:
+            return {
+                'success': False,
+                'error': 'sync_column_widths requires either source_visual_name or display_title parameter to identify the source visual'
+            }
+
+        # Find source visual
+        source_visuals = _find_visuals(
+            definition_path,
+            visual_name=source_visual_name,
+            display_title=display_title if not source_visual_name else None,
+            page_name=source_page,
+            include_hidden=True
+        )
+
+        if not source_visuals:
+            search_criteria = source_visual_name or display_title
+            return {
+                'success': False,
+                'error': f'No source visual found matching: {search_criteria}. Use operation "list" to see available visuals.'
+            }
+
+        # Determine source visual
+        source_visual = None
+        if source_page:
+            # Find visual on specific source page
+            for v in source_visuals:
+                if source_page.lower() in v.get('page_name', '').lower():
+                    source_visual = v
+                    break
+            if not source_visual:
+                return {
+                    'success': False,
+                    'error': f'Source visual not found on page matching: {source_page}'
+                }
+        else:
+            # Use the first found visual as source
+            source_visual = source_visuals[0]
+
+        source_page_name = source_visual.get('page_name', '')
+        source_file_path = Path(source_visual['file_path'])
+        source_visual_id = source_visual.get('visual_name', '')
+
+        # Load source visual data
+        source_data = _load_json_file(source_file_path)
+        if not source_data:
+            return {
+                'success': False,
+                'error': f'Failed to load source visual from: {source_file_path}'
+            }
+
+        # Check if source has columnWidth settings
+        source_column_widths = source_data.get('visual', {}).get('objects', {}).get('columnWidth', [])
+        if not source_column_widths:
+            return {
+                'success': False,
+                'error': f'Source visual has no columnWidth settings to sync. Visual type: {source_visual.get("visual_type")}'
+            }
+
+        # Find target visuals
+        if target_display_title or target_visual_type:
+            # Flexible matching: find visuals by title/type on other pages
+            all_potential_targets = _find_visuals(
+                definition_path,
+                display_title=target_display_title,
+                visual_type=target_visual_type,
+                include_hidden=True
+            )
+            target_visuals = []
+            for v in all_potential_targets:
+                # Skip the source visual itself (same visual on same page)
+                if v.get('visual_name') == source_visual_id and v.get('page_name', '') == source_page_name:
+                    continue
+                # Filter by target_pages if specified
+                if target_pages:
+                    if not any(tp.lower() in v.get('page_name', '').lower() for tp in target_pages):
+                        continue
+                target_visuals.append(v)
+        else:
+            # Find all matrix visuals (or same visual type as source) on other pages
+            source_visual_type = source_visual.get('visual_type', 'pivotTable')
+            all_potential_targets = _find_visuals(
+                definition_path,
+                visual_type=source_visual_type,
+                include_hidden=True
+            )
+            target_visuals = []
+            for v in all_potential_targets:
+                # Skip the source visual itself
+                if v.get('visual_name') == source_visual_id and v.get('page_name', '') == source_page_name:
+                    continue
+                # Filter by target_pages if specified
+                if target_pages:
+                    if not any(tp.lower() in v.get('page_name', '').lower() for tp in target_pages):
+                        continue
+                target_visuals.append(v)
+
+        if not target_visuals:
+            return {
+                'success': True,
+                'message': f'Source visual found on page "{source_page_name}" with {len(source_column_widths)} column width setting(s), but no matching target visuals found to sync to.',
+                'source': {
+                    'visual_name': source_visual_id,
+                    'display_title': source_visual.get('display_title'),
+                    'visual_type': source_visual.get('visual_type'),
+                    'page': source_page_name,
+                    'column_widths_count': len(source_column_widths)
+                },
+                'targets_found': 0,
+                'hint': 'Use target_display_title or target_visual_type to match target visuals.'
+            }
+
+        # Perform column width sync
+        changes = []
+        errors = []
+
+        for target_visual in target_visuals:
+            target_file_path = Path(target_visual['file_path'])
+            target_page_name = target_visual.get('page_name', '')
+            target_visual_id = target_visual.get('visual_name', '')
+
+            # Load target visual data
+            target_data = _load_json_file(target_file_path)
+            if not target_data:
+                errors.append({
+                    'page': target_page_name,
+                    'visual_name': target_visual_id,
+                    'error': 'Failed to load target visual'
+                })
+                continue
+
+            # Sync column widths
+            sync_result = _sync_column_widths(source_data, target_data)
+
+            change_record = {
+                'page': target_page_name,
+                'target_visual_name': target_visual_id,
+                'target_display_title': target_visual.get('display_title'),
+                'visual_type': target_visual.get('visual_type', 'unknown'),
+                'column_widths_synced': len(source_column_widths),
+                'had_previous_widths': sync_result.get('previous_widths') is not None,
+                'status': 'would_sync' if dry_run else 'synced'
+            }
+
+            if not sync_result['modified']:
+                change_record['status'] = 'skipped'
+                change_record['reason'] = sync_result.get('reason', 'Unknown')
+                changes.append(change_record)
+                continue
+
+            if not dry_run:
+                if not _save_json_file(target_file_path, sync_result['target_data']):
+                    errors.append({
+                        'page': target_page_name,
+                        'visual_name': target_visual_id,
+                        'error': 'Failed to save synced visual'
+                    })
+                    continue
+
+            changes.append(change_record)
+
+        # Build result
+        source_desc = source_visual.get('display_title') or source_visual_id
+        result = {
+            'success': len(errors) == 0,
+            'operation': 'sync_column_widths',
+            'dry_run': dry_run,
+            'message': f'{"Would sync" if dry_run else "Synced"} column widths from "{source_desc}" on "{source_page_name}" to {len([c for c in changes if c.get("status") in ["synced", "would_sync"]])} visual(s)',
+            'source': {
+                'visual_name': source_visual_id,
+                'display_title': source_visual.get('display_title'),
+                'visual_type': source_visual.get('visual_type'),
+                'page': source_page_name,
+                'column_widths_count': len(source_column_widths)
+            },
+            'target_matching': {
+                'by_display_title': target_display_title,
+                'by_visual_type': target_visual_type
+            } if (target_display_title or target_visual_type) else 'by_visual_type',
+            'changes': changes,
+            'changes_count': len(changes)
+        }
+
+        if errors:
+            result['errors'] = errors
+            result['errors_count'] = len(errors)
+            result['message'] += f' with {len(errors)} error(s)'
+
+        return result
+
     elif operation == 'update_visual_config':
         # Update visual formatting/configuration properties
         config_type = args.get('config_type')  # e.g., 'categoryAxis', 'valueAxis', 'labels', 'legend'
@@ -1423,7 +1677,7 @@ def handle_visual_operations(args: Dict[str, Any]) -> Dict[str, Any]:
     else:
         return {
             'success': False,
-            'error': f'Unknown operation: {operation}. Valid operations: list, update_position, replace_measure, sync_visual, update_visual_config'
+            'error': f'Unknown operation: {operation}. Valid operations: list, update_position, replace_measure, sync_visual, sync_column_widths, update_visual_config'
         }
 
 
@@ -1433,7 +1687,7 @@ def register_visual_operations_handler(registry):
 
     tool = ToolDefinition(
         name="08_Visual_Operations",
-        description="[PBIP] Edit Power BI visual properties - list visuals, resize/reposition visuals, replace measures, sync visuals across pages",
+        description="[PBIP] Edit Power BI visual properties - list visuals, resize/reposition visuals, replace measures, sync visuals across pages, sync column widths between matrices",
         handler=handle_visual_operations,
         input_schema=TOOL_SCHEMAS.get('visual_operations', {}),
         category="pbip",

@@ -1062,8 +1062,8 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
             },
             "operation": {
                 "type": "string",
-                "enum": ["list", "update_position", "replace_measure", "sync_visual", "update_visual_config"],
-                "description": "Operation: 'list' finds visuals, 'update_position' changes position/size, 'replace_measure' replaces measures, 'sync_visual' syncs visual content from source to targets, 'update_visual_config' updates formatting properties (axis settings, labels, etc.). Default: 'list'",
+                "enum": ["list", "update_position", "replace_measure", "sync_visual", "sync_column_widths", "update_visual_config"],
+                "description": "Operation: 'list' finds visuals, 'update_position' changes position/size, 'replace_measure' replaces measures, 'sync_visual' syncs visual content from source to targets, 'sync_column_widths' syncs only columnWidth settings to target matrices (preserves query/row structure), 'update_visual_config' updates formatting properties (axis settings, labels, etc.). Default: 'list'",
                 "default": "list"
             },
             "display_title": {
@@ -1350,6 +1350,39 @@ Display BOTH outputs to the user - formatted_output first, then mermaid_diagram_
                 "source_page": "Dashboard",
                 "sync_position": True,
                 "sync_children": True
+            },
+            {
+                "_description": "Sync column widths from source matrix to all matrices of the same type (preview)",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "sync_column_widths",
+                "display_title": "Asset Performance",
+                "source_page": "GLOBAL WEALTH",
+                "dry_run": True
+            },
+            {
+                "_description": "Sync column widths to specific pages only",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "sync_column_widths",
+                "display_title": "Asset Performance",
+                "source_page": "GLOBAL WEALTH",
+                "target_pages": ["REAL ESTATE", "PRIVATE EQUITY"],
+                "dry_run": False
+            },
+            {
+                "_description": "Sync column widths to matrices with specific display title",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "sync_column_widths",
+                "display_title": "Performance Matrix",
+                "source_page": "Overview",
+                "target_display_title": "Performance Matrix"
+            },
+            {
+                "_description": "Sync column widths to all pivotTable visuals on other pages",
+                "pbip_path": "C:/repos/MyProject",
+                "operation": "sync_column_widths",
+                "source_visual_name": "abc123def456",
+                "source_page": "Dashboard",
+                "target_visual_type": "pivotTable"
             },
             {
                 "_description": "Update X-axis font size to 8 on all waterfall visuals",
