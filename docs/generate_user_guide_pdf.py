@@ -1265,6 +1265,13 @@ def build_pdf():
     ))
     elements.append(Spacer(1, 8))
 
+    elements.append(create_info_box(
+        "<b>Requirement:</b> PBIP tools require a <b>PBIP Path folder</b> to be specified. "
+        "This is the folder containing your .pbip file and the associated Report/SemanticModel subfolders.",
+        'important', styles
+    ))
+    elements.append(Spacer(1, 8))
+
     elements.extend(create_tool_card(
         "07_Analyze_PBIP_Repository / 07_Report_Info / 07_PBIP_Dependency_Analysis",
         "Generate HTML reports, get page/visual info, explore dependencies interactively.",
@@ -1349,6 +1356,13 @@ def build_pdf():
         "From visual filter contexts to measure performance comparisons, these tools help you "
         "understand <b>exactly</b> what's happening under the hood.",
         'info', styles
+    ))
+    elements.append(Spacer(1, 8))
+
+    elements.append(create_info_box(
+        "<b>Requirements:</b> Debug tools require: (1) An <b>open Power BI Desktop file (.pbix)</b> for live model connection, "
+        "and (2) A <b>link to the PBIP report folder</b> to access visual and page definitions.",
+        'important', styles
     ))
     elements.append(Spacer(1, 12))
 
